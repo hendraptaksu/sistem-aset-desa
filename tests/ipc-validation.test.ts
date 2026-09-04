@@ -33,9 +33,10 @@ describe('validateTransaksiInput', () => {
     expect(kategoriBolehDipilih('PANJAR')).toBe(false);
     expect(kategoriBolehDipilih('3001')).toBe(false);
     expect(kategoriBolehDipilih('3002')).toBe(false);
-    expect(kategoriBolehDipilih('1000')).toBe(false);
+    expect(kategoriBolehDipilih('1001')).toBe(false);
     expect(kategoriBolehDipilih('5004')).toBe(true);
     expect(kategoriBolehDipilih('2050')).toBe(true);
+    expect(kategoriBolehDipilih('1050')).toBe(true); // piutang lewat sisi kategori
     expect(validateTransaksiInput({ ...BASE, kategori: 'PANJAR' }).length).toBeGreaterThan(0);
   });
 });

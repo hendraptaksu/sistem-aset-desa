@@ -21,7 +21,7 @@ export function PanjarTab() {
   const [tanggal, setTanggal] = useState(today());
   const [penerima, setPenerima] = useState('');
   const [jumlah, setJumlah] = useState(0);
-  const [sumber, setSumber] = useState('1000');
+  const [sumber, setSumber] = useState('1001');
 
   // close flow
   const [closeId, setCloseId] = useState('');

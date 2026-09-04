@@ -57,13 +57,19 @@ export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(DDL);
-  const count = (db.prepare('SELECT COUNT(*) AS c FROM coa').get() as { c: number }).c;
-  if (count === 0) {
-    const ins = db.prepare('INSERT INTO coa (kode, nama, tipe) VALUES (?, ?, ?)');
-    const tx = db.transaction(() => {
-      for (const c of COA) ins.run(c.kode, c.nama, c.tipe);
-    });
-    tx();
-  }
+  // Upsert COA agar DB lama ikut koreksi nama/kode resmi tanpa menghapus transaksi.
+  // Baris COA yang tidak ada di seed HANYA dihapus bila tabel transaksi masih kosong
+  // (mencegah referensi yatim di DB produksi).
+  const txCount = (db.prepare('SELECT COUNT(*) AS c FROM transaksi').get() as { c: number }).c;
+  const seedTx = db.transaction(() => {
+    const upsert = db.prepare('INSERT INTO coa (kode, nama, tipe) VALUES (?, ?, ?) ON CONFLICT(kode) DO UPDATE SET nama = excluded.nama, tipe = excluded.tipe');
+    for (const c of COA) upsert.run(c.kode, c.nama, c.tipe);
+    if (txCount === 0) {
+      db.prepare(
+        `DELETE FROM coa WHERE kode NOT IN (${COA.map(() => '?').join(',')})`,
+      ).run(...COA.map((c) => c.kode));
+    }
+  });
+  seedTx();
   return db;
 }

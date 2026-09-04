@@ -72,6 +72,13 @@ export function totalHutang(transaksi: Transaksi[], cutoff?: string): number {
     .reduce((s, t) => s + t.masuk - t.keluar, 0);
 }
 
+/** Total piutang 1050 s/d cut-off. Keluar = pinjaman diberikan, masuk = pelunasan. */
+export function totalPiutang(transaksi: Transaksi[], cutoff?: string): number {
+  return transaksi
+    .filter((t) => t.kategori === '1050' && (!cutoff || t.tanggal <= cutoff))
+    .reduce((s, t) => s + t.keluar - t.masuk, 0);
+}
+
 /** Modal awal 3000 s/d cut-off (biasanya sekali di awal). */
 export function totalModalAwal(transaksi: Transaksi[], cutoff?: string): number {
   return transaksi
@@ -82,7 +89,7 @@ export function totalModalAwal(transaksi: Transaksi[], cutoff?: string): number 
 export type Neraca = {
   cutoff: string;
   aktiva: number;
-  aktivaRinci: { kas: Record<string, number>; panjarOpen: number };
+  aktivaRinci: { kas: Record<string, number>; piutang: number; panjarOpen: number };
   hutang: number;
   modalAwal: number;
   kumulatif: number;
@@ -94,7 +101,8 @@ export type Neraca = {
 
 /**
  * Neraca per cut-off.
- * Aktiva = SUM saldo kas + Panjar OPEN. Pasiva = Hutang + Modal + Kumulatif + Berjalan.
+ * Aktiva = SUM saldo kas + Piutang 1050 + Panjar OPEN.
+ * Pasiva = Hutang + Modal + Kumulatif + Berjalan.
  * Kumulatif = SUM laba tahun < tahun(cutoff) dari tutup_buku. Berjalan = laba 01-01 s/d cutoff.
  */
 export function neraca(
@@ -109,7 +117,8 @@ export function neraca(
   const panjarOpen = panjar
     .filter((p) => p.status === 'OPEN' && p.tanggal <= cutoff)
     .reduce((s, p) => s + p.jumlah, 0);
-  const aktiva = totalKas + panjarOpen;
+  const piutang = totalPiutang(transaksi, cutoff);
+  const aktiva = totalKas + piutang + panjarOpen;
 
   const tahun = yearOf(cutoff);
   const kumulatif = tutup.filter((t) => t.tahun < tahun).reduce((s, t) => s + t.laba, 0);
@@ -121,7 +130,7 @@ export function neraca(
   return {
     cutoff,
     aktiva,
-    aktivaRinci: { kas, panjarOpen },
+    aktivaRinci: { kas, piutang, panjarOpen },
     hutang,
     modalAwal,
     kumulatif,

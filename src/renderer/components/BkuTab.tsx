@@ -18,8 +18,8 @@ export function BkuTab() {
   // form
   const [tanggal, setTanggal] = useState(today());
   const [keterangan, setKeterangan] = useState('');
-  const [akunKas, setAkunKas] = useState('1000');
-  const [kategori, setKategori] = useState('4001');
+  const [akunKas, setAkunKas] = useState('1001');
+  const [kategori, setKategori] = useState('4005');
   const [tipe, setTipe] = useState<'masuk' | 'keluar'>('masuk');
   const [nominal, setNominal] = useState(0);
 

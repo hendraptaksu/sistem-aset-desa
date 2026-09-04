@@ -1,5 +1,6 @@
-// Test akurasi PROGRESS.md (T1-T8). Pure ledger + SQLite repository.
-// Skenario angka: modal 10jt → parkir +5jt → upakara -2jt → panjar 5jt → realisasi 4,5jt.
+// Test akurasi PROGRESS.md (T1-T9). Pure ledger + SQLite repository.
+// Skenario angka: modal 10jt → parkir(4005) +5jt → upakara -2jt → panjar 5jt → realisasi 4,5jt.
+// Kode sesuai KODE AKUN.csv (1001 KAS, 4005 PENDAPATAN PARKIR).
 
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +13,7 @@ import {
   panjarOpenToTransaksi,
   saldoKas,
   surplus,
+  totalPiutang,
   validasiSimpanLonggar,
 } from '../src/core/ledger.js';
 import type { Panjar, Transaksi, TutupBuku } from '../src/core/types.js';
@@ -29,10 +31,10 @@ import {
 } from '../src/db/repository.js';
 import { formatRp } from '../src/utils/format.js';
 
-const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal awal', akun_kas: '1000', kategori: '3000', masuk: 10_000_000, keluar: 0 };
-const PARKIR: Transaksi = { id: 't1', tanggal: '2025-02-10', keterangan: 'Parkir', akun_kas: '1015', kategori: '4001', masuk: 5_000_000, keluar: 0 };
-const UPAKARA: Transaksi = { id: 't2', tanggal: '2025-03-12', keterangan: 'Upakara', akun_kas: '1000', kategori: '5004', masuk: 0, keluar: 2_000_000 };
-const PANJAR: Panjar = { id: 'p1', tanggal: '2025-04-01', penerima: 'Panitia Piodalan', jumlah: 5_000_000, akun_kas_sumber: '1000', status: 'OPEN' };
+const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal awal', akun_kas: '1001', kategori: '3000', masuk: 10_000_000, keluar: 0 };
+const PARKIR: Transaksi = { id: 't1', tanggal: '2025-02-10', keterangan: 'Parkir', akun_kas: '1015', kategori: '4005', masuk: 5_000_000, keluar: 0 };
+const UPAKARA: Transaksi = { id: 't2', tanggal: '2025-03-12', keterangan: 'Upakara', akun_kas: '1001', kategori: '5004', masuk: 0, keluar: 2_000_000 };
+const PANJAR: Panjar = { id: 'p1', tanggal: '2025-04-01', penerima: 'Panitia Piodalan', jumlah: 5_000_000, akun_kas_sumber: '1001', status: 'OPEN' };
 
 function dbSeeded(): Database.Database {
   const db = openDb(':memory:');
@@ -78,7 +80,7 @@ describe('T4 panjar open', () => {
   it('kas turun 5jt tapi aktiva tetap (pindah ke panjar)', () => {
     const db = dbSeeded();
     const tx = listTransaksi(db);
-    expect(saldoKas(tx, '1000', '2025-04-30')).toBe(10_000_000 - 2_000_000 - 5_000_000);
+    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(10_000_000 - 2_000_000 - 5_000_000);
     const n = neraca(tx, [{ ...PANJAR }], [], '2025-04-30', KAS_KODES);
     expect(n.aktivaRinci.panjarOpen).toBe(5_000_000);
     expect(n.aktiva).toBe(13_000_000);
@@ -94,7 +96,7 @@ describe('T5 panjar close', () => {
     expect(close.sisaRow?.masuk).toBe(500_000);
     closePanjar(db, 'p1', [...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])]);
     const tx = listTransaksi(db);
-    expect(saldoKas(tx, '1000', '2025-04-30')).toBe(3_500_000);
+    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(3_500_000);
     const n = neraca(tx, [{ ...PANJAR, status: 'CLOSED' }], [], '2025-04-30', KAS_KODES);
     expect(n.aktiva).toBe(8_500_000);
     expect(n.berjalan).toBe(5_000_000 - 6_500_000);
@@ -108,7 +110,7 @@ describe('T5 panjar close', () => {
     closePanjar(db, 'p1', [...close.bebanRows, close.kompensasiRow]);
     const tx = listTransaksi(db);
     // kas tunai: 10-2-5 (open) -6 (beban) +5 (komp) = 2jt
-    expect(saldoKas(tx, '1000', '2025-04-30')).toBe(2_000_000);
+    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(2_000_000);
     const n = neraca(tx, [{ ...PANJAR, status: 'CLOSED' }], [], '2025-04-30', KAS_KODES);
     expect(n.balance).toBe(true);
   });
@@ -159,5 +161,25 @@ describe('T8 format rupiah', () => {
     expect(formatRp(1_500_000)).toBe('Rp 1.500.000');
     expect(formatRp(-100_000)).toBe('(Rp 100.000)');
     expect(formatRp(0)).toBe('Rp 0');
+  });
+});
+
+describe('T9 piutang 1050', () => {
+  const PINJAM: Transaksi = { id: 't9a', tanggal: '2025-05-01', keterangan: 'Pinjaman ke X', akun_kas: '1001', kategori: '1050', masuk: 0, keluar: 1_000_000 };
+  const LUNAS: Transaksi = { id: 't9b', tanggal: '2025-05-20', keterangan: 'Pelunasan X', akun_kas: '1001', kategori: '1050', masuk: 1_000_000, keluar: 0 };
+  it('pinjaman: kas turun, aktiva tetap, surplus tidak terpengaruh', () => {
+    const tx = [MODAL, PARKIR, UPAKARA, PINJAM];
+    expect(totalPiutang(tx, '2025-05-10')).toBe(1_000_000);
+    const n = neraca(tx, [], [], '2025-05-10', KAS_KODES);
+    expect(n.aktivaRinci.piutang).toBe(1_000_000);
+    expect(n.aktiva).toBe(13_000_000);
+    expect(n.balance).toBe(true);
+    expect(surplus(tx, '2025-01-01', '2025-05-10')).toBe(3_000_000);
+  });
+  it('pelunasan: piutang nol kembali, tetap balance', () => {
+    const tx = [MODAL, PARKIR, UPAKARA, PINJAM, LUNAS];
+    expect(totalPiutang(tx, '2025-05-31')).toBe(0);
+    const n = neraca(tx, [], [], '2025-05-31', KAS_KODES);
+    expect(n.balance).toBe(true);
   });
 });

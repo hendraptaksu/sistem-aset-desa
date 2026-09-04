@@ -14,7 +14,7 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 
 ## Phase 0 — Setup & Core (fokus akurasi di Mac)
 - [x] Scaffold npm + SQLite konek di Mac (2026-09-04: better-sqlite3 WAL, `npm test` → vitest; UI Electron menyusul)
-- [x] Seed COA sesuai PRD (2026-09-04: `src/db/coa.ts`, 9 kas + 2050 + 3000-3002 + 8 pendapatan + 6 baga)
+- [x] Seed COA resmi client (2026-09-04: `KODE AKUN.csv` → `src/db/coa.ts`; 16 kas + 1050 piutang + 2050 + 3000-3002 + 12 pendapatan + 15 beban; 1001 KAS, bukan 1000)
 - [x] Skema tabel (2026-09-04: `src/db/database.ts` + `src/db/repository.ts`; kontrak freeze di `src/core/types.ts`)
 - [x] Helper Rupiah (2026-09-04: `src/utils/format.ts`, T8 lolos)
 
@@ -52,7 +52,7 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 - [ ] Export Excel `.xlsx` + Print/Save PDF
 - [ ] SQLite single-file lokal offline
 
-## Verifikasi Akurasi (8 test di Mac, tanpa Windows) — 9/9 LOLOS 2026-09-04 (`npx vitest run`)
+## Verifikasi Akurasi (9 test di Mac, tanpa Windows) — 16/16 LOLOS 2026-09-04 (`npx vitest run`, termasuk 5 test validasi input)
 - [x] T1 Modal awal balance
 - [x] T2 Parkir masuk → Aktiva & Berjalan naik
 - [x] T3 Upakara keluar → Aktiva & Berjalan turun
@@ -61,6 +61,7 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 - [x] T6 Neraca mid-year & akhir tahun balance
 - [x] T7 Setelah tutup + edit lama beralasan tetap balance + tercatat di audit_log
 - [x] T8 Format negatif `(Rp ...)`
+- [x] T9 Piutang 1050 pinjam & lunas → Aktiva tetap, tetap balance, surplus tak terpengaruh
 
 ## Deferred — Build Windows (nanti saja)
 - [ ] GitHub Actions windows-latest → `.exe` NSIS + portable
