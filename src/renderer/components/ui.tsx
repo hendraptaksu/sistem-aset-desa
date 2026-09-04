@@ -123,8 +123,8 @@ export function LockModal({
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
         <h3 className="text-lg font-bold">Periode sudah ditutup</h3>
         <p className="mt-1 text-[15px] text-stone-600">
-          Tanggal ini masuk tahun yang sudah tutup buku. Boleh tetap simpan (kunci longgar), tapi wajib isi
-          alasan — tercatat di audit.
+          Tanggal ini masuk tahun yang sudah tutup buku. Boleh tetap simpan, tapi wajib isi
+          alasan — tercatat otomatis.
         </p>
         <div className="mt-3">
           <Field label="Alasan (min. 5 karakter)">

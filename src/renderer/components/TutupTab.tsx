@@ -73,7 +73,7 @@ export function TutupTab() {
         {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
         <p className="mb-3 text-sm text-stone-600">
           Langkah {step}/3: {step === 1 ? 'Preview laba' : step === 2 ? 'Auto-backup .db' : 'Konfirmasi'}.
-          Kunci longgar: edit tahun lalu tetap boleh + wajib alasan + tercatat audit.
+          Data tahun lalu masih bisa diubah dengan mencantumkan alasan, dan tercatat otomatis.
         </p>
 
         {step === 1 && (
