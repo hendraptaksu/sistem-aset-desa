@@ -1,16 +1,18 @@
 {
   "name": "sistem-aset-desa",
   "version": "1.0.0",
-  "description": "",
+  "description": "Aplikasi Pembukuan Keuangan Pura Dalem Puri (offline-first)",
   "main": "./out/main/index.js",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "dev": "electron-vite dev",
-    "build": "electron-vite build"
+    "build": "electron-vite build",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win --publish never"
   },
   "keywords": [],
-  "author": "",
+  "author": "Pura Dalem Puri",
   "license": "ISC",
   "type": "module",
   "dependencies": {
@@ -32,6 +34,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^4.7.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
@@ -43,5 +46,36 @@
     "better-sqlite3@13.0.3": true,
     "esbuild@0.28.2": true,
     "fsevents@2.3.3": true
+  },
+  "build": {
+    "appId": "id.or.puradalempuri.keuangan",
+    "productName": "Keuangan Pura Dalem Puri",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Keuangan Pura Dalem Puri"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   }
 }
