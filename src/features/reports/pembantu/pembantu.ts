@@ -1,4 +1,5 @@
-// Buku Pembantu — filter per kode (kas 1000-1029 atau kategori 4001-5007/2050/3000/PANJAR)
+// Buku Pembantu — filter per kode (kas dari KAS_KODES atau kategori apa pun:
+// PENDAPATAN/BEBAN/1050/2050/3000/PANJAR) + Total Masuk/Keluar/Saldo.
 // + Total Masuk/Keluar/Saldo. Delegasi angka ke ledger.totalPerKategori? Tidak —
 // pembantu butuh rows rincian, jadi filter langsung lalu agregat masuk-keluar.
 // Rumus sama dengan Agent A: filter tanggal mulai–selesai (inklusif).

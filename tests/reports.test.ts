@@ -26,8 +26,8 @@ import {
 } from '../src/features/export/export.js';
 
 describe('B1 pembantu: filter per kode + total', () => {
-  it('kas 1000: masuk 21,25jt keluar 13,8jt saldo 7,45jt', () => {
-    const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1000' });
+  it('kas 1001: masuk 21,25jt keluar 13,8jt saldo 7,45jt', () => {
+    const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1001' });
     expect(p.totalMasuk).toBe(21_250_000);
     expect(p.totalKeluar).toBe(13_800_000);
     expect(p.saldo).toBe(7_450_000);
@@ -45,8 +45,8 @@ describe('B1 pembantu: filter per kode + total', () => {
     expect(p.totalKeluar).toBe(5_000_000);
     expect(p.rows).toHaveLength(3);
   });
-  it('filter tanggal benar (kas 1000 Jan saja = modal 10jt)', () => {
-    const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1000', mulai: '2025-01-01', sampai: '2025-01-31' });
+  it('filter tanggal benar (kas 1001 Jan saja = modal 10jt)', () => {
+    const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1001', mulai: '2025-01-01', sampai: '2025-01-31' });
     expect(p.rows).toHaveLength(1);
     expect(p.saldo).toBe(10_000_000);
   });
@@ -63,10 +63,10 @@ describe('B2 realisasi: grouping + net (T6-parsial)', () => {
     expect(r.totalPendapatan).toBe(14_000_000);
     expect(r.totalBeban).toBe(11_800_000);
     expect(r.net).toBe(2_200_000);
-    expect(r.pendapatan.find((b) => b.kode === '4001')?.nominal).toBe(5_000_000);
+    expect(r.pendapatan.find((b) => b.kode === '4005')?.nominal).toBe(5_000_000);
     expect(r.beban.find((b) => b.kode === '5004')?.nominal).toBe(6_500_000);
-    expect(r.pendapatan).toHaveLength(8);
-    expect(r.beban).toHaveLength(6);
+    expect(r.pendapatan).toHaveLength(12);
+    expect(r.beban).toHaveLength(15);
   });
   it('filter Februari saja: pend 7jt, beban 0', () => {
     const r = buildRealisasi(MOCK_TRANSAKSI, '2025-02-01', '2025-02-28');
@@ -81,8 +81,8 @@ describe('B3 surplus: % + kurung defisit + cek silang 3002', () => {
     const s = buildSurplus(MOCK_TRANSAKSI, '2025-01-01', '2025-12-31');
     expect(s.surplus).toBe(2_200_000);
     expect(s.defisit).toBe(false);
-    const p4001 = s.pendapatan.find((b) => b.kode === '4001')!;
-    expect(p4001.persen).toBeCloseTo((5_000_000 / 14_000_000) * 100, 5);
+    const p4005 = s.pendapatan.find((b) => b.kode === '4005')!;
+    expect(p4005.persen).toBeCloseTo((5_000_000 / 14_000_000) * 100, 5);
     const b5004 = s.beban.find((b) => b.kode === '5004')!;
     expect(b5004.persen).toBeCloseTo((6_500_000 / 11_800_000) * 100, 5);
   });
@@ -119,11 +119,11 @@ describe('B5 export xlsx keluar buffer/file', () => {
   it('3 workbook jadi buffer + file .xlsx', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-export-'));
     try {
-      const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1000' });
+      const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1001' });
       const r = buildRealisasi(MOCK_TRANSAKSI, '2025-01-01', '2025-12-31');
       const s = buildSurplus(MOCK_TRANSAKSI, '2025-01-01', '2025-12-31');
       for (const [wb, name] of [
-        [await pembantuToWorkbook(p), 'pembantu-1000.xlsx'],
+        [await pembantuToWorkbook(p), 'pembantu-1001.xlsx'],
         [await realisasiToWorkbook(r), 'realisasi.xlsx'],
         [await surplusToWorkbook(s), 'surplus.xlsx'],
       ] as const) {

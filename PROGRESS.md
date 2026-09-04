@@ -3,11 +3,11 @@
 > Sumber: `PRD.md` + keputusan diskusi. Update file ini tiap selesai 1 fitur: ubah `- [ ]` jadi `- [x]` + isi tanggal & catatan.
 > Format: `- [x] Fitur (2026-09-04: catatan)`
 
-Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electron jalan (`npm run dev`/`build`, smoke 12 dtk OK, 14/14 test). **Agent B SUDAH BOLEH JALAN** (kontrak freeze di `src/core/*`, `src/db/*`; lihat AGENT_B_PROMPT.md §2).
+Terakhir update: 2026-09-04 — MERGE agent-b SELESAI + integrasi: 29/29 test hijau, build OK. Logic laporan (2/4/6), dashboard-read, export/backup ter-merge; web-shell dilebur (arsitektur = Electron); mock B re-key ke COA resmi. Sisa: tab laporan Electron + Neraca/tutup wizard (Modul 5).
 
 ## Keputusan yang sudah dikunci
 - [x] Framework: Electron + Vite + React + TS + Tailwind/shadcn + better-sqlite3 + drizzle (2026-09-04: dev di Mac, build Windows nanti via CI)
-- [x] BKU pakai 2 dropdown: Akun Kas [1000-1029] + Kategori [4001-5007/2050] (2026-09-04: agar Neraca bisa BALANCE)
+- [x] BKU pakai 2 dropdown: Akun Kas (`KAS_KODES`) + Kategori (PENDAPATAN/BEBAN/1050/2050/3000, lihat `KODE AKUN.csv`) (2026-09-04: agar Neraca bisa BALANCE)
 - [x] Tutup buku: hitungan auto + kunci manual longgar (2026-09-04: bisa edit tahun lalu + wajib alasan + audit_log)
 - [x] Modul 6 baru: Surplus / (Defisit) = Laba-Rugi versi Pura (2026-09-04: disetujui)
 - [x] Format tracking: 1 file ini (2026-09-04)
@@ -25,7 +25,7 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 
 ## Modul 2 — Buku Pembantu
 - [x] Filter otomatis per kode rekening dari BKU (2026-09-04: `buildPembantu` kas/kategori/PANJAR, test B1 lolos)
-- [x] Total Masuk / Keluar / Saldo Akhir per sub-ledger (2026-09-04: kas 1000 = 21,25jt/13,8jt/7,45jt, test B1 lolos)
+- [x] Total Masuk / Keluar / Saldo Akhir per sub-ledger (2026-09-04: kas 1001 = 21,25jt/13,8jt/7,45jt, test B1 lolos)
 
 ## Modul 3 — Buku Panjar
 - [x] Form: Tanggal Panjar, Penerima, Jumlah, Akun Kas Sumber, Status Open/Closed (2026-09-04: `PanjarTab.tsx` + daftar + filter status)
@@ -33,8 +33,8 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 - [x] Open kurangi Kas (pindah ke Panjar Aktiva); Close jadi Beban + sisa kembali + auto-buat baris BKU (2026-09-04: via `panjarCloseToTransaksi`, T5 lolos)
 
 ## Modul 4 — Arus Kas & Realisasi Anggaran
-- [x] Grouping Pendapatan per jenis + Pengeluaran per Baga + filter tanggal (2026-09-04: `buildRealisasi`, 8+6 baris, test B2 lolos)
-- [x] Net Total = Total Pendapatan - Total Pengeluaran (2026-09-04: 14jt-11,8jt=2,2jt; PANJAR/2050 eksklusi, test B2 lolos)
+- [x] Grouping Pendapatan per jenis + Pengeluaran per Baga + filter tanggal (2026-09-04: `buildRealisasi`, 12+15 baris COA resmi, test B2 lolos)
+- [x] Net Total = Total Pendapatan - Total Pengeluaran (2026-09-04: 14jt-11,8jt=2,2jt; PANJAR/1050/2050 eksklusi, test B2 lolos)
 
 ## Modul 5 — Neraca + Tutup Buku
 - [ ] Neraca per cut-off: Aktiva (Kas + Panjar OPEN) vs Pasiva (Hutang + 3000 + 3001 + 3002)

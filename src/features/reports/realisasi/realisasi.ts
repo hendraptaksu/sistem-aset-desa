@@ -1,6 +1,6 @@
-// Realisasi Anggaran — grouping Pendapatan per jenis (4001-4008) + Beban per Baga
-// (5002-5007) + filter tanggal + Net = Pendapatan - Beban.
-// PANJAR & 2050/3000 otomatis eksklusi (hanya 4xxx-5xxx via isPendapatan/isBeban).
+// Realisasi Anggaran — grouping Pendapatan per jenis (PENDAPATAN_KODES) + Beban
+// per Baga (BEBAN_KODES) + filter tanggal + Net = Pendapatan - Beban.
+// PANJAR & 1050/2050/3000 otomatis eksklusi (hanya tipe PENDAPATAN/BEBAN).
 
 import { BEBAN_KODES, PENDAPATAN_KODES, coaByKode } from '../../../db/coa.js';
 import { totalBeban, totalPendapatan } from '../../../core/ledger.js';

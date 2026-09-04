@@ -1,6 +1,6 @@
 // Surplus / (Defisit) — SAMA dengan realisasi tapi judul Surplus/(Defisit) +
 // kolom % per baris + format kurung untuk defisit (lewat formatRp).
-// Hanya 4xxx-5xxx; 2050/3000/PANJAR tidak masuk total.
+// Hanya tipe PENDAPATAN/BEBAN; 1050/2050/3000/PANJAR tidak masuk total.
 
 import { BEBAN_KODES, PENDAPATAN_KODES, coaByKode } from '../../../db/coa.js';
 import { surplus, totalBeban, totalPendapatan } from '../../../core/ledger.js';

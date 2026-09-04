@@ -1,11 +1,11 @@
 // Dashboard (read saja) — Saldo Kas Tunai, Total LPD, badge Balance.
 // WAJIB baca dari query ledger (saldoKas/saldoSemuaKas/neraca), jangan hitung ulang beda cara.
 
+import { LPD_KODES } from '../../db/coa.js';
 import { neraca, saldoKas, saldoSemuaKas } from '../../core/ledger.js';
 import type { Panjar, Transaksi, TutupBuku } from '../../core/types.js';
 
-/** Kode LPD (subset kas) sesuai PRD §2. */
-export const LPD_KODES = ['1010', '1014', '1015', '1016', '1017', '1018'];
+export { LPD_KODES };
 
 export type DashboardHasil = {
   cutoff: string;
@@ -26,7 +26,7 @@ export function buildDashboard(
   cutoff: string,
   kasKodes: string[],
 ): DashboardHasil {
-  const kasTunai = saldoKas(transaksi, '1000', cutoff);
+  const kasTunai = saldoKas(transaksi, '1001', cutoff);
   const semua = saldoSemuaKas(transaksi, kasKodes, cutoff);
   const rincianLpd: Record<string, number> = {};
   for (const k of LPD_KODES) rincianLpd[k] = semua[k] ?? 0;
