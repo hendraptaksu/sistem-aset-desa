@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Neraca } from '../../core/ledger.js';
-import { formatRp } from '../../utils/format.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
 import { neracaToHtml, printLaporan } from '../../features/export/workbooks.js';
 import { api } from '../lib/api.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
@@ -31,7 +31,7 @@ export function NeracaTab() {
     <div className="space-y-4">
       <Card>
         <h2 className="mb-3 text-lg font-bold">
-          Neraca per {cutoff}{' '}
+          Neraca per {formatTanggal(cutoff)}{' '}
           {data && <Badge tone={data.balance ? 'green' : 'red'}>{data.balance ? 'BALANCE' : `SELISIH ${formatRp(data.selisih)}`}</Badge>}
         </h2>
         <ErrorBox msg={err} />
@@ -41,7 +41,7 @@ export function NeracaTab() {
           </Field>
           <div className="flex items-end gap-2">
             <Button onClick={() => void muat()}>Muat</Button>
-            <Button variant="ghost" disabled={!data} onClick={() => data && printLaporan(`Neraca ${cutoff}`, neracaToHtml(data))}>Print / PDF</Button>
+            <Button variant="ghost" disabled={!data} onClick={() => data && printLaporan(`Neraca ${formatTanggal(cutoff)}`, neracaToHtml(data))}>Print / PDF</Button>
           </div>
         </div>
       </Card>

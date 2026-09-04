@@ -31,10 +31,10 @@ import {
 } from '../src/db/repository.js';
 import { formatRp } from '../src/utils/format.js';
 
-const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal awal', akun_kas: '1001', kategori: '3000', masuk: 10_000_000, keluar: 0 };
-const PARKIR: Transaksi = { id: 't1', tanggal: '2025-02-10', keterangan: 'Parkir', akun_kas: '1015', kategori: '4005', masuk: 5_000_000, keluar: 0 };
-const UPAKARA: Transaksi = { id: 't2', tanggal: '2025-03-12', keterangan: 'Upakara', akun_kas: '1001', kategori: '5004', masuk: 0, keluar: 2_000_000 };
-const PANJAR: Panjar = { id: 'p1', tanggal: '2025-04-01', penerima: 'Panitia Piodalan', jumlah: 5_000_000, akun_kas_sumber: '1001', status: 'OPEN' };
+const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal awal', akun_kas: '1001', kategori: '3000', masuk: 1_000_000_000, keluar: 0 };
+const PARKIR: Transaksi = { id: 't1', tanggal: '2025-02-10', keterangan: 'Parkir', akun_kas: '1015', kategori: '4005', masuk: 500_000_000, keluar: 0 };
+const UPAKARA: Transaksi = { id: 't2', tanggal: '2025-03-12', keterangan: 'Upakara', akun_kas: '1001', kategori: '5004', masuk: 0, keluar: 200_000_000 };
+const PANJAR: Panjar = { id: 'p1', tanggal: '2025-04-01', penerima: 'Panitia Piodalan', jumlah: 500_000_000, akun_kas_sumber: '1001', status: 'OPEN' };
 
 function dbSeeded(): Database.Database {
   const db = openDb(':memory:');
@@ -49,8 +49,8 @@ function dbSeeded(): Database.Database {
 describe('T1 modal awal balance', () => {
   it('aktiva = pasiva = 10jt', () => {
     const n = neraca([MODAL], [], [], '2025-01-31', KAS_KODES);
-    expect(n.aktiva).toBe(10_000_000);
-    expect(n.pasiva).toBe(10_000_000);
+    expect(n.aktiva).toBe(1_000_000_000);
+    expect(n.pasiva).toBe(1_000_000_000);
     expect(n.balance).toBe(true);
   });
 });
@@ -59,10 +59,10 @@ describe('T2 parkir masuk', () => {
   it('aktiva & berjalan naik 5jt, tetap balance', () => {
     const tx = [MODAL, PARKIR];
     const n = neraca(tx, [], [], '2025-02-28', KAS_KODES);
-    expect(n.aktiva).toBe(15_000_000);
-    expect(n.berjalan).toBe(5_000_000);
+    expect(n.aktiva).toBe(1_500_000_000);
+    expect(n.berjalan).toBe(500_000_000);
     expect(n.balance).toBe(true);
-    expect(saldoKas(tx, '1015', '2025-02-28')).toBe(5_000_000);
+    expect(saldoKas(tx, '1015', '2025-02-28')).toBe(500_000_000);
   });
 });
 
@@ -70,8 +70,8 @@ describe('T3 upakara keluar', () => {
   it('aktiva turun 2jt, berjalan 3jt, balance', () => {
     const tx = [MODAL, PARKIR, UPAKARA];
     const n = neraca(tx, [], [], '2025-03-31', KAS_KODES);
-    expect(n.aktiva).toBe(13_000_000);
-    expect(n.berjalan).toBe(3_000_000);
+    expect(n.aktiva).toBe(1_300_000_000);
+    expect(n.berjalan).toBe(300_000_000);
     expect(n.balance).toBe(true);
   });
 });
@@ -80,37 +80,37 @@ describe('T4 panjar open', () => {
   it('kas turun 5jt tapi aktiva tetap (pindah ke panjar)', () => {
     const db = dbSeeded();
     const tx = listTransaksi(db);
-    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(10_000_000 - 2_000_000 - 5_000_000);
+    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(1_000_000_000 - 200_000_000 - 500_000_000);
     const n = neraca(tx, [{ ...PANJAR }], [], '2025-04-30', KAS_KODES);
-    expect(n.aktivaRinci.panjarOpen).toBe(5_000_000);
-    expect(n.aktiva).toBe(13_000_000);
+    expect(n.aktivaRinci.panjarOpen).toBe(500_000_000);
+    expect(n.aktiva).toBe(1_300_000_000);
     expect(n.balance).toBe(true);
-    expect(surplus(tx, '2025-01-01', '2025-04-30')).toBe(3_000_000); // open tidak jadi beban
+    expect(surplus(tx, '2025-01-01', '2025-04-30')).toBe(300_000_000); // open tidak jadi beban
   });
 });
 
 describe('T5 panjar close', () => {
   it('beban 4,5jt + sisa 500rb kembali, balance', () => {
     const db = dbSeeded();
-    const close = panjarCloseToTransaksi(PANJAR, [{ panjar_id: 'p1', kategori_baga: '5004', nominal: 4_500_000 }], '2025-04-20');
-    expect(close.sisaRow?.masuk).toBe(500_000);
+    const close = panjarCloseToTransaksi(PANJAR, [{ panjar_id: 'p1', kategori_baga: '5004', nominal: 450_000_000 }], '2025-04-20');
+    expect(close.sisaRow?.masuk).toBe(50_000_000);
     closePanjar(db, 'p1', [...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])]);
     const tx = listTransaksi(db);
-    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(3_500_000);
+    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(350_000_000);
     const n = neraca(tx, [{ ...PANJAR, status: 'CLOSED' }], [], '2025-04-30', KAS_KODES);
-    expect(n.aktiva).toBe(8_500_000);
-    expect(n.berjalan).toBe(5_000_000 - 6_500_000);
+    expect(n.aktiva).toBe(850_000_000);
+    expect(n.berjalan).toBe(500_000_000 - 650_000_000);
     expect(n.balance).toBe(true);
   });
 
   it('kasus kurang: realisasi 6jt dari panjar 5jt', () => {
     const db = dbSeeded();
-    const close = panjarCloseToTransaksi(PANJAR, [{ panjar_id: 'p1', kategori_baga: '5004', nominal: 6_000_000 }], '2025-04-20');
+    const close = panjarCloseToTransaksi(PANJAR, [{ panjar_id: 'p1', kategori_baga: '5004', nominal: 600_000_000 }], '2025-04-20');
     expect(close.sisaRow).toBeNull();
     closePanjar(db, 'p1', [...close.bebanRows, close.kompensasiRow]);
     const tx = listTransaksi(db);
     // kas tunai: 10-2-5 (open) -6 (beban) +5 (komp) = 2jt
-    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(2_000_000);
+    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(200_000_000);
     const n = neraca(tx, [{ ...PANJAR, status: 'CLOSED' }], [], '2025-04-30', KAS_KODES);
     expect(n.balance).toBe(true);
   });
@@ -132,7 +132,7 @@ describe('T7 tutup buku + kunci longgar', () => {
     const db = dbSeeded();
     const tx = listTransaksi(db);
     const laba = labaTahun(tx, 2025);
-    expect(laba).toBe(5_000_000 - 2_000_000);
+    expect(laba).toBe(500_000_000 - 200_000_000);
     const tutup: TutupBuku = { tahun: 2025, laba, created_at: new Date().toISOString(), backup_path: '/tmp/backup.db' };
     insertTutupBuku(db, tutup);
     expect(listTutupBuku(db)).toHaveLength(1);
@@ -158,23 +158,23 @@ describe('T7 tutup buku + kunci longgar', () => {
 
 describe('T8 format rupiah', () => {
   it('negatif pakai kurung', () => {
-    expect(formatRp(1_500_000)).toBe('Rp 1.500.000');
-    expect(formatRp(-100_000)).toBe('(Rp 100.000)');
-    expect(formatRp(0)).toBe('Rp 0');
+    expect(formatRp(150_000_000)).toBe('Rp 1.500.000,00');
+    expect(formatRp(-10_000_000)).toBe('(Rp 100.000,00)');
+    expect(formatRp(0)).toBe('Rp 0,00');
   });
 });
 
 describe('T9 piutang 1050', () => {
-  const PINJAM: Transaksi = { id: 't9a', tanggal: '2025-05-01', keterangan: 'Pinjaman ke X', akun_kas: '1001', kategori: '1050', masuk: 0, keluar: 1_000_000 };
-  const LUNAS: Transaksi = { id: 't9b', tanggal: '2025-05-20', keterangan: 'Pelunasan X', akun_kas: '1001', kategori: '1050', masuk: 1_000_000, keluar: 0 };
+  const PINJAM: Transaksi = { id: 't9a', tanggal: '2025-05-01', keterangan: 'Pinjaman ke X', akun_kas: '1001', kategori: '1050', masuk: 0, keluar: 100_000_000 };
+  const LUNAS: Transaksi = { id: 't9b', tanggal: '2025-05-20', keterangan: 'Pelunasan X', akun_kas: '1001', kategori: '1050', masuk: 100_000_000, keluar: 0 };
   it('pinjaman: kas turun, aktiva tetap, surplus tidak terpengaruh', () => {
     const tx = [MODAL, PARKIR, UPAKARA, PINJAM];
-    expect(totalPiutang(tx, '2025-05-10')).toBe(1_000_000);
+    expect(totalPiutang(tx, '2025-05-10')).toBe(100_000_000);
     const n = neraca(tx, [], [], '2025-05-10', KAS_KODES);
-    expect(n.aktivaRinci.piutang).toBe(1_000_000);
-    expect(n.aktiva).toBe(13_000_000);
+    expect(n.aktivaRinci.piutang).toBe(100_000_000);
+    expect(n.aktiva).toBe(1_300_000_000);
     expect(n.balance).toBe(true);
-    expect(surplus(tx, '2025-01-01', '2025-05-10')).toBe(3_000_000);
+    expect(surplus(tx, '2025-01-01', '2025-05-10')).toBe(300_000_000);
   });
   it('pelunasan: piutang nol kembali, tetap balance', () => {
     const tx = [MODAL, PARKIR, UPAKARA, PINJAM, LUNAS];

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import { PANJAR_KATEGORI } from '../../core/ledger.js';
 import type { Transaksi } from '../../core/types.js';
-import { formatRp } from '../../utils/format.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
 import { buildPembantu } from '../../features/reports/pembantu/pembantu.js';
 import {
   pembantuToHtml,
@@ -74,16 +74,12 @@ export function PembantuTab() {
     }
   }
 
-  async function simpanHtml() {
+  async function simpanPdf() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument(`Pembantu ${kode}`, pembantuToHtml(hasil));
-      const r = await api.saveBuffer({
-        bufferB64: strToB64(html),
-        defaultName: `pembantu-${kode}.html`,
-        filters: [{ name: 'HTML', extensions: ['html'] }],
-      });
+      const html = wrapPrintDocument(`Pembantu ${kode}`, pembantuToHtml(hasil), { autoPrint: false });
+      const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: `pembantu-${kode}.pdf` });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -118,7 +114,7 @@ export function PembantuTab() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
           <Button variant="ghost" onClick={() => printLaporan(`Pembantu ${kode}`, pembantuToHtml(hasil))}>Print / PDF</Button>
-          <Button variant="ghost" onClick={() => void simpanHtml()}>Simpan HTML</Button>
+          <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
           <Badge tone={hasil.rows.length > 0 ? 'stone' : 'amber'}>{hasil.rows.length} baris</Badge>
         </div>
       </Card>
@@ -137,7 +133,7 @@ export function PembantuTab() {
             <tbody>
               {hasil.rows.map((t) => (
                 <tr key={t.id} className="border-b last:border-0">
-                  <td className="py-2 pr-3 whitespace-nowrap">{t.tanggal}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{formatTanggal(t.tanggal)}</td>
                   <td className="py-2 pr-3">{t.keterangan}</td>
                   <td className="py-2 pr-3 text-right">{t.masuk ? formatRp(t.masuk) : ''}</td>
                   <td className="py-2 text-right">{t.keluar ? formatRp(t.keluar) : ''}</td>

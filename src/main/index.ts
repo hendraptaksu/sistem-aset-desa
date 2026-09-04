@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { config as loadEnv } from 'dotenv';
 import { join, dirname } from 'path';
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
+import { seedDev } from '../db/seed-dev.js';
 import {
   closePanjar,
   guardPeriodeTerkunci,
@@ -30,6 +32,10 @@ import { validatePanjarItems, validateTransaksiInput, type TransaksiInput } from
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
+
+// Dev saja: baca .env di root repo agar PURA_DB bisa di-override.
+// App production (isPackaged) selalu pakai userData/data/pura.db.
+if (!app.isPackaged) loadEnv();
 
 function dbPath(): string {
   if (process.env.PURA_DB) return process.env.PURA_DB;
@@ -190,6 +196,38 @@ function registerIpc(): void {
     },
   );
 
+  // Simpan PDF langsung: render HTML laporan di hidden window lalu printToPDF.
+  // Renderer membangun HTML via wrapPrintDocument(..., { autoPrint: false }).
+  ipcMain.handle(
+    'file:save-pdf',
+    async (_e, req: { htmlB64: string; defaultName: string }) => {
+      let pdfWin: BrowserWindow | null = null;
+      try {
+        const html = Buffer.from(req.htmlB64, 'base64').toString('utf-8');
+        if (!html.trim()) return fail('HTML laporan kosong.');
+        const name = req.defaultName.endsWith('.pdf') ? req.defaultName : `${req.defaultName}.pdf`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          defaultPath: name,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        });
+        if (canceled || !filePath) return ok({ saved: false, path: '' });
+        pdfWin = new BrowserWindow({ show: false, webPreferences: { offscreen: true } });
+        await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        const pdf = await pdfWin.webContents.printToPDF({
+          pageSize: 'A4',
+          printBackground: true,
+          margins: { top: 0.55, bottom: 0.55, left: 0.47, right: 0.47 },
+        });
+        writeFileSync(filePath, pdf);
+        return ok({ saved: true, path: filePath });
+      } catch (e) {
+        return fail(String(e));
+      } finally {
+        pdfWin?.close();
+      }
+    },
+  );
+
   // Backup manual .db via save dialog (copy file).
   ipcMain.handle('backup:export', async () => {
     try {
@@ -278,6 +316,12 @@ function createWindow(): void {
 
 void app.whenReady().then(() => {
   db = openDb(dbPath());
+  // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
+  // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
+  if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
+    const n = seedDev(db);
+    if (n > 0) console.log(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
+  }
   registerIpc();
   createWindow();
   app.on('activate', () => {

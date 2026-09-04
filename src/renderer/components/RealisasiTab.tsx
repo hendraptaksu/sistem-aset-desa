@@ -60,16 +60,12 @@ export function RealisasiTab() {
     }
   }
 
-  async function simpanHtml() {
+  async function simpanPdf() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument('Realisasi', realisasiToHtml(hasil));
-      const r = await api.saveBuffer({
-        bufferB64: strToB64(html),
-        defaultName: 'realisasi.html',
-        filters: [{ name: 'HTML', extensions: ['html'] }],
-      });
+      const html = wrapPrintDocument('Realisasi', realisasiToHtml(hasil), { autoPrint: false });
+      const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'realisasi.pdf' });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -96,7 +92,7 @@ export function RealisasiTab() {
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
           <Button variant="ghost" onClick={() => printLaporan('Realisasi', realisasiToHtml(hasil))}>Print / PDF</Button>
-          <Button variant="ghost" onClick={() => void simpanHtml()}>Simpan HTML</Button>
+          <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
         </div>
       </Card>
 

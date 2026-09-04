@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { clsx } from 'clsx';
+import { parseRupiahToSen } from '../../utils/format.js';
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={clsx('rounded-xl border bg-white p-5 shadow-sm', className)}>{children}</div>;
@@ -61,20 +63,50 @@ export function ErrorBox({ msg }: { msg: string | null }) {
   return <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800">{msg}</div>;
 }
 
-/** Input Rupiah: tampil grouping, state berupa integer. */
+/** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
+ * Desimal opsional — ketik '1500' jadi Rp 1.500,00; '1500,50' jadi Rp 1.500,50. */
 export function CurrencyInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  const shown = value === 0 ? '' : new Intl.NumberFormat('id-ID').format(value);
+  const [teks, setTeks] = useState<string | null>(null);
+  const [fokus, setFokus] = useState(false);
+  // Perubahan value dari luar (cth. reset form setelah submit) tersinkron saat blur.
+  useEffect(() => {
+    if (!fokus) setTeks(null);
+  }, [value, fokus]);
+  const shown = fokus && teks !== null ? teks : value === 0 ? '' : formatSenInput(value);
   return (
     <TextInput
-      inputMode="numeric"
+      inputMode="decimal"
       placeholder="0"
       value={shown}
+      onFocus={() => {
+        setFokus(true);
+        setTeks(value === 0 ? '' : formatSenInput(value));
+      }}
+      onBlur={() => {
+        setFokus(false);
+        setTeks(null);
+      }}
       onChange={(e) => {
-        const digits = e.target.value.replace(/\D/g, '').slice(0, 15);
-        onChange(digits === '' ? 0 : Number(digits));
+        const v = e.target.value;
+        setTeks(v);
+        try {
+          onChange(parseRupiahToSen(v));
+        } catch {
+          /* abaikan state ketik antara (cth. '1,') */
+        }
       }}
     />
   );
+}
+
+/** SEN → teks input: '1.500' bila bulat, '1.500,50' bila pecahan. */
+function formatSenInput(sen: number): string {
+  const neg = sen < 0 ? '-' : '';
+  const abs = Math.abs(sen);
+  const rupiah = Math.floor(abs / 100);
+  const sisa = abs % 100;
+  const grup = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(rupiah);
+  return sisa === 0 ? `${neg}${grup}` : `${neg}${grup},${String(sisa).padStart(2, '0')}`;
 }
 
 /** Modal alasan untuk periode terkunci (kunci longgar). */

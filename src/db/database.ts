@@ -3,6 +3,8 @@
 // Agent B memakai repository.ts (read) — JANGAN tulis SQL DDL di tempat lain.
 
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'fs';
+import { dirname } from 'path';
 import { COA } from './coa.js';
 
 export const DDL = `
@@ -53,6 +55,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 `;
 
 export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database.Database {
+  // better-sqlite3 tidak membuat folder induk — pastikan ada dulu.
+  // (PURA_DB default `./data/...` dan folder `data/` di-gitignore sehingga
+  // checkout baru pasti belum punya foldernya.)
+  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');

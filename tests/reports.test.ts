@@ -28,27 +28,27 @@ import {
 describe('B1 pembantu: filter per kode + total', () => {
   it('kas 1001: masuk 21,25jt keluar 13,8jt saldo 7,45jt', () => {
     const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1001' });
-    expect(p.totalMasuk).toBe(21_250_000);
-    expect(p.totalKeluar).toBe(13_800_000);
-    expect(p.saldo).toBe(7_450_000);
+    expect(p.totalMasuk).toBe(2_125_000_000);
+    expect(p.totalKeluar).toBe(1_380_000_000);
+    expect(p.saldo).toBe(745_000_000);
   });
   it('kategori 5004: 6,5jt keluar (2jt + realisasi panjar 4,5jt)', () => {
     const p = buildPembantu(MOCK_TRANSAKSI, { kode: '5004' });
     expect(p.totalMasuk).toBe(0);
-    expect(p.totalKeluar).toBe(6_500_000);
-    expect(p.saldo).toBe(-6_500_000);
+    expect(p.totalKeluar).toBe(650_000_000);
+    expect(p.saldo).toBe(-650_000_000);
   });
   it('PANJAR tampil sebagai Mutasi Panjar, saldo 0, tidak bocor ke beban', () => {
     const p = buildPembantu(MOCK_TRANSAKSI, { kode: 'PANJAR' });
     expect(p.nama).toBe('Mutasi Panjar');
-    expect(p.totalMasuk).toBe(5_000_000);
-    expect(p.totalKeluar).toBe(5_000_000);
+    expect(p.totalMasuk).toBe(500_000_000);
+    expect(p.totalKeluar).toBe(500_000_000);
     expect(p.rows).toHaveLength(3);
   });
   it('filter tanggal benar (kas 1001 Jan saja = modal 10jt)', () => {
     const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1001', mulai: '2025-01-01', sampai: '2025-01-31' });
     expect(p.rows).toHaveLength(1);
-    expect(p.saldo).toBe(10_000_000);
+    expect(p.saldo).toBe(1_000_000_000);
   });
   it('getTransaksiMock setara filter repository', () => {
     expect(getTransaksiMock({ kategori: '5004' })).toHaveLength(2);
@@ -60,46 +60,46 @@ describe('B1 pembantu: filter per kode + total', () => {
 describe('B2 realisasi: grouping + net (T6-parsial)', () => {
   it('total pendapatan 14jt, beban 11,8jt, net 2,2jt; 2050/PANJAR eksklusi', () => {
     const r = buildRealisasi(MOCK_TRANSAKSI, '2025-01-01', '2025-12-31');
-    expect(r.totalPendapatan).toBe(14_000_000);
-    expect(r.totalBeban).toBe(11_800_000);
-    expect(r.net).toBe(2_200_000);
-    expect(r.pendapatan.find((b) => b.kode === '4005')?.nominal).toBe(5_000_000);
-    expect(r.beban.find((b) => b.kode === '5004')?.nominal).toBe(6_500_000);
+    expect(r.totalPendapatan).toBe(1_400_000_000);
+    expect(r.totalBeban).toBe(1_180_000_000);
+    expect(r.net).toBe(220_000_000);
+    expect(r.pendapatan.find((b) => b.kode === '4005')?.nominal).toBe(500_000_000);
+    expect(r.beban.find((b) => b.kode === '5004')?.nominal).toBe(650_000_000);
     expect(r.pendapatan).toHaveLength(12);
     expect(r.beban).toHaveLength(15);
   });
   it('filter Februari saja: pend 7jt, beban 0', () => {
     const r = buildRealisasi(MOCK_TRANSAKSI, '2025-02-01', '2025-02-28');
-    expect(r.totalPendapatan).toBe(7_000_000);
+    expect(r.totalPendapatan).toBe(700_000_000);
     expect(r.totalBeban).toBe(0);
-    expect(r.net).toBe(7_000_000);
+    expect(r.net).toBe(700_000_000);
   });
 });
 
 describe('B3 surplus: % + kurung defisit + cek silang 3002', () => {
   it('surplus 2,2jt, % baris benar', () => {
     const s = buildSurplus(MOCK_TRANSAKSI, '2025-01-01', '2025-12-31');
-    expect(s.surplus).toBe(2_200_000);
+    expect(s.surplus).toBe(220_000_000);
     expect(s.defisit).toBe(false);
     const p4005 = s.pendapatan.find((b) => b.kode === '4005')!;
-    expect(p4005.persen).toBeCloseTo((5_000_000 / 14_000_000) * 100, 5);
+    expect(p4005.persen).toBeCloseTo((500_000_000 / 1_400_000_000) * 100, 5);
     const b5004 = s.beban.find((b) => b.kode === '5004')!;
-    expect(b5004.persen).toBeCloseTo((6_500_000 / 11_800_000) * 100, 5);
+    expect(b5004.persen).toBeCloseTo((650_000_000 / 1_180_000_000) * 100, 5);
   });
   it('periode rugi jadi defisit + formatRp kurung (T8)', () => {
     const s = buildSurplus(MOCK_TRANSAKSI, '2025-04-10', '2025-04-18');
     // 10-18 Apr: beban 2jt+1jt+0,6jt+0,9jt=4,5jt vs pendapatan 0 → defisit
-    expect(s.surplus).toBe(-4_500_000);
+    expect(s.surplus).toBe(-450_000_000);
     expect(s.defisit).toBe(true);
-    expect(formatRp(s.surplus)).toBe('(Rp 4.500.000)');
-    expect(formatRp(-100_000)).toBe('(Rp 100.000)');
+    expect(formatRp(s.surplus)).toBe('(Rp 4.500.000,00)');
+    expect(formatRp(-10_000_000)).toBe('(Rp 100.000,00)');
   });
   it('cek silang: Surplus Jan s/d cut-off == Berjalan 3002 di Neraca', () => {
     const cutoff = '2025-12-31';
     const s = surplus(MOCK_TRANSAKSI, '2025-01-01', cutoff);
     const n = neraca(MOCK_TRANSAKSI, MOCK_PANJAR, MOCK_TUTUP, cutoff, KAS_KODES);
     expect(cekSilangSurplusBerjalan(s, n.berjalan)).toBe(true);
-    expect(n.berjalan).toBe(2_200_000);
+    expect(n.berjalan).toBe(220_000_000);
     expect(n.balance).toBe(true);
   });
 });
@@ -107,8 +107,8 @@ describe('B3 surplus: % + kurung defisit + cek silang 3002', () => {
 describe('B4 dashboard-read dari query ledger', () => {
   it('kas tunai 7,45jt, total LPD 7,5jt, badge BALANCE', () => {
     const d = buildDashboard(MOCK_TRANSAKSI, MOCK_PANJAR, MOCK_TUTUP, '2025-12-31', KAS_KODES);
-    expect(d.kasTunai).toBe(7_450_000);
-    expect(d.totalLpd).toBe(7_500_000);
+    expect(d.kasTunai).toBe(745_000_000);
+    expect(d.totalLpd).toBe(750_000_000);
     expect(d.balance).toBe(true);
     expect(d.badge).toBe('BALANCE');
     expect(d.aktiva).toBe(d.pasiva);

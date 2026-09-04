@@ -4,7 +4,7 @@
 // Versi Node (writeXlsx/backupDb/restoreDb) ada di export.ts (main/tests saja).
 
 import ExcelJS from 'exceljs';
-import { formatRp } from '../../utils/format.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
 import type { Neraca } from '../../core/ledger.js';
 import type { PembantuHasil, RealisasiHasil, SurplusHasil } from '../reports/types.js';
 
@@ -31,7 +31,7 @@ export async function pembantuToWorkbook(p: PembantuHasil): Promise<ExcelJS.Work
   let jalan = 0;
   for (const t of p.rows) {
     jalan += t.masuk - t.keluar;
-    ws.addRow([t.tanggal, t.keterangan, t.masuk === 0 ? '' : formatRp(t.masuk), t.keluar === 0 ? '' : formatRp(t.keluar)]);
+    ws.addRow([formatTanggal(t.tanggal), t.keterangan, t.masuk === 0 ? '' : formatRp(t.masuk), t.keluar === 0 ? '' : formatRp(t.keluar)]);
   }
   const tr = ws.addRow(['TOTAL', '', formatRp(p.totalMasuk), formatRp(p.totalKeluar)]);
   styleHeader(tr);
@@ -44,7 +44,7 @@ export async function pembantuToWorkbook(p: PembantuHasil): Promise<ExcelJS.Work
 /** Realisasi → workbook. Dua seksi + Net. */
 export async function realisasiToWorkbook(r: RealisasiHasil): Promise<ExcelJS.Workbook> {
   const { wb, ws } = baseWorkbook('Realisasi');
-  ws.addRow([`Realisasi Anggaran ${r.mulai ?? ''} s/d ${r.sampai ?? ''}`]);
+  ws.addRow([`Realisasi Anggaran ${formatTanggal(r.mulai ?? '')} s/d ${formatTanggal(r.sampai ?? '')}`]);
   ws.addRow(['Kode', 'Uraian', 'Nominal']);
   styleHeader(ws.getRow(2));
   ws.addRow(['PENDAPATAN', '', '']);
@@ -65,7 +65,7 @@ export async function realisasiToWorkbook(r: RealisasiHasil): Promise<ExcelJS.Wo
 /** Surplus → workbook. Sama + kolom % + judul Surplus/(Defisit). */
 export async function surplusToWorkbook(s: SurplusHasil): Promise<ExcelJS.Workbook> {
   const { wb, ws } = baseWorkbook('Surplus');
-  ws.addRow([`Surplus / (Defisit) ${s.mulai ?? ''} s/d ${s.sampai ?? ''}`]);
+  ws.addRow([`Surplus / (Defisit) ${formatTanggal(s.mulai ?? '')} s/d ${formatTanggal(s.sampai ?? '')}`]);
   ws.addRow(['Kode', 'Uraian', 'Nominal', '%']);
   styleHeader(ws.getRow(2));
   ws.addRow(['PENDAPATAN', '', '', '']);
@@ -84,10 +84,15 @@ export async function surplusToWorkbook(s: SurplusHasil): Promise<ExcelJS.Workbo
   return wb;
 }
 
-/** Versi buffer (untuk test + kirim ke main via IPC save dialog). */
-export async function workbookToBuffer(wb: ExcelJS.Workbook): Promise<Buffer> {
-  const buf = await wb.xlsx.writeBuffer();
-  return Buffer.from(buf as ArrayBuffer);
+/** Versi buffer (untuk test + kirim ke main via IPC save dialog).
+ * Renderer-safe: kembalikan Uint8Array murni TANPA global Node `Buffer`
+ * (tidak ada di browser/Electron renderer sandbox → "Buffer is not defined").
+ * `writeBuffer()` exceljs mengembalikan Buffer-polyfill (subclass Uint8Array)
+ * atau ArrayBuffer — keduanya dinormalisasi ke Uint8Array baru. */
+export async function workbookToBuffer(wb: ExcelJS.Workbook): Promise<Uint8Array> {
+  const out = (await wb.xlsx.writeBuffer()) as unknown as Uint8Array | ArrayBuffer;
+  if (out instanceof Uint8Array) return new Uint8Array(out);
+  return new Uint8Array(out);
 }
 
 // ---- Print / PDF (renderer: window.print; Electron: printToPDF via main) ----
@@ -97,7 +102,7 @@ const esc = (s: string): string =>
 
 export function pembantuToHtml(p: PembantuHasil): string {
   const rows = p.rows
-    .map((t) => `<tr><td>${t.tanggal}</td><td>${esc(t.keterangan)}</td><td style="text-align:right">${formatRp(t.masuk)}</td><td style="text-align:right">${formatRp(t.keluar)}</td></tr>`)
+    .map((t) => `<tr><td>${formatTanggal(t.tanggal)}</td><td>${esc(t.keterangan)}</td><td style="text-align:right">${formatRp(t.masuk)}</td><td style="text-align:right">${formatRp(t.keluar)}</td></tr>`)
     .join('');
   return `<h2>Buku Pembantu — ${p.kode} ${esc(p.nama)}</h2>
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
@@ -110,7 +115,7 @@ export function pembantuToHtml(p: PembantuHasil): string {
 export function realisasiToHtml(r: RealisasiHasil): string {
   const li = (kode: string, nama: string, n: number): string =>
     `<tr><td>${kode}</td><td>${esc(nama)}</td><td style="text-align:right">${formatRp(n)}</td></tr>`;
-  return `<h2>Realisasi Anggaran ${r.mulai ?? ''} s/d ${r.sampai ?? ''}</h2>
+  return `<h2>Realisasi Anggaran ${formatTanggal(r.mulai ?? '')} s/d ${formatTanggal(r.sampai ?? '')}</h2>
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th></tr></thead><tbody>
 <tr><th colspan="3">PENDAPATAN</th></tr>${r.pendapatan.map((b) => li(b.kode, b.nama, b.nominal)).join('')}
@@ -124,7 +129,7 @@ export function realisasiToHtml(r: RealisasiHasil): string {
 export function surplusToHtml(s: SurplusHasil): string {
   const li = (kode: string, nama: string, n: number, p: number): string =>
     `<tr><td>${kode}</td><td>${esc(nama)}</td><td style="text-align:right">${formatRp(n)}</td><td style="text-align:right">${p.toFixed(1)}%</td></tr>`;
-  return `<h2>Surplus / (Defisit) ${s.mulai ?? ''} s/d ${s.sampai ?? ''}</h2>
+  return `<h2>Surplus / (Defisit) ${formatTanggal(s.mulai ?? '')} s/d ${formatTanggal(s.sampai ?? '')}</h2>
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th><th>%</th></tr></thead><tbody>
 <tr><th colspan="4">PENDAPATAN</th></tr>${s.pendapatan.map((b) => li(b.kode, b.nama, b.nominal, b.persen)).join('')}
@@ -135,12 +140,15 @@ export function surplusToHtml(s: SurplusHasil): string {
 </tbody></table>`;
 }
 
-/** Bungkus HTML laporan jadi dokumen print siap window.print / save-to-PDF. */
-export function wrapPrintDocument(title: string, body: string): string {
+/** Bungkus HTML laporan jadi dokumen print siap window.print / save-to-PDF.
+ * `autoPrint:false` untuk alur Simpan PDF (hidden window + printToPDF di main)
+ * agar script window.print() tidak memicu dialog di window tersembunyi. */
+export function wrapPrintDocument(title: string, body: string, opts: { autoPrint?: boolean } = {}): string {
+  const { autoPrint = true } = opts;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
-<style>@media print{button{display:none}}body{font-family:system-ui,sans-serif;margin:24px}table{border-collapse:collapse}</style>
-</head><body><button onclick="window.print()">Print / Save PDF</button>${body}
-<script>window.onload=()=>window.print()</script></body></html>`;
+<style>@page{size:A4;margin:14mm 12mm}@media print{button{display:none}}body{font-family:system-ui,sans-serif;margin:24px;font-size:12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:5px 7px}thead{display:table-header-group}tfoot{display:table-footer-group}tr{page-break-inside:avoid}</style>
+</head><body>${autoPrint ? '<button onclick="window.print()">Print / Save PDF</button>' : ''}${body}
+${autoPrint ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`;
 }
 
 /** Neraca → HTML tabel bersih untuk print (Aktiva + Pasiva). */
@@ -148,7 +156,7 @@ export function neracaToHtml(n: Neraca): string {
   const kasRows = Object.entries(n.aktivaRinci.kas)
     .map(([k, v]) => `<tr><td>Kas ${esc(k)}</td><td style="text-align:right">${formatRp(v)}</td></tr>`)
     .join('');
-  return `<h2>Neraca per ${esc(n.cutoff)} — ${n.balance ? 'BALANCE' : `SELISIH ${formatRp(n.selisih)}`}</h2>
+  return `<h2>Neraca per ${esc(formatTanggal(n.cutoff))} — ${n.balance ? 'BALANCE' : `SELISIH ${formatRp(n.selisih)}`}</h2>
 <h3>Aktiva — ${formatRp(n.aktiva)}</h3>
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <tbody>${kasRows}

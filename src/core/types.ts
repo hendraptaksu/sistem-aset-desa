@@ -1,5 +1,5 @@
 // Kontrak data Agent A + Agent B. JANGAN diubah sepihak.
-// Rupiah disimpan sebagai integer (satuan Rp). Salah satu masuk/keluar = 0.
+// Nominal disimpan sebagai integer dalam satuan SEN (1 Rp = 100 sen). Salah satu masuk/keluar = 0.
 
 export type AkunKasKode =
   | '1001' | '1010' | '1014' | '1015' | '1016' | '1017' | '1018'

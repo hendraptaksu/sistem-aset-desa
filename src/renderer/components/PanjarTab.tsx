@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { Panjar } from '../../core/types.js';
-import { formatRp } from '../../utils/format.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluAlasan } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, LockModal, Select, TextInput } from './ui.js';
 
@@ -125,7 +125,7 @@ export function PanjarTab() {
             <Select value={closeId} onChange={(e) => setCloseId(e.target.value)}>
               <option value="">— pilih —</option>
               {openList.map((p) => (
-                <option key={p.id} value={p.id}>{p.tanggal} — {p.penerima} — {formatRp(p.jumlah)}</option>
+                <option key={p.id} value={p.id}>{formatTanggal(p.tanggal)} — {p.penerima} — {formatRp(p.jumlah)}</option>
               ))}
             </Select>
           </Field>
@@ -184,7 +184,7 @@ export function PanjarTab() {
           <tbody>
             {shown.map((p) => (
               <tr key={p.id} className="border-b last:border-0">
-                <td className="py-2 pr-3 whitespace-nowrap">{p.tanggal}</td>
+                <td className="py-2 pr-3 whitespace-nowrap">{formatTanggal(p.tanggal)}</td>
                 <td className="py-2 pr-3">{p.penerima}</td>
                 <td className="py-2 pr-3">{namaKas.get(p.akun_kas_sumber) ?? p.akun_kas_sumber}</td>
                 <td className="py-2 pr-3 text-right">{formatRp(p.jumlah)}</td>

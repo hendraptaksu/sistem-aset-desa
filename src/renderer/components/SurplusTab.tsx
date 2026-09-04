@@ -60,16 +60,12 @@ export function SurplusTab() {
     }
   }
 
-  async function simpanHtml() {
+  async function simpanPdf() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument('Surplus', surplusToHtml(hasil));
-      const r = await api.saveBuffer({
-        bufferB64: strToB64(html),
-        defaultName: 'surplus.html',
-        filters: [{ name: 'HTML', extensions: ['html'] }],
-      });
+      const html = wrapPrintDocument('Surplus', surplusToHtml(hasil), { autoPrint: false });
+      const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'surplus.pdf' });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -99,7 +95,7 @@ export function SurplusTab() {
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
           <Button variant="ghost" onClick={() => printLaporan('Surplus', surplusToHtml(hasil))}>Print / PDF</Button>
-          <Button variant="ghost" onClick={() => void simpanHtml()}>Simpan HTML</Button>
+          <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
         </div>
       </Card>
 
@@ -151,7 +147,7 @@ export function SurplusTab() {
         </table>
         {hasil.defisit && (
           <p className="mt-2 text-sm text-stone-600">
-            Defisit ditampilkan dalam kurung, mis. {formatRp(-100_000)}.
+            Defisit ditampilkan dalam kurung, mis. {formatRp(-10_000_000)}.
           </p>
         )}
       </Card>

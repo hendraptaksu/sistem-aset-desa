@@ -6,3 +6,8 @@ data/
 .DS_Store
 *.db
 *.db-*
+.env
+.env.local
+.lavish/
+.opencode/
+.superpowers/

@@ -52,6 +52,9 @@ export const api = {
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),
   saveBuffer: (req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) =>
     call<{ saved: boolean; path: string }>('file:save-buffer', req),
+  /** Simpan PDF langsung (hidden window + printToPDF di main). HTML dari wrapPrintDocument(..., { autoPrint: false }). */
+  savePdf: (req: { htmlB64: string; defaultName: string }) =>
+    call<{ saved: boolean; path: string }>('file:save-pdf', req),
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupImport: () => call<{ restored: boolean; path: string }>('backup:import'),

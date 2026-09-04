@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { Transaksi } from '../../core/types.js';
-import { formatRp } from '../../utils/format.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluAlasan } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, LockModal, Select, TextInput } from './ui.js';
 
@@ -187,7 +187,7 @@ export function BkuTab() {
             <tbody>
               {pageRows.map((t) => (
                 <tr key={t.id} className="border-b last:border-0">
-                  <td className="py-2 pr-3 whitespace-nowrap">{t.tanggal}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{formatTanggal(t.tanggal)}</td>
                   <td className="py-2 pr-3">{t.keterangan}</td>
                   <td className="py-2 pr-3">{namaKode.get(t.akun_kas) ?? t.akun_kas}</td>
                   <td className="py-2 pr-3">{t.kategori} — {namaKode.get(t.kategori) ?? ''}</td>
