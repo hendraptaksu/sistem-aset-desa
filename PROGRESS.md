@@ -24,8 +24,8 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 - [x] Saldo per kas auto-update (2026-09-04: chip saldo via `saldo:list`, refresh tiap simpan)
 
 ## Modul 2 — Buku Pembantu
-- [ ] Filter otomatis per kode rekening dari BKU
-- [ ] Total Masuk / Keluar / Saldo Akhir per sub-ledger
+- [x] Filter otomatis per kode rekening dari BKU (2026-09-04: `buildPembantu` kas/kategori/PANJAR, test B1 lolos)
+- [x] Total Masuk / Keluar / Saldo Akhir per sub-ledger (2026-09-04: kas 1000 = 21,25jt/13,8jt/7,45jt, test B1 lolos)
 
 ## Modul 3 — Buku Panjar
 - [x] Form: Tanggal Panjar, Penerima, Jumlah, Akun Kas Sumber, Status Open/Closed (2026-09-04: `PanjarTab.tsx` + daftar + filter status)
@@ -33,8 +33,8 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 - [x] Open kurangi Kas (pindah ke Panjar Aktiva); Close jadi Beban + sisa kembali + auto-buat baris BKU (2026-09-04: via `panjarCloseToTransaksi`, T5 lolos)
 
 ## Modul 4 — Arus Kas & Realisasi Anggaran
-- [ ] Grouping Pendapatan per jenis + Pengeluaran per Baga + filter tanggal
-- [ ] Net Total = Total Pendapatan - Total Pengeluaran
+- [x] Grouping Pendapatan per jenis + Pengeluaran per Baga + filter tanggal (2026-09-04: `buildRealisasi`, 8+6 baris, test B2 lolos)
+- [x] Net Total = Total Pendapatan - Total Pengeluaran (2026-09-04: 14jt-11,8jt=2,2jt; PANJAR/2050 eksklusi, test B2 lolos)
 
 ## Modul 5 — Neraca + Tutup Buku
 - [ ] Neraca per cut-off: Aktiva (Kas + Panjar OPEN) vs Pasiva (Hutang + 3000 + 3001 + 3002)
@@ -43,14 +43,22 @@ Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electro
 - [ ] Kunci longgar: edit tanggal lama boleh + warning + wajib alasan + audit_log + badge di tabel
 
 ## Modul 6 — Surplus / (Defisit)
-- [ ] Grouping 4xxx - 5xxx per periode bebas + % + format kurung untuk defisit
-- [ ] Cek silang: Surplus Jan s/d cut-off = Berjalan 3002 di Neraca
+- [x] Grouping 4xxx - 5xxx per periode bebas + % + format kurung untuk defisit (2026-09-04: `buildSurplus`, T8 kurung lolos, test B3 lolos)
+- [x] Cek silang: Surplus Jan s/d cut-off = Berjalan 3002 di Neraca (2026-09-04: 2,2jt == berjalan, balance, test B3 lolos)
 
 ## Non-Fungsional
-- [ ] Dashboard: Saldo Kas Tunai, Total LPD, Status Balance
-- [ ] Backup Export `.db` / Import `.db`
-- [ ] Export Excel `.xlsx` + Print/Save PDF
+- [x] Dashboard: Saldo Kas Tunai, Total LPD, Status Balance (2026-09-04: `buildDashboard` read dari ledger; 7,45jt/7,5jt/BALANCE, test B4 lolos)
+- [x] Backup Export `.db` / Import `.db` (2026-09-04: `backupDb`/`restoreDb` copy file, 20 baris round-trip, test B6 lolos)
+- [x] Export Excel `.xlsx` + Print/Save PDF (2026-09-04: exceljs 3 workbook + HTML print, file keluar, test B5 lolos)
 - [ ] SQLite single-file lokal offline
+
+## Verifikasi Agent B — INTEGRASI 2026-09-04 (re-key mock ke COA resmi; web-shell dilebur, port tab Electron menyusul)
+- [x] B1 Pembantu: filter kas/kategori/PANJAR + total + filter tanggal + mock setara repository
+- [x] B2 Realisasi: grouping 12+15, net 2,2jt, eksklusi PANJAR/1050/2050, filter Feb benar
+- [x] B3 Surplus: % per baris, defisit kurung, cek silang == berjalan 3002 + balance
+- [x] B4 Dashboard-read: kas tunai 1001 + total LPD (`LPD_KODES` coa.ts) + badge dari ledger (tanpa hitung ulang)
+- [x] B5 Export: 3 workbook → buffer + file .xlsx; Print/PDF via HTML print
+- [x] B6 Backup: `.db` copy round-trip 20 baris via `openDb` file
 
 ## Verifikasi Akurasi (9 test di Mac, tanpa Windows) — 16/16 LOLOS 2026-09-04 (`npx vitest run`, termasuk 5 test validasi input)
 - [x] T1 Modal awal balance
