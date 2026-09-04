@@ -3,7 +3,7 @@
 > Sumber: `PRD.md` + keputusan diskusi. Update file ini tiap selesai 1 fitur: ubah `- [ ]` jadi `- [x]` + isi tanggal & catatan.
 > Format: `- [x] Fitur (2026-09-04: catatan)`
 
-Terakhir update: 2026-09-04 — core Agent A selesai + 9/9 test lolos. **Agent B SUDAH BOLEH JALAN** (kontrak freeze di `src/core/*`, `src/db/*`; lihat AGENT_B_PROMPT.md §2).
+Terakhir update: 2026-09-04 — Agent A SELESAI: UI BKU + Panjar + shell Electron jalan (`npm run dev`/`build`, smoke 12 dtk OK, 14/14 test). **Agent B SUDAH BOLEH JALAN** (kontrak freeze di `src/core/*`, `src/db/*`; lihat AGENT_B_PROMPT.md §2).
 
 ## Keputusan yang sudah dikunci
 - [x] Framework: Electron + Vite + React + TS + Tailwind/shadcn + better-sqlite3 + drizzle (2026-09-04: dev di Mac, build Windows nanti via CI)
@@ -19,18 +19,18 @@ Terakhir update: 2026-09-04 — core Agent A selesai + 9/9 test lolos. **Agent B
 - [x] Helper Rupiah (2026-09-04: `src/utils/format.ts`, T8 lolos)
 
 ## Modul 1 — Buku Kas Umum (BKU)
-- [ ] Form: Tanggal, Keterangan, Akun Kas, Kategori, Masuk/Keluar, Nominal
-- [ ] Tabel + pagination + pencarian + filter rentang tanggal
-- [ ] Saldo per kas auto-update
+- [x] Form: Tanggal, Keterangan, Akun Kas, Kategori, Masuk/Keluar, Nominal (2026-09-04: `BkuTab.tsx`, validasi di main + `validation.ts`)
+- [x] Tabel + pagination + pencarian + filter rentang tanggal (2026-09-04: 20/halaman, filter kas + kategori)
+- [x] Saldo per kas auto-update (2026-09-04: chip saldo via `saldo:list`, refresh tiap simpan)
 
 ## Modul 2 — Buku Pembantu
 - [ ] Filter otomatis per kode rekening dari BKU
 - [ ] Total Masuk / Keluar / Saldo Akhir per sub-ledger
 
 ## Modul 3 — Buku Panjar
-- [ ] Form: Tanggal Panjar, Penerima, Jumlah, Akun Kas Sumber, Status Open/Closed
-- [ ] Rincian belanja per Baga (`panjar_item`)
-- [ ] Open kurangi Kas (pindah ke Panjar Aktiva); Close jadi Beban + sisa kembali + auto-buat baris BKU
+- [x] Form: Tanggal Panjar, Penerima, Jumlah, Akun Kas Sumber, Status Open/Closed (2026-09-04: `PanjarTab.tsx` + daftar + filter status)
+- [x] Rincian belanja per Baga (`panjar_item`) (2026-09-04: multi-baris + live sisa/kurang)
+- [x] Open kurangi Kas (pindah ke Panjar Aktiva); Close jadi Beban + sisa kembali + auto-buat baris BKU (2026-09-04: via `panjarCloseToTransaksi`, T5 lolos)
 
 ## Modul 4 — Arus Kas & Realisasi Anggaran
 - [ ] Grouping Pendapatan per jenis + Pengeluaran per Baga + filter tanggal
