@@ -15,7 +15,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 }
 
 const inputCls =
-  'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[15px] focus:border-amber-600 focus:outline-none';
+  'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[15px] focus:border-emerald-600 focus:outline-none';
 
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={clsx(inputCls, props.className)} />;
@@ -35,7 +35,7 @@ export function Button({
       {...props}
       className={clsx(
         'rounded-lg px-4 py-2 text-[15px] font-semibold disabled:opacity-50',
-        variant === 'primary' && 'bg-amber-700 text-white hover:bg-amber-800',
+        variant === 'primary' && 'bg-emerald-700 text-white hover:bg-emerald-800',
         variant === 'ghost' && 'border border-stone-300 bg-white hover:bg-stone-100',
         variant === 'danger' && 'bg-red-700 text-white hover:bg-red-800',
         props.className,
@@ -50,7 +50,7 @@ export function Badge({ children, tone = 'stone' }: { children: ReactNode; tone?
   const tones: Record<string, string> = {
     stone: 'bg-stone-100 text-stone-700',
     green: 'bg-green-100 text-green-800',
-    amber: 'bg-amber-100 text-amber-800',
+    amber: 'bg-emerald-100 text-emerald-800',
     red: 'bg-red-100 text-red-800',
   };
   return <span className={clsx('rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;

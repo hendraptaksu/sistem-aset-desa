@@ -3,7 +3,7 @@
 > Sumber: `PRD.md` + keputusan diskusi. Update file ini tiap selesai 1 fitur: ubah `- [ ]` jadi `- [x]` + isi tanggal & catatan.
 > Format: `- [x] Fitur (2026-09-04: catatan)`
 
-Terakhir update: 2026-09-04 — MERGE agent-b SELESAI + integrasi: 29/29 test hijau, build OK. Logic laporan (2/4/6), dashboard-read, export/backup ter-merge; web-shell dilebur (arsitektur = Electron); mock B re-key ke COA resmi. Sisa: tab laporan Electron + Neraca/tutup wizard (Modul 5).
+Terakhir update: 2026-09-04 — PORT ELECTRON SELESAI: 8 tab (Dashboard/BKU/Panjar/Pembantu/Realisasi/Surplus/Neraca/Tutup), IPC neraca/dashboard/save/backup, export murni di renderer + fs di main; 29/29 test hijau, tsc bersih, build OK. Sisa: build Windows via CI.
 
 ## Keputusan yang sudah dikunci
 - [x] Framework: Electron + Vite + React + TS + Tailwind/shadcn + better-sqlite3 + drizzle (2026-09-04: dev di Mac, build Windows nanti via CI)
@@ -26,6 +26,7 @@ Terakhir update: 2026-09-04 — MERGE agent-b SELESAI + integrasi: 29/29 test hi
 ## Modul 2 — Buku Pembantu
 - [x] Filter otomatis per kode rekening dari BKU (2026-09-04: `buildPembantu` kas/kategori/PANJAR, test B1 lolos)
 - [x] Total Masuk / Keluar / Saldo Akhir per sub-ledger (2026-09-04: kas 1001 = 21,25jt/13,8jt/7,45jt, test B1 lolos)
+- [x] Tab Electron via IPC (2026-09-04: `PembantuTab.tsx` muat `transaksi:list` + builder di renderer + save via `file:save-buffer`)
 
 ## Modul 3 — Buku Panjar
 - [x] Form: Tanggal Panjar, Penerima, Jumlah, Akun Kas Sumber, Status Open/Closed (2026-09-04: `PanjarTab.tsx` + daftar + filter status)
@@ -35,22 +36,23 @@ Terakhir update: 2026-09-04 — MERGE agent-b SELESAI + integrasi: 29/29 test hi
 ## Modul 4 — Arus Kas & Realisasi Anggaran
 - [x] Grouping Pendapatan per jenis + Pengeluaran per Baga + filter tanggal (2026-09-04: `buildRealisasi`, 12+15 baris COA resmi, test B2 lolos)
 - [x] Net Total = Total Pendapatan - Total Pengeluaran (2026-09-04: 14jt-11,8jt=2,2jt; PANJAR/1050/2050 eksklusi, test B2 lolos)
+- [x] Tab Electron via IPC (2026-09-04: `RealisasiTab.tsx` + `SurplusTab.tsx`, export xlsx via save dialog main)
 
 ## Modul 5 — Neraca + Tutup Buku
-- [ ] Neraca per cut-off: Aktiva (Kas + Panjar OPEN) vs Pasiva (Hutang + 3000 + 3001 + 3002)
-- [ ] Badge BALANCE jika selisih 0, tampil selisih jika tidak
-- [ ] Wizard Tutup Buku manual: auto-backup .db → preview laba → konfirmasi
-- [ ] Kunci longgar: edit tanggal lama boleh + warning + wajib alasan + audit_log + badge di tabel
+- [x] Neraca per cut-off: Aktiva (Kas + Panjar OPEN) vs Pasiva (Hutang + 3000 + 3001 + 3002) (2026-09-04: `NeracaTab.tsx` via `neraca:get`, badge BALANCE)
+- [x] Badge BALANCE jika selisih 0, tampil selisih jika tidak (2026-09-04: dari `neraca()` ledger, bukan hitung ulang)
+- [x] Wizard Tutup Buku manual: auto-backup .db → preview laba → konfirmasi (2026-09-04: `TutupTab.tsx` 3 langkah via `tutup:preview` + `backup:auto` + `tutup:create`)
+- [x] Kunci longgar: edit tanggal lama boleh + warning + wajib alasan + audit_log + badge di tabel (2026-09-04: `LockModal` di BKU/Panjar + `guardPeriodeTerkunci` di main, T7 lolos)
 
 ## Modul 6 — Surplus / (Defisit)
 - [x] Grouping 4xxx - 5xxx per periode bebas + % + format kurung untuk defisit (2026-09-04: `buildSurplus`, T8 kurung lolos, test B3 lolos)
 - [x] Cek silang: Surplus Jan s/d cut-off = Berjalan 3002 di Neraca (2026-09-04: 2,2jt == berjalan, balance, test B3 lolos)
 
 ## Non-Fungsional
-- [x] Dashboard: Saldo Kas Tunai, Total LPD, Status Balance (2026-09-04: `buildDashboard` read dari ledger; 7,45jt/7,5jt/BALANCE, test B4 lolos)
-- [x] Backup Export `.db` / Import `.db` (2026-09-04: `backupDb`/`restoreDb` copy file, 20 baris round-trip, test B6 lolos)
-- [x] Export Excel `.xlsx` + Print/Save PDF (2026-09-04: exceljs 3 workbook + HTML print, file keluar, test B5 lolos)
-- [ ] SQLite single-file lokal offline
+- [x] Dashboard: Saldo Kas Tunai, Total LPD, Status Balance (2026-09-04: `DashboardTab.tsx` via `dashboard:get`; 7,45jt/7,5jt/BALANCE, test B4 lolos)
+- [x] Backup Export `.db` / Import `.db` (2026-09-04: tombol di DashboardTab via `backup:export`/`backup:import` dialog + `backup:auto` untuk wizard; logic copy tetap, test B6 lolos)
+- [x] Export Excel `.xlsx` + Print/Save PDF (2026-09-04: builder murni `workbooks.ts` di renderer + `file:save-buffer` di main; `export.ts` tinggal facade Node; test B5 lolos)
+- [x] SQLite single-file lokal offline (2026-09-04: `userData/data/pura.db` WAL di Mac; backup/restore via dialog teruji manual)
 
 ## Verifikasi Agent B — INTEGRASI 2026-09-04 (re-key mock ke COA resmi; web-shell dilebur, port tab Electron menyusul)
 - [x] B1 Pembantu: filter kas/kategori/PANJAR + total + filter tanggal + mock setara repository
@@ -59,6 +61,17 @@ Terakhir update: 2026-09-04 — MERGE agent-b SELESAI + integrasi: 29/29 test hi
 - [x] B4 Dashboard-read: kas tunai 1001 + total LPD (`LPD_KODES` coa.ts) + badge dari ledger (tanpa hitung ulang)
 - [x] B5 Export: 3 workbook → buffer + file .xlsx; Print/PDF via HTML print
 - [x] B6 Backup: `.db` copy round-trip 20 baris via `openDb` file
+
+## Port Electron — SELESAI 2026-09-04 (8 tab, IPC baru, split export)
+- [x] Split export: `workbooks.ts` murni renderer-safe + `export.ts` facade Node (writeXlsx/backupDb/restoreDb)
+- [x] IPC baru di main: `neraca:get`, `dashboard:get`, `file:save-buffer`, `backup:export`, `backup:auto`, `backup:import`
+- [x] Tab Pembantu/Realisasi/Surplus via `transaksi:list` + builder di renderer + save dialog main
+- [x] Tab Neraca (`NeracaTab`) + wizard Tutup Buku 3 langkah (`TutupTab`)
+- [x] Dashboard final + backup UI (`DashboardTab`); App 8 tab; views mentah `*View.tsx` dihapus
+- [x] Verifikasi: `npx tsc --noEmit` bersih + `npx vitest run` 29/29 + `npm run build` OK + smoke buffer 7216B/BALANCE
+- [x] Fix preload `.mjs` (2026-09-04: build keluarkan `out/preload/index.mjs` tapi main tunjuk `.js` → `window.api` undefined; kini `preloadPath()` cari kandidat yang ada + guard pesan jelas di `api.ts`)
+- [x] Fix preload ESM→CJS (2026-09-04: log Electron `Cannot use import statement outside a module` — sandbox tolak preload `.mjs`; `preload.build.lib.formats=['cjs']` → `index.cjs`; bukti CDP `dashboard:get` → `API-OK aktiva=0 kasTunai=0 badge=BALANCE`)
+- [x] Fix nama config (2026-09-04: `electron-vite.config.ts` → `electron.vite.config.ts`; electron-vite hanya baca nama bertitik — sebelumnya config TIDAK pernah dimuat, plugin react/tailwind mati, CSS kosong; kini utilities `.bg-amber-900` dkk. ter-generate, 29/29 + build OK)
 
 ## Verifikasi Akurasi (9 test di Mac, tanpa Windows) — 16/16 LOLOS 2026-09-04 (`npx vitest run`, termasuk 5 test validasi input)
 - [x] T1 Modal awal balance

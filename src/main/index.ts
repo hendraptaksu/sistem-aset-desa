@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join, dirname } from 'path';
-import { mkdirSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
 import {
@@ -19,10 +19,12 @@ import { KAS_KODES, COA } from '../db/coa.js';
 import {
   buatAuditLog,
   labaTahun,
+  neraca,
   panjarCloseToTransaksi,
   panjarOpenToTransaksi,
   saldoSemuaKas,
 } from '../core/ledger.js';
+import { buildDashboard } from '../features/dashboard/dashboard.js';
 import type { Panjar, Transaksi } from '../core/types.js';
 import { validatePanjarItems, validateTransaksiInput, type TransaksiInput } from './validation.js';
 
@@ -148,6 +150,115 @@ function registerIpc(): void {
     const perKas = saldoSemuaKas(tx, KAS_KODES, cutoff);
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
   });
+
+  ipcMain.handle('neraca:get', (_e, cutoff: string) => {
+    try {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
+      const n = neraca(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
+      return ok(n);
+    } catch (e) {
+      return fail(String(e));
+    }
+  });
+
+  ipcMain.handle('dashboard:get', (_e, cutoff: string) => {
+    try {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
+      const d = buildDashboard(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
+      return ok(d);
+    } catch (e) {
+      return fail(String(e));
+    }
+  });
+
+  // Simpan buffer (xlsx/html) via save dialog. Renderer bangun buffer murni,
+  // main hanya tulis file — sesuai handoff: builder tetap di renderer.
+  ipcMain.handle(
+    'file:save-buffer',
+    async (_e, req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) => {
+      try {
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          defaultPath: req.defaultName,
+          filters: req.filters,
+        });
+        if (canceled || !filePath) return ok({ saved: false, path: '' });
+        writeFileSync(filePath, Buffer.from(req.bufferB64, 'base64'));
+        return ok({ saved: true, path: filePath });
+      } catch (e) {
+        return fail(String(e));
+      }
+    },
+  );
+
+  // Backup manual .db via save dialog (copy file).
+  ipcMain.handle('backup:export', async () => {
+    try {
+      const Stamp = new Date().toISOString().slice(0, 10);
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `pura-backup-${Stamp}.db`,
+        filters: [{ name: 'SQLite DB', extensions: ['db'] }],
+      });
+      if (canceled || !filePath) return ok({ saved: false, path: '' });
+      copyFileSync(dbPath(), filePath);
+      return ok({ saved: true, path: filePath });
+    } catch (e) {
+      return fail(String(e));
+    }
+  });
+
+  // Auto-backup internal untuk wizard Tutup Buku (tanpa dialog).
+  ipcMain.handle('backup:auto', (_e, tahun: number) => {
+    try {
+      const dir = join(dirname(dbPath()), 'backups');
+      mkdirSync(dir, { recursive: true });
+      const dest = join(dir, `pura-${tahun}.db`);
+      copyFileSync(dbPath(), dest);
+      return ok({ path: dest });
+    } catch (e) {
+      return fail(String(e));
+    }
+  });
+
+  // Restore .db via open dialog. Tutup koneksi dulu, copy, buka ulang.
+  ipcMain.handle('backup:import', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        filters: [{ name: 'SQLite DB', extensions: ['db'] }],
+        properties: ['openFile'],
+      });
+      if (canceled || filePaths.length === 0) return ok({ restored: false, path: '' });
+      const src = filePaths[0]!;
+      db.close();
+      copyFileSync(src, dbPath());
+      db = openDb(dbPath());
+      return ok({ restored: true, path: dbPath() });
+    } catch (e) {
+      try {
+        db = openDb(dbPath());
+      } catch {
+        /* biarkan error asli */
+      }
+      return fail(String(e));
+    }
+  });
+}
+
+/**
+ * Lokasi file preload berbeda antara dev dan hasil build.
+ * electron-vite mengeluarkan `out/preload/index.mjs`, sedangkan Electron
+ * butuh CJS (`index.js`/`.cjs`) — lihat `lib.formats` di electron.vite.config.ts.
+ * Cari kandidat pertama yang ada agar window.api selalu termuat.
+ */
+function preloadPath(): string {
+  const candidates = [
+    join(__dirname, '../preload/index.cjs'),
+    join(__dirname, '../preload/index.js'),
+    join(__dirname, '../preload/index.mjs'),
+    join(process.cwd(), 'out/preload/index.cjs'),
+    join(process.cwd(), 'out/preload/index.js'),
+    join(process.cwd(), 'out/preload/index.mjs'),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0]!;
 }
 
 function createWindow(): void {
@@ -155,7 +266,7 @@ function createWindow(): void {
     width: 1280,
     height: 800,
     title: 'Keuangan Pura Dalem Puri',
-    webPreferences: { preload: join(__dirname, '../preload/index.js') },
+    webPreferences: { preload: preloadPath() },
   });
   if (process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL']);

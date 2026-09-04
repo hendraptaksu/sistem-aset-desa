@@ -9,7 +9,9 @@ export default defineConfig({
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
-    build: { outDir: 'out/preload' },
+    // WAJIB cjs: preload ESM (.mjs) gagal dimuat sandbox Electron
+    // ("Cannot use import statement outside a module") → window.api kosong.
+    build: { outDir: 'out/preload', lib: { formats: ['cjs'] } },
   },
   renderer: {
     build: { outDir: 'out/renderer' },
