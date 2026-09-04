@@ -75,5 +75,5 @@ export function u8ToB64(u8: Uint8Array): string {
 
 /** String UTF-8 → base64 (untuk simpan HTML print). */
 export function strToB64(s: string): string {
-  return btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+  return u8ToB64(new TextEncoder().encode(s));
 }

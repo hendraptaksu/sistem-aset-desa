@@ -52,6 +52,8 @@ Terakhir update: 2026-09-04 — PORT ELECTRON SELESAI: 8 tab (Dashboard/BKU/Panj
 - [x] Dashboard: Saldo Kas Tunai, Total LPD, Status Balance (2026-09-04: `DashboardTab.tsx` via `dashboard:get`; 7,45jt/7,5jt/BALANCE, test B4 lolos)
 - [x] Backup Export `.db` / Import `.db` (2026-09-04: tombol di DashboardTab via `backup:export`/`backup:import` dialog + `backup:auto` untuk wizard; logic copy tetap, test B6 lolos)
 - [x] Export Excel `.xlsx` + Print/Save PDF (2026-09-04: builder murni `workbooks.ts` di renderer + `file:save-buffer` di main; `export.ts` tinggal facade Node; test B5 lolos)
+- [x] Kop organisasi di SEMUA export xlsx + HTML/print/PDF (2026-09-04: `KOP_ORG_NAMA=PURA DALEM PURI PELIATAN` + `kopHtml`/`tulisKopXlsx`/`kopPeriode` di `workbooks.ts`; pembantu/realisasi/surplus/neraca/bku semua ber-kop + periode/cut-off; `neracaToWorkbook` + `bkuToWorkbook/Html` baru; tombol Export xlsx + Simpan PDF di NeracaTab; test `export-kop` 3/3 lolos, 46/46 total)
+- [x] Periode kop selalu tampil (2026-09-04: `kopPeriodeEfektif` — filter diutamakan, fallback rentang min/max baris data, terakhir `SEMUA PERIODE`; realisasi/surplus terima `rows` opsional dari tab; test fallback lolos, 47/47 total)
 - [x] SQLite single-file lokal offline (2026-09-04: `userData/data/pura.db` WAL di Mac; backup/restore via dialog teruji manual)
 
 ## Verifikasi Agent B — INTEGRASI 2026-09-04 (re-key mock ke COA resmi; web-shell dilebur, port tab Electron menyusul)

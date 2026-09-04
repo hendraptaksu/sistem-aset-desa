@@ -47,7 +47,7 @@ export function SurplusTab() {
     setErr(null);
     setInfo(null);
     try {
-      const wb = await surplusToWorkbook(hasil);
+      const wb = await surplusToWorkbook(hasil, rows);
       const buf = await workbookToBuffer(wb);
       const r = await api.saveBuffer({
         bufferB64: u8ToB64(new Uint8Array(buf)),
@@ -64,7 +64,7 @@ export function SurplusTab() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument('Surplus', surplusToHtml(hasil), { autoPrint: false });
+      const html = wrapPrintDocument('Surplus', surplusToHtml(hasil, rows), { autoPrint: false });
       const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'surplus.pdf' });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
@@ -94,7 +94,7 @@ export function SurplusTab() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
-          <Button variant="ghost" onClick={() => printLaporan('Surplus', surplusToHtml(hasil))}>Print / PDF</Button>
+          <Button variant="ghost" onClick={() => printLaporan('Surplus', surplusToHtml(hasil, rows))}>Print / PDF</Button>
           <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
         </div>
       </Card>
