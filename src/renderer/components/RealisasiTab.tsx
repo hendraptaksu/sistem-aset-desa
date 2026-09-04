@@ -47,7 +47,7 @@ export function RealisasiTab() {
     setErr(null);
     setInfo(null);
     try {
-      const wb = await realisasiToWorkbook(hasil);
+      const wb = await realisasiToWorkbook(hasil, rows);
       const buf = await workbookToBuffer(wb);
       const r = await api.saveBuffer({
         bufferB64: u8ToB64(new Uint8Array(buf)),
@@ -64,7 +64,7 @@ export function RealisasiTab() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument('Realisasi', realisasiToHtml(hasil), { autoPrint: false });
+      const html = wrapPrintDocument('Realisasi', realisasiToHtml(hasil, rows), { autoPrint: false });
       const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'realisasi.pdf' });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
@@ -91,7 +91,7 @@ export function RealisasiTab() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
-          <Button variant="ghost" onClick={() => printLaporan('Realisasi', realisasiToHtml(hasil))}>Print / PDF</Button>
+          <Button variant="ghost" onClick={() => printLaporan('Realisasi', realisasiToHtml(hasil, rows))}>Print / PDF</Button>
           <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
         </div>
       </Card>

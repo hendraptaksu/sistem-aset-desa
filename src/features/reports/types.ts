@@ -11,6 +11,8 @@ export type PembantuHasil = {
   totalMasuk: number;
   totalKeluar: number;
   saldo: number;
+  mulai?: string;
+  sampai?: string;
 };
 
 export type RealisasiBaris = { kode: string; nama: string; nominal: number };

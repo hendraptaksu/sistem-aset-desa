@@ -29,5 +29,5 @@ export function buildPembantu(transaksi: Transaksi[], opts: PembantuOpts): Pemba
     .sort((a, b) => (a.tanggal < b.tanggal ? -1 : a.tanggal > b.tanggal ? 1 : 0));
   const totalMasuk = rows.reduce((s, t) => s + t.masuk, 0);
   const totalKeluar = rows.reduce((s, t) => s + t.keluar, 0);
-  return { kode, nama: namaKode(kode), rows, totalMasuk, totalKeluar, saldo: totalMasuk - totalKeluar };
+  return { kode, nama: namaKode(kode), rows, totalMasuk, totalKeluar, saldo: totalMasuk - totalKeluar, mulai, sampai };
 }
