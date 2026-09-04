@@ -19,7 +19,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # PENTING: better-sqlite3@13 segfault (0xC0000005) di new Database()
+          # pada Node 20 / 22 lama (upstream WiseLibs/better-sqlite3#1514).
+          # Node 24 = sama dengan dev lokal (terbukti 47/47 hijau).
+          node-version: 24
           cache: npm
 
       - run: npm ci
