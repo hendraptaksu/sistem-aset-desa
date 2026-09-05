@@ -163,7 +163,7 @@ export function PanjarTab() {
       </Card>
 
       <Card>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap">Daftar Panjar</h2>
           <Select value={fStatus} onChange={(e) => setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED')}>
             <option value="">Semua</option>

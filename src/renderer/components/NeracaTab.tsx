@@ -80,10 +80,12 @@ export function NeracaTab() {
           </Field>
           <div className="flex items-end gap-2">
             <Button onClick={() => void muat()}>Muat</Button>
-            <Button variant="ghost" disabled={!data} onClick={() => data && printLaporan(`Neraca ${formatTanggal(cutoff)}`, neracaToHtml(data))}>Print / PDF</Button>
-            <Button variant="ghost" disabled={!data} onClick={() => void exportXlsx()}>Export .xlsx</Button>
-            <Button variant="ghost" disabled={!data} onClick={() => void simpanPdf()}>Simpan PDF</Button>
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="ghost" disabled={!data} onClick={() => data && printLaporan(`Neraca ${formatTanggal(cutoff)}`, neracaToHtml(data))}>Print / PDF</Button>
+          <Button variant="ghost" disabled={!data} onClick={() => void exportXlsx()}>Export .xlsx</Button>
+          <Button variant="ghost" disabled={!data} onClick={() => void simpanPdf()}>Simpan PDF</Button>
         </div>
       </Card>
 

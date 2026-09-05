@@ -36,7 +36,7 @@ export function Button({
     <button
       {...props}
       className={clsx(
-        'rounded-lg px-4 py-2 text-[15px] font-semibold disabled:opacity-50',
+        'rounded-lg px-4 py-2 text-[15px] font-semibold whitespace-nowrap disabled:opacity-50',
         variant === 'primary' && 'bg-emerald-700 text-white hover:bg-emerald-800',
         variant === 'ghost' && 'border border-stone-300 bg-white hover:bg-stone-100',
         variant === 'danger' && 'bg-red-700 text-white hover:bg-red-800',
