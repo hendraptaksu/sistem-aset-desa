@@ -29,6 +29,17 @@ import {
 import { buildDashboard } from '../features/dashboard/dashboard.js';
 import type { Panjar, Transaksi } from '../core/types.js';
 import { validatePanjarItems, validateTransaksiInput, type TransaksiInput } from './validation.js';
+import {
+  aturIdle,
+  bukaKunci,
+  kunciLagi,
+  resetPaksa,
+  sesi,
+  setupPin,
+  statusKunci,
+  ubahPin,
+} from './kunci.js';
+import { sudahSetupPin } from '../db/repository.js';
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
@@ -51,12 +62,52 @@ const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)
 function registerIpc(): void {
   ipcMain.handle('coa:list', () => ok(COA));
 
-  ipcMain.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) =>
-    ok(listTransaksi(db, f)),
-  );
+  // Kunci aplikasi: sesi selalu terkunci saat app dibuka (sesi.terbuka=false awal).
+  ipcMain.handle('lock:status', () => ok(statusKunci(db)));
+  ipcMain.handle('lock:setup', (_e, pin: string) => {
+    const err = setupPin(db, String(pin ?? ''));
+    return err ? fail(err) : ok({ terbuka: true });
+  });
+  ipcMain.handle('lock:unlock', (_e, pin: string) => {
+    const err = bukaKunci(db, String(pin ?? ''));
+    return err ? fail(err) : ok({ terbuka: true });
+  });
+  ipcMain.handle('lock:lock', () => {
+    kunciLagi();
+    return ok({ terkunci: true });
+  });
+  ipcMain.handle('lock:change', (_e, lama: string, baru: string) => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    const err = ubahPin(db, String(lama ?? ''), String(baru ?? ''));
+    return err ? fail(err) : ok({ diubah: true });
+  });
+  ipcMain.handle('lock:idle-set', (_e, menit: number) => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    const err = aturIdle(db, Number(menit));
+    return err ? fail(err) : ok({ idleMenit: Number(menit) });
+  });
+  ipcMain.handle('lock:reset', (_e, kode: string, pinBaru: string) => {
+    const err = resetPaksa(db, String(kode ?? ''), String(pinBaru ?? ''));
+    return err ? fail(err) : ok({ terbuka: true });
+  });
+
+  // Gembok data: selain channel lock:* & coa:list, tolak bila PIN sudah di-setup
+  // tapi sesi belum dibuka. Mencegah bypass via devtools (ancaman anak/iseng).
+  // lock:change & lock:idle-set justru WAJIB terbuka → ikut dijaga di bawah.
+  const perluBuka = (): string | null =>
+    sudahSetupPin(db) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
+
+  ipcMain.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listTransaksi(db, f));
+  });
 
   ipcMain.handle('transaksi:create', (_e, input: TransaksiInput, alasan?: string) => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       const errs = validateTransaksiInput(input);
       if (errs.length) return fail(errs.join(' '));
       const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
@@ -70,9 +121,15 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => ok(listPanjar(db, status)));
+  ipcMain.handle('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listPanjar(db, status));
+  });
 
-  ipcMain.handle('panjar:items', (_e, id: string) => ok(listPanjarItems(db, id)));
+  ipcMain.handle('panjar:items', (_e, id: string) => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listPanjarItems(db, id));
+  });
 
   ipcMain.handle(
     'panjar:create',
@@ -82,6 +139,8 @@ function registerIpc(): void {
       alasan?: string,
     ) => {
       try {
+        const k = perluBuka();
+        if (k) return fail(k);
         if (!input.penerima.trim()) return fail('Nama penerima wajib diisi.');
         if (!Number.isInteger(input.jumlah) || input.jumlah <= 0)
           return fail('Jumlah panjar harus > 0.');
@@ -110,6 +169,8 @@ function registerIpc(): void {
       alasan?: string,
     ) => {
       try {
+        const k = perluBuka();
+        if (k) return fail(k);
         const errs = validatePanjarItems(req.items);
         if (errs.length) return fail(errs.join(' '));
         const lockedErr = guardPeriodeTerkunci(db, req.tanggalClose, alasan);
@@ -137,12 +198,18 @@ function registerIpc(): void {
     },
   );
 
-  ipcMain.handle('tutup:list', () => ok(listTutupBuku(db)));
-  ipcMain.handle('tutup:preview', (_e, tahun: number) =>
-    ok({ tahun, laba: labaTahun(listTransaksi(db), tahun) }),
-  );
+  ipcMain.handle('tutup:list', () => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listTutupBuku(db));
+  });
+  ipcMain.handle('tutup:preview', (_e, tahun: number) => {
+    const k = perluBuka();
+    return k ? fail(k) : ok({ tahun, laba: labaTahun(listTransaksi(db), tahun) });
+  });
   ipcMain.handle('tutup:create', (_e, tahun: number, backupPath = '') => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       const laba = labaTahun(listTransaksi(db), tahun);
       insertTutupBuku(db, { tahun, laba, created_at: new Date().toISOString(), backup_path: backupPath });
       return ok({ tahun, laba });
@@ -152,6 +219,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('saldo:list', (_e, cutoff?: string) => {
+    const k = perluBuka();
+    if (k) return fail(k);
     const tx = listTransaksi(db);
     const perKas = saldoSemuaKas(tx, KAS_KODES, cutoff);
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
@@ -159,6 +228,8 @@ function registerIpc(): void {
 
   ipcMain.handle('neraca:get', (_e, cutoff: string) => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
       const n = neraca(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
       return ok(n);
@@ -169,6 +240,8 @@ function registerIpc(): void {
 
   ipcMain.handle('dashboard:get', (_e, cutoff: string) => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
       const d = buildDashboard(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
       return ok(d);
@@ -183,6 +256,8 @@ function registerIpc(): void {
     'file:save-buffer',
     async (_e, req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) => {
       try {
+        const k = perluBuka();
+        if (k) return fail(k);
         const { canceled, filePath } = await dialog.showSaveDialog({
           defaultPath: req.defaultName,
           filters: req.filters,
@@ -203,6 +278,8 @@ function registerIpc(): void {
     async (_e, req: { htmlB64: string; defaultName: string }) => {
       let pdfWin: BrowserWindow | null = null;
       try {
+        const k = perluBuka();
+        if (k) return fail(k);
         const html = Buffer.from(req.htmlB64, 'base64').toString('utf-8');
         if (!html.trim()) return fail('HTML laporan kosong.');
         const name = req.defaultName.endsWith('.pdf') ? req.defaultName : `${req.defaultName}.pdf`;
@@ -231,6 +308,8 @@ function registerIpc(): void {
   // Backup manual .db via save dialog (copy file).
   ipcMain.handle('backup:export', async () => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       const Stamp = new Date().toISOString().slice(0, 10);
       const { canceled, filePath } = await dialog.showSaveDialog({
         defaultPath: `pura-backup-${Stamp}.db`,
@@ -247,6 +326,8 @@ function registerIpc(): void {
   // Auto-backup internal untuk wizard Tutup Buku (tanpa dialog).
   ipcMain.handle('backup:auto', (_e, tahun: number) => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       const dir = join(dirname(dbPath()), 'backups');
       mkdirSync(dir, { recursive: true });
       const dest = join(dir, `pura-${tahun}.db`);
@@ -260,6 +341,8 @@ function registerIpc(): void {
   // Restore .db via open dialog. Tutup koneksi dulu, copy, buka ulang.
   ipcMain.handle('backup:import', async () => {
     try {
+      const k = perluBuka();
+      if (k) return fail(k);
       const { canceled, filePaths } = await dialog.showOpenDialog({
         filters: [{ name: 'SQLite DB', extensions: ['db'] }],
         properties: ['openFile'],

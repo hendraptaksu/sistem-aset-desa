@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
   alasan TEXT NOT NULL,
   data_lama_json TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS pengaturan (
+  kunci TEXT PRIMARY KEY,
+  nilai TEXT NOT NULL DEFAULT ''
+);
 `;
 
 export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database.Database {

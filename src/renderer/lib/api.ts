@@ -26,7 +26,23 @@ async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   return res.data;
 }
 
+export type LockStatus = {
+  sudahSetup: boolean;
+  terbuka: boolean;
+  idleMenit: number;
+  gagal: number;
+  blokirDetik: number;
+};
+
 export const api = {
+  lockStatus: () => call<LockStatus>('lock:status'),
+  lockSetup: (pin: string) => call<{ terbuka: boolean }>('lock:setup', pin),
+  lockUnlock: (pin: string) => call<{ terbuka: boolean }>('lock:unlock', pin),
+  lockLock: () => call<{ terkunci: boolean }>('lock:lock'),
+  lockChange: (lama: string, baru: string) => call<{ diubah: boolean }>('lock:change', lama, baru),
+  lockIdleSet: (menit: number) => call<{ idleMenit: number }>('lock:idle-set', menit),
+  lockReset: (kode: string, pinBaru: string) =>
+    call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
   coa: () => call<Coa[]>('coa:list'),
   transaksiList: (f: { mulai?: string; sampai?: string } = {}) => call<Transaksi[]>('transaksi:list', f),
   transaksiCreate: (input: {
