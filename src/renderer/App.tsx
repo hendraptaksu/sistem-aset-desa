@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import {
   BarChart3,
@@ -9,6 +9,7 @@ import {
   Lock,
   NotebookText,
   Scale,
+  Settings,
   TrendingUp,
   Wallet,
   type LucideIcon,
@@ -21,8 +22,11 @@ import { SurplusTab } from './components/SurplusTab.js';
 import { NeracaTab } from './components/NeracaTab.js';
 import { TutupTab } from './components/TutupTab.js';
 import { DashboardTab } from './components/DashboardTab.js';
+import { LockScreen } from './components/LockScreen.js';
+import { PengaturanTab } from './components/PengaturanTab.js';
+import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'bku' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup';
+type TabId = 'dashboard' | 'bku' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -33,11 +37,60 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'surplus', label: 'Surplus', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
   { id: 'tutup', label: 'Tutup Buku', Icon: Lock },
+  { id: 'pengaturan', label: 'Pengaturan', Icon: Settings },
 ];
 
 export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  const [lock, setLock] = useState<LockStatus | null>(null);
+
+  const refreshLock = useCallback(async () => {
+    try {
+      setLock(await api.lockStatus());
+    } catch {
+      // IPC belum siap (dev tanpa preload) → anggap terbuka agar UI tetap bisa dipakai.
+      setLock({ sudahSetup: false, terbuka: true, idleMenit: 30, gagal: 0, blokirDetik: 0 });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshLock();
+  }, [refreshLock]);
+
+  // Auto-kunci saat idle: timer di-reset oleh aktivitas. Tanpa tombol kunci manual.
+  useEffect(() => {
+    if (!lock?.terbuka || !lock.sudahSetup) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const mulai = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void api.lockLock().finally(() => {
+          setTab('dashboard');
+          void refreshLock();
+        });
+      }, lock.idleMenit * 60_000);
+    };
+    const acara = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'] as const;
+    mulai();
+    for (const a of acara) window.addEventListener(a, mulai, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      for (const a of acara) window.removeEventListener(a, mulai);
+    };
+  }, [lock?.terbuka, lock?.sudahSetup, lock?.idleMenit, refreshLock]);
+
+  if (!lock) {
+    return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;
+  }
+  if (lock.sudahSetup && !lock.terbuka) {
+    return <LockScreen sudahSetup={lock.sudahSetup} onTerbuka={() => void refreshLock()} />;
+  }
+  // Belum setup PIN → wajib buat dulu (gembok depan aktif sejak awal).
+  if (!lock.sudahSetup) {
+    return <LockScreen sudahSetup={false} onTerbuka={() => void refreshLock()} />;
+  }
+
   return (
     <div className="flex min-h-screen bg-stone-50 text-stone-900">
       <aside
@@ -99,6 +152,12 @@ export function App() {
             {tab === 'surplus' && <SurplusTab />}
             {tab === 'neraca' && <NeracaTab />}
             {tab === 'tutup' && <TutupTab />}
+            {tab === 'pengaturan' && (
+              <PengaturanTab
+                idleAwal={lock.idleMenit}
+                onIdleBerubah={(m) => setLock((l) => (l ? { ...l, idleMenit: m } : l))}
+              />
+            )}
           </div>
         )}
       </main>

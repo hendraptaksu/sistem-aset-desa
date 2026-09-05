@@ -118,3 +118,32 @@ export function guardPeriodeTerkunci(
     return 'Periode sudah ditutup: wajib isi alasan ≥5 karakter (kunci longgar).';
   return null;
 }
+
+// --- Kunci aplikasi (PIN 6 digit, single-laptop). Key-value di tabel pengaturan. ---
+export const KUNCI_PIN_SALT = 'pin_salt';
+export const KUNCI_PIN_HASH = 'pin_hash';
+export const KUNCI_IDLE_MENIT = 'idle_menit';
+
+export function getPengaturan(db: Database.Database, kunci: string): string | null {
+  const r = db.prepare('SELECT nilai FROM pengaturan WHERE kunci = ?').get(kunci) as {
+    nilai: string;
+  } | undefined;
+  return r ? String(r.nilai) : null;
+}
+
+export function setPengaturan(db: Database.Database, kunci: string, nilai: string): void {
+  db.prepare('INSERT INTO pengaturan (kunci, nilai) VALUES (?, ?) ON CONFLICT(kunci) DO UPDATE SET nilai = excluded.nilai').run(
+    kunci,
+    nilai,
+  );
+}
+
+export function sudahSetupPin(db: Database.Database): boolean {
+  return getPengaturan(db, KUNCI_PIN_SALT) !== null && getPengaturan(db, KUNCI_PIN_HASH) !== null;
+}
+
+export function getIdleMenit(db: Database.Database, fallback = 30): number {
+  const v = getPengaturan(db, KUNCI_IDLE_MENIT);
+  const n = v === null ? NaN : Number(v);
+  return Number.isInteger(n) ? n : fallback;
+}
