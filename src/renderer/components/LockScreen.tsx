@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { Button, Card, ErrorBox, Field, PinInput, TextInput } from './ui.js';
 
 type Mode = 'buka' | 'setup' | 'reset';
 
@@ -13,6 +13,7 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
   const [kode, setKode] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [sibuk, setSibuk] = useState(false);
+  const [gagal, setGagal] = useState(0);
 
   const hanyaDigit = (s: string) => s.replace(/\D/g, '').slice(0, 6);
 
@@ -29,6 +30,33 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
     }
   }
 
+  /** Unlock otomatis saat 6 digit lengkap — tanpa tombol. */
+  const sedangBuka = useRef(false);
+  async function bukaDengan(pinLengkap: string) {
+    if (sedangBuka.current) return;
+    if (!/^\d{6}$/.test(pinLengkap)) return;
+    sedangBuka.current = true;
+    setErr(null);
+    setSibuk(true);
+    try {
+      await api.lockUnlock(pinLengkap);
+      onTerbuka();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPin('');
+      setGagal((g) => g + 1);
+    } finally {
+      sedangBuka.current = false;
+      setSibuk(false);
+    }
+  }
+
+  function pindah(m: Mode) {
+    setMode(m);
+    setErr(null);
+    setPin('');
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-emerald-950 p-4">
       <Card className="w-full max-w-sm text-center">
@@ -41,7 +69,7 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
             ? 'Buat PIN 6 digit agar hanya pengurus yang bisa membuka.'
             : mode === 'reset'
               ? 'Reset PIN dengan kode darurat dari dokumen bendahara.'
-              : 'Masukkan PIN 6 digit untuk membuka.'}
+              : 'Masukkan PIN 6 digit — terbuka otomatis.'}
         </p>
         <div className="mt-4 space-y-3 text-left">
           <ErrorBox msg={err} />
@@ -55,20 +83,30 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
               />
             </Field>
           )}
-          {(mode === 'buka' || mode === 'reset') && (
-            <Field label={mode === 'reset' ? 'PIN baru 6 digit' : 'PIN'}>
+          {mode === 'buka' && (
+            <div>
+              <PinInput
+                value={pin}
+                disabled={sibuk}
+                invalid={err !== null}
+                invalidKey={gagal}
+                onChange={setPin}
+                onComplete={(v) => void bukaDengan(v)}
+              />
+              <p className="mt-2 text-center text-sm text-stone-500">
+                {sibuk ? 'Membuka…' : 'Terbuka otomatis saat 6 digit lengkap.'}
+              </p>
+            </div>
+          )}
+          {mode === 'reset' && (
+            <Field label="PIN baru 6 digit">
               <TextInput
                 type="password"
                 inputMode="numeric"
                 autoFocus
-                value={mode === 'reset' ? baru : pin}
-                onChange={(e) => (mode === 'reset' ? setBaru(hanyaDigit(e.target.value)) : setPin(hanyaDigit(e.target.value)))}
+                value={baru}
+                onChange={(e) => setBaru(hanyaDigit(e.target.value))}
                 placeholder="••••••"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !sibuk) {
-                    if (mode === 'buka' && pin.length === 6) void kirim(() => api.lockUnlock(pin));
-                  }
-                }}
               />
             </Field>
           )}
@@ -106,15 +144,6 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
               />
             </Field>
           )}
-          {mode === 'buka' && (
-            <Button
-              className="w-full"
-              disabled={sibuk || pin.length !== 6}
-              onClick={() => void kirim(() => api.lockUnlock(pin))}
-            >
-              {sibuk ? 'Membuka…' : 'Buka'}
-            </Button>
-          )}
           {mode === 'setup' && (
             <Button
               className="w-full"
@@ -147,12 +176,12 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
           )}
           <div className="flex justify-center gap-4 pt-1 text-sm">
             {mode === 'buka' && (
-              <button type="button" className="text-emerald-700 underline" onClick={() => { setMode('reset'); setErr(null); }}>
+              <button type="button" className="text-emerald-700 underline" onClick={() => pindah('reset')}>
                 Lupa PIN?
               </button>
             )}
             {mode !== 'buka' && sudahSetup && (
-              <button type="button" className="text-emerald-700 underline" onClick={() => { setMode('buka'); setErr(null); }}>
+              <button type="button" className="text-emerald-700 underline" onClick={() => pindah('buka')}>
                 Kembali
               </button>
             )}

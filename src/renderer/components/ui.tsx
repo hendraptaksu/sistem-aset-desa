@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { parseRupiahToSen } from '../../utils/format.js';
 
@@ -61,6 +61,125 @@ export function Badge({ children, tone = 'stone' }: { children: ReactNode; tone?
 export function ErrorBox({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800">{msg}</div>;
+}
+
+/** Input PIN 6 kotak ala m-banking. Keyboard fisik: ketik maju otomatis,
+ * Backspace mundur/hapus, paste 6 digit langsung terisi. Nilai berupa
+ * string digit; `onComplete` dipanggil sekali saat lengkap. */
+export function PinInput({
+  length = 6,
+  value,
+  onChange,
+  onComplete,
+  disabled = false,
+  autoFocus = true,
+  invalid = false,
+  invalidKey = 0,
+}: {
+  length?: number;
+  value: string;
+  onChange: (v: string) => void;
+  onComplete?: (v: string) => void;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  invalid?: boolean;
+  invalidKey?: number;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const digits = Array.from({ length }, (_, i) => value[i] ?? '');
+
+  useEffect(() => {
+    if (autoFocus) refs.current[0]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Setelah gagal (value dikosongkan parent), fokus kembali ke kotak pertama.
+  useEffect(() => {
+    if (value === '' && !disabled) refs.current[0]?.focus();
+  }, [value, disabled, invalidKey]);
+
+  const lengkap = (v: string): boolean => new RegExp(`^\\d{${length}}$`).test(v);
+
+  function isiPada(index: number, digit: string): void {
+    const next = [...digits];
+    next[index] = digit;
+    const gabung = next.join('').slice(0, length);
+    onChange(gabung);
+    if (lengkap(gabung)) {
+      refs.current[index]?.blur();
+      onComplete?.(gabung);
+    } else if (index < length - 1) {
+      refs.current[index + 1]?.focus();
+    }
+  }
+
+  function hapusPada(index: number): void {
+    const next = [...digits];
+    next[index] = '';
+    onChange(next.join('').slice(0, length));
+  }
+
+  return (
+    <div key={invalidKey} className={clsx('flex justify-center gap-2', invalid && 'animate-pin-shake')}>
+      {digits.map((d, i) => (
+        <input
+          // eslint-disable-next-line no-return-assign
+          key={i} ref={(el) => { refs.current[i] = el; }}
+          type="password"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={1}
+          disabled={disabled}
+          value={d}
+          aria-label={`Digit PIN ke-${i + 1}`}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => {
+            const digit = e.target.value.replace(/\D/g, '').slice(-1);
+            if (!digit) return;
+            isiPada(i, digit);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Backspace') {
+              e.preventDefault();
+              if (digits[i]) {
+                hapusPada(i);
+              } else if (i > 0) {
+                refs.current[i - 1]?.focus();
+                hapusPada(i - 1);
+              }
+            } else if (e.key === 'Delete') {
+              e.preventDefault();
+              hapusPada(i);
+            } else if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              refs.current[i - 1]?.focus();
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              refs.current[i + 1]?.focus();
+            }
+          }}
+          onPaste={(e) => {
+            const tempel = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length);
+            if (!tempel) return;
+            e.preventDefault();
+            onChange(tempel);
+            if (lengkap(tempel)) {
+              refs.current[length - 1]?.blur();
+              onComplete?.(tempel);
+            } else {
+              refs.current[tempel.length]?.focus();
+            }
+          }}
+          className={clsx(
+            'h-12 w-11 rounded-lg border bg-white text-center text-xl font-bold',
+            'focus:border-emerald-600 focus:outline-none',
+            invalid ? 'border-red-400' : 'border-stone-300',
+            disabled && 'opacity-60',
+          )}
+        />
+      ))}
+    </div>
+  );
 }
 
 /** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
