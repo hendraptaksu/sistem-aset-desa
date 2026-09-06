@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Transaksi } from '../../core/types.js';
-import { formatRp } from '../../utils/format.js';
+import { formatPersen, formatRp } from '../../utils/format.js';
 import { buildSurplus } from '../../features/reports/surplus/surplus.js';
 import {
   printLaporan,
@@ -116,7 +116,7 @@ export function SurplusTab() {
                 <td className="py-2 pr-3">{b.kode}</td>
                 <td className="py-2 pr-3">{b.nama}</td>
                 <td className="py-2 text-right">{formatRp(b.nominal)}</td>
-                <td className="py-2 text-right">{b.persen.toFixed(1)}%</td>
+                <td className="py-2 text-right">{formatPersen(b.persen)}</td>
               </tr>
             ))}
             <tr className="font-bold">
@@ -130,7 +130,7 @@ export function SurplusTab() {
                 <td className="py-2 pr-3">{b.kode}</td>
                 <td className="py-2 pr-3">{b.nama}</td>
                 <td className="py-2 text-right">{formatRp(b.nominal)}</td>
-                <td className="py-2 text-right">{b.persen.toFixed(1)}%</td>
+                <td className="py-2 text-right">{formatPersen(b.persen)}</td>
               </tr>
             ))}
             <tr className="font-bold">

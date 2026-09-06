@@ -7,6 +7,13 @@ export function formatRp(sen: number): string {
   return `Rp ${rp2.format(sen / 100)}`;
 }
 
+const persen1 = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Persen gaya Indonesia: `4.7` → `'4,7%'`, `100` → `'100,0%'`. */
+export function formatPersen(persen: number): string {
+  return `${persen1.format(persen)}%`;
+}
+
 const ISO_TGL = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** '2026-01-05' → '05-01-2026'. Input tak cocok dikembalikan apa adanya. */

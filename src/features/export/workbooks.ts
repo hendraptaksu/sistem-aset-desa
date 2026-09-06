@@ -4,7 +4,7 @@
 // Versi Node (writeXlsx/backupDb/restoreDb) ada di export.ts (main/tests saja).
 
 import ExcelJS from 'exceljs';
-import { formatRp, formatTanggal } from '../../utils/format.js';
+import { formatPersen, formatRp, formatTanggal } from '../../utils/format.js';
 import type { Neraca } from '../../core/ledger.js';
 import type { PembantuHasil, RealisasiHasil, SurplusHasil } from '../reports/types.js';
 
@@ -146,12 +146,12 @@ export async function surplusToWorkbook(
   styleHeader(header);
   ws.addRow(['PENDAPATAN', '', '', '']);
   for (const b of s.pendapatan)
-    ws.addRow([b.kode, b.nama, formatRp(b.nominal), `${b.persen.toFixed(1)}%`]);
-  const tp = ws.addRow(['Total Pendapatan', '', formatRp(s.totalPendapatan), '100.0%']);
+    ws.addRow([b.kode, b.nama, formatRp(b.nominal), formatPersen(b.persen)]);
+  const tp = ws.addRow(['Total Pendapatan', '', formatRp(s.totalPendapatan), formatPersen(100)]);
   styleHeader(tp);
   ws.addRow(['BEBAN', '', '', '']);
-  for (const b of s.beban) ws.addRow([b.kode, b.nama, formatRp(b.nominal), `${b.persen.toFixed(1)}%`]);
-  const tb = ws.addRow(['Total Beban', '', formatRp(s.totalBeban), '100.0%']);
+  for (const b of s.beban) ws.addRow([b.kode, b.nama, formatRp(b.nominal), formatPersen(b.persen)]);
+  const tb = ws.addRow(['Total Beban', '', formatRp(s.totalBeban), formatPersen(100)]);
   styleHeader(tb);
   const sr = ws.addRow(['SURPLUS / (DEFISIT)', '', formatRp(s.surplus), '']);
   styleHeader(sr);
@@ -269,7 +269,7 @@ export function realisasiToHtml(r: RealisasiHasil, rows?: { tanggal: string }[])
 
 export function surplusToHtml(s: SurplusHasil, rows?: { tanggal: string }[]): string {
   const li = (kode: string, nama: string, n: number, p: number): string =>
-    `<tr><td>${kode}</td><td>${esc(nama)}</td><td style="text-align:right">${formatRp(n)}</td><td style="text-align:right">${p.toFixed(1)}%</td></tr>`;
+    `<tr><td>${kode}</td><td>${esc(nama)}</td><td style="text-align:right">${formatRp(n)}</td><td style="text-align:right">${formatPersen(p)}</td></tr>`;
   return `${kopHtml('SURPLUS / (DEFISIT)', kopPeriodeEfektif(s.mulai, s.sampai, rows))}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th><th>%</th></tr></thead><tbody>
