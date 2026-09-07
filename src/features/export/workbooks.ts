@@ -5,6 +5,7 @@
 
 import ExcelJS from 'exceljs';
 import { formatPersen, formatRp, formatTanggal } from '../../utils/format.js';
+import type { Aset } from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
 import type { PembantuHasil, RealisasiHasil, SurplusHasil } from '../reports/types.js';
 
@@ -226,6 +227,32 @@ export async function workbookToBuffer(wb: ExcelJS.Workbook): Promise<Uint8Array
   return new Uint8Array(out);
 }
 
+/** Inventaris Aset → workbook. Nilai null tampil "— (belum dinilai)". */
+export async function asetToWorkbook(rows: Aset[]): Promise<ExcelJS.Workbook> {
+  const { wb, ws } = baseWorkbook('Inventaris Aset');
+  tulisKopXlsx(ws, 'DAFTAR INVENTARIS ASET', `${rows.length} aset tercatat (non-keuangan, tidak masuk Neraca)`, 7);
+  const header = ws.addRow(['Kode', 'Nama', 'Jenis', 'Luas (m²)', 'Lokasi', 'Status/Kondisi', 'Nilai']);
+  styleHeader(header);
+  for (const a of rows) {
+    ws.addRow([
+      a.kode,
+      a.nama,
+      a.jenis,
+      a.luas_m2 === null ? '' : a.luas_m2,
+      a.lokasi || '—',
+      `${a.status_hukum || '—'} / ${a.kondisi}`,
+      a.nilai_sen === null ? '— (belum dinilai)' : formatRp(a.nilai_sen),
+    ]);
+  }
+  const dinilai = rows.filter((a) => a.nilai_sen !== null).reduce((s, a) => s + (a.nilai_sen ?? 0), 0);
+  const tr = ws.addRow(['JUMLAH', `${rows.length} aset`, '', '', '', 'Total yang sudah dinilai', formatRp(dinilai)]);
+  styleHeader(tr);
+  ws.columns.forEach((c) => { c.width = 20; });
+  ws.getColumn(2).width = 34;
+  ws.getColumn(5).width = 28;
+  return wb;
+}
+
 // ---- Print / PDF (renderer: window.print; Electron: printToPDF via main) ----
 
 const esc = (s: string): string =>
@@ -312,6 +339,25 @@ export function wrapPrintDocument(title: string, body: string, opts: { autoPrint
 <style>@page{size:A4;margin:14mm 12mm}@media print{button{display:none}}body{font-family:system-ui,sans-serif;margin:24px;font-size:12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:5px 7px}thead{display:table-header-group}tfoot{display:table-footer-group}tr{page-break-inside:avoid}</style>
 </head><body>${autoPrint ? '<button onclick="window.print()">Print / Save PDF</button>' : ''}${body}
 ${autoPrint ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`;
+}
+
+/** Inventaris Aset → HTML tabel untuk print/PDF. */
+export function asetToHtml(rows: Aset[]): string {
+  const body = rows
+    .map(
+      (a) =>
+        `<tr><td>${esc(a.kode)}</td><td>${esc(a.nama)}</td><td>${esc(a.jenis)}</td>` +
+        `<td>${a.luas_m2 === null ? '—' : String(a.luas_m2)}</td><td>${esc(a.lokasi || '—')}</td>` +
+        `<td>${esc(a.status_hukum || '—')} / ${esc(a.kondisi)}</td>` +
+        `<td style="text-align:right">${a.nilai_sen === null ? '— (belum dinilai)' : formatRp(a.nilai_sen)}</td></tr>`,
+    )
+    .join('');
+  const dinilai = rows.filter((a) => a.nilai_sen !== null).reduce((s, a) => s + (a.nilai_sen ?? 0), 0);
+  return `${kopHtml('DAFTAR INVENTARIS ASET', `${rows.length} aset tercatat (non-keuangan, tidak masuk Neraca)`)}
+<table border="1" cellpadding="6" cellspacing="0" width="100%">
+<thead><tr><th>Kode</th><th>Nama</th><th>Jenis</th><th>Luas (m²)</th><th>Lokasi</th><th>Status/Kondisi</th><th>Nilai</th></tr></thead>
+<tbody>${body}</tbody>
+<tfoot><tr><th colspan="6">Total yang sudah dinilai (${rows.filter((a) => a.nilai_sen !== null).length} aset)</th><th style="text-align:right">${formatRp(dinilai)}</th></tr></tfoot></table>`;
 }
 
 /** Neraca → HTML tabel bersih untuk print (Aktiva + Pasiva). */
