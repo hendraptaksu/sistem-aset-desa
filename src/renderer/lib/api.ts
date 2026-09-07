@@ -1,5 +1,5 @@
 import type { Coa } from '../../db/coa.js';
-import type { Panjar, PanjarItem, Transaksi, TutupBuku } from '../../core/types.js';
+import type { AuditLog, Panjar, PanjarItem, Transaksi, TutupBuku } from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 
@@ -63,6 +63,7 @@ export const api = {
   tutupPreview: (tahun: number) => call<{ tahun: number; laba: number }>('tutup:preview', tahun),
   tutupCreate: (tahun: number, backupPath = '') =>
     call<{ tahun: number; laba: number }>('tutup:create', tahun, backupPath),
+  auditList: () => call<AuditLog[]>('audit:list'),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   neraca: (cutoff: string) => call<Neraca>('neraca:get', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),

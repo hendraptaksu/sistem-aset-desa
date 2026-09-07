@@ -106,6 +106,12 @@ export function insertAuditLog(db: Database.Database, a: AuditLog): void {
   );
 }
 
+export function listAuditLog(db: Database.Database, limit = 200): AuditLog[] {
+  return db
+    .prepare('SELECT * FROM audit_log ORDER BY tanggal DESC LIMIT ?')
+    .all(limit) as AuditLog[];
+}
+
 /** Guard kunci longgar untuk edit/hapus baris lama. Return error jika alasan kurang. */
 export function guardPeriodeTerkunci(
   db: Database.Database,

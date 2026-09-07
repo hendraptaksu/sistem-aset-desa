@@ -12,6 +12,7 @@ import {
   insertPanjar,
   insertTransaksi,
   insertTutupBuku,
+  listAuditLog,
   listPanjar,
   listPanjarItems,
   listTransaksi,
@@ -201,6 +202,10 @@ function registerIpc(): void {
   ipcMain.handle('tutup:list', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(listTutupBuku(db));
+  });
+  ipcMain.handle('audit:list', () => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listAuditLog(db));
   });
   ipcMain.handle('tutup:preview', (_e, tahun: number) => {
     const k = perluBuka();
