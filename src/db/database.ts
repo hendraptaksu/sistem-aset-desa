@@ -56,6 +56,24 @@ CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
   nilai TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS aset (
+  id TEXT PRIMARY KEY,
+  kode TEXT NOT NULL UNIQUE,
+  nama TEXT NOT NULL,
+  jenis TEXT NOT NULL DEFAULT 'LAINNYA',
+  luas_m2 REAL,
+  lokasi TEXT NOT NULL DEFAULT '',
+  status_hukum TEXT NOT NULL DEFAULT '',
+  tahun_perolehan INTEGER,
+  asal_usul TEXT NOT NULL DEFAULT '',
+  kondisi TEXT NOT NULL DEFAULT 'BAIK',
+  keterangan TEXT NOT NULL DEFAULT '',
+  nilai_sen INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_aset_jenis ON aset(jenis);
+CREATE INDEX IF NOT EXISTS idx_aset_kode ON aset(kode);
 `;
 
 export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database.Database {

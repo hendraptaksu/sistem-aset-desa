@@ -44,3 +44,27 @@ export type AuditLog = {
   alasan: string;
   data_lama_json: string;
 };
+
+// ---- Inventaris Aset (non-keuangan, terpisah dari BKU/Neraca) ----
+// Tanah/bangunan druwe/hibah yang nilai nominalnya belum pasti dicatat di sini,
+// BUKAN di BKU. `nilai_sen` opsional (null = belum dinilai) dan TIDAK ikut
+// persamaan Neraca Aktiva=Pasiva (yang hanya hitung Kas+Piutang+Panjar).
+export type AsetJenis = 'TANAH' | 'BANGUNAN' | 'LAINNYA';
+export type AsetKondisi = 'BAIK' | 'RUSAK_RINGAN' | 'RUSAK_BERAT' | 'TIDAK_DIKETAHUI';
+
+export type Aset = {
+  id: string;
+  kode: string; // kode inventaris unik, cth AST-001
+  nama: string;
+  jenis: AsetJenis;
+  luas_m2: number | null;
+  lokasi: string;
+  status_hukum: string; // druwe / SHM / hibah / sewa / ...
+  tahun_perolehan: number | null;
+  asal_usul: string;
+  kondisi: AsetKondisi;
+  keterangan: string;
+  nilai_sen: number | null; // null = belum dinilai (wajar untuk tanah/bangunan desa)
+  created_at: string; // ISO
+  updated_at: string; // ISO
+};

@@ -7,15 +7,20 @@ import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
 import {
   closePanjar,
+  deleteAset,
+  getAset,
   guardPeriodeTerkunci,
+  insertAset,
   insertAuditLog,
   insertPanjar,
   insertTransaksi,
   insertTutupBuku,
+  listAset,
   listPanjar,
   listPanjarItems,
   listTransaksi,
   listTutupBuku,
+  updateAset,
 } from '../db/repository.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
@@ -27,8 +32,8 @@ import {
   saldoSemuaKas,
 } from '../core/ledger.js';
 import { buildDashboard } from '../features/dashboard/dashboard.js';
-import type { Panjar, Transaksi } from '../core/types.js';
-import { validatePanjarItems, validateTransaksiInput, type TransaksiInput } from './validation.js';
+import type { Aset, Panjar, Transaksi } from '../core/types.js';
+import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
 import {
   aturIdle,
   bukaKunci,
@@ -197,6 +202,84 @@ function registerIpc(): void {
       }
     },
   );
+
+  // ---- Inventaris Aset (non-keuangan, TIDAK kena kunci tutup buku) ----
+  ipcMain.handle('aset:list', (_e, f: { jenis?: string; cari?: string } = {}) => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listAset(db, f));
+  });
+
+  ipcMain.handle('aset:create', (_e, input: AsetInput) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const errs = validateAsetInput(input);
+      if (errs.length) return fail(errs.join(' '));
+      const now = new Date().toISOString();
+      const row: Aset = {
+        id: uid('a'),
+        kode: input.kode.trim(),
+        nama: input.nama.trim(),
+        jenis: input.jenis as Aset['jenis'],
+        luas_m2: input.luas_m2,
+        lokasi: input.lokasi.trim(),
+        status_hukum: input.status_hukum.trim(),
+        tahun_perolehan: input.tahun_perolehan,
+        asal_usul: input.asal_usul.trim(),
+        kondisi: input.kondisi as Aset['kondisi'],
+        keterangan: input.keterangan.trim(),
+        nilai_sen: input.nilai_sen,
+        created_at: now,
+        updated_at: now,
+      };
+      insertAset(db, row);
+      return ok({ id: row.id });
+    } catch (e) {
+      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
+      return fail(String(e));
+    }
+  });
+
+  ipcMain.handle('aset:update', (_e, id: string, input: AsetInput) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const errs = validateAsetInput(input);
+      if (errs.length) return fail(errs.join(' '));
+      const lama = getAset(db, String(id));
+      if (!lama) return fail('Aset tidak ditemukan.');
+      updateAset(db, {
+        ...lama,
+        kode: input.kode.trim(),
+        nama: input.nama.trim(),
+        jenis: input.jenis as Aset['jenis'],
+        luas_m2: input.luas_m2,
+        lokasi: input.lokasi.trim(),
+        status_hukum: input.status_hukum.trim(),
+        tahun_perolehan: input.tahun_perolehan,
+        asal_usul: input.asal_usul.trim(),
+        kondisi: input.kondisi as Aset['kondisi'],
+        keterangan: input.keterangan.trim(),
+        nilai_sen: input.nilai_sen,
+        updated_at: new Date().toISOString(),
+      });
+      return ok({ id });
+    } catch (e) {
+      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
+      return fail(String(e));
+    }
+  });
+
+  ipcMain.handle('aset:delete', (_e, id: string) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      deleteAset(db, String(id));
+      return ok({ id });
+    } catch (e) {
+      return fail(String(e));
+    }
+  });
 
   ipcMain.handle('tutup:list', () => {
     const k = perluBuka();
