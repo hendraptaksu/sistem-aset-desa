@@ -3,7 +3,7 @@
 > Sumber: `PRD.md` + keputusan diskusi. Update file ini tiap selesai 1 fitur: ubah `- [ ]` jadi `- [x]` + isi tanggal & catatan.
 > Format: `- [x] Fitur (2026-09-04: catatan)`
 
-Terakhir update: 2026-09-04 — PORT ELECTRON SELESAI: 8 tab (Dashboard/BKU/Panjar/Pembantu/Realisasi/Surplus/Neraca/Tutup), IPC neraca/dashboard/save/backup, export murni di renderer + fs di main; 29/29 test hijau, tsc bersih, build OK. Sisa: build Windows via CI.
+Terakhir update: 2026-09-07 — MODUL 7 INVENTARIS ASET SELESAI: tabel `aset` + CRUD + tab Electron ke-9 + export ber-kop, isolasi penuh dari BKU/Neraca; 61/61 test hijau, tsc bersih, build OK.
 
 ## Keputusan yang sudah dikunci
 - [x] Framework: Electron + Vite + React + TS + Tailwind/shadcn + better-sqlite3 + drizzle (2026-09-04: dev di Mac, build Windows nanti via CI)
@@ -85,6 +85,11 @@ Terakhir update: 2026-09-04 — PORT ELECTRON SELESAI: 8 tab (Dashboard/BKU/Panj
 - [x] T7 Setelah tutup + edit lama beralasan tetap balance + tercatat di audit_log
 - [x] T8 Format negatif `(Rp ...)`
 - [x] T9 Piutang 1050 pinjam & lunas → Aktiva tetap, tetap balance, surplus tak terpengaruh
+
+## Modul 7 — Inventaris Aset (non-keuangan, terpisah dari BKU/Neraca)
+- [x] Tabel `aset` + repo CRUD + validasi nilai opsional (2026-09-07: `tests/aset.test.ts` CRUD/filter/kode-unik lolos)
+- [x] IPC `aset:list/create/update/delete` + tab `AsetTab` + export xlsx/PDF ber-kop (2026-09-07: `npx vitest run` 61/61, `tsc` bersih, `npm run build` OK)
+- [x] Isolasi Neraca: aset (termasuk nilai raksasa/null) tidak ubah Aktiva=Pasiva (2026-09-07: test isolasi balance lolos)
 
 ## Deferred — Build Windows (nanti saja)
 - [ ] GitHub Actions windows-latest → `.exe` NSIS + portable

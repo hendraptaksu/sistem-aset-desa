@@ -1,5 +1,5 @@
 import type { Coa } from '../../db/coa.js';
-import type { Panjar, PanjarItem, Transaksi, TutupBuku } from '../../core/types.js';
+import type { Aset, AuditLog, Panjar, PanjarItem, Transaksi, TutupBuku } from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 
@@ -59,10 +59,23 @@ export const api = {
     call<{ id: string }>('panjar:create', input, alasan),
   panjarClose: (req: { id: string; tanggalClose: string; items: { kategori_baga: string; nominal: number }[] }, alasan?: string) =>
     call<{ totalRealisasi: number; sisa: number; kurang: number }>('panjar:close', req, alasan),
+  asetList: (f: { jenis?: string; cari?: string } = {}) => call<Aset[]>('aset:list', f),
+  asetCreate: (input: {
+    kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;
+    status_hukum: string; tahun_perolehan: number | null; asal_usul: string; kondisi: string;
+    keterangan: string; nilai_sen: number | null;
+  }) => call<{ id: string }>('aset:create', input),
+  asetUpdate: (id: string, input: {
+    kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;
+    status_hukum: string; tahun_perolehan: number | null; asal_usul: string; kondisi: string;
+    keterangan: string; nilai_sen: number | null;
+  }) => call<{ id: string }>('aset:update', id, input),
+  asetDelete: (id: string) => call<{ id: string }>('aset:delete', id),
   tutupList: () => call<TutupBuku[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<{ tahun: number; laba: number }>('tutup:preview', tahun),
   tutupCreate: (tahun: number, backupPath = '') =>
     call<{ tahun: number; laba: number }>('tutup:create', tahun, backupPath),
+  auditList: () => call<AuditLog[]>('audit:list'),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   neraca: (cutoff: string) => call<Neraca>('neraca:get', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),

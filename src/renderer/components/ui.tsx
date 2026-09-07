@@ -258,3 +258,26 @@ export function LockModal({
     </div>
   );
 }
+
+/** Modal baca-saja generik (dipakai popup detail koreksi). */
+export function DetailModal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+        <h3 className="text-lg font-bold">{title}</h3>
+        <div className="mt-3 space-y-1.5 text-[15px]">{children}</div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="ghost" onClick={onClose}>Tutup</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
