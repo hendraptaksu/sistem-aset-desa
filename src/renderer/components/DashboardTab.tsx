@@ -11,11 +11,18 @@ export function DashboardTab() {
   const [data, setData] = useState<DashboardHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [autoPath, setAutoPath] = useState<string>('');
 
   async function muat(c = cutoff) {
     setErr(null);
     try {
       setData(await api.dashboard(c));
+      try {
+        const s = await api.backupStatus();
+        setAutoPath(s.path);
+      } catch {
+        /* status backup best-effort, jangan tutupi dashboard */
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -116,6 +123,9 @@ export function DashboardTab() {
         </div>
         <p className="mt-2 text-sm text-stone-600">
           Single-file SQLite lokal offline. Export untuk cadangan manual, import untuk pulihkan saat ganti laptop/pengurus.
+        </p>
+        <p className="mt-1 text-sm text-stone-600">
+          Backup otomatis terakhir: {autoPath ? autoPath.split(/[\\/]/).pop() : '—'}
         </p>
       </Card>
     </div>

@@ -33,6 +33,7 @@ import {
   saldoSemuaKas,
 } from '../core/ledger.js';
 import { buildDashboard } from '../features/dashboard/dashboard.js';
+import { autoBackupHarian, lastAutoBackup } from '../features/export/export.js';
 import type { Aset, Panjar, Transaksi } from '../core/types.js';
 import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
 import {
@@ -426,6 +427,18 @@ function registerIpc(): void {
     }
   });
 
+  // Status backup otomatis harian terakhir (untuk Dashboard).
+  ipcMain.handle('backup:status', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const dir = join(dirname(dbPath()), 'backups');
+      return ok({ path: lastAutoBackup(dir) });
+    } catch (e) {
+      return fail(String(e));
+    }
+  });
+
   // Restore .db via open dialog. Tutup koneksi dulu, copy, buka ulang.
   ipcMain.handle('backup:import', async () => {
     try {
@@ -487,6 +500,13 @@ function createWindow(): void {
 
 void app.whenReady().then(() => {
   db = openDb(dbPath());
+  // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
+  try {
+    const p = autoBackupHarian(db, join(dirname(dbPath()), 'backups'), 7);
+    console.log(`[backup-auto] ${p}`);
+  } catch (e) {
+    console.warn('[backup-auto] gagal:', String(e));
+  }
   // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
   // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
   if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {

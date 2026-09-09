@@ -86,6 +86,7 @@ export const api = {
     call<{ saved: boolean; path: string }>('file:save-pdf', req),
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
+  backupStatus: () => call<{ path: string }>('backup:status'),
   backupImport: () => call<{ restored: boolean; path: string }>('backup:import'),
 };
 
