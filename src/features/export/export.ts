@@ -2,7 +2,9 @@
 // Renderer WAJIB import dari ./workbooks.js langsung (tanpa node:fs)
 // agar build Vite tidak menarik `node:fs` ke browser.
 
-import { copyFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import type Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 
 export {
@@ -43,4 +45,44 @@ export function backupDb(dbPath: string, backupPath: string): string {
 export function restoreDb(backupPath: string, dbPath: string): string {
   copyFileSync(backupPath, dbPath);
   return dbPath;
+}
+
+// ---- Auto-backup harian (1x sehari saat app dibuka, retensi N file) ----
+
+/** Backup harian aman saat DB terbuka (VACUUM INTO, bukan copy mentah WAL). Idempoten per stamp. */
+export function autoBackupHarian(
+  db: Database.Database,
+  dir: string,
+  keep = 7,
+  stamp = new Date().toISOString().slice(0, 10),
+): string {
+  mkdirSync(dir, { recursive: true });
+  const dest = join(dir, `auto-${stamp}.db`);
+  if (!existsSync(dest)) {
+    db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+  }
+  const files = readdirSync(dir)
+    .filter((f) => f.startsWith('auto-') && f.endsWith('.db'))
+    .sort();
+  while (files.length > keep) {
+    const old = files.shift()!;
+    try {
+      unlinkSync(join(dir, old));
+    } catch {
+      break;
+    }
+  }
+  return dest;
+}
+
+/** Path backup otomatis terbaru, '' bila belum ada. */
+export function lastAutoBackup(dir: string): string {
+  try {
+    const files = readdirSync(dir)
+      .filter((f) => f.startsWith('auto-') && f.endsWith('.db'))
+      .sort();
+    return files.length ? join(dir, files[files.length - 1]!) : '';
+  } catch {
+    return '';
+  }
 }
