@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { JurnalBarisInput } from '../../core/types.js';
+import {
+  duplikatJurnalKeForm,
+  type FormJurnalUmum,
+} from '../../core/jurnalForm.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../../core/posting.js';
 import { ALASAN_REVERSAL_MIN } from '../../core/reversal.js';
+import {
+  jurnalToHtml,
+  printLaporan,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, Select, TextInput } from './ui.js';
+import { JurnalUmumEditor } from './JurnalUmumEditor.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const PAGE = 25;
@@ -34,7 +43,15 @@ type BarisForm = {
   keterangan: string;
 };
 
-export function JurnalTab() {
+export function JurnalTab({
+  modeAkuntan = true,
+}: {
+  /**
+   * Layar Jurnal Umum memang layar akuntan pendamping. Prop ini memungkinkan
+   * penempatan di layar operator tanpa tombol input jurnal manual.
+   */
+  modeAkuntan?: boolean;
+}) {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [daftar, setDaftar] = useState<JurnalLengkap[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -48,6 +65,23 @@ export function JurnalTab() {
 
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
   const [koreksi, setKoreksi] = useState<JurnalLengkap | null>(null);
+  const [editor, setEditor] = useState<{ awal?: FormJurnalUmum } | null>(null);
+
+  function bukaEditor(awal?: FormJurnalUmum): void {
+    setErr(null);
+    setInfo(null);
+    setEditor({ ...(awal ? { awal } : {}) });
+  }
+
+  function bukaDuplikat(jurnal: JurnalLengkap): void {
+    try {
+      const awal = duplikatJurnalKeForm(jurnal);
+      setDetail(null);
+      bukaEditor(awal);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function refresh() {
     try {
@@ -98,7 +132,21 @@ export function JurnalTab() {
               pemeriksaan, dan sistem membuat jurnal baliknya.
             </p>
           </div>
-          <Badge tone="green">Neraca Saldo selalu dihitung dari jurnal</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="green">Neraca Saldo selalu dihitung dari jurnal</Badge>
+            {modeAkuntan && (
+              <>
+                <Badge tone="amber">Mode akuntan</Badge>
+                <Button
+                  type="button"
+                  className="px-5 py-3 text-base"
+                  onClick={() => bukaEditor()}
+                >
+                  + Jurnal Baru
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </Card>
 
@@ -250,7 +298,20 @@ export function JurnalTab() {
         </div>
       </Card>
 
-      {detail && <DetailJurnalModal jurnal={detail} coa={coa} onClose={() => setDetail(null)} />}
+      {detail && (
+        <DetailJurnalModal
+          jurnal={detail}
+          coa={coa}
+          onClose={() => setDetail(null)}
+          onDuplikat={bukaDuplikat}
+          onPrint={(jurnal) =>
+            printLaporan(
+              `Jurnal Umum ${jurnal.no_bukti || jurnal.id}`,
+              jurnalToHtml(jurnal, coa),
+            )
+          }
+        />
+      )}
 
       {koreksi && (
         <KoreksiModal
@@ -264,6 +325,19 @@ export function JurnalTab() {
           }}
         />
       )}
+
+      {editor && (
+        <JurnalUmumEditor
+          coa={coa}
+          awal={editor.awal}
+          onBatal={() => setEditor(null)}
+          onSelesai={(pesan) => {
+            setEditor(null);
+            setInfo(pesan);
+            void refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -272,10 +346,14 @@ function DetailJurnalModal({
   jurnal,
   coa,
   onClose,
+  onDuplikat,
+  onPrint,
 }: {
   jurnal: JurnalLengkap;
   coa: Coa[];
   onClose: () => void;
+  onDuplikat: (jurnal: JurnalLengkap) => void;
+  onPrint: (jurnal: JurnalLengkap) => void;
 }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
@@ -335,7 +413,13 @@ function DetailJurnalModal({
           </table>
         </div>
 
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={() => onDuplikat(jurnal)}>
+            Duplikat
+          </Button>
+          <Button variant="ghost" onClick={() => onPrint(jurnal)}>
+            Print
+          </Button>
           <Button variant="ghost" onClick={onClose}>Tutup</Button>
         </div>
       </div>

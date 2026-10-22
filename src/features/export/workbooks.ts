@@ -330,6 +330,48 @@ export function bkuToHtml(
 <tfoot><tr><th colspan="3">TOTAL</th><th style="text-align:right">${formatRp(tm)}</th><th style="text-align:right">${formatRp(tk)}</th></tr></tfoot></table>`;
 }
 
+/** Jurnal Umum satu bukti → HTML print (kop, tanggal, no. bukti, debit/kredit). */
+export function jurnalToHtml(
+  jurnal: {
+    id?: string;
+    tanggal: string;
+    no_bukti?: string;
+    keterangan: string;
+    baris: ReadonlyArray<{
+      akun_kode: string;
+      debit: number;
+      kredit: number;
+      keterangan?: string | null;
+    }>;
+  },
+  coa: ReadonlyArray<{ kode: string; nama: string }> = [],
+): string {
+  const namaAkun = (kode: string): string => {
+    const a = coa.find((x) => x.kode === kode);
+    return a ? `${a.kode} — ${a.nama}` : kode;
+  };
+  const rows = jurnal.baris
+    .map(
+      (b) =>
+        `<tr><td>${esc(namaAkun(b.akun_kode))}</td><td>${esc(b.keterangan ?? '')}</td>` +
+        `<td style="text-align:right">${b.debit ? formatRp(b.debit) : ''}</td>` +
+        `<td style="text-align:right">${b.kredit ? formatRp(b.kredit) : ''}</td></tr>`,
+    )
+    .join('');
+  const totalDebit = jurnal.baris.reduce((s, b) => s + b.debit, 0);
+  const totalKredit = jurnal.baris.reduce((s, b) => s + b.kredit, 0);
+  const noBukti = String(jurnal.no_bukti ?? '').trim() || '—';
+  return `${kopHtml(
+    'JURNAL UMUM',
+    `Tanggal ${formatTanggal(jurnal.tanggal)} · No. Bukti ${noBukti}`,
+  )}
+<p><b>Keterangan:</b> ${esc(jurnal.keterangan)}</p>
+<table border="1" cellpadding="6" cellspacing="0" width="100%">
+<thead><tr><th>Akun</th><th>Keterangan Baris</th><th>Debit</th><th>Kredit</th></tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr><th colspan="2">TOTAL</th><th style="text-align:right">${formatRp(totalDebit)}</th><th style="text-align:right">${formatRp(totalKredit)}</th></tr></tfoot></table>`;
+}
+
 /** Bungkus HTML laporan jadi dokumen print siap window.print / save-to-PDF.
  * `autoPrint:false` untuk alur Simpan PDF (hidden window + printToPDF di main)
  * agar script window.print() tidak memicu dialog di window tersembunyi. */

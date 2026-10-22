@@ -260,7 +260,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test: total debit = kredit; Neraca seimbang; menolak dijalankan dua kali.
   - **Dependency:** P0-4
 
-- [ ] **P1-7 — Mode Jurnal Umum (untuk akuntan pendamping)**
+- [x] **P1-7 — Mode Jurnal Umum (untuk akuntan pendamping)** (2026-10-23: editor multi-baris debit/kredit dengan autocomplete, total live & simpan hanya saat seimbang, template/duplikat/print, koreksi tetap utuh; 227/227 test hijau)
   - **Langkah:** tabel multi-baris debit/kredit; autocomplete akun; kolom total debit/kredit live;
     tombol simpan nonaktif sampai seimbang; template & duplikat jurnal; keyboard-friendly (Tab/Enter);
     pratinjau no bukti; bisa print. Istilah & layout mengikuti kelaziman akuntansi Indonesia.
