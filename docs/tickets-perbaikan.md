@@ -210,7 +210,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
 
 ## P1 — Pengalaman pengguna & laporan lengkap
 
-- [ ] **P1-1 — Form terpandu: Terima Uang**
+- [x] **P1-1 — Form terpandu: Terima Uang** (2026-10-22: tab Transaksi + form terpandu dengan pratinjau jurnal, konfirmasi kas minus & alasan periode terkunci, IPC `jurnal:posting`; 164/164 test hijau)
   - **Langkah:** tanggal, akun kas/bank tujuan, akun pendapatan (atau `3000` untuk setoran modal),
     nominal, keterangan, no bukti `JU-...`; **pratinjau jurnal** (debit/kredit) sebelum simpan;
     simpan = jurnal seimbang; peringatan kas minus (P0-4). Bahasa tombol & label harus dimengerti operator awam.

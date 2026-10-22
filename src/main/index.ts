@@ -26,6 +26,7 @@ import {
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
+import { postingJurnal } from '../db/posting.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
@@ -49,7 +50,7 @@ import {
 } from '../features/export/export.js';
 import type { Aset, Panjar, Transaksi } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
-import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
+import { validasiBentukJurnalInput, validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
 import {
   aturIdle,
   bukaKunci,
@@ -138,6 +139,41 @@ function registerIpc(): void {
       offset: Number.isFinite(f?.offset) ? Number(f.offset) : undefined,
     };
     return ok(listJurnalLengkap(db, filter));
+  });
+
+  // ---- Simpan jurnal dari form terpandu (P1-1) ----
+  // Satu-satunya jalur simpan jurnal baru di luar koreksi. Semua aturan bisnis
+  // tetap di posting layer; handler hanya memeriksa bentuk input dari renderer.
+  ipcMain.handle('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+
+      const bentuk = validasiBentukJurnalInput(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const konfirmasiPeringatan =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+      const hasil = postingJurnal(db, bentuk.input, { konfirmasiPeringatan });
+      if (!hasil.tersimpan || !hasil.jurnal) {
+        const pesan =
+          hasil.errors.join(' ') ||
+          hasil.peringatan.join(' ') ||
+          'Jurnal gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
+        // Konfirmasi hanya untuk peringatan murni (mis. kas minus), bukan saat
+        // masih ada error yang harus diperbaiki.
+        const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        return fail(pesan, perluAlasan, perluKonfirmasi);
+      }
+      return ok({ jurnal: hasil.jurnal });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
   });
 
   ipcMain.handle(

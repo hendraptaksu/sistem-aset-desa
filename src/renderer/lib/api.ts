@@ -1,4 +1,5 @@
 import type { Coa } from '../../db/coa.js';
+import type { JurnalInput } from '../../core/posting.js';
 import type {
   Aset,
   AuditLog,
@@ -116,6 +117,11 @@ export const api = {
   jurnalList: (
     f: { mulai?: string; sampai?: string; jenis?: string; akun_kode?: string; limit?: number; offset?: number } = {},
   ) => call<JurnalLengkap[]>('jurnal:list', f),
+  /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
+  jurnalPosting: (
+    input: JurnalInput,
+    opsi: { konfirmasiPeringatan?: boolean } = {},
+  ) => call<{ jurnal: Jurnal }>('jurnal:posting', input, opsi),
   jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
     call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),
   jurnalKoreksiIsiUlang: (

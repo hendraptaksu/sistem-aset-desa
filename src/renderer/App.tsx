@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import {
+  ArrowLeftRight,
   BarChart3,
   BookOpen,
   Building2,
@@ -15,6 +16,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
+import { TransaksiTab } from './components/TransaksiTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
 import { AsetTab } from './components/AsetTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
@@ -28,10 +30,11 @@ import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'jurnal' | 'aset' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'aset' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+  { id: 'transaksi', label: 'Transaksi', Icon: ArrowLeftRight },
   { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
   { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
@@ -148,6 +151,7 @@ export function App() {
           </>
         ) : (
           <div className="px-6 py-6">
+            {tab === 'transaksi' && <TransaksiTab />}
             {tab === 'jurnal' && <JurnalTab />}
             {tab === 'aset' && <AsetTab />}
             {tab === 'panjar' && <PanjarTab />}
