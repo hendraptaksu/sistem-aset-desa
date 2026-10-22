@@ -217,7 +217,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test builder jurnal dari form; smoke UI; laporan langsung berubah.
   - **Dependency:** P0-4
 
-- [ ] **P1-2 — Form terpandu: Bayar / Beban**
+- [x] **P1-2 — Form terpandu: Bayar / Beban** (2026-10-22: form Bayar/Beban dengan pratinjau D beban/hutang / K kas, konfirmasi kas minus & kunci periode, kartu Bayar aktif; 170/170 test hijau)
   - **Langkah:** tanggal, akun kas/bank sumber, akun beban/akun lain, nominal, keterangan, no bukti;
     pratinjau jurnal; info anggaran (bila P2-1 ada).
   - **DoD:** test builder + smoke.

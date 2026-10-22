@@ -1,12 +1,18 @@
-// P1-1: kontrak builder Terima Uang yang dipakai layar Transaksi.
-// Fokus: akun kas/pendapatan/modal, nominal SEN, pratinjau seimbang, serta
-// bentuk input IPC yang tidak boleh dipercaya mentah-mentah.
+// P1-1/P1-2: kontrak builder form terpandu yang dipakai layar Transaksi.
+// Fokus: akun kas/pendapatan/modal (Terima), akun beban/hutang (Bayar),
+// nominal SEN, pratinjau seimbang, serta bentuk input IPC yang tidak boleh
+// dipercaya mentah-mentah.
 
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AKUN_MODAL, COA } from '../src/db/coa.js';
-import { buatJurnalTerimaUang, type FormTerimaUang } from '../src/core/forms.js';
+import {
+  buatJurnalBayar,
+  buatJurnalTerimaUang,
+  type FormBayar,
+  type FormTerimaUang,
+} from '../src/core/forms.js';
 import {
   validasiJurnal,
   type AkunPosting,
@@ -15,6 +21,7 @@ import {
 } from '../src/core/posting.js';
 import { validasiBentukJurnalInput } from '../src/main/validation.js';
 import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
+import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 const AKUN: AkunPosting[] = COA.map((a) => ({ ...a, aktif: true }));
@@ -220,5 +227,172 @@ describe('P1-1 — layar Transaksi', () => {
     for (const label of ['Bayar', 'Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
       expect(html).toContain(label);
     }
+  });
+});
+
+function dasarBayar(over: Partial<FormBayar> = {}): FormBayar {
+  return {
+    tanggal: '2026-10-22',
+    akunKas: '1001',
+    akunLawan: '5010',
+    nominal: RP(75_000),
+    keterangan: 'Bayar listrik bulan Oktober',
+    ...over,
+  };
+}
+
+describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
+  it('menyusun D beban / K kas, total seimbang, dan lolos validasiJurnal', () => {
+    const input = buatJurnalBayar(
+      dasarBayar({ noBukti: '  JU-2026-0002  ' }),
+    );
+
+    expect(input.header).toMatchObject({
+      tanggal: '2026-10-22',
+      keterangan: 'Bayar listrik bulan Oktober',
+      jenis: 'BAYAR',
+      no_bukti: 'JU-2026-0002',
+    });
+    expect(input.header.id).toBeTruthy();
+    expect(input.baris).toEqual([
+      { akun_kode: '5010', debit: RP(75_000), kredit: 0 },
+      { akun_kode: '1001', debit: 0, kredit: RP(75_000) },
+    ]);
+
+    const jumlah = total(input);
+    expect(jumlah).toEqual({ debit: RP(75_000), kredit: RP(75_000) });
+    expect(jumlah.debit).toBe(jumlah.kredit);
+
+    const validasi = validasiJurnal(
+      input,
+      konteks({ saldoKas: { '1001': RP(500_000) } }),
+    );
+    expect(validasi.errors).toEqual([]);
+    expect(validasi.boleh).toBe(true);
+  });
+
+  it('mendukung pelunasan hutang 2050: D hutang / K kas', () => {
+    const input = buatJurnalBayar(
+      dasarBayar({
+        akunKas: '1029',
+        akunLawan: '2050',
+        nominal: RP(1_250_000),
+        keterangan: 'Pelunasan hutang perbaikan gedung',
+      }),
+    );
+
+    expect(input.header.jenis).toBe('BAYAR');
+    expect(input.baris).toEqual([
+      { akun_kode: '2050', debit: RP(1_250_000), kredit: 0 },
+      { akun_kode: '1029', debit: 0, kredit: RP(1_250_000) },
+    ]);
+    expect(total(input)).toEqual({
+      debit: RP(1_250_000),
+      kredit: RP(1_250_000),
+    });
+    expect(
+      validasiJurnal(input, konteks({ saldoKas: { '1029': RP(2_000_000) } })).boleh,
+    ).toBe(true);
+  });
+
+  it('menolak lawan akun kas, akun tak dikenal, tanggal, dan nominal tidak valid', () => {
+    // Pindah uang antar kas/bank bukan "Bayar" — arahkan ke form Pindah Dana.
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '1029' }))).toThrow(
+      /Pindah Dana/,
+    );
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '1001' }))).toThrow(
+      /Pindah Dana/,
+    );
+    // Kas sumber wajib akun kas/bank.
+    expect(() => buatJurnalBayar(dasarBayar({ akunKas: '5010' }))).toThrow(/kas\/bank/);
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '9999' }))).toThrow(
+      /tidak dikenal/,
+    );
+
+    expect(() => buatJurnalBayar(dasarBayar({ nominal: 0 }))).toThrow(/Nominal/);
+    expect(() => buatJurnalBayar(dasarBayar({ nominal: -1 }))).toThrow(/Nominal/);
+    expect(() => buatJurnalBayar(dasarBayar({ nominal: 1.5 }))).toThrow(/Nominal/);
+    expect(() => buatJurnalBayar(dasarBayar({ nominal: Number.NaN }))).toThrow(
+      /Nominal/,
+    );
+    expect(() => buatJurnalBayar(dasarBayar({ tanggal: '2026-02-31' }))).toThrow(
+      /Tanggal/,
+    );
+    expect(() => buatJurnalBayar(dasarBayar({ keterangan: '   ' }))).toThrow(
+      /Keterangan/,
+    );
+
+    // Nomor bukti opsional: spasi saja tidak disimpan sebagai nomor.
+    expect(
+      buatJurnalBayar(dasarBayar({ noBukti: '   ' })).header.no_bukti,
+    ).toBeUndefined();
+  });
+
+  it('memberi peringatan kas minus dan tetap menolak jurnal tidak seimbang', () => {
+    const input = buatJurnalBayar(dasarBayar({ nominal: RP(150_000) }));
+    const peringatan = validasiJurnal(
+      input,
+      konteks({ saldoKas: { '1001': RP(100_000) } }),
+    );
+
+    // Kas minus = peringatan (boleh lanjut setelah konfirmasi), bukan error.
+    expect(peringatan.errors).toEqual([]);
+    expect(peringatan.boleh).toBe(true);
+    expect(peringatan.perluKonfirmasi).toBe(true);
+    expect(peringatan.peringatan.join(' ')).toMatch(/minus/);
+
+    const pincang: JurnalInput = {
+      ...input,
+      baris: [
+        input.baris[0]!,
+        { ...input.baris[1]!, kredit: input.baris[1]!.kredit - 1 },
+      ],
+    };
+    const hasilPincang = validasiJurnal(pincang, konteks());
+    expect(hasilPincang.boleh).toBe(false);
+    expect(hasilPincang.errors.join(' ')).toMatch(/tidak seimbang/);
+  });
+});
+
+describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
+  it('menampilkan kartu Bayar siap dipakai tanpa mengaktifkan slot lain', () => {
+    // Smoke SSR: default tetap Terima Uang, tetapi kartu Bayar sudah aktif.
+    const html = renderToStaticMarkup(createElement(TransaksiTab));
+
+    expect(html).toContain('Catat Transaksi Harian');
+    const kartuBayar = html.split('<button').find((s) => s.includes('>Bayar</span>'));
+    expect(kartuBayar).toBeDefined();
+    expect(kartuBayar).not.toContain('disabled');
+    expect(kartuBayar).toContain('Siap dipakai');
+    expect(html).toContain('Sedang dipakai');
+    // Hanya tiga jenis yang belum siap yang berstatus "Segera hadir".
+    expect((html.match(/Segera hadir/g) ?? []).length).toBe(3);
+    for (const label of ['Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
+      expect(html).toContain(label);
+    }
+  });
+
+  it('merender form Bayar dengan label ramah dan pilihan akun non-kas', () => {
+    // Form diekstrak agar bisa diuji langsung tanpa interaksi browser.
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR',
+        coa: COA,
+        memuat: false,
+      }),
+    );
+
+    expect(html).toContain('Bayar / Beban');
+    expect(html).toContain('Uang keluar dari');
+    expect(html).toContain('Untuk pembayaran');
+    expect(html).toContain('Nominal');
+    expect(html).toContain('Keterangan');
+    expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
+    expect(html).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
+    expect(html).toContain('2050 — HUTANG LAIN-LAIN');
+    expect(html).toContain('Anggaran: belum diatur');
+    // Pendapatan & ekuitas tidak boleh menjadi lawan pembayaran.
+    expect(html).not.toContain('PENDAPATAN PARKIR');
+    expect(html).not.toContain('3000 — MODAL');
   });
 });
