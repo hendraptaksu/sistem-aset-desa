@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KAS_KODES } from '../src/db/coa.js';
 import { openDb } from '../src/db/database.js';
-import { insertTransaksi, listTransaksi } from '../src/db/repository.js';
+import { insertJurnal, listJurnal } from '../src/db/repository.js';
 import { neraca, surplus } from '../src/core/ledger.js';
 import { formatRp } from '../src/utils/format.js';
 import { MOCK_PANJAR, MOCK_TRANSAKSI, MOCK_TUTUP, getTransaksiMock } from '../src/features/reports/__mocks__/data.js';
@@ -146,15 +146,24 @@ describe('B6 backup export/import .db (copy file)', () => {
       const bakPath = join(dir, 'pura-backup.db');
       const restoredPath = join(dir, 'pura-restored.db');
       const db = openDb(dbPath);
-      for (const t of MOCK_TRANSAKSI) insertTransaksi(db, t);
-      expect(listTransaksi(db)).toHaveLength(20);
+      for (let i = 0; i < 20; i++) {
+        insertJurnal(
+          db,
+          { id: `rep-${i}`, tanggal: '2026-01-01', keterangan: `uji ${i}` },
+          [
+            { akun_kode: '1001', debit: 100_000, kredit: 0 },
+            { akun_kode: '4005', debit: 0, kredit: 100_000 },
+          ],
+        );
+      }
+      expect(listJurnal(db)).toHaveLength(20);
       db.close();
       expect(backupDb(dbPath, bakPath)).toBe(bakPath);
       expect(existsSync(bakPath)).toBe(true);
       expect(restoreDb(bakPath, restoredPath)).toBe(restoredPath);
       const db2 = openDb(restoredPath);
-      // openDb menjalankan DDL (idempoten); isi transaksi ikut ter-copy
-      expect(listTransaksi(db2).length).toBe(20);
+      // openDb menjalankan DDL (idempoten); isi jurnal ikut ter-copy
+      expect(listJurnal(db2).length).toBe(20);
       db2.close();
       expect(readFileSync(bakPath).length).toBeGreaterThan(0);
     } finally {

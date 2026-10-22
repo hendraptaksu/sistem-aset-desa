@@ -1,11 +1,13 @@
-// Test akurasi PROGRESS.md (T1-T9). Pure ledger + SQLite repository.
+// Test akurasi ledger single-entry (T1-T9). Murni fungsi ledger, tanpa DB.
 // Skenario angka: modal 10jt → parkir(4005) +5jt → upakara -2jt → panjar 5jt → realisasi 4,5jt.
 // Kode sesuai KODE AKUN.csv (1001 KAS, 4005 PENDAPATAN PARKIR).
+//
+// Catatan P0-3: tabel single-entry sudah dibuang dari skema. Test yang butuh
+// repository single-entry dihapus; penggantinya ada di test laporan double-entry
+// (P0-5). Fungsi ledger murni di bawah tetap dipakai UI lama sampai tab pindah.
 
-import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import {
-  buatAuditLog,
   isPeriodeTerkunci,
   labaTahun,
   neraca,
@@ -17,18 +19,7 @@ import {
   validasiSimpanLonggar,
 } from '../src/core/ledger.js';
 import type { Panjar, Transaksi, TutupBuku } from '../src/core/types.js';
-import { openDb } from '../src/db/database.js';
 import { KAS_KODES } from '../src/db/coa.js';
-import {
-  closePanjar,
-  guardPeriodeTerkunci,
-  insertAuditLog,
-  insertPanjar,
-  insertTransaksi,
-  insertTutupBuku,
-  listTutupBuku,
-  listTransaksi,
-} from '../src/db/repository.js';
 import { formatRp } from '../src/utils/format.js';
 
 const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal awal', akun_kas: '1001', kategori: '3000', masuk: 1_000_000_000, keluar: 0 };
@@ -36,15 +27,7 @@ const PARKIR: Transaksi = { id: 't1', tanggal: '2025-02-10', keterangan: 'Parkir
 const UPAKARA: Transaksi = { id: 't2', tanggal: '2025-03-12', keterangan: 'Upakara', akun_kas: '1001', kategori: '5004', masuk: 0, keluar: 200_000_000 };
 const PANJAR: Panjar = { id: 'p1', tanggal: '2025-04-01', penerima: 'Panitia Piodalan', jumlah: 500_000_000, akun_kas_sumber: '1001', status: 'OPEN' };
 
-function dbSeeded(): Database.Database {
-  const db = openDb(':memory:');
-  insertTransaksi(db, MODAL);
-  insertTransaksi(db, PARKIR);
-  insertTransaksi(db, UPAKARA);
-  insertPanjar(db, PANJAR);
-  insertTransaksi(db, panjarOpenToTransaksi(PANJAR));
-  return db;
-}
+const TX_SEEDED: Transaksi[] = [MODAL, PARKIR, UPAKARA, panjarOpenToTransaksi(PANJAR)];
 
 describe('T1 modal awal balance', () => {
   it('aktiva = pasiva = 10jt', () => {
@@ -78,24 +61,20 @@ describe('T3 upakara keluar', () => {
 
 describe('T4 panjar open', () => {
   it('kas turun 5jt tapi aktiva tetap (pindah ke panjar)', () => {
-    const db = dbSeeded();
-    const tx = listTransaksi(db);
-    expect(saldoKas(tx, '1001', '2025-04-30')).toBe(1_000_000_000 - 200_000_000 - 500_000_000);
-    const n = neraca(tx, [{ ...PANJAR }], [], '2025-04-30', KAS_KODES);
+    expect(saldoKas(TX_SEEDED, '1001', '2025-04-30')).toBe(1_000_000_000 - 200_000_000 - 500_000_000);
+    const n = neraca(TX_SEEDED, [{ ...PANJAR }], [], '2025-04-30', KAS_KODES);
     expect(n.aktivaRinci.panjarOpen).toBe(500_000_000);
     expect(n.aktiva).toBe(1_300_000_000);
     expect(n.balance).toBe(true);
-    expect(surplus(tx, '2025-01-01', '2025-04-30')).toBe(300_000_000); // open tidak jadi beban
+    expect(surplus(TX_SEEDED, '2025-01-01', '2025-04-30')).toBe(300_000_000); // open tidak jadi beban
   });
 });
 
 describe('T5 panjar close', () => {
   it('beban 4,5jt + sisa 500rb kembali, balance', () => {
-    const db = dbSeeded();
     const close = panjarCloseToTransaksi(PANJAR, [{ panjar_id: 'p1', kategori_baga: '5004', nominal: 450_000_000 }], '2025-04-20');
     expect(close.sisaRow?.masuk).toBe(50_000_000);
-    closePanjar(db, 'p1', [...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])]);
-    const tx = listTransaksi(db);
+    const tx = [...TX_SEEDED, ...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])];
     expect(saldoKas(tx, '1001', '2025-04-30')).toBe(350_000_000);
     const n = neraca(tx, [{ ...PANJAR, status: 'CLOSED' }], [], '2025-04-30', KAS_KODES);
     expect(n.aktiva).toBe(850_000_000);
@@ -104,11 +83,9 @@ describe('T5 panjar close', () => {
   });
 
   it('kasus kurang: realisasi 6jt dari panjar 5jt', () => {
-    const db = dbSeeded();
     const close = panjarCloseToTransaksi(PANJAR, [{ panjar_id: 'p1', kategori_baga: '5004', nominal: 600_000_000 }], '2025-04-20');
     expect(close.sisaRow).toBeNull();
-    closePanjar(db, 'p1', [...close.bebanRows, close.kompensasiRow]);
-    const tx = listTransaksi(db);
+    const tx = [...TX_SEEDED, ...close.bebanRows, close.kompensasiRow];
     // kas tunai: 10-2-5 (open) -6 (beban) +5 (komp) = 2jt
     expect(saldoKas(tx, '1001', '2025-04-30')).toBe(200_000_000);
     const n = neraca(tx, [{ ...PANJAR, status: 'CLOSED' }], [], '2025-04-30', KAS_KODES);
@@ -118,41 +95,29 @@ describe('T5 panjar close', () => {
 
 describe('T6 neraca mid-year & akhir tahun', () => {
   it('balance di dua cut-off', () => {
-    const db = dbSeeded();
-    const tx = listTransaksi(db);
     for (const cutoff of ['2025-06-30', '2025-12-31']) {
-      const n = neraca(tx, [{ ...PANJAR }], [], cutoff, KAS_KODES);
+      const n = neraca(TX_SEEDED, [{ ...PANJAR }], [], cutoff, KAS_KODES);
       expect(n.balance).toBe(true);
     }
   });
 });
 
-describe('T7 tutup buku + kunci longgar', () => {
-  it('tutup 2025, kumulatif 2026 = laba 2025, edit lama wajib alasan + audit', () => {
-    const db = dbSeeded();
-    const tx = listTransaksi(db);
-    const laba = labaTahun(tx, 2025);
+describe('T7 tutup buku + kunci longgar (pure)', () => {
+  it('tutup 2025, kumulatif 2026 = laba 2025', () => {
+    const laba = labaTahun(TX_SEEDED, 2025);
     expect(laba).toBe(500_000_000 - 200_000_000);
     const tutup: TutupBuku = { tahun: 2025, laba, created_at: new Date().toISOString(), backup_path: '/tmp/backup.db' };
-    insertTutupBuku(db, tutup);
-    expect(listTutupBuku(db)).toHaveLength(1);
 
     // Neraca 2026: kumulatif = laba 2025
-    const n26 = neraca(tx, [{ ...PANJAR }], [tutup], '2026-01-31', KAS_KODES);
+    const n26 = neraca(TX_SEEDED, [{ ...PANJAR }], [tutup], '2026-01-31', KAS_KODES);
     expect(n26.kumulatif).toBe(laba);
     expect(n26.balance).toBe(true);
     expect(isPeriodeTerkunci('2025-06-01', [tutup])).toBe(true);
     expect(isPeriodeTerkunci('2026-01-05', [tutup])).toBe(false);
 
-    // Tanpa alasan → ditolak
+    // Tanpa alasan → ditolak; dengan alasan ≥5 karakter → boleh.
     expect(validasiSimpanLonggar('2025-06-01', [tutup]).boleh).toBe(false);
-    expect(guardPeriodeTerkunci(db, '2025-06-01')).not.toBeNull();
-    // Dengan alasan → boleh + audit tercatat
     expect(validasiSimpanLonggar('2025-06-01', [tutup], 'Koreksi struk susulan Desember').boleh).toBe(true);
-    expect(guardPeriodeTerkunci(db, '2025-06-01', 'Koreksi struk susulan Desember')).toBeNull();
-    insertAuditLog(db, buatAuditLog('EDIT t2', 'Koreksi struk susulan Desember', UPAKARA));
-    const n26b = neraca(tx, [{ ...PANJAR }], [tutup], '2026-01-31', KAS_KODES);
-    expect(n26b.balance).toBe(true);
   });
 });
 

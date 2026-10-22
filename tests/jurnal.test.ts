@@ -64,6 +64,14 @@ describe('P0-2 — skema jurnal double-entry', () => {
           'idx_jurnal_tanggal',
         ]),
       );
+
+      // P0-3: DB fresh tidak lagi membuat tabel single-entry lama.
+      const lama = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('transaksi', 'panjar', 'panjar_item', 'coa')",
+        )
+        .all();
+      expect(lama).toEqual([]);
     } finally {
       db.close();
     }
@@ -255,13 +263,13 @@ describe('P0-2 — skema jurnal double-entry', () => {
   });
 });
 
-describe('P0-2 — migrasi DB lama (POC)', () => {
-  it('DB v1 lama terbuka tanpa error, data lama tetap ada, user_version naik & idempoten', () => {
+describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
+  it('membuang tabel single-entry, mempertahankan pengaturan & aset, idempoten', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-migrasi-'));
     dirs.push(dir);
     const path = join(dir, 'lama.db');
 
-    // Simulasi DB v1 (single-entry) sebelum ada tabel akun/jurnal.
+    // Simulasi DB v1 (single-entry) sebelum reset POC.
     const lama = new Database(path);
     lama.exec(`
       CREATE TABLE coa (kode TEXT PRIMARY KEY, nama TEXT NOT NULL, tipe TEXT NOT NULL);
@@ -270,7 +278,27 @@ describe('P0-2 — migrasi DB lama (POC)', () => {
         akun_kas TEXT NOT NULL, kategori TEXT NOT NULL,
         masuk INTEGER NOT NULL DEFAULT 0, keluar INTEGER NOT NULL DEFAULT 0
       );
+      CREATE TABLE panjar (
+        id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, penerima TEXT NOT NULL,
+        jumlah INTEGER NOT NULL, akun_kas_sumber TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'OPEN'
+      );
+      CREATE TABLE panjar_item (
+        panjar_id TEXT NOT NULL, kategori_baga TEXT NOT NULL, nominal INTEGER NOT NULL
+      );
+      CREATE TABLE tutup_buku (
+        tahun INTEGER PRIMARY KEY, laba INTEGER NOT NULL,
+        created_at TEXT NOT NULL, backup_path TEXT NOT NULL DEFAULT ''
+      );
       CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT NOT NULL DEFAULT '');
+      CREATE TABLE aset (
+        id TEXT PRIMARY KEY, kode TEXT NOT NULL UNIQUE, nama TEXT NOT NULL,
+        jenis TEXT NOT NULL DEFAULT 'LAINNYA', luas_m2 REAL, lokasi TEXT NOT NULL DEFAULT '',
+        status_hukum TEXT NOT NULL DEFAULT '', tahun_perolehan INTEGER,
+        asal_usul TEXT NOT NULL DEFAULT '', kondisi TEXT NOT NULL DEFAULT 'BAIK',
+        keterangan TEXT NOT NULL DEFAULT '', nilai_sen INTEGER,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
       PRAGMA user_version = 0;
     `);
     lama.prepare("INSERT INTO pengaturan (kunci, nilai) VALUES ('pin_salt', 'lama')").run();
@@ -279,28 +307,88 @@ describe('P0-2 — migrasi DB lama (POC)', () => {
         "INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori, masuk, keluar) VALUES ('t-lama', '2025-12-31', 'Data lama', '1001', '4005', 123, 0)",
       )
       .run();
+    lama
+      .prepare(
+        `INSERT INTO aset (id, kode, nama, jenis, lokasi, status_hukum, asal_usul,
+          kondisi, keterangan, created_at, updated_at)
+         VALUES ('a-lama', 'AST-001', 'Tanah Druwe', 'TANAH', 'Puri', 'druwe', '',
+          'BAIK', '', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')`,
+      )
+      .run();
+    lama.prepare("INSERT INTO tutup_buku (tahun, laba, created_at) VALUES (2025, 999, '2025-12-31T00:00:00.000Z')").run();
     lama.close();
 
     const db = openDb(path);
     try {
       expect(versi(db)).toBe(SCHEMA_VERSION);
-      expect(db.prepare('SELECT COUNT(*) AS c FROM transaksi').get()).toEqual({ c: 1 });
+
+      const tabel = (
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
+      ).map((t) => t.name);
+      for (const usang of ['transaksi', 'panjar', 'panjar_item', 'coa']) {
+        expect(tabel, `tabel ${usang} harus dibuang`).not.toContain(usang);
+      }
+
+      // PIN & inventaris aset dipertahankan.
       expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'pin_salt'").get()).toEqual({ nilai: 'lama' });
+      expect(db.prepare("SELECT kode, nama FROM aset WHERE id = 'a-lama'").get()).toEqual({
+        kode: 'AST-001',
+        nama: 'Tanah Druwe',
+      });
+
+      // tutup_buku lama (punya `laba`) diganti bentuk v2 tanpa angka laba tersimpan.
+      const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
+      expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'backup_path', 'catatan']));
+      expect(kolom).not.toContain('laba');
+
       expect(listJurnal(db)).toEqual([]);
       expect(() =>
-        insertJurnal(db, { id: 'j-baru', tanggal: '2026-01-01', keterangan: 'Setelah migrasi' }, pasangan('1001', '4005')),
+        insertJurnal(db, { id: 'j-baru', tanggal: '2026-01-01', keterangan: 'Setelah reset' }, pasangan('1001', '4005')),
       ).not.toThrow();
     } finally {
       db.close();
     }
 
-    // Buka ulang: migrasi idempoten, jurnal tetap ada.
+    // Buka ulang: reset idempoten, jurnal tetap ada.
     const db2 = openDb(path);
     try {
       expect(versi(db2)).toBe(SCHEMA_VERSION);
       expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-baru']);
     } finally {
       db2.close();
+    }
+  });
+
+  it('DB v2 awal (P0-2) yang masih membawa tabel lama ikut dibersihkan', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-migrasi-v2-'));
+    dirs.push(dir);
+    const path = join(dir, 'p0-2.db');
+
+    // DB v2 P0-2: user_version sudah 2, tetapi tabel single-entry masih ada.
+    const lama = new Database(path);
+    lama.exec(`
+      CREATE TABLE transaksi (
+        id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, keterangan TEXT NOT NULL,
+        akun_kas TEXT NOT NULL, kategori TEXT NOT NULL,
+        masuk INTEGER NOT NULL DEFAULT 0, keluar INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE coa (kode TEXT PRIMARY KEY, nama TEXT NOT NULL, tipe TEXT NOT NULL);
+      PRAGMA user_version = 2;
+    `);
+    lama.prepare("INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori) VALUES ('t-lama', '2026-01-01', 'Lama', '1001', '4005')").run();
+    lama.close();
+
+    const db = openDb(path);
+    try {
+      expect(versi(db)).toBe(SCHEMA_VERSION);
+      const tabel = (
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
+      ).map((t) => t.name);
+      expect(tabel).not.toContain('transaksi');
+      expect(tabel).not.toContain('coa');
+      expect(tabel).toEqual(expect.arrayContaining(['akun', 'jurnal', 'jurnal_baris']));
+    } finally {
+      db.close();
     }
   });
 });

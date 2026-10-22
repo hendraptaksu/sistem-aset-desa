@@ -4,18 +4,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { insertTransaksi, listTransaksi } from '../src/db/repository.js';
+import { insertJurnal, listJurnal } from '../src/db/repository.js';
 import { autoBackupHarian } from '../src/features/export/export.js';
 
-function makeTx(i: number) {
+function makeJurnal(i: number) {
   return {
-    id: `auto-${i}`,
-    tanggal: '2026-09-09',
-    keterangan: `uji ${i}`,
-    akun_kas: '1000',
-    kategori: '4007',
-    masuk: 100000,
-    keluar: 0,
+    header: {
+      id: `auto-${i}`,
+      tanggal: '2026-09-09',
+      no_bukti: `JU-2026-${String(i).padStart(4, '0')}`,
+      keterangan: `uji ${i}`,
+    },
+    baris: [
+      { akun_kode: '1001', debit: 100000, kredit: 0 },
+      { akun_kode: '4007', debit: 0, kredit: 100000 },
+    ],
   };
 }
 
@@ -26,15 +29,17 @@ describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
       const dbPath = join(dir, 'pura.db');
       const bakDir = join(dir, 'backups');
       const db = openDb(dbPath);
-      insertTransaksi(db, makeTx(1));
-      insertTransaksi(db, makeTx(2));
+      const j1 = makeJurnal(1);
+      const j2 = makeJurnal(2);
+      insertJurnal(db, j1.header, j1.baris);
+      insertJurnal(db, j2.header, j2.baris);
       // DB tetap terbuka saat backup (simulasi app jalan, mode WAL)
       const dest = autoBackupHarian(db, bakDir, 7, '2026-09-09');
       expect(dest).toBe(join(bakDir, 'auto-2026-09-09.db'));
       expect(existsSync(dest)).toBe(true);
       db.close();
       const db2 = openDb(dest);
-      expect(listTransaksi(db2)).toHaveLength(2);
+      expect(listJurnal(db2)).toHaveLength(2);
       db2.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -47,7 +52,8 @@ describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
       const dbPath = join(dir, 'pura.db');
       const bakDir = join(dir, 'backups');
       const db = openDb(dbPath);
-      insertTransaksi(db, makeTx(1));
+      const j1 = makeJurnal(1);
+      insertJurnal(db, j1.header, j1.baris);
       // isi 10 backup lama dummy
       for (let d = 1; d <= 10; d++) {
         const stamp = `2026-08-${String(d).padStart(2, '0')}`;

@@ -1,49 +1,25 @@
-// Seeder DEV: data dummy bervolume untuk uji laporan multi-halaman (PDF).
+// Seeder DEV v2: data dummy berupa JURNAL SEIMBANG untuk uji laporan multi-halaman.
 // Aktif via PURA_SEED_DEV=true di .env — hanya dev, lihat src/main/index.ts.
-// HANYA mengisi bila tabel transaksi kosong: tidak pernah menimpa data asli.
+// HANYA mengisi bila tabel `jurnal` kosong: tidak pernah menimpa data asli.
 // Deterministik (mulberry32 seed tetap) agar tiap fresh DB hasilnya identik.
 
 import type Database from 'better-sqlite3';
+import { akun } from './coa.js';
+import { insertJurnal } from './repository.js';
+import type { JurnalBarisInput, JurnalJenis } from '../core/types.js';
 
-export const SEED_DEV_ROW_COUNT = 240;
+/** Jumlah jurnal (bukan baris) yang dihasilkan seed. */
+export const SEED_DEV_JURNAL_COUNT = 240;
 
-type Arah = 'masuk' | 'keluar';
-type Template = {
-  teks: string[];
-  kas: string[];
-  kat: string[];
-  arah: Arah;
-  min: number;
-  max: number;
-  bobot: number;
-};
+const TAHUN = 2026;
 
-// Kode kas/kategori disalin dari src/db/coa.ts agar valid terhadap validasi BKU.
-const TEMPLATES: Template[] = [
-  { teks: ['Parkir', 'Parkir odalan', 'Parkir minggu'], kas: ['1001', '1015'], kat: ['4005'], arah: 'masuk', min: 50_000_000, max: 600_000_000, bobot: 22 },
-  { teks: ['Sesari', 'Sesari piodalan'], kas: ['1001'], kat: ['4041'], arah: 'masuk', min: 30_000_000, max: 400_000_000, bobot: 14 },
-  { teks: ['Punia', 'Punia sukarela'], kas: ['1001', '1036'], kat: ['4008'], arah: 'masuk', min: 20_000_000, max: 300_000_000, bobot: 12 },
-  { teks: ['Sewa kios', 'Kontrakan kios'], kas: ['1010'], kat: ['4003', '4007'], arah: 'masuk', min: 100_000_000, max: 500_000_000, bobot: 8 },
-  { teks: ['Retribusi toilet', 'Toilet umum'], kas: ['1018'], kat: ['4002'], arah: 'masuk', min: 30_000_000, max: 250_000_000, bobot: 8 },
-  { teks: ['Tirta beji', 'Pemasukan beji'], kas: ['1016'], kat: ['4001'], arah: 'masuk', min: 30_000_000, max: 250_000_000, bobot: 6 },
-  { teks: ['Shuttle bus', 'Tiket shuttle'], kas: ['1017'], kat: ['4004'], arah: 'masuk', min: 50_000_000, max: 400_000_000, bobot: 6 },
-  { teks: ['Bunga bank', 'Bunga deposito'], kas: ['1029', '1019'], kat: ['4009'], arah: 'masuk', min: 20_000_000, max: 150_000_000, bobot: 4 },
-  { teks: ['Upakara', 'Banten piodalan', 'Sarana upacara'], kas: ['1001'], kat: ['5004'], arah: 'keluar', min: 50_000_000, max: 600_000_000, bobot: 16 },
-  { teks: ['Listrik & wifi', 'Telpon & PDAM'], kas: ['1001'], kat: ['5010'], arah: 'keluar', min: 30_000_000, max: 150_000_000, bobot: 10 },
-  { teks: ['Mereresik', 'Kebersihan pura'], kas: ['1001'], kat: ['5009'], arah: 'keluar', min: 20_000_000, max: 100_000_000, bobot: 8 },
-  { teks: ['Kesekretariatan', 'ATK & fotokopi'], kas: ['1001'], kat: ['5000'], arah: 'keluar', min: 15_000_000, max: 100_000_000, bobot: 8 },
-  { teks: ['Boga', 'Konsumsi rapat'], kas: ['1001'], kat: ['5007'], arah: 'keluar', min: 30_000_000, max: 200_000_000, bobot: 6 },
-  { teks: ['Wewangunan', 'Perbaikan pelinggih'], kas: ['1001', '1029'], kat: ['5003', '5031'], arah: 'keluar', min: 100_000_000, max: 800_000_000, bobot: 6 },
-  { teks: ['Piodalan', 'Biaya karya'], kas: ['1001'], kat: ['5030'], arah: 'keluar', min: 100_000_000, max: 700_000_000, bobot: 5 },
-  { teks: ['Humas', 'Tamu & publikasi'], kas: ['1001'], kat: ['5006'], arah: 'keluar', min: 20_000_000, max: 150_000_000, bobot: 4 },
-  { teks: ['Pinjaman dana kegiatan', 'Talangan baga'], kas: ['1001'], kat: ['1050'], arah: 'keluar', min: 50_000_000, max: 300_000_000, bobot: 2 },
-  { teks: ['Pelunasan piutang'], kas: ['1001'], kat: ['1050'], arah: 'masuk', min: 50_000_000, max: 300_000_000, bobot: 2 },
-  { teks: ['Pinjaman talangan', 'Hutang sementara'], kas: ['1001'], kat: ['2050'], arah: 'masuk', min: 100_000_000, max: 500_000_000, bobot: 2 },
-  { teks: ['Pembayaran hutang'], kas: ['1001'], kat: ['2050'], arah: 'keluar', min: 100_000_000, max: 500_000_000, bobot: 2 },
-  { teks: ['Setoran modal'], kas: ['1029'], kat: ['3000'], arah: 'masuk', min: 200_000_000, max: 1_000_000_000, bobot: 1 },
-];
-
-const TOTAL_BOBOT = TEMPLATES.reduce((s, t) => s + t.bobot, 0);
+const AKUN_KAS_PENERIMAAN = ['1001', '1015', '1016', '1017', '1018', '1029'] as const;
+const AKUN_PENDAPATAN = [
+  '4001', '4002', '4003', '4004', '4005', '4007', '4008', '4009', '4041',
+] as const;
+const AKUN_BEBAN = [
+  '5000', '5003', '5004', '5006', '5007', '5009', '5010', '5030', '5031',
+] as const;
 
 /** PRNG deterministik agar hasil seed selalu sama untuk DB fresh. */
 function mulberry32(seed: number): () => number {
@@ -57,43 +33,270 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-const pick = <T>(rnd: () => number, arr: T[]): T => arr[Math.floor(rnd() * arr.length)]!;
+const pick = <T>(rnd: () => number, arr: readonly T[]): T =>
+  arr[Math.floor(rnd() * arr.length)]!;
 
-function pickTemplate(rnd: () => number): Template {
-  let r = rnd() * TOTAL_BOBOT;
-  for (const t of TEMPLATES) {
-    r -= t.bobot;
-    if (r <= 0) return t;
-  }
-  return TEMPLATES[0]!;
+/** Nominal bulat Rp 10.000-an dalam satuan sen. */
+function nominal(rnd: () => number, min: number, max: number): number {
+  const raw = min + rnd() * (max - min);
+  return Math.max(min, Math.round(raw / 1_000_000) * 1_000_000);
 }
 
+const debit = (akun_kode: string, nominalSen: number, keterangan = ''): JurnalBarisInput => ({
+  akun_kode,
+  debit: nominalSen,
+  kredit: 0,
+  keterangan,
+});
+const kredit = (akun_kode: string, nominalSen: number, keterangan = ''): JurnalBarisInput => ({
+  akun_kode,
+  debit: 0,
+  kredit: nominalSen,
+  keterangan,
+});
+
 /**
- * Isi DB kosong dengan data dummy. Return jumlah baris dimasukkan
- * (0 bila tabel transaksi sudah berisi — tidak pernah menimpa).
+ * Isi DB kosong dengan jurnal dummy yang selalu seimbang:
+ * saldo awal/modal, pendapatan, beban, transfer, piutang, hutang,
+ * serta panjar open + close selama Januari–Juni 2026.
+ *
+ * Return jumlah jurnal yang dimasukkan, atau 0 bila `jurnal` sudah berisi.
  */
-export function seedDev(db: Database.Database, rows = SEED_DEV_ROW_COUNT): number {
-  const { c } = db.prepare('SELECT COUNT(*) AS c FROM transaksi').get() as { c: number };
+export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): number {
+  const { c } = db.prepare('SELECT COUNT(*) AS c FROM jurnal').get() as { c: number };
   if (c > 0) return 0;
-  const rnd = mulberry32(20260904);
-  const ins = db.prepare(
-    'INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori, masuk, keluar) VALUES (?, ?, ?, ?, ?, ?, ?)',
-  );
-  const tx = db.transaction(() => {
-    for (let i = 0; i < rows; i++) {
-      const t = pickTemplate(rnd);
-      // Tanggal menanjak 2026-01-01 → 2026-05-31 (±1–2 baris/hari).
-      const day = Math.floor((i * 151) / rows);
-      const tanggal = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
-      const kas = pick(rnd, t.kas);
-      const kat = pick(rnd, t.kat);
-      const nominal = Math.round((t.min + rnd() * (t.max - t.min)) / 2_500_000) * 2_500_000;
-      const keterangan = `${pick(rnd, t.teks)} #${i + 1}`;
-      const id = `seed-${String(i + 1).padStart(4, '0')}`;
-      if (t.arah === 'masuk') ins.run(id, tanggal, keterangan, kas, kat, nominal, 0);
-      else ins.run(id, tanggal, keterangan, kas, kat, 0, nominal);
+  if (!Number.isInteger(jumlah) || jumlah <= 0) return 0;
+
+  const rnd = mulberry32(20261022);
+  const saldoKas: Record<string, number> = { '1001': 0, '1029': 0 };
+  let seq = 0;
+  let panjarSisa = 0;
+  let piutangSisa = 0;
+  let hutangSisa = 0;
+
+  const tanggalUntuk = (i: number): string => {
+    // 240 jurnal tersebar merata Jan–Jun 2026 (181 hari).
+    const hari = Math.floor((i * 180) / Math.max(1, jumlah - 1));
+    return new Date(Date.UTC(TAHUN, 0, 1 + hari)).toISOString().slice(0, 10);
+  };
+
+  const catat = (
+    i: number,
+    jenis: JurnalJenis,
+    keterangan: string,
+    baris: JurnalBarisInput[],
+    grupId?: string,
+  ): void => {
+    seq += 1;
+    const tanggal = tanggalUntuk(i);
+    insertJurnal(
+      db,
+      {
+        id: `seed-${String(seq).padStart(4, '0')}`,
+        tanggal,
+        no_bukti: `JU-${TAHUN}-${String(seq).padStart(4, '0')}`,
+        keterangan,
+        jenis,
+        grup_id: grupId,
+        created_at: `${tanggal}T08:00:00.000Z`,
+      },
+      baris,
+    );
+  };
+
+  const namaAkun = (kode: string): string => akun(kode)?.nama ?? kode;
+
+  const terima = (i: number): void => {
+    const kas = pick(rnd, AKUN_KAS_PENERIMAAN);
+    const pendapatan = pick(rnd, AKUN_PENDAPATAN);
+    const n = nominal(rnd, 25_000_000, 400_000_000);
+    saldoKas[kas] = (saldoKas[kas] ?? 0) + n;
+    catat(i, 'TERIMA', `Penerimaan ${namaAkun(pendapatan)} #${i + 1}`, [
+      debit(kas, n),
+      kredit(pendapatan, n),
+    ]);
+  };
+
+  const bayar = (i: number): void => {
+    const beban = pick(rnd, AKUN_BEBAN);
+    let sumber = i % 2 === 0 ? '1001' : '1029';
+    let n = nominal(rnd, 20_000_000, 250_000_000);
+    if ((saldoKas[sumber] ?? 0) < n) sumber = sumber === '1001' ? '1029' : '1001';
+    const tersedia = saldoKas[sumber] ?? 0;
+    if (tersedia <= 0) {
+      terima(i);
+      return;
+    }
+    n = Math.min(n, tersedia);
+    saldoKas[sumber] = tersedia - n;
+    catat(i, 'BAYAR', `Pembayaran ${namaAkun(beban)} #${i + 1}`, [
+      debit(beban, n),
+      kredit(sumber, n),
+    ]);
+  };
+
+  const transfer = (i: number): void => {
+    const dari = i % 2 === 0 ? '1001' : '1029';
+    const ke = dari === '1001' ? '1029' : '1001';
+    const tersedia = saldoKas[dari] ?? 0;
+    const n = Math.min(nominal(rnd, 50_000_000, 300_000_000), tersedia);
+    if (n <= 0) {
+      terima(i);
+      return;
+    }
+    saldoKas[dari] = tersedia - n;
+    saldoKas[ke] = (saldoKas[ke] ?? 0) + n;
+    catat(i, 'TRANSFER', `Pindah dana ${namaAkun(dari)} → ${namaAkun(ke)} #${i + 1}`, [
+      debit(ke, n),
+      kredit(dari, n),
+    ]);
+  };
+
+  const simpan = db.transaction(() => {
+    // 1) Saldo awal: kas tunai + bank, lawannya modal.
+    const modalKas = 10_000_000_000;
+    const modalBank = 25_000_000_000;
+    catat(0, 'SALDO_AWAL', 'Saldo awal kas dan bank', [
+      debit('1001', modalKas, 'Kas tunai'),
+      debit('1029', modalBank, 'Bank BPD'),
+      kredit('3000', modalKas + modalBank, 'Modal awal'),
+    ]);
+    saldoKas['1001'] = modalKas;
+    saldoKas['1029'] = modalBank;
+
+    for (let i = 1; i < jumlah; i++) {
+      const pos = i % 60;
+      const siklus = Math.floor(i / 60) + 1;
+
+      // 2) Panjar: serah (D 1040 / K kas) lalu pertanggungjawaban
+      //    (D beban + sisa kas / K 1040) pada jurnal berikutnya, grup sama.
+      if (pos === 20) {
+        const sumber = (saldoKas['1001'] ?? 0) > 0 ? '1001' : '1029';
+        const n = Math.min(nominal(rnd, 100_000_000, 300_000_000), saldoKas[sumber] ?? 0);
+        if (n > 0) {
+          saldoKas[sumber] = (saldoKas[sumber] ?? 0) - n;
+          panjarSisa = n;
+          catat(
+            i,
+            'PANJAR',
+            `Serah panjar #${siklus}`,
+            [debit('1040', n, 'Uang panjar'), kredit(sumber, n, 'Sumber panjar')],
+            `g-panjar-${String(siklus).padStart(2, '0')}`,
+          );
+        } else {
+          terima(i);
+        }
+        continue;
+      }
+      if (pos === 21) {
+        if (panjarSisa > 0) {
+          const beban = pick(rnd, AKUN_BEBAN);
+          const realisasi = Math.floor((panjarSisa * 0.85) / 1_000_000) * 1_000_000;
+          const sisa = panjarSisa - realisasi;
+          const baris: JurnalBarisInput[] = [
+            debit(beban, realisasi, 'Realisasi belanja'),
+            kredit('1040', realisasi, 'Uang panjar terpakai'),
+          ];
+          if (sisa > 0) {
+            baris.push(debit('1001', sisa, 'Sisa panjar kembali'));
+            baris.push(kredit('1040', sisa, 'Sisa panjar'));
+          }
+          saldoKas['1001'] = (saldoKas['1001'] ?? 0) + sisa;
+          panjarSisa = 0;
+          catat(
+            i,
+            'PANJAR',
+            `Pertanggungjawaban panjar #${siklus}`,
+            baris,
+            `g-panjar-${String(siklus).padStart(2, '0')}`,
+          );
+        } else {
+          terima(i);
+        }
+        continue;
+      }
+
+      // 3) Piutang: beri pinjaman lalu pelunasan sebagian/penuh.
+      if (pos === 5 || pos === 50) {
+        const sumber = (saldoKas['1001'] ?? 0) > 0 ? '1001' : '1029';
+        const n = Math.min(nominal(rnd, 50_000_000, 200_000_000), saldoKas[sumber] ?? 0);
+        if (n > 0) {
+          saldoKas[sumber] = (saldoKas[sumber] ?? 0) - n;
+          piutangSisa += n;
+          catat(
+            i,
+            'PIUTANG',
+            `Pinjaman kepada pihak lain #${i + 1}`,
+            [debit('1050', n, 'Piutang'), kredit(sumber, n, 'Kas keluar')],
+            `g-piutang-${String(siklus).padStart(2, '0')}-${pos >= 50 ? '2' : '1'}`,
+          );
+        } else {
+          terima(i);
+        }
+        continue;
+      }
+      if (pos === 6 || pos === 51) {
+        if (piutangSisa > 0) {
+          const n = Math.min(nominal(rnd, 50_000_000, 200_000_000), piutangSisa);
+          piutangSisa -= n;
+          saldoKas['1001'] = (saldoKas['1001'] ?? 0) + n;
+          catat(
+            i,
+            'PIUTANG',
+            `Pelunasan piutang #${i + 1}`,
+            [debit('1001', n, 'Kas masuk'), kredit('1050', n, 'Pelunasan piutang')],
+            `g-piutang-${String(siklus).padStart(2, '0')}-${pos >= 50 ? '2' : '1'}`,
+          );
+        } else {
+          terima(i);
+        }
+        continue;
+      }
+
+      // 4) Hutang: terima pinjaman lalu bayar sebagian.
+      if (pos === 15) {
+        const n = nominal(rnd, 100_000_000, 500_000_000);
+        hutangSisa += n;
+        saldoKas['1029'] = (saldoKas['1029'] ?? 0) + n;
+        catat(
+          i,
+          'HUTANG',
+          `Terima pinjaman #${i + 1}`,
+          [debit('1029', n, 'Kas bank'), kredit('2050', n, 'Hutang')],
+          `g-hutang-${String(siklus).padStart(2, '0')}`,
+        );
+        continue;
+      }
+      if (pos === 16) {
+        if (hutangSisa > 0) {
+          const n = Math.min(nominal(rnd, 100_000_000, 500_000_000), hutangSisa);
+          hutangSisa -= n;
+          saldoKas['1029'] = (saldoKas['1029'] ?? 0) - n;
+          catat(
+            i,
+            'HUTANG',
+            `Bayar hutang #${i + 1}`,
+            [debit('2050', n, 'Pelunasan hutang'), kredit('1029', n, 'Kas bank')],
+            `g-hutang-${String(siklus).padStart(2, '0')}`,
+          );
+        } else {
+          terima(i);
+        }
+        continue;
+      }
+
+      // 5) Pindah dana antar dompet.
+      if (pos === 9 || pos === 35) {
+        transfer(i);
+        continue;
+      }
+
+      // 6) Sisanya pendapatan/beban harian.
+      if (pos === 3 || pos === 25 || pos === 40 || pos === 55 || i % 5 === 0) bayar(i);
+      else terima(i);
     }
   });
-  tx();
-  return rows;
+  simpan();
+
+  return jumlah;
 }

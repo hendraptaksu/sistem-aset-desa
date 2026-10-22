@@ -89,7 +89,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run` + test baru `tests/jurnal.test.ts`
   - **Dependency:** P0-1
 
-- [ ] **P0-3 — Reset DB POC + seed dev v2 (tanpa migrasi)**
+- [x] **P0-3 — Reset DB POC + seed dev v2 (tanpa migrasi)** (2026-10-22: skema v2 bersih tanpa tabel single-entry, seed 240 jurnal seimbang deterministik, Neraca Saldo total debit = kredit; 89/89 test hijau)
   - **Konteks:** keputusan K6 — masih POC, tidak ada production, data lama boleh dibuang. Jadi tidak perlu
     menulis konverter `transaksi` → jurnal. Cukup skema baru + data dev baru.
   - **Langkah:**
