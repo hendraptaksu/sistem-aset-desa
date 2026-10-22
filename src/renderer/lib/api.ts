@@ -148,10 +148,41 @@ export const api = {
   }, alasan?: string) => call<{ id: string }>('transaksi:create', input, alasan),
   panjarList: (status?: 'OPEN' | 'CLOSED') => call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
-  panjarCreate: (input: { tanggal: string; penerima: string; jumlah: number; akun_kas_sumber: string }, alasan?: string) =>
-    call<{ id: string }>('panjar:create', input, alasan),
-  panjarClose: (req: { id: string; tanggalClose: string; items: { kategori_baga: string; nominal: number }[] }, alasan?: string) =>
-    call<{ totalRealisasi: number; sisa: number; kurang: number }>('panjar:close', req, alasan),
+  panjarCreate: (
+    input: {
+      tanggal: string;
+      penerima: string;
+      jumlah: number;
+      akunKasSumber: string;
+      keterangan?: string;
+      noBukti?: string;
+    },
+    alasan?: string,
+    opsi: { konfirmasiPeringatan?: boolean } = {},
+  ) =>
+    call<{ id: string; panjar: Panjar; jurnal?: Jurnal }>(
+      'panjar:create',
+      input,
+      alasan,
+      opsi,
+    ),
+  panjarClose: (
+    req: {
+      id: string;
+      tanggalClose: string;
+      items: { kategori_baga: string; nominal: number }[];
+      konfirmasiKurang?: boolean;
+      konfirmasiPeringatan?: boolean;
+    },
+    alasan?: string,
+  ) =>
+    call<{
+      totalRealisasi: number;
+      sisa: number;
+      kurang: number;
+      panjar: Panjar;
+      jurnal?: Jurnal;
+    }>('panjar:close', req, alasan),
   asetList: (f: { jenis?: string; cari?: string } = {}) => call<Aset[]>('aset:list', f),
   asetCreate: (input: {
     kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;

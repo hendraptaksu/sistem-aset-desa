@@ -230,7 +230,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test saldo dua akun berubah sesuai; total kas tetap; contoh LPD 1014 → 1001 berfungsi.
   - **Dependency:** P0-4
 
-- [ ] **P1-4 — Form Panjar (serah & pertanggungjawaban)**
+- [x] **P1-4 — Form Panjar (serah & pertanggungjawaban)** (2026-10-22: panjar v2 metadata+jurnal, close pas/sisa/kurang dengan konfirmasi, `panjar_item` terisi, pratinjau & rincian UI, 1040 kembali nol; 185/185 test hijau)
   - **Langkah:** serah → D 1040 / K kas; close → rincian per akun beban (D beban / K 1040), sisa (D kas /
     K 1040), kurang boleh dengan konfirmasi; simpan `panjar_item`; validasi `tanggalClose >= tanggal`;
     tampilkan rincian di daftar.

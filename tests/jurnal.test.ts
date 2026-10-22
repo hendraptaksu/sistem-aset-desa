@@ -43,7 +43,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('membuat tabel jurnal + jurnal_baris dan menaikkan user_version ke versi skema', () => {
     const { db } = freshDb();
     try {
-      expect(SCHEMA_VERSION).toBe(3);
+      expect(SCHEMA_VERSION).toBe(4);
       expect(versi(db)).toBe(SCHEMA_VERSION);
       const tabel = db
         .prepare(
@@ -66,12 +66,19 @@ describe('P0-2 — skema jurnal double-entry', () => {
       );
 
       // P0-3: DB fresh tidak lagi membuat tabel single-entry lama.
+      // P1-4: `panjar`/`panjar_item` bentuk v2 justru wajib ada.
       const lama = db
         .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('transaksi', 'panjar', 'panjar_item', 'coa')",
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('transaksi', 'coa')",
         )
         .all();
       expect(lama).toEqual([]);
+      const panjarV2 = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('panjar', 'panjar_item') ORDER BY name",
+        )
+        .all() as { name: string }[];
+      expect(panjarV2.map((t) => t.name)).toEqual(['panjar', 'panjar_item']);
     } finally {
       db.close();
     }
@@ -325,9 +332,19 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
       const tabel = (
         db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
       ).map((t) => t.name);
-      for (const usang of ['transaksi', 'panjar', 'panjar_item', 'coa']) {
+      for (const usang of ['transaksi', 'coa']) {
         expect(tabel, `tabel ${usang} harus dibuang`).not.toContain(usang);
       }
+      // P1-4: panjar v1 dibuang lalu dibuat ulang dalam bentuk v2 (metadata
+      // jurnal_open_id) — data lamanya tetap tidak dimigrasi.
+      expect(tabel).toEqual(expect.arrayContaining(['panjar', 'panjar_item']));
+      const kolomPanjar = (db.pragma('table_info(panjar)') as { name: string }[]).map(
+        (k) => k.name,
+      );
+      expect(kolomPanjar).toContain('jurnal_open_id');
+      expect(
+        (db.prepare('SELECT COUNT(*) AS c FROM panjar').get() as { c: number }).c,
+      ).toBe(0);
 
       // PIN & inventaris aset dipertahankan.
       expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'pin_salt'").get()).toEqual({ nilai: 'lama' });

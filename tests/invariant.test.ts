@@ -329,10 +329,18 @@ describe('P0-10 — DB v2 fresh + seed dev', () => {
           name: string;
         }[]
       ).map((t) => t.name);
-      for (const wajib of ['jurnal', 'jurnal_baris', 'akun', 'audit_log', 'tutup_buku']) {
+      for (const wajib of [
+        'jurnal',
+        'jurnal_baris',
+        'akun',
+        'audit_log',
+        'tutup_buku',
+        'panjar',
+        'panjar_item',
+      ]) {
         expect(tabel, `tabel ${wajib} wajib ada`).toContain(wajib);
       }
-      for (const lama of ['transaksi', 'panjar', 'panjar_item', 'coa']) {
+      for (const lama of ['transaksi', 'coa']) {
         expect(tabel, `tabel single-entry ${lama} tidak boleh ada`).not.toContain(lama);
       }
       expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);

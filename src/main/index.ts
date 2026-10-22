@@ -7,18 +7,14 @@ import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
 import {
   catatAudit,
-  closePanjar,
   deleteAset,
   getAset,
   guardPeriodeTerkunci,
   insertAset,
-  insertPanjar,
   insertTransaksi,
   listAset,
   listAuditLogPage,
   listJurnalLengkap,
-  listPanjar,
-  listPanjarItems,
   listTransaksi,
   listTutupBuku,
   updateAset,
@@ -27,12 +23,14 @@ import {
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
 import { postingJurnal } from '../db/posting.js';
+import {
+  closePanjarV2,
+  listPanjarItemsV2,
+  listPanjarV2,
+  serahkanPanjar,
+} from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import { KAS_KODES, COA } from '../db/coa.js';
-import {
-  panjarCloseToTransaksi,
-  panjarOpenToTransaksi,
-} from '../core/ledger.js';
 import {
   labaTahun as labaTahunJurnal,
   neraca as neracaJurnal,
@@ -48,9 +46,17 @@ import {
   lastAutoBackup,
   restoreDbAman,
 } from '../features/export/export.js';
-import type { Aset, Panjar, Transaksi } from '../core/types.js';
+import type { Aset, Transaksi } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
-import { validasiBentukJurnalInput, validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
+import {
+  validasiBentukJurnalInput,
+  validasiBentukPanjarClose,
+  validasiBentukPanjarSerah,
+  validateAsetInput,
+  validateTransaksiInput,
+  type AsetInput,
+  type TransaksiInput,
+} from './validation.js';
 import {
   aturIdle,
   bukaKunci,
@@ -273,93 +279,106 @@ function registerIpc(): void {
 
   ipcMain.handle('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
     const k = perluBuka();
-    return k ? fail(k) : ok(listPanjar(db, status));
+    if (k) return fail(k);
+    const filter = status === 'OPEN' || status === 'CLOSED' ? status : undefined;
+    return ok(listPanjarV2(db, filter));
   });
 
   ipcMain.handle('panjar:items', (_e, id: string) => {
     const k = perluBuka();
-    return k ? fail(k) : ok(listPanjarItems(db, id));
+    if (k) return fail(k);
+    if (typeof id !== 'string' || !id.trim())
+      return fail('ID panjar wajib diisi.');
+    return ok(listPanjarItemsV2(db, id.trim()));
   });
 
   ipcMain.handle(
     'panjar:create',
-    (
-      _e,
-      input: { tanggal: string; penerima: string; jumlah: number; akun_kas_sumber: string },
-      alasan?: string,
-    ) => {
+    (_e, input: unknown, alasan?: unknown, opsi?: unknown) => {
       try {
         const k = perluBuka();
         if (k) return fail(k);
-        if (!input.penerima.trim()) return fail('Nama penerima wajib diisi.');
-        if (!Number.isInteger(input.jumlah) || input.jumlah <= 0)
-          return fail('Jumlah panjar harus > 0.');
-        const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
-        if (lockedErr) return fail(lockedErr, true);
-        const p: Panjar = { id: uid('p'), status: 'OPEN', ...input };
-        const simpan = db.transaction(() => {
-          insertPanjar(db, p);
-          insertTransaksi(db, panjarOpenToTransaksi(p));
-          catatAudit(db, {
-            aksi: `PANJAR-OPEN ${p.id}`,
-            alasan: String(alasan ?? ''),
-            baru: p,
-          });
+
+        const bentuk = validasiBentukPanjarSerah(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const alasanTeks = typeof alasan === 'string' ? alasan : undefined;
+        const konfirmasi =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+        const hasil = serahkanPanjar(db, {
+          ...bentuk.input,
+          ...(alasanTeks ? { alasan: alasanTeks } : {}),
+          konfirmasiPeringatan: konfirmasi,
         });
-        simpan();
-        return ok({ id: p.id });
+        if (!hasil.tersimpan || !hasil.panjar) {
+          const pesan =
+            hasil.errors.join(' ') ||
+            hasil.peringatan.join(' ') ||
+            'Panjar gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          const perluKonfirmasi =
+            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+          return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
+        return ok({
+          id: hasil.panjar.id,
+          panjar: hasil.panjar,
+          jurnal: hasil.jurnal,
+        });
       } catch (e) {
-        return fail(String(e));
+        return fail(e instanceof Error ? e.message : String(e));
       }
     },
   );
 
   ipcMain.handle(
     'panjar:close',
-    (
-      _e,
-      req: {
-        id: string;
-        tanggalClose: string;
-        items: { kategori_baga: string; nominal: number }[];
-      },
-      alasan?: string,
-    ) => {
+    (_e, req: unknown, alasan?: unknown) => {
       try {
         const k = perluBuka();
         if (k) return fail(k);
-        const errs = validatePanjarItems(req.items);
-        if (errs.length) return fail(errs.join(' '));
-        const lockedErr = guardPeriodeTerkunci(db, req.tanggalClose, alasan);
-        if (lockedErr) return fail(lockedErr, true);
-        const p = listPanjar(db).find((x) => x.id === req.id);
-        if (!p) return fail('Panjar tidak ditemukan.');
-        if (p.status === 'CLOSED') return fail('Panjar sudah closed.');
-        const close = panjarCloseToTransaksi(
-          p,
-          req.items.map((it) => ({ panjar_id: p.id, ...it })),
-          req.tanggalClose,
-        );
-        const rows = [...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])];
-        const totalRealisasi = req.items.reduce((s, i) => s + i.nominal, 0);
-        const sisa = close.sisaRow?.masuk ?? 0;
-        const simpan = db.transaction(() => {
-          closePanjar(db, p.id, rows);
-          catatAudit(db, {
-            aksi: `PANJAR-CLOSE ${p.id}`,
-            alasan: String(alasan ?? ''),
-            lama: p,
-            baru: { ...p, status: 'CLOSED', totalRealisasi, sisa },
-          });
+
+        const bentuk = validasiBentukPanjarClose(req);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const alasanTeks = typeof alasan === 'string' ? alasan : undefined;
+        const opsi = req as {
+          konfirmasiKurang?: unknown;
+          konfirmasiPeringatan?: unknown;
+        };
+
+        const hasil = closePanjarV2(db, {
+          id: bentuk.input.id,
+          tanggalClose: bentuk.input.tanggalClose,
+          items: bentuk.input.items,
+          ...(alasanTeks ? { alasan: alasanTeks } : {}),
+          konfirmasiKurang: opsi.konfirmasiKurang === true,
+          konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
         });
-        simpan();
+        if (!hasil.tersimpan || !hasil.panjar) {
+          const pesan =
+            hasil.errors.join(' ') ||
+            hasil.peringatan.join(' ') ||
+            'Pertanggungjawaban panjar gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          const perluKonfirmasi =
+            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+          return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
         return ok({
-          totalRealisasi,
-          sisa,
-          kurang: Math.max(0, totalRealisasi - p.jumlah),
+          totalRealisasi: hasil.totalRealisasi ?? 0,
+          sisa: hasil.sisa ?? 0,
+          kurang: hasil.kurang ?? 0,
+          panjar: hasil.panjar,
+          jurnal: hasil.jurnal,
         });
       } catch (e) {
-        return fail(String(e));
+        return fail(e instanceof Error ? e.message : String(e));
       }
     },
   );

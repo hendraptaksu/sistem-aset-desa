@@ -46,14 +46,143 @@ export function validateTransaksiInput(t: TransaksiInput): string[] {
 
 export type PanjarItemInput = { kategori_baga: string; nominal: number };
 
+/** Validasi lama; tetap dipakai test & sebagai jaring pengaman bentuk item. */
 export function validatePanjarItems(items: PanjarItemInput[]): string[] {
   const err: string[] = [];
-  if (items.length === 0) err.push('Rincian belanja masih kosong.');
+  if (!Array.isArray(items) || items.length === 0)
+    return ['Rincian belanja masih kosong.'];
   items.forEach((it, i) => {
     if (!isBeban(it.kategori_baga)) err.push(`Baris ${i + 1}: Baga tidak valid.`);
     if (!Number.isInteger(it.nominal) || it.nominal <= 0) err.push(`Baris ${i + 1}: nominal harus > 0.`);
   });
   return err;
+}
+
+// ---------------------------------------------------------------------------
+// Bentuk input Panjar v2 dari renderer (P1-4)
+// ---------------------------------------------------------------------------
+
+export type BentukPanjarSerah = {
+  id?: string;
+  tanggal: string;
+  penerima: string;
+  jumlah: number;
+  akunKasSumber: string;
+  keterangan?: string;
+  noBukti?: string;
+};
+
+export type BentukPanjarClose = {
+  id: string;
+  tanggalClose: string;
+  items: { kategori_baga: string; nominal: number }[];
+};
+
+type HasilBentuk<T> = { ok: true; input: T } | { ok: false; error: string };
+
+const teksOpsional = (
+  nilai: unknown,
+  label: string,
+  maks: number,
+): { ok: true; nilai: string } | { ok: false; error: string } => {
+  if (nilai === undefined || nilai === null) return { ok: true, nilai: '' };
+  if (typeof nilai !== 'string')
+    return { ok: false, error: `${label} tidak valid.` };
+  const teks = nilai.trim();
+  if (teks.length > maks)
+    return { ok: false, error: `${label} maks. ${maks} karakter.` };
+  return { ok: true, nilai: teks };
+};
+
+/** Normalisasi objek serah panjar; hanya field yang dikenal yang diteruskan. */
+export function validasiBentukPanjarSerah(
+  nilai: unknown,
+): HasilBentuk<BentukPanjarSerah> {
+  if (!objek(nilai)) return { ok: false, error: 'Data panjar tidak lengkap.' };
+
+  const id = teksOpsional(nilai.id, 'ID panjar', 200);
+  if (!id.ok) return id;
+  const tanggal = teksOpsional(nilai.tanggal, 'Tanggal panjar', 10);
+  if (!tanggal.ok) return tanggal;
+  if (!tanggal.nilai) return { ok: false, error: 'Tanggal panjar wajib diisi.' };
+
+  const penerima = teksOpsional(nilai.penerima, 'Nama penerima', 200);
+  if (!penerima.ok) return penerima;
+  if (!penerima.nilai) return { ok: false, error: 'Nama penerima panjar wajib diisi.' };
+
+  const jumlah = nilai.jumlah;
+  if (typeof jumlah !== 'number' || !Number.isSafeInteger(jumlah) || jumlah <= 0)
+    return { ok: false, error: 'Jumlah panjar harus bilangan bulat lebih dari 0 (satuan sen).' };
+
+  const akunKasSumber = teksOpsional(nilai.akunKasSumber, 'Akun kas sumber', 20);
+  if (!akunKasSumber.ok) return akunKasSumber;
+  if (!akunKasSumber.nilai)
+    return { ok: false, error: 'Akun kas sumber panjar wajib dipilih.' };
+
+  const keterangan = teksOpsional(nilai.keterangan, 'Keterangan', 1000);
+  if (!keterangan.ok) return keterangan;
+  const noBukti = teksOpsional(nilai.noBukti, 'Nomor bukti', 100);
+  if (!noBukti.ok) return noBukti;
+
+  return {
+    ok: true,
+    input: {
+      ...(id.nilai ? { id: id.nilai } : {}),
+      tanggal: tanggal.nilai,
+      penerima: penerima.nilai,
+      jumlah,
+      akunKasSumber: akunKasSumber.nilai,
+      ...(keterangan.nilai ? { keterangan: keterangan.nilai } : {}),
+      ...(noBukti.nilai ? { noBukti: noBukti.nilai } : {}),
+    },
+  };
+}
+
+/** Normalisasi objek close panjar; item boleh memakai `akun` atau `kategori_baga`. */
+export function validasiBentukPanjarClose(
+  nilai: unknown,
+): HasilBentuk<BentukPanjarClose> {
+  if (!objek(nilai)) return { ok: false, error: 'Data pertanggungjawaban panjar tidak lengkap.' };
+
+  const id = teksOpsional(nilai.id, 'ID panjar', 200);
+  if (!id.ok) return id;
+  if (!id.nilai) return { ok: false, error: 'Panjar yang akan ditutup belum dipilih.' };
+
+  const tanggalClose = teksOpsional(nilai.tanggalClose, 'Tanggal realisasi', 10);
+  if (!tanggalClose.ok) return tanggalClose;
+  if (!tanggalClose.nilai)
+    return { ok: false, error: 'Tanggal realisasi panjar wajib diisi.' };
+
+  if (!Array.isArray(nilai.items))
+    return { ok: false, error: 'Rincian realisasi panjar belum diisi.' };
+  if (nilai.items.length === 0)
+    return { ok: false, error: 'Rincian realisasi panjar masih kosong.' };
+  if (nilai.items.length > 500)
+    return { ok: false, error: 'Rincian realisasi panjar maksimal 500 baris.' };
+
+  const items: { kategori_baga: string; nominal: number }[] = [];
+  for (let i = 0; i < nilai.items.length; i += 1) {
+    const it = nilai.items[i];
+    if (!objek(it))
+      return { ok: false, error: `Baris ${i + 1}: rincian tidak valid.` };
+    const akun = teksOpsional(
+      it.kategori_baga ?? it.akun,
+      `Akun baris ${i + 1}`,
+      20,
+    );
+    if (!akun.ok) return akun;
+    if (!akun.nilai)
+      return { ok: false, error: `Baris ${i + 1}: akun BEBAN belum dipilih.` };
+    const nominal = it.nominal;
+    if (typeof nominal !== 'number' || !Number.isSafeInteger(nominal) || nominal <= 0)
+      return {
+        ok: false,
+        error: `Baris ${i + 1}: nominal harus bilangan bulat lebih dari 0.`,
+      };
+    items.push({ kategori_baga: akun.nilai, nominal });
+  }
+
+  return { ok: true, input: { id: id.nilai, tanggalClose: tanggalClose.nilai, items } };
 }
 
 export const ASET_JENIS = ['TANAH', 'BANGUNAN', 'LAINNYA'] as const;

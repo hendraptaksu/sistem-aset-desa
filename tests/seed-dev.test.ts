@@ -55,7 +55,7 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
     const { db } = freshDb();
     try {
       const tabel = namaTabel(db);
-      for (const lama of ['transaksi', 'panjar', 'panjar_item', 'coa']) {
+      for (const lama of ['transaksi', 'coa']) {
         expect(tabel, `tabel lama ${lama} seharusnya tidak ada`).not.toContain(lama);
       }
       expect(tabel).toEqual(
@@ -67,6 +67,9 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
           'audit_log',
           'pengaturan',
           'aset',
+          // P1-4: metadata panjar v2 (bukan tabel single-entry lama).
+          'panjar',
+          'panjar_item',
         ]),
       );
       // tutup_buku v2 tidak menyimpan laba sebagai sumber angka.

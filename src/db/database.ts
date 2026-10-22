@@ -13,14 +13,17 @@ import { COA } from './coa.js';
  * - 2    = model double-entry (jurnal + jurnal_baris). Tabel single-entry lama
  *          dibuang saat reset POC (P0-3); tidak ada migrasi data (K6).
  * - 3    = audit log lengkap (P0-9): kolom `data_baru_json` (sebelum/sesudah).
+ * - 4    = metadata panjar v2 (P1-4): `panjar` + `panjar_item` menyimpan
+ *          dokumen serah/pertanggungjawaban, bukan saldo/laba. Jurnal tetap
+ *          satu-satunya sumber angka.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
- * DDL v2/v3. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
+ * DDL v2–v4. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
  * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
- * dari DB yang dibuat sebelum P0-3.
+ * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -111,6 +114,39 @@ CREATE TABLE IF NOT EXISTS aset (
 );
 CREATE INDEX IF NOT EXISTS idx_aset_jenis ON aset(jenis);
 CREATE INDEX IF NOT EXISTS idx_aset_kode ON aset(kode);
+
+-- Panjar v2 (P1-4): dokumen serah & pertanggungjawaban.
+-- Angka saldo/realisasi TIDAK disimpan di sini; laporan tetap dihitung dari
+-- jurnal. Tabel ini hanya menyimpan metadata dokumen + rincian item.
+CREATE TABLE IF NOT EXISTS panjar (
+  id TEXT PRIMARY KEY,
+  tanggal TEXT NOT NULL,
+  penerima TEXT NOT NULL,
+  jumlah INTEGER NOT NULL CHECK (jumlah > 0),
+  akun_kas_sumber TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+  tanggal_close TEXT,
+  jurnal_open_id TEXT NOT NULL,
+  jurnal_close_id TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (akun_kas_sumber) REFERENCES akun(kode),
+  FOREIGN KEY (jurnal_open_id) REFERENCES jurnal(id),
+  FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id)
+);
+CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
+CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
+
+CREATE TABLE IF NOT EXISTS panjar_item (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  panjar_id TEXT NOT NULL,
+  kategori_baga TEXT NOT NULL,
+  nominal INTEGER NOT NULL CHECK (nominal > 0),
+  jurnal_id TEXT NOT NULL,
+  FOREIGN KEY (panjar_id) REFERENCES panjar(id) ON DELETE CASCADE,
+  FOREIGN KEY (kategori_baga) REFERENCES akun(kode),
+  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
+);
+CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {
@@ -125,16 +161,27 @@ function kolomTabel(db: Database.Database, nama: string): string[] {
 }
 
 /**
- * K6: POC, data lama dibuang. Hapus tabel single-entry dari DB versi lama
- * (termasuk DB v2 awal P0-2 yang masih membawa tabel lama).
+ * K6: POC, data single-entry lama dibuang. Hapus `transaksi`/`coa` dan panjar
+ * bentuk v1 (tanpa jurnal_open_id). Panjar bentuk v2 (P1-4) dipertahankan agar
+ * metadata dokumen tidak hilang saat aplikasi dibuka ulang.
  * `pengaturan` (PIN) dan `aset` sengaja dipertahankan.
  */
 function buangTabelLama(db: Database.Database): void {
-  // Anak dulu agar tidak melanggar foreign key.
-  db.exec('DROP TABLE IF EXISTS panjar_item');
-  db.exec('DROP TABLE IF EXISTS panjar');
   db.exec('DROP TABLE IF EXISTS transaksi');
   db.exec('DROP TABLE IF EXISTS coa');
+
+  // Panjar v1 (single-entry) tidak punya kolom jurnal_open_id / jurnal_id.
+  // Bentuk v2 (P1-4) WAJIB dipertahankan: metadata panjar jangan hilang hanya
+  // karena aplikasi dibuka ulang. Anak dibuang lebih dulu agar aman FK.
+  if (tabelAda(db, 'panjar') && !kolomTabel(db, 'panjar').includes('jurnal_open_id')) {
+    db.exec('DROP TABLE IF EXISTS panjar_item');
+    db.exec('DROP TABLE IF EXISTS panjar');
+  } else if (tabelAda(db, 'panjar_item')) {
+    const kolomItem = kolomTabel(db, 'panjar_item');
+    if (!kolomItem.includes('id') || !kolomItem.includes('jurnal_id')) {
+      db.exec('DROP TABLE IF EXISTS panjar_item');
+    }
+  }
 
   // tutup_buku lama menyimpan `laba` (sumber bug Neraca v1). Buang hanya bila
   // bentuknya masih lama; bentuk v2 (tanpa laba) dipertahankan.

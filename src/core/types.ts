@@ -19,15 +19,33 @@ export type Panjar = {
   id: string;
   tanggal: string; // YYYY-MM-DD
   penerima: string;
-  jumlah: number;
+  jumlah: number; // sen
   akun_kas_sumber: string;
   status: 'OPEN' | 'CLOSED';
+  /** Tanggal pertanggungjawaban; null selama masih OPEN. */
+  tanggal_close?: string | null;
+  /** Jurnal serah (D 1040 / K kas sumber). */
+  jurnal_open_id?: string | null;
+  /** Jurnal pertanggungjawaban; null selama masih OPEN. */
+  jurnal_close_id?: string | null;
+  created_at?: string; // ISO
+  /**
+   * Ringkasan TURUNAN untuk daftar UI (dihitung dari `panjar_item`), bukan
+   * kolom tersimpan. Sumber angka laporan tetap jurnal.
+   */
+  total_realisasi?: number;
+  sisa?: number;
+  kurang?: number;
 };
 
 export type PanjarItem = {
+  /** Auto-increment; opsional agar bentuk lama tetap kompatibel. */
+  id?: number;
   panjar_id: string;
   kategori_baga: string; // kode BEBAN (lihat BEBAN_KODES di db/coa.ts)
-  nominal: number;
+  nominal: number; // sen
+  /** Jurnal pertanggungjawaban yang memuat realisasi item ini. */
+  jurnal_id?: string | null;
 };
 
 // ---- Jurnal double-entry (sumber kebenaran akuntansi) ----

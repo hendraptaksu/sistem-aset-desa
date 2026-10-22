@@ -201,3 +201,123 @@ export function buatJurnalPanjarSerah(form: FormPanjarSerah): JurnalInput {
   const kas = akunKas(form.akunKas, 'Akun kas sumber');
   return susun(form, 'PANJAR', [debit(AKUN_PANJAR, nominal), kredit(kas, nominal)]);
 }
+
+export type ItemPanjarClose = {
+  /** Kode akun realisasi; wajib akun BEBAN (bukan kas/bank/1040). */
+  akun: string;
+  /** Nominal dalam sen; bilangan bulat > 0. */
+  nominal: number;
+};
+
+export type FormPanjarClose = {
+  /** Tanggal pertanggungjawaban (YYYY-MM-DD). */
+  tanggal: string;
+  /** Nama penerima panjar; hanya dipakai untuk keterangan otomatis. */
+  penerima?: string;
+  /** Kas/bank sumber panjar yang menerima sisa / membayar kekurangan. */
+  akunKas: string;
+  /** Jumlah panjar yang diserahkan (sen), harus > 0. */
+  jumlahPanjar: number;
+  /** Rincian realisasi per akun BEBAN. */
+  items: ItemPanjarClose[];
+  keterangan?: string;
+  noBukti?: string;
+  id?: string;
+  alasan?: string;
+};
+
+export type HasilPanjarClose = {
+  input: JurnalInput;
+  /** Total realisasi belanja (sen). */
+  totalRealisasi: number;
+  /** Uang panjar yang kembali ke kas (0 bila pas atau kurang). */
+  sisa: number;
+  /** Kekurangan yang dibayar dari kas sumber (0 bila pas atau sisa). */
+  kurang: number;
+  /** true bila realisasi melebihi panjar dan operator wajib mengonfirmasi. */
+  perluKonfirmasi: boolean;
+};
+
+/**
+ * Pertanggungjawaban panjar (close). Menghasilkan jurnal yang selalu
+ * seimbang dan menghabiskan saldo 1040 untuk panjar tersebut:
+ *
+ * - Realisasi ≤ panjar: **D masing-masing beban + D kas (sisa) / K 1040**.
+ * - Realisasi > panjar:  **D masing-masing beban / K 1040 (panjar) + K kas (kurang)**.
+ *
+ * `perluKonfirmasi` hanya menandai kekurangan; peringatan kas minus tetap
+ * ditangani posting layer saat jurnal disimpan.
+ */
+export function buatJurnalPanjarClose(form: FormPanjarClose): HasilPanjarClose {
+  const tanggal = wajibTanggal(form.tanggal);
+  const jumlahPanjar = wajibNominal(form.jumlahPanjar);
+  const kas = akunKas(form.akunKas, 'Akun kas sumber');
+
+  if (!Array.isArray(form.items) || form.items.length === 0)
+    throw new Error('Rincian realisasi panjar masih kosong. Tambah minimal satu baris beban.');
+
+  // Gabungkan baris dengan akun sama agar pratinjau jurnal rapi dan tidak
+  // menghasilkan debit ganda untuk akun yang sama.
+  const perAkun = new Map<string, number>();
+  form.items.forEach((it, i) => {
+    const no = i + 1;
+    if (!it || typeof it !== 'object')
+      throw new Error(`Rincian realisasi baris ${no} tidak valid.`);
+    const data = akunCoa(String(it.akun ?? ''), `Akun realisasi baris ${no}`);
+    if (isAkunKas(data.kode))
+      throw new Error(
+        `Akun realisasi baris ${no} (${data.kode}) adalah kas/bank. Realisasi panjar harus memakai akun BEBAN.`,
+      );
+    if (data.kode === AKUN_PANJAR)
+      throw new Error(
+        `Akun realisasi baris ${no} tidak boleh 1040 UANG PANJAR. Pilih akun BEBAN untuk belanja.`,
+      );
+    if (data.tipe !== 'BEBAN')
+      throw new Error(
+        `Akun realisasi baris ${no} (${data.kode} — ${data.nama}) bukan akun BEBAN.`,
+      );
+    const nominal = wajibNominal(it.nominal);
+    perAkun.set(data.kode, (perAkun.get(data.kode) ?? 0) + nominal);
+  });
+
+  const totalRealisasi = [...perAkun.values()].reduce((s, n) => s + n, 0);
+  if (totalRealisasi <= 0)
+    throw new Error('Total realisasi panjar harus lebih dari 0.');
+
+  const sisa = Math.max(0, jumlahPanjar - totalRealisasi);
+  const kurang = Math.max(0, totalRealisasi - jumlahPanjar);
+
+  const baris: JurnalBarisInput[] = [];
+  for (const [akunBeban, nominal] of perAkun) baris.push(debit(akunBeban, nominal));
+  if (sisa > 0) baris.push(debit(kas, sisa));
+  baris.push(kredit(AKUN_PANJAR, jumlahPanjar));
+  if (kurang > 0) baris.push(kredit(kas, kurang));
+
+  const namaPenerima = String(form.penerima ?? '').trim();
+  const keterangan =
+    String(form.keterangan ?? '').trim() ||
+    `Pertanggungjawaban panjar${namaPenerima ? ` ${namaPenerima}` : ''}`;
+
+  const input = susun(
+    {
+      tanggal,
+      // Total jurnal = sisi yang lebih besar; susun() memverifikasi debit =
+      // kredit = nominal.
+      nominal: Math.max(totalRealisasi, jumlahPanjar),
+      keterangan,
+      noBukti: form.noBukti,
+      id: form.id,
+      alasan: form.alasan,
+    },
+    'PANJAR',
+    baris,
+  );
+
+  return {
+    input,
+    totalRealisasi,
+    sisa,
+    kurang,
+    perluKonfirmasi: kurang > 0,
+  };
+}
