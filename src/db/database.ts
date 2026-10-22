@@ -163,23 +163,34 @@ export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database
   // checkout baru pasti belum punya foldernya.)
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  migrasi(db);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    migrasi(db);
 
-  // Upsert daftar akun resmi saat DB dibuka. `akun` adalah master COA untuk
-  // model double-entry.
-  const seedTx = db.transaction(() => {
-    const upsertAkun = db.prepare(
-      `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
-       VALUES (?, ?, ?, ?, 1)
-       ON CONFLICT(kode) DO UPDATE SET
-         nama = excluded.nama,
-         tipe = excluded.tipe,
-         posisi_normal = excluded.posisi_normal`,
-    );
-    for (const c of COA) upsertAkun.run(c.kode, c.nama, c.tipe, c.posisi_normal);
-  });
-  seedTx();
-  return db;
+    // Upsert daftar akun resmi saat DB dibuka. `akun` adalah master COA untuk
+    // model double-entry.
+    const seedTx = db.transaction(() => {
+      const upsertAkun = db.prepare(
+        `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
+         VALUES (?, ?, ?, ?, 1)
+         ON CONFLICT(kode) DO UPDATE SET
+           nama = excluded.nama,
+           tipe = excluded.tipe,
+           posisi_normal = excluded.posisi_normal`,
+      );
+      for (const c of COA) upsertAkun.run(c.kode, c.nama, c.tipe, c.posisi_normal);
+    });
+    seedTx();
+    return db;
+  } catch (e) {
+    // Jangan tinggalkan koneksi/file handle terbuka bila migrasi gagal
+    // (penting untuk restore: file harus bisa ditukar/dihapus di Windows).
+    try {
+      db.close();
+    } catch {
+      /* biarkan error asli yang dilaporkan */
+    }
+    throw e;
+  }
 }

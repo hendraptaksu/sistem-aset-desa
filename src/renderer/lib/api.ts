@@ -164,7 +164,7 @@ export const api = {
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupStatus: () => call<{ path: string }>('backup:status'),
-  backupImport: () => call<{ restored: boolean; path: string }>('backup:import'),
+  backupImport: () => call<{ restored: boolean; path: string; preRestorePath?: string }>('backup:import'),
 };
 
 export function isPerluAlasan(e: unknown): boolean {

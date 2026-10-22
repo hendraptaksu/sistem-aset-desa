@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { config as loadEnv } from 'dotenv';
-import { join, dirname } from 'path';
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join, dirname, basename } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
@@ -40,7 +40,13 @@ import {
 } from '../core/reports.js';
 import { listBarisJurnal } from '../db/laporan.js';
 import { buildDashboardJurnal } from '../features/dashboard/dashboard.js';
-import { autoBackupHarian, lastAutoBackup } from '../features/export/export.js';
+import {
+  autoBackupHarian,
+  backupPraUpgrade,
+  backupVacuumInto,
+  lastAutoBackup,
+  restoreDbAman,
+} from '../features/export/export.js';
 import type { Aset, Panjar, Transaksi } from '../core/types.js';
 import type { JurnalInput } from '../core/posting.js';
 import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
@@ -564,7 +570,7 @@ function registerIpc(): void {
     },
   );
 
-  // Backup manual .db via save dialog (copy file).
+  // Backup manual .db via save dialog (VACUUM INTO — aman saat WAL terbuka).
   ipcMain.handle('backup:export', async () => {
     try {
       const k = perluBuka();
@@ -575,10 +581,10 @@ function registerIpc(): void {
         filters: [{ name: 'SQLite DB', extensions: ['db'] }],
       });
       if (canceled || !filePath) return ok({ saved: false, path: '' });
-      copyFileSync(dbPath(), filePath);
+      backupVacuumInto(db, filePath);
       return ok({ saved: true, path: filePath });
     } catch (e) {
-      return fail(String(e));
+      return fail(e instanceof Error ? e.message : String(e));
     }
   });
 
@@ -590,10 +596,10 @@ function registerIpc(): void {
       const dir = join(dirname(dbPath()), 'backups');
       mkdirSync(dir, { recursive: true });
       const dest = join(dir, `pura-${tahun}.db`);
-      copyFileSync(dbPath(), dest);
+      backupVacuumInto(db, dest);
       return ok({ path: dest });
     } catch (e) {
-      return fail(String(e));
+      return fail(e instanceof Error ? e.message : String(e));
     }
   });
 
@@ -609,7 +615,8 @@ function registerIpc(): void {
     }
   });
 
-  // Restore .db via open dialog. Tutup koneksi dulu, copy, buka ulang.
+  // Restore .db via open dialog: validasi kandidat → cadangkan DB aktif →
+  // tukar file atomik → buka ulang → audit. Kegagalan tidak merusak DB lama.
   ipcMain.handle('backup:import', async () => {
     try {
       const k = perluBuka();
@@ -620,17 +627,24 @@ function registerIpc(): void {
       });
       if (canceled || filePaths.length === 0) return ok({ restored: false, path: '' });
       const src = filePaths[0]!;
-      db.close();
-      copyFileSync(src, dbPath());
-      db = openDb(dbPath());
-      return ok({ restored: true, path: dbPath() });
-    } catch (e) {
+      const hasil = restoreDbAman(db, { dbPath: dbPath(), backupPath: src });
+      db = hasil.db;
+      if (!hasil.ok) return fail(hasil.error);
       try {
-        db = openDb(dbPath());
-      } catch {
-        /* biarkan error asli */
+        insertAuditLog(
+          db,
+          buatAuditLog('RESTORE', `Restore dari ${basename(src)}`, {
+            sumber: src,
+            cadangan_sebelum_restore: hasil.preRestorePath,
+            db_aktif: dbPath(),
+          }),
+        );
+      } catch (e) {
+        console.warn('[restore] gagal menulis audit:', String(e));
       }
-      return fail(String(e));
+      return ok({ restored: true, path: dbPath(), preRestorePath: hasil.preRestorePath });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
     }
   });
 }
@@ -669,7 +683,15 @@ function createWindow(): void {
 }
 
 void app.whenReady().then(() => {
-  db = openDb(dbPath());
+  const pathDb = dbPath();
+  // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak hilang.
+  try {
+    const p = backupPraUpgrade(pathDb);
+    if (p) console.log(`[backup-upgrade] ${p}`);
+  } catch (e) {
+    console.warn('[backup-upgrade] gagal:', String(e));
+  }
+  db = openDb(pathDb);
   // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
   try {
     const p = autoBackupHarian(db, join(dirname(dbPath()), 'backups'), 7);

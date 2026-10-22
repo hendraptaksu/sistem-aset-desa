@@ -1,7 +1,7 @@
 // Builder laporan murni (renderer-safe) — TANPA node:fs.
 // Dipakai tab Electron di renderer: bangun workbook/HTML dari hasil builder,
 // lalu kirim buffer ke main via IPC `file:save-buffer` untuk save dialog.
-// Versi Node (writeXlsx/backupDb/restoreDb) ada di export.ts (main/tests saja).
+// Versi Node (writeXlsx/backupVacuumInto/restoreDbAman) ada di export.ts (main/tests saja).
 
 import ExcelJS from 'exceljs';
 import { formatPersen, formatRp, formatTanggal } from '../../utils/format.js';

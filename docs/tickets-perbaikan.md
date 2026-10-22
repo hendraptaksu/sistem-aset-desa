@@ -164,7 +164,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run tests/tutup.test.ts`
   - **Dependency:** P0-5
 
-- [ ] **P0-8 — Backup & restore `.db` aman**
+- [x] **P0-8 — Backup & restore `.db` aman** (2026-10-22: `backupVacuumInto` + `backupPraUpgrade`/restore tervalidasi (integrity_check, tabel wajib, versi) dengan cadangan `pre-restore` & pemulihan otomatis; 159/159 test hijau)
   - **Konteks:** `backup:export`/`backup:auto` memakai `copyFileSync` saat WAL terbuka; restore tanpa
     validasi & tanpa cadangan. Berlaku sejak sekarang sampai v2.
   - **Langkah:**

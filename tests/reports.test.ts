@@ -16,10 +16,9 @@ import { buildRealisasi } from '../src/features/reports/realisasi/realisasi.js';
 import { buildSurplus, cekSilangSurplusBerjalan } from '../src/features/reports/surplus/surplus.js';
 import { buildDashboard } from '../src/features/dashboard/dashboard.js';
 import {
-  backupDb,
+  backupVacuumInto,
   pembantuToWorkbook,
   realisasiToWorkbook,
-  restoreDb,
   surplusToWorkbook,
   workbookToBuffer,
   writeXlsx,
@@ -138,13 +137,12 @@ describe('B5 export xlsx keluar buffer/file', () => {
   });
 });
 
-describe('B6 backup export/import .db (copy file)', () => {
-  it('backup lalu restore isi sama', () => {
+describe('B6 backup .db (VACUUM INTO, aman saat WAL terbuka)', () => {
+  it('backup berisi seluruh jurnal', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-db-'));
     try {
       const dbPath = join(dir, 'pura.db');
       const bakPath = join(dir, 'pura-backup.db');
-      const restoredPath = join(dir, 'pura-restored.db');
       const db = openDb(dbPath);
       for (let i = 0; i < 20; i++) {
         insertJurnal(
@@ -157,12 +155,10 @@ describe('B6 backup export/import .db (copy file)', () => {
         );
       }
       expect(listJurnal(db)).toHaveLength(20);
-      db.close();
-      expect(backupDb(dbPath, bakPath)).toBe(bakPath);
+      expect(backupVacuumInto(db, bakPath)).toBe(bakPath);
       expect(existsSync(bakPath)).toBe(true);
-      expect(restoreDb(bakPath, restoredPath)).toBe(restoredPath);
-      const db2 = openDb(restoredPath);
-      // openDb menjalankan DDL (idempoten); isi jurnal ikut ter-copy
+      db.close();
+      const db2 = openDb(bakPath);
       expect(listJurnal(db2).length).toBe(20);
       db2.close();
       expect(readFileSync(bakPath).length).toBeGreaterThan(0);

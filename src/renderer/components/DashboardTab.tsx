@@ -50,7 +50,9 @@ export function DashboardTab() {
     try {
       const r = await api.backupImport();
       if (r.restored) {
-        setInfo(`Restore OK dari backup. Memuat ulang…`);
+        setInfo(
+          `Restore OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Memuat ulang…`,
+        );
         await muat();
       }
     } catch (e) {
