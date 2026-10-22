@@ -4,6 +4,7 @@
 
 import type Database from 'better-sqlite3';
 import { KAS_KODES, isAkunKas } from './coa.js';
+import { buatAuditLog } from '../core/ledger.js';
 import { insertAuditLog, insertJurnal, listAkun, listTutupBuku } from './repository.js';
 import {
   validasiJurnal,
@@ -89,7 +90,20 @@ export function postingJurnal(
   try {
     const simpan = db.transaction(() => {
       const jurnal = insertJurnal(db, input.header, input.baris);
-      for (const a of opsi.audit ?? []) insertAuditLog(db, a);
+      // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
+      // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.
+      const audit =
+        opsi.audit === undefined
+          ? [
+              buatAuditLog(
+                `CREATE ${jurnal.id}`,
+                String(input.alasan ?? '').trim(),
+                undefined,
+                { jurnal, baris: input.baris },
+              ),
+            ]
+          : opsi.audit;
+      for (const a of audit) insertAuditLog(db, a);
       return jurnal;
     });
     const jurnal = simpan();
@@ -101,4 +115,28 @@ export function postingJurnal(
       errors: [...hasil.errors, e instanceof Error ? e.message : String(e)],
     };
   }
+}
+
+/**
+ * Helper pemakaian nanti untuk Saldo Awal (belum ada endpoint/UI di P0-9).
+ * Sama seperti `postingJurnal`, tetapi memaksa jenis SALDO_AWAL dan memberi
+ * aksi audit khusus `SALDO-AWAL` agar mudah dibedakan dari jurnal biasa.
+ */
+export function postingSaldoAwal(
+  db: Database.Database,
+  input: JurnalInput,
+  opsi: OpsiPosting = {},
+): HasilPosting {
+  const header = { ...input.header, jenis: 'SALDO_AWAL' as const };
+  const audit =
+    opsi.audit ??
+    [
+      buatAuditLog(
+        `SALDO-AWAL ${header.id}`,
+        String(input.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
+        undefined,
+        { jurnal: header, baris: input.baris },
+      ),
+    ];
+  return postingJurnal(db, { ...input, header }, { ...opsi, audit });
 }

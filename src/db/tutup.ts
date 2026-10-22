@@ -130,10 +130,12 @@ export function tutupBuku(
     (validasi.aksi === 'TUTUP-ULANG'
       ? `Tutup ulang tahun ${angka}`
       : `Tutup buku tahun ${angka}`);
-  const audit = buatAuditLog(`${validasi.aksi} ${angka}`, alasan, {
-    lama,
-    baru: data,
-  });
+  const audit = buatAuditLog(
+    `${validasi.aksi} ${angka}`,
+    alasan,
+    lama ?? undefined,
+    data,
+  );
 
   const simpan = db.transaction(() => {
     insertTutupBuku(db, data);

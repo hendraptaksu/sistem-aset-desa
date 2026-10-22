@@ -16,6 +16,7 @@ import {
   KUNCI_IDLE_MENIT,
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
+  catatAudit,
   getIdleMenit,
   getPengaturan,
   setPengaturan,
@@ -93,11 +94,29 @@ function simpanPin(db: Database.Database, pin: string): void {
   setPengaturan(db, KUNCI_PIN_HASH, hashPin(pin, salt));
 }
 
+/** Audit PIN tidak pernah menyimpan PIN/salt/hash — cukup penanda tindakan. */
+function catatAuditPin(
+  db: Database.Database,
+  aksi: string,
+  alasan: string,
+  label = 'PIN diganti',
+): void {
+  catatAudit(db, {
+    aksi,
+    alasan,
+    baru: { pin: label },
+  });
+}
+
 export function setupPin(db: Database.Database, pin: string): string | null {
   if (sudahSetupPin(db)) return 'PIN sudah ada. Pakai menu Ganti PIN di Pengaturan.';
   const v = validasiPin(pin);
   if (v) return v;
-  simpanPin(db, pin);
+  const tx = db.transaction(() => {
+    simpanPin(db, pin);
+    catatAuditPin(db, 'PENGATURAN-SETUP-PIN', 'PIN dibuat', 'PIN dibuat');
+  });
+  tx();
   sesi.terbuka = true;
   sesi.gagal = 0;
   sesi.blokirSampai = 0;
@@ -130,14 +149,28 @@ export function ubahPin(db: Database.Database, lama: string, baru: string): stri
   const v = validasiPin(baru);
   if (v) return v;
   if (lama === baru) return 'PIN baru sama dengan PIN lama.';
-  simpanPin(db, baru);
+  const tx = db.transaction(() => {
+    simpanPin(db, baru);
+    catatAuditPin(db, 'PENGATURAN-PIN', 'PIN diganti');
+  });
+  tx();
   return null;
 }
 
 export function aturIdle(db: Database.Database, menit: number): string | null {
   const v = validasiIdleMenit(menit);
   if (v) return v;
-  setPengaturan(db, KUNCI_IDLE_MENIT, String(menit));
+  const lama = getIdleMenit(db, IDLE_DEFAULT_MENIT);
+  const tx = db.transaction(() => {
+    setPengaturan(db, KUNCI_IDLE_MENIT, String(menit));
+    catatAudit(db, {
+      aksi: 'PENGATURAN-IDLE',
+      alasan: `Auto-kunci diubah dari ${lama} ke ${menit} menit`,
+      lama: { idleMenit: lama },
+      baru: { idleMenit: menit },
+    });
+  });
+  tx();
   return null;
 }
 
@@ -145,7 +178,11 @@ export function resetPaksa(db: Database.Database, kode: string, pinBaru: string)
   if (kode.trim() !== kodeDarurat()) return 'Kode darurat salah.';
   const v = validasiPin(pinBaru);
   if (v) return v;
-  simpanPin(db, pinBaru);
+  const tx = db.transaction(() => {
+    simpanPin(db, pinBaru);
+    catatAuditPin(db, 'PENGATURAN-RESET-PIN', 'PIN direset dengan kode darurat');
+  });
+  tx();
   sesi.terbuka = true;
   sesi.gagal = 0;
   sesi.blokirSampai = 0;

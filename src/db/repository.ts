@@ -2,7 +2,7 @@
 // Kunci longgar ditegakkan di sini: update/delete periode terkunci wajib alasan.
 
 import type Database from 'better-sqlite3';
-import { isPeriodeTerkunci } from '../core/ledger.js';
+import { buatAuditLog, isPeriodeTerkunci } from '../core/ledger.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import type { CoaTipe, PosisiNormal } from './coa.js';
 import type {
@@ -408,20 +408,134 @@ export function insertTutupBuku(db: Database.Database, t: TutupBuku): void {
   ).run(t.tahun, t.created_at, t.backup_path, t.catatan);
 }
 
+const rowToAuditLog = (r: Record<string, unknown>): AuditLog => ({
+  id: String(r.id),
+  tanggal: String(r.tanggal),
+  aksi: String(r.aksi),
+  alasan: String(r.alasan ?? ''),
+  data_lama_json: String(r.data_lama_json ?? ''),
+  data_baru_json: String(r.data_baru_json ?? ''),
+});
+
 export function insertAuditLog(db: Database.Database, a: AuditLog): void {
-  db.prepare('INSERT INTO audit_log (id, tanggal, aksi, alasan, data_lama_json) VALUES (?, ?, ?, ?, ?)').run(
+  db.prepare(
+    `INSERT INTO audit_log (id, tanggal, aksi, alasan, data_lama_json, data_baru_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
     a.id,
     a.tanggal,
     a.aksi,
     a.alasan,
-    a.data_lama_json,
+    a.data_lama_json ?? '',
+    a.data_baru_json ?? '',
   );
 }
 
-export function listAuditLog(db: Database.Database, limit = 200): AuditLog[] {
-  return db
-    .prepare('SELECT * FROM audit_log ORDER BY tanggal DESC LIMIT ?')
-    .all(limit) as AuditLog[];
+export type InputAudit = {
+  aksi: string;
+  alasan?: string;
+  /** Kondisi sebelum operasi. */
+  lama?: unknown;
+  /** Kondisi sesudah operasi. */
+  baru?: unknown;
+  id?: string;
+  tanggal?: string;
+};
+
+/**
+ * Helper audit terpusat (P0-9). Semua operasi yang wajib punya jejak audit
+ * memakai fungsi ini supaya bentuk data sebelum/sesudah konsisten.
+ * Pemanggil yang butuh atomik membungkusnya dalam `db.transaction`.
+ */
+export function catatAudit(db: Database.Database, input: InputAudit): AuditLog {
+  const row = buatAuditLog(
+    input.aksi,
+    String(input.alasan ?? ''),
+    input.lama,
+    input.baru,
+    { id: input.id, tanggal: input.tanggal },
+  );
+  insertAuditLog(db, row);
+  return row;
+}
+
+/** Filter riwayat audit; `aksi` dicocokkan persis atau sebagai awalan. */
+export type AuditFilter = {
+  aksi?: string;
+  /** Tanggal awal YYYY-MM-DD (inklusif). */
+  mulai?: string;
+  /** Tanggal akhir YYYY-MM-DD (inklusif). */
+  sampai?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function auditWhere(f: AuditFilter): { sql: string; params: unknown[] } {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  const aksi = String(f.aksi ?? '').trim();
+  if (aksi) {
+    // Escape wildcard user agar filter teks tidak berubah jadi pola LIKE bebas.
+    const escaped = aksi.replace(/[\\%_]/g, '\\$&');
+    where.push("(aksi = ? OR aksi LIKE ? ESCAPE '\\')");
+    params.push(aksi, `${escaped}%`);
+  }
+  if (f.mulai) {
+    where.push('substr(tanggal, 1, 10) >= ?');
+    params.push(f.mulai);
+  }
+  if (f.sampai) {
+    where.push('substr(tanggal, 1, 10) <= ?');
+    params.push(f.sampai);
+  }
+  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+function angkaAman(nilai: unknown, bawaan: number, min: number, maks: number): number {
+  const n = Number(nilai);
+  if (!Number.isFinite(n)) return bawaan;
+  return Math.min(maks, Math.max(min, Math.trunc(n)));
+}
+
+/**
+ * Daftar audit terbaru (default 200). Tetap mengembalikan array agar pemanggil
+ * lama kompatibel; `listAuditLogPage` menambahkan total untuk pagination UI.
+ */
+export function listAuditLog(
+  db: Database.Database,
+  filter: AuditFilter | number = {},
+): AuditLog[] {
+  const f: AuditFilter = typeof filter === 'number' ? { limit: filter } : filter;
+  const limit = angkaAman(f.limit, 200, 0, 1000);
+  const offset = angkaAman(f.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+  const where = auditWhere(f);
+  const rows = db
+    .prepare(
+      `SELECT * FROM audit_log ${where.sql}
+       ORDER BY tanggal DESC, rowid DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...where.params, limit, offset) as Record<string, unknown>[];
+  return rows.map(rowToAuditLog);
+}
+
+/** Jumlah baris audit yang cocok dengan filter (tanpa limit/offset). */
+export function hitungAuditLog(db: Database.Database, filter: AuditFilter = {}): number {
+  const where = auditWhere(filter);
+  const row = db
+    .prepare(`SELECT COUNT(*) AS total FROM audit_log ${where.sql}`)
+    .get(...where.params) as { total: number };
+  return Number(row.total);
+}
+
+/** Halaman audit + total, dipakai IPC `audit:list` dan UI Pengaturan. */
+export function listAuditLogPage(
+  db: Database.Database,
+  filter: AuditFilter = {},
+): { rows: AuditLog[]; total: number } {
+  return {
+    rows: listAuditLog(db, filter),
+    total: hitungAuditLog(db, filter),
+  };
 }
 
 /** Guard kunci longgar untuk edit/hapus baris lama. Return error jika alasan kurang. */
@@ -485,14 +599,22 @@ const rowToAset = (r: Record<string, unknown>): Aset => ({
 });
 
 export function insertAset(db: Database.Database, a: Aset): void {
-  db.prepare(
-    `INSERT INTO aset (id, kode, nama, jenis, luas_m2, lokasi, status_hukum, tahun_perolehan,
-      asal_usul, kondisi, keterangan, nilai_sen, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    a.id, a.kode, a.nama, a.jenis, a.luas_m2, a.lokasi, a.status_hukum, a.tahun_perolehan,
-    a.asal_usul, a.kondisi, a.keterangan, a.nilai_sen, a.created_at, a.updated_at,
-  );
+  const simpan = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO aset (id, kode, nama, jenis, luas_m2, lokasi, status_hukum, tahun_perolehan,
+        asal_usul, kondisi, keterangan, nilai_sen, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      a.id, a.kode, a.nama, a.jenis, a.luas_m2, a.lokasi, a.status_hukum, a.tahun_perolehan,
+      a.asal_usul, a.kondisi, a.keterangan, a.nilai_sen, a.created_at, a.updated_at,
+    );
+    catatAudit(db, {
+      aksi: `ASET-CREATE ${a.id}`,
+      alasan: `Tambah aset ${a.kode}`,
+      baru: a,
+    });
+  });
+  simpan();
 }
 
 export function listAset(
@@ -517,16 +639,37 @@ export function getAset(db: Database.Database, id: string): Aset | null {
 }
 
 export function updateAset(db: Database.Database, a: Aset): void {
-  db.prepare(
-    `UPDATE aset SET kode = ?, nama = ?, jenis = ?, luas_m2 = ?, lokasi = ?, status_hukum = ?,
-      tahun_perolehan = ?, asal_usul = ?, kondisi = ?, keterangan = ?, nilai_sen = ?, updated_at = ?
-     WHERE id = ?`,
-  ).run(
-    a.kode, a.nama, a.jenis, a.luas_m2, a.lokasi, a.status_hukum, a.tahun_perolehan,
-    a.asal_usul, a.kondisi, a.keterangan, a.nilai_sen, a.updated_at, a.id,
-  );
+  const simpan = db.transaction(() => {
+    const lama = getAset(db, a.id);
+    const info = db.prepare(
+      `UPDATE aset SET kode = ?, nama = ?, jenis = ?, luas_m2 = ?, lokasi = ?, status_hukum = ?,
+        tahun_perolehan = ?, asal_usul = ?, kondisi = ?, keterangan = ?, nilai_sen = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(
+      a.kode, a.nama, a.jenis, a.luas_m2, a.lokasi, a.status_hukum, a.tahun_perolehan,
+      a.asal_usul, a.kondisi, a.keterangan, a.nilai_sen, a.updated_at, a.id,
+    );
+    if (Number(info.changes) === 0) return;
+    catatAudit(db, {
+      aksi: `ASET-UPDATE ${a.id}`,
+      alasan: `Ubah aset ${a.kode}`,
+      lama,
+      baru: a,
+    });
+  });
+  simpan();
 }
 
 export function deleteAset(db: Database.Database, id: string): void {
-  db.prepare('DELETE FROM aset WHERE id = ?').run(id);
+  const simpan = db.transaction(() => {
+    const lama = getAset(db, id);
+    const info = db.prepare('DELETE FROM aset WHERE id = ?').run(id);
+    if (Number(info.changes) === 0 || !lama) return;
+    catatAudit(db, {
+      aksi: `ASET-DELETE ${id}`,
+      alasan: `Hapus aset ${lama.kode}`,
+      lama,
+    });
+  });
+  simpan();
 }

@@ -1,6 +1,11 @@
 // T11 Detail koreksi: parse aman data_lama_json (transaksi / panjar / rusak).
 import { describe, expect, it } from 'vitest';
-import { formatAksiAudit, parseAuditDetail } from '../src/utils/auditDetail.js';
+import {
+  formatAksiAudit,
+  formatJsonAudit,
+  formatWaktuAudit,
+  parseAuditDetail,
+} from '../src/utils/auditDetail.js';
 
 describe('T11 parseAuditDetail', () => {
   it('transaksi BKU dikenali dengan field lengkap', () => {
@@ -51,6 +56,27 @@ describe('T11 parseAuditDetail', () => {
   });
 });
 
+describe('T11a format detail audit sebelum/sesudah', () => {
+  it('JSON kosong/rusak/null aman tanpa throw', () => {
+    expect(formatJsonAudit('')).toBe('-');
+    expect(formatJsonAudit('   ')).toBe('-');
+    expect(formatJsonAudit('bukan-json{{{')).toBe('bukan-json{{{');
+    expect(formatJsonAudit('null')).toBe('null');
+    expect(formatJsonAudit(undefined)).toBe('-');
+  });
+
+  it('objek diformat rapi dan string JSON ditampilkan sebagai teks', () => {
+    expect(formatJsonAudit('{"id":"j-1","baris":[1,2]}')).toContain('\n');
+    expect(formatJsonAudit('{"id":"j-1"}')).toContain('"id": "j-1"');
+    expect(formatJsonAudit('"PIN diganti"')).toBe('PIN diganti');
+  });
+
+  it('waktu ISO diformat ringkas, nilai aneh tetap aman', () => {
+    expect(formatWaktuAudit('2026-10-22T14:05:00.000Z')).toBe('2026-10-22 14:05');
+    expect(formatWaktuAudit('bukan-waktu')).toBe('bukan-waktu');
+  });
+});
+
 describe('T12 formatAksiAudit', () => {
   it('CREATE t-… → Tambah transaksi BKU', () => {
     expect(formatAksiAudit('CREATE t-1788665578796-505652')).toBe('Tambah transaksi BKU');
@@ -67,6 +93,20 @@ describe('T12 formatAksiAudit', () => {
   it('TUTUP / TUTUP-ULANG → label tutup buku', () => {
     expect(formatAksiAudit('TUTUP 2025')).toBe('Tutup buku');
     expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Tutup buku (ulang)');
+  });
+
+  it('aksi P0-9 memakai label ramah', () => {
+    expect(formatAksiAudit('CREATE j-1')).toBe('Tambah jurnal');
+    expect(formatAksiAudit('REVERSAL j-1')).toBe('Koreksi jurnal (balik)');
+    expect(formatAksiAudit('KOREKSI-ISI-ULANG j-1')).toBe('Koreksi & isi ulang jurnal');
+    expect(formatAksiAudit('SALDO-AWAL j-1')).toBe('Saldo awal');
+    expect(formatAksiAudit('ASET-CREATE a-1')).toBe('Tambah aset');
+    expect(formatAksiAudit('ASET-UPDATE a-1')).toBe('Ubah aset');
+    expect(formatAksiAudit('ASET-DELETE a-1')).toBe('Hapus aset');
+    expect(formatAksiAudit('BACKUP-AUTO')).toBe('Backup database');
+    expect(formatAksiAudit('BACKUP-EXPORT')).toBe('Backup database');
+    expect(formatAksiAudit('RESTORE')).toBe('Restore database');
+    expect(formatAksiAudit('PENGATURAN-IDLE')).toBe('Ubah pengaturan');
   });
 
   it('aksi tak dikenal tampil mentah', () => {

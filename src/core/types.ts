@@ -99,7 +99,10 @@ export type AuditLog = {
   tanggal: string; // ISO
   aksi: string;
   alasan: string;
+  /** JSON kondisi sebelum operasi ('' = tidak ada data lama). */
   data_lama_json: string;
+  /** JSON kondisi sesudah operasi ('' = tidak ada data baru). */
+  data_baru_json: string;
 };
 
 // ---- Inventaris Aset (non-keuangan, terpisah dari BKU/Neraca) ----

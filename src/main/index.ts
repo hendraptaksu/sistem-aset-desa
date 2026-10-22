@@ -6,29 +6,29 @@ import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
 import {
+  catatAudit,
   closePanjar,
   deleteAset,
   getAset,
   guardPeriodeTerkunci,
   insertAset,
-  insertAuditLog,
   insertPanjar,
   insertTransaksi,
   listAset,
-  listAuditLog,
+  listAuditLogPage,
   listJurnalLengkap,
   listPanjar,
   listPanjarItems,
   listTransaksi,
   listTutupBuku,
   updateAset,
+  type AuditFilter,
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
-  buatAuditLog,
   panjarCloseToTransaksi,
   panjarOpenToTransaksi,
 } from '../core/ledger.js';
@@ -48,7 +48,7 @@ import {
   restoreDbAman,
 } from '../features/export/export.js';
 import type { Aset, Panjar, Transaksi } from '../core/types.js';
-import type { JurnalInput } from '../core/posting.js';
+import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
 import {
   aturIdle,
@@ -223,8 +223,12 @@ function registerIpc(): void {
       const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
       if (lockedErr) return fail(lockedErr, true);
       const row: Transaksi = { id: uid('t'), ...input };
-      insertTransaksi(db, row);
-      if (alasan) insertAuditLog(db, buatAuditLog(`CREATE ${row.id}`, alasan, row));
+      const simpan = db.transaction(() => {
+        insertTransaksi(db, row);
+        if (alasan)
+          catatAudit(db, { aksi: `CREATE ${row.id}`, alasan, baru: row });
+      });
+      simpan();
       return ok({ id: row.id });
     } catch (e) {
       return fail(String(e));
@@ -257,9 +261,16 @@ function registerIpc(): void {
         const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
         if (lockedErr) return fail(lockedErr, true);
         const p: Panjar = { id: uid('p'), status: 'OPEN', ...input };
-        insertPanjar(db, p);
-        insertTransaksi(db, panjarOpenToTransaksi(p));
-        if (alasan) insertAuditLog(db, buatAuditLog(`PANJAR-OPEN ${p.id}`, alasan, p));
+        const simpan = db.transaction(() => {
+          insertPanjar(db, p);
+          insertTransaksi(db, panjarOpenToTransaksi(p));
+          catatAudit(db, {
+            aksi: `PANJAR-OPEN ${p.id}`,
+            alasan: String(alasan ?? ''),
+            baru: p,
+          });
+        });
+        simpan();
         return ok({ id: p.id });
       } catch (e) {
         return fail(String(e));
@@ -294,12 +305,21 @@ function registerIpc(): void {
           req.tanggalClose,
         );
         const rows = [...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])];
-        closePanjar(db, p.id, rows);
-        if (alasan) insertAuditLog(db, buatAuditLog(`PANJAR-CLOSE ${p.id}`, alasan, p));
         const totalRealisasi = req.items.reduce((s, i) => s + i.nominal, 0);
+        const sisa = close.sisaRow?.masuk ?? 0;
+        const simpan = db.transaction(() => {
+          closePanjar(db, p.id, rows);
+          catatAudit(db, {
+            aksi: `PANJAR-CLOSE ${p.id}`,
+            alasan: String(alasan ?? ''),
+            lama: p,
+            baru: { ...p, status: 'CLOSED', totalRealisasi, sisa },
+          });
+        });
+        simpan();
         return ok({
           totalRealisasi,
-          sisa: close.sisaRow?.masuk ?? 0,
+          sisa,
           kurang: Math.max(0, totalRealisasi - p.jumlah),
         });
       } catch (e) {
@@ -398,9 +418,36 @@ function registerIpc(): void {
       })),
     );
   });
-  ipcMain.handle('audit:list', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listAuditLog(db));
+  // P0-9: riwayat audit lengkap + filter tervalidasi (aksi/tanggal/pagination).
+  ipcMain.handle('audit:list', (_e, f: AuditFilter = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const tanggalFilter = (v: unknown): string | undefined => {
+        if (typeof v !== 'string' || !v.trim()) return undefined;
+        return v.trim();
+      };
+      const mulai = tanggalFilter(f?.mulai);
+      const sampai = tanggalFilter(f?.sampai);
+      if (mulai && !tanggalKalenderValid(mulai))
+        return fail('Tanggal mulai tidak valid (YYYY-MM-DD).');
+      if (sampai && !tanggalKalenderValid(sampai))
+        return fail('Tanggal sampai tidak valid (YYYY-MM-DD).');
+      const aksi =
+        typeof f?.aksi === 'string' && f.aksi.trim()
+          ? f.aksi.trim().slice(0, 120)
+          : undefined;
+      const angka = (v: unknown, bawaan: number): number => {
+        if (v === undefined || v === null || v === '') return bawaan;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : bawaan;
+      };
+      const limit = Math.min(500, Math.max(1, Math.trunc(angka(f?.limit, 50))));
+      const offset = Math.max(0, Math.trunc(angka(f?.offset, 0)));
+      return ok(listAuditLogPage(db, { aksi, mulai, sampai, limit, offset }));
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
   });
   ipcMain.handle('tutup:preview', (_e, tahun: number) => {
     try {
@@ -582,6 +629,11 @@ function registerIpc(): void {
       });
       if (canceled || !filePath) return ok({ saved: false, path: '' });
       backupVacuumInto(db, filePath);
+      catatAudit(db, {
+        aksi: 'BACKUP-EXPORT',
+        alasan: `Backup manual ke ${basename(filePath)}`,
+        baru: { path: filePath, jenis: 'manual' },
+      });
       return ok({ saved: true, path: filePath });
     } catch (e) {
       return fail(e instanceof Error ? e.message : String(e));
@@ -597,6 +649,11 @@ function registerIpc(): void {
       mkdirSync(dir, { recursive: true });
       const dest = join(dir, `pura-${tahun}.db`);
       backupVacuumInto(db, dest);
+      catatAudit(db, {
+        aksi: 'BACKUP-AUTO',
+        alasan: `Backup otomatis sebelum tutup buku ${tahun}`,
+        baru: { path: dest, jenis: 'tutup-buku', tahun: Number(tahun) },
+      });
       return ok({ path: dest });
     } catch (e) {
       return fail(e instanceof Error ? e.message : String(e));
@@ -631,14 +688,15 @@ function registerIpc(): void {
       db = hasil.db;
       if (!hasil.ok) return fail(hasil.error);
       try {
-        insertAuditLog(
-          db,
-          buatAuditLog('RESTORE', `Restore dari ${basename(src)}`, {
+        catatAudit(db, {
+          aksi: 'RESTORE',
+          alasan: `Restore dari ${basename(src)}`,
+          baru: {
             sumber: src,
             cadangan_sebelum_restore: hasil.preRestorePath,
             db_aktif: dbPath(),
-          }),
-        );
+          },
+        });
       } catch (e) {
         console.warn('[restore] gagal menulis audit:', String(e));
       }

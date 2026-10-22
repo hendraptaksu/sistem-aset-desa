@@ -1,31 +1,19 @@
 import { useEffect, useState } from 'react';
-import type { AuditLog } from '../../core/types.js';
-import { formatRp, formatTanggal } from '../../utils/format.js';
-import { formatAksiAudit, parseAuditDetail } from '../../utils/auditDetail.js';
+import { formatRp } from '../../utils/format.js';
 import {
   api,
   type TutupBukuTampil,
   type TutupPreviewData,
 } from '../lib/api.js';
-import { Badge, Button, Card, DetailModal, ErrorBox, Field, TextInput } from './ui.js';
+import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 
 type Step = 1 | 2 | 3;
 
 const TAHUN_BERJALAN = new Date().getFullYear();
 const TAHUN_TERAKHIR_BOLEH_DITUTUP = TAHUN_BERJALAN - 1;
 
-function Baris({ label, value }: { label: string; value: string }) {
-  return (
-    <p>
-      <span className="text-stone-500">{label}: </span>
-      <span className="font-medium break-all">{value}</span>
-    </p>
-  );
-}
-
 export function TutupTab() {
   const [list, setList] = useState<TutupBukuTampil[]>([]);
-  const [audit, setAudit] = useState<AuditLog[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [tahun, setTahun] = useState(TAHUN_TERAKHIR_BOLEH_DITUTUP);
@@ -33,14 +21,10 @@ export function TutupTab() {
   const [preview, setPreview] = useState<TutupPreviewData | null>(null);
   const [backupPath, setBackupPath] = useState('');
   const [catatan, setCatatan] = useState('');
-  const [detail, setDetail] = useState<AuditLog | null>(null);
-  const detailView = detail ? parseAuditDetail(detail.data_lama_json) : null;
 
   async function refresh() {
     try {
-      const [t, a] = await Promise.all([api.tutupList(), api.auditList()]);
-      setList(t);
-      setAudit(a);
+      setList(await api.tutupList());
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -222,64 +206,6 @@ export function TutupTab() {
         </table>
       </Card>
 
-      <Card>
-        <h3 className="mb-2 font-bold">Riwayat Perubahan (koreksi periode tutup)</h3>
-        <table className="w-full text-left text-[15px]">
-          <thead>
-            <tr className="border-b text-stone-500">
-              <th className="py-2 pr-3">Tanggal</th>
-              <th className="py-2 pr-3">Aksi</th>
-              <th className="py-2 pr-3">Alasan</th>
-              <th className="py-2 pr-3">Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {audit.map((a) => (
-              <tr key={a.id} className="border-b last:border-0">
-                <td className="py-2 pr-3 whitespace-nowrap">{formatTanggal(a.tanggal.slice(0, 10))}</td>
-                <td className="py-2 pr-3 break-all">{formatAksiAudit(a.aksi)}</td>
-                <td className="py-2 pr-3">{a.alasan}</td>
-                <td className="py-2 pr-3">
-                  <Button variant="ghost" onClick={() => setDetail(a)}>Lihat</Button>
-                </td>
-              </tr>
-            ))}
-            {audit.length === 0 && (
-              <tr><td colSpan={4} className="py-4 text-center text-stone-500">Belum ada koreksi periode tutup.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
-
-      {detail && (
-        <DetailModal title="Detail koreksi" onClose={() => setDetail(null)}>
-          <Baris label="Tanggal catat" value={formatTanggal(detail.tanggal.slice(0, 10))} />
-          <Baris label="Aksi" value={formatAksiAudit(detail.aksi)} />
-          <Baris label="Alasan" value={detail.alasan} />
-          {detailView?.kind === 'transaksi' && (
-            <>
-              <Baris label="Tanggal transaksi" value={formatTanggal(detailView.tanggal)} />
-              <Baris label="Keterangan" value={detailView.keterangan} />
-              <Baris label="Dompet" value={detailView.akun_kas} />
-              <Baris label="Kategori" value={detailView.kategori} />
-              <Baris label="Masuk" value={detailView.masuk ? formatRp(detailView.masuk) : '-'} />
-              <Baris label="Keluar" value={detailView.keluar ? formatRp(detailView.keluar) : '-'} />
-            </>
-          )}
-          {detailView?.kind === 'panjar' && (
-            <>
-              <Baris label="Tanggal panjar" value={formatTanggal(detailView.tanggal)} />
-              <Baris label="Penerima" value={detailView.penerima} />
-              <Baris label="Jumlah" value={formatRp(detailView.jumlah)} />
-              <Baris label="Diambil dari" value={detailView.akun_kas_sumber} />
-              <Baris label="Status" value={detailView.status} />
-            </>
-          )}
-          {detailView?.kind === 'mentah' && (
-            <p className="break-all text-sm text-stone-600">{detailView.teks || '-'}</p>
-          )}
-        </DetailModal>
-      )}
     </div>
   );
 }

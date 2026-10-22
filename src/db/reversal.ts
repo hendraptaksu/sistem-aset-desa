@@ -99,11 +99,16 @@ export function reverseJurnal(
   if (!rencana.boleh || !rencana.input) return hasilGagal(rencana.errors);
 
   const detail = getJurnalDetail(db, id)!;
-  const audit = buatAuditLog(`REVERSAL ${id}`, alasan.trim(), {
-    jurnal: detail.jurnal,
-    baris: detail.baris,
-    reversal_id: rencana.input.header.id,
-  });
+  const audit = buatAuditLog(
+    `REVERSAL ${id}`,
+    alasan.trim(),
+    { jurnal: detail.jurnal, baris: detail.baris },
+    {
+      jurnal: rencana.input.header,
+      baris: rencana.input.baris,
+      reversal_id: rencana.input.header.id,
+    },
+  );
 
   const hasil = postingJurnal(db, rencana.input, {
     konfirmasiPeringatan: opsi.konfirmasiPeringatan,
@@ -172,15 +177,22 @@ export function koreksiDanIsiUlang(
     return { boleh: true, errors: [], peringatan, perluKonfirmasi: true, tersimpan: false };
 
   const detail = getJurnalDetail(db, id)!;
-  const auditBalik = buatAuditLog(`REVERSAL ${id}`, alasan.trim(), {
-    jurnal: detail.jurnal,
-    baris: detail.baris,
-    reversal_id: rencana.input.header.id,
-  });
-  const auditBaru = buatAuditLog(`KOREKSI-ISI-ULANG ${id}`, alasan.trim(), {
-    sebelum: { jurnal: detail.jurnal, baris: detail.baris },
-    sesudah: { header: headerBaru, baris: baru.baris },
-  });
+  const auditBalik = buatAuditLog(
+    `REVERSAL ${id}`,
+    alasan.trim(),
+    { jurnal: detail.jurnal, baris: detail.baris },
+    {
+      jurnal: rencana.input.header,
+      baris: rencana.input.baris,
+      reversal_id: rencana.input.header.id,
+    },
+  );
+  const auditBaru = buatAuditLog(
+    `KOREKSI-ISI-ULANG ${id}`,
+    alasan.trim(),
+    { jurnal: detail.jurnal, baris: detail.baris },
+    { jurnal: headerBaru, baris: baru.baris },
+  );
 
   try {
     const simpan = db.transaction(() => {

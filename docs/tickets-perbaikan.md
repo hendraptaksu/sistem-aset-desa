@@ -178,7 +178,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run tests/backup-auto.test.ts` + test baru
   - **Dependency:** —
 
-- [ ] **P0-9 — Audit log lengkap**
+- [x] **P0-9 — Audit log lengkap** (2026-10-22: audit_log punya data sebelum/sesudah + filter aksi/tanggal/pagination, semua operasi utama & pengaturan tercatat, riwayat lengkap di tab Pengaturan; 175/175 test hijau)
   - **Konteks:** tutup buku & aset tidak pernah diaudit; panjar hanya bila alasan diisi; daftar dibatasi 200
     tanpa filter.
   - **Langkah:**

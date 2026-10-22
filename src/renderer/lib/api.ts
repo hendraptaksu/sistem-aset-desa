@@ -32,6 +32,20 @@ export type OpsiKoreksiApi = {
   konfirmasiPeringatan?: boolean;
 };
 
+/** Filter riwayat audit (P0-9). Tanggal YYYY-MM-DD, inklusif. */
+export type AuditFilterApi = {
+  aksi?: string;
+  mulai?: string;
+  sampai?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type AuditLogPage = {
+  rows: AuditLog[];
+  total: number;
+};
+
 /** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
 export type TutupBukuTampil = TutupBuku & { laba: number };
 
@@ -152,7 +166,7 @@ export const api = {
     backupPath?: string;
     konfirmasiTimpak?: boolean;
   }) => call<TutupTersimpanData>('tutup:create', req),
-  auditList: () => call<AuditLog[]>('audit:list'),
+  auditList: (f: AuditFilterApi = {}) => call<AuditLogPage>('audit:list', f),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   neraca: (cutoff: string) => call<Neraca>('neraca:get', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),

@@ -40,10 +40,10 @@ afterEach(() => {
 });
 
 describe('P0-2 — skema jurnal double-entry', () => {
-  it('membuat tabel jurnal + jurnal_baris dan menaikkan user_version ke 2', () => {
+  it('membuat tabel jurnal + jurnal_baris dan menaikkan user_version ke versi skema', () => {
     const { db } = freshDb();
     try {
-      expect(SCHEMA_VERSION).toBe(2);
+      expect(SCHEMA_VERSION).toBe(3);
       expect(versi(db)).toBe(SCHEMA_VERSION);
       const tabel = db
         .prepare(

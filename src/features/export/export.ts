@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION } from '../../db/database.js';
+import { catatAudit } from '../../db/repository.js';
 
 export {
   KOP_ORG_NAMA,
@@ -261,8 +262,18 @@ export function autoBackupHarian(
 ): string {
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, `auto-${stamp}.db`);
+  let dibuat = false;
   if (!existsSync(dest)) {
     backupVacuumInto(db, dest);
+    dibuat = true;
+  }
+  // P0-9: catat hanya saat file baru benar-benar dibuat (idempoten per hari).
+  if (dibuat) {
+    catatAudit(db, {
+      aksi: 'BACKUP-AUTO',
+      alasan: `Backup otomatis harian ${stamp}`,
+      baru: { path: dest, jenis: 'harian', hari: stamp },
+    });
   }
   const files = readdirSync(dir)
     .filter((f) => f.startsWith('auto-') && f.endsWith('.db'))

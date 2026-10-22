@@ -12,11 +12,12 @@ import { COA } from './coa.js';
  * - 0/v1 = model single-entry lama (transaksi + kategori).
  * - 2    = model double-entry (jurnal + jurnal_baris). Tabel single-entry lama
  *          dibuang saat reset POC (P0-3); tidak ada migrasi data (K6).
+ * - 3    = audit log lengkap (P0-9): kolom `data_baru_json` (sebelum/sesudah).
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
- * DDL v2. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
+ * DDL v2/v3. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
  * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB yang dibuat sebelum P0-3.
@@ -74,13 +75,17 @@ CREATE TABLE IF NOT EXISTS tutup_buku (
   catatan TEXT NOT NULL DEFAULT ''
 );
 
+-- Audit log lengkap (P0-9): alasan + kondisi sebelum/sesudah dalam JSON.
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
   tanggal TEXT NOT NULL,
   aksi TEXT NOT NULL,
   alasan TEXT NOT NULL,
-  data_lama_json TEXT NOT NULL DEFAULT ''
+  data_lama_json TEXT NOT NULL DEFAULT '',
+  data_baru_json TEXT NOT NULL DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
+CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
 
 CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
@@ -149,6 +154,11 @@ export function migrasi(db: Database.Database): number {
   const siapkan = db.transaction(() => {
     buangTabelLama(db);
     db.exec(DDL);
+    // P0-9: DB v2 belum punya kolom data baru. ALTER TABLE idempoten agar DB
+    // yang dibuat sebelum audit lengkap tetap terbuka tanpa kehilangan audit lama.
+    if (!kolomTabel(db, 'audit_log').includes('data_baru_json')) {
+      db.exec("ALTER TABLE audit_log ADD COLUMN data_baru_json TEXT NOT NULL DEFAULT ''");
+    }
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

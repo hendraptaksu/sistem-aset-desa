@@ -71,12 +71,51 @@ export function parseAuditDetail(json: string): AuditDetailView {
   return { kind: 'mentah', teks: json };
 }
 
+/**
+ * Format data JSON audit untuk detail sebelum/sesudah.
+ * Aman untuk string kosong maupun JSON rusak (tidak pernah melempar error).
+ */
+export function formatJsonAudit(json: string | null | undefined): string {
+  const teks = String(json ?? '').trim();
+  if (!teks) return '-';
+  try {
+    const data = JSON.parse(teks) as unknown;
+    if (typeof data === 'string') return data || '-';
+    return JSON.stringify(data, null, 2) ?? teks;
+  } catch {
+    return teks;
+  }
+}
+
+/** Ringkasan satu baris untuk tabel; JSON kosong/rusak tetap aman. */
+export function ringkasAudit(json: string | null | undefined, maks = 90): string {
+  const teks = formatJsonAudit(json).replace(/\s+/g, ' ').trim();
+  if (teks === '-') return '-';
+  return teks.length > maks ? `${teks.slice(0, maks)}…` : teks;
+}
+
+/** Waktu audit ISO → teks lokal ringkas (YYYY-MM-DD HH:mm), fallback mentah. */
+export function formatWaktuAudit(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(iso ?? ''));
+  return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : String(iso ?? '');
+}
+
 /** Label ramah untuk kolom Aksi audit_log (id teknis disembunyikan). */
 export function formatAksiAudit(aksi: string): string {
   if (aksi.startsWith('TUTUP-ULANG ')) return 'Tutup buku (ulang)';
   if (aksi.startsWith('TUTUP ')) return 'Tutup buku';
+  if (aksi.startsWith('KOREKSI-ISI-ULANG ')) return 'Koreksi & isi ulang jurnal';
+  if (aksi.startsWith('REVERSAL ')) return 'Koreksi jurnal (balik)';
   if (aksi.startsWith('CREATE t-')) return 'Tambah transaksi BKU';
-  if (aksi.startsWith('PANJAR-OPEN p-')) return 'Panjar baru';
-  if (aksi.startsWith('PANJAR-CLOSE p-')) return 'Tutup panjar';
+  if (aksi.startsWith('CREATE ')) return 'Tambah jurnal';
+  if (aksi.startsWith('SALDO-AWAL')) return 'Saldo awal';
+  if (aksi.startsWith('ASET-CREATE')) return 'Tambah aset';
+  if (aksi.startsWith('ASET-UPDATE')) return 'Ubah aset';
+  if (aksi.startsWith('ASET-DELETE')) return 'Hapus aset';
+  if (aksi.startsWith('BACKUP')) return 'Backup database';
+  if (aksi.startsWith('RESTORE')) return 'Restore database';
+  if (aksi.startsWith('PENGATURAN')) return 'Ubah pengaturan';
+  if (aksi.startsWith('PANJAR-OPEN')) return 'Panjar baru';
+  if (aksi.startsWith('PANJAR-CLOSE')) return 'Tutup panjar';
   return aksi;
 }
