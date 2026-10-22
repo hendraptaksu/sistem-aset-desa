@@ -337,6 +337,8 @@ describe('P0-10 — DB v2 fresh + seed dev', () => {
         'tutup_buku',
         'panjar',
         'panjar_item',
+        'pihak',
+        'jurnal_pihak',
       ]) {
         expect(tabel, `tabel ${wajib} wajib ada`).toContain(wajib);
       }

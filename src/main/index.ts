@@ -29,6 +29,15 @@ import {
   listPanjarV2,
   serahkanPanjar,
 } from '../db/panjar.js';
+import {
+  createPihak,
+  daftarJurnalPihak,
+  deletePihak,
+  listPihak,
+  postingPihak,
+  saldoPerPihak,
+  updatePihak,
+} from '../db/pihak.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
@@ -52,6 +61,8 @@ import {
   validasiBentukJurnalInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
+  validasiBentukPihak,
+  validasiBentukPostingPihak,
   validateAsetInput,
   validateTransaksiInput,
   type AsetInput,
@@ -250,6 +261,113 @@ function registerIpc(): void {
       }
     },
   );
+
+  // ---- Piutang & Hutang + master pihak (P1-5) ----
+  // Renderer tidak dipercaya: bentuk input dinormalisasi dulu, lalu adapter DB
+  // memvalidasi lima alur baku + menyimpan jurnal/pemetaan pihak/audit atomik.
+  ipcMain.handle('pihak:list', () => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(listPihak(db));
+  });
+
+  ipcMain.handle('pihak:saldo', () => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(saldoPerPihak(db));
+  });
+
+  ipcMain.handle('pihak:jurnal', (_e, id: string) => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    const pihakId = String(id ?? '').trim();
+    if (!pihakId) return fail('Pihak wajib dipilih.');
+    return ok(daftarJurnalPihak(db, pihakId));
+  });
+
+  ipcMain.handle('pihak:create', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPihak(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const pihak = createPihak(db, bentuk.input);
+      return ok({ id: pihak.id, pihak });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('pihak:update', (_e, id: string, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const pihakId = String(id ?? '').trim();
+      if (!pihakId) return fail('Pihak yang akan diubah belum dipilih.');
+      const bentuk = validasiBentukPihak(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const pihak = updatePihak(db, pihakId, bentuk.input);
+      return ok({ id: pihak.id, pihak });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('pihak:delete', (_e, id: string) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const pihakId = String(id ?? '').trim();
+      if (!pihakId) return fail('Pihak yang akan dihapus belum dipilih.');
+      deletePihak(db, pihakId);
+      return ok({ id: pihakId });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('pihak:posting', (_e, req: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+
+      const bentuk = validasiBentukPostingPihak(req);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const opts = typeof opsi === 'object' && opsi !== null ? opsi : {};
+      const hasil = postingPihak(db, {
+        pihakId: bentuk.input.pihakId,
+        input: bentuk.input.input,
+        konfirmasiPeringatan:
+          (opts as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
+        konfirmasiSaldo:
+          (opts as { konfirmasiSaldo?: unknown }).konfirmasiSaldo === true ||
+          (opts as { konfirmasi?: unknown }).konfirmasi === true,
+      });
+
+      if (!hasil.tersimpan || !hasil.jurnal) {
+        const pesan =
+          hasil.errors.join(' ') ||
+          hasil.peringatan.join(' ') ||
+          'Transaksi piutang/hutang gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        const perluKonfirmasi =
+          hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        return fail(pesan, perluAlasan, perluKonfirmasi);
+      }
+
+      return ok({
+        jurnal: hasil.jurnal,
+        pihak: hasil.pihak,
+        alur: hasil.alur,
+        akunPihak: hasil.akunPihak,
+        saldoSebelum: hasil.saldoSebelum,
+        saldoSesudah: hasil.saldoSesudah,
+      });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
 
   ipcMain.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
     const k = perluBuka();

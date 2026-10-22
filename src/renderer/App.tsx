@@ -7,6 +7,7 @@ import {
   Building2,
   ChevronsLeft,
   ChevronsRight,
+  HandCoins,
   LayoutDashboard,
   Lock,
   NotebookText,
@@ -20,6 +21,7 @@ import { TransaksiTab } from './components/TransaksiTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
 import { AsetTab } from './components/AsetTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
+import { PihakTab } from './components/PihakTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
 import { RealisasiTab } from './components/RealisasiTab.js';
 import { SurplusTab } from './components/SurplusTab.js';
@@ -30,7 +32,7 @@ import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'aset' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -38,6 +40,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
   { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
+  { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Pembantu', Icon: NotebookText },
   { id: 'realisasi', label: 'Realisasi', Icon: BarChart3 },
   { id: 'surplus', label: 'Surplus', Icon: TrendingUp },
@@ -143,7 +146,7 @@ export function App() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">Keuangan Pura Dalem Puri Peliatan</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Aset, Laporan, Neraca</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laporan, Neraca</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab />
@@ -155,6 +158,7 @@ export function App() {
             {tab === 'jurnal' && <JurnalTab />}
             {tab === 'aset' && <AsetTab />}
             {tab === 'panjar' && <PanjarTab />}
+            {tab === 'pihak' && <PihakTab />}
             {tab === 'pembantu' && <PembantuTab />}
             {tab === 'realisasi' && <RealisasiTab />}
             {tab === 'surplus' && <SurplusTab />}

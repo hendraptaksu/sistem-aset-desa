@@ -1,5 +1,6 @@
 import type { Coa } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
+import type { AlurPihak, SaldoPihak } from '../../core/pihak.js';
 import type {
   Aset,
   AuditLog,
@@ -7,8 +8,11 @@ import type {
   JurnalBaris,
   JurnalBarisInput,
   JurnalHeaderInput,
+  JurnalPihakTampil,
   Panjar,
   PanjarItem,
+  Pihak,
+  PihakSaldo,
   Transaksi,
   TutupBuku,
 } from '../../core/types.js';
@@ -137,6 +141,28 @@ export const api = {
       input,
       opsi,
     ),
+  // ---- Piutang & Hutang + master pihak (P1-5) ----
+  pihakList: () => call<Pihak[]>('pihak:list'),
+  pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),
+  pihakJurnal: (pihakId: string) =>
+    call<JurnalPihakTampil[]>('pihak:jurnal', pihakId),
+  pihakCreate: (input: { nama: string; catatan?: string }) =>
+    call<{ id: string; pihak: Pihak }>('pihak:create', input),
+  pihakUpdate: (id: string, input: { nama: string; catatan?: string }) =>
+    call<{ id: string; pihak: Pihak }>('pihak:update', id, input),
+  pihakDelete: (id: string) => call<{ id: string }>('pihak:delete', id),
+  pihakPosting: (
+    req: { pihakId: string; input: JurnalInput },
+    opsi: { konfirmasiPeringatan?: boolean; konfirmasiSaldo?: boolean } = {},
+  ) =>
+    call<{
+      jurnal: Jurnal;
+      pihak?: Pihak;
+      alur?: AlurPihak;
+      akunPihak?: string;
+      saldoSebelum?: SaldoPihak;
+      saldoSesudah?: SaldoPihak;
+    }>('pihak:posting', req, opsi),
   transaksiList: (f: { mulai?: string; sampai?: string } = {}) => call<Transaksi[]>('transaksi:list', f),
   transaksiCreate: (input: {
     tanggal: string;

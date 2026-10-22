@@ -9,8 +9,10 @@
 // dijalankan lagi oleh posting layer (P0-4) saat jurnal disimpan.
 
 import {
+  AKUN_HUTANG,
   AKUN_MODAL,
   AKUN_PANJAR,
+  AKUN_PIUTANG,
   akun as cariAkunCoa,
   isAkunKas,
   type Coa,
@@ -200,6 +202,129 @@ export function buatJurnalPanjarSerah(form: FormPanjarSerah): JurnalInput {
   const nominal = wajibNominal(form.nominal);
   const kas = akunKas(form.akunKas, 'Akun kas sumber');
   return susun(form, 'PANJAR', [debit(AKUN_PANJAR, nominal), kredit(kas, nominal)]);
+}
+
+// ---------------------------------------------------------------------------
+// Form Piutang & Hutang + pihak (P1-5)
+// ---------------------------------------------------------------------------
+// Lima alur baku. Semua builder mengembalikan `{ input, pihakId }`; adapter DB
+// yang menyimpan penghubung jurnal → pihak. Builder hanya memastikan jurnal
+// seimbang dan akun yang dipakai sesuai alur.
+
+export type DasarFormPihak = DasarFormJurnal & {
+  /** Pihak (orang/lembaga) penerima pinjaman / pemberi pinjaman. WAJIB. */
+  pihakId: string;
+};
+
+/** 1. Beri pinjaman: D 1050 / K kas. */
+export type FormBeriPinjaman = DasarFormPihak & {
+  akunKas: string;
+};
+
+/** 2. Terima pelunasan piutang: D kas / K 1050. */
+export type FormTerimaPelunasanPiutang = DasarFormPihak & {
+  akunKas: string;
+};
+
+/** 3. Terima pinjaman: D kas / K 2050. */
+export type FormTerimaPinjaman = DasarFormPihak & {
+  akunKas: string;
+};
+
+/** 4. Bayar hutang: D 2050 / K kas. */
+export type FormBayarHutang = DasarFormPihak & {
+  akunKas: string;
+};
+
+/** 5. Beli/perbaikan barang secara kredit: D BEBAN / K 2050. */
+export type FormBeliKredit = DasarFormPihak & {
+  /** Akun BEBAN, mis. 5003 BAGA WEWANGUNAN. */
+  akunBeban: string;
+};
+
+export type HasilJurnalPihak = {
+  input: JurnalInput;
+  pihakId: string;
+};
+
+function wajibPihak(pihakId: string): string {
+  const nilai = String(pihakId ?? '').trim();
+  if (!nilai) throw new Error('Pihak wajib dipilih untuk transaksi piutang/hutang.');
+  if (nilai.length > 200) throw new Error('ID pihak tidak valid.');
+  return nilai;
+}
+
+function hasilPihak(
+  dasar: DasarFormPihak,
+  jenis: JurnalJenis,
+  baris: JurnalBarisInput[],
+): HasilJurnalPihak {
+  return { input: susun(dasar, jenis, baris), pihakId: wajibPihak(dasar.pihakId) };
+}
+
+/** 1. Beri pinjaman kepada pihak: **D 1050 PIUTANG / K kas**. */
+export function buatJurnalBeriPinjaman(form: FormBeriPinjaman): HasilJurnalPihak {
+  const nominal = wajibNominal(form.nominal);
+  const kas = akunKas(form.akunKas, 'Akun kas sumber');
+  return hasilPihak(form, 'PIUTANG', [
+    debit(AKUN_PIUTANG, nominal),
+    kredit(kas, nominal),
+  ]);
+}
+
+/** 2. Terima pelunasan piutang: **D kas / K 1050 PIUTANG**. */
+export function buatJurnalTerimaPelunasanPiutang(
+  form: FormTerimaPelunasanPiutang,
+): HasilJurnalPihak {
+  const nominal = wajibNominal(form.nominal);
+  const kas = akunKas(form.akunKas, 'Akun kas penerima');
+  return hasilPihak(form, 'PIUTANG', [
+    debit(kas, nominal),
+    kredit(AKUN_PIUTANG, nominal),
+  ]);
+}
+
+/** 3. Terima pinjaman dari pihak: **D kas / K 2050 HUTANG**. */
+export function buatJurnalTerimaPinjaman(form: FormTerimaPinjaman): HasilJurnalPihak {
+  const nominal = wajibNominal(form.nominal);
+  const kas = akunKas(form.akunKas, 'Akun kas penerima');
+  return hasilPihak(form, 'HUTANG', [
+    debit(kas, nominal),
+    kredit(AKUN_HUTANG, nominal),
+  ]);
+}
+
+/** 4. Bayar hutang kepada pihak: **D 2050 HUTANG / K kas**. */
+export function buatJurnalBayarHutang(form: FormBayarHutang): HasilJurnalPihak {
+  const nominal = wajibNominal(form.nominal);
+  const kas = akunKas(form.akunKas, 'Akun kas sumber');
+  return hasilPihak(form, 'HUTANG', [
+    debit(AKUN_HUTANG, nominal),
+    kredit(kas, nominal),
+  ]);
+}
+
+/**
+ * 5. Beli/perbaikan barang secara kredit (kasus feedback): **D BEBAN / K 2050**.
+ * Beban masuk Laba Rugi, hutang masuk Neraca, modal (3000) TIDAK berubah.
+ */
+export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
+  const nominal = wajibNominal(form.nominal);
+  const beban = akunCoa(form.akunBeban, 'Akun beban');
+  if (isAkunKas(beban.kode) || beban.kode === AKUN_PANJAR)
+    throw new Error(
+      `Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban, mis. 5003 BAGA WEWANGUNAN.`,
+    );
+  if (beban.kode === AKUN_PIUTANG || beban.kode === AKUN_HUTANG)
+    throw new Error(`Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban untuk pembelian kredit.`);
+  if (beban.tipe !== 'BEBAN')
+    throw new Error(
+      `Akun ${beban.kode} — ${beban.nama} bukan akun BEBAN. Pembelian/perbaikan kredit harus memakai akun BEBAN.`,
+    );
+  return hasilPihak(form, 'HUTANG', [
+    debit(beban.kode, nominal),
+    kredit(AKUN_HUTANG, nominal),
+  ]);
 }
 
 export type ItemPanjarClose = {

@@ -16,11 +16,14 @@ import { COA } from './coa.js';
  * - 4    = metadata panjar v2 (P1-4): `panjar` + `panjar_item` menyimpan
  *          dokumen serah/pertanggungjawaban, bukan saldo/laba. Jurnal tetap
  *          satu-satunya sumber angka.
+ * - 5    = master pihak + penghubung jurnal-pihak (P1-5). `jurnal_pihak`
+ *          hanya metadata penghubung; saldo per pihak tetap dihitung dari
+ *          baris jurnal 1050/2050.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
- * DDL v2–v4. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
+ * DDL v2–v5. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
  * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
@@ -68,6 +71,30 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
 );
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
+
+-- Master pihak (orang/lembaga) untuk piutang & hutang (P1-5).
+-- TIDAK menyimpan saldo: saldo per pihak selalu dihitung dari jurnal.
+CREATE TABLE IF NOT EXISTS pihak (
+  id TEXT PRIMARY KEY,
+  nama TEXT NOT NULL,
+  catatan TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pihak_nama_unik
+  ON pihak(nama COLLATE NOCASE);
+
+-- Penghubung jurnal ke pihak. Satu jurnal bisa menyentuh 1050 atau 2050;
+-- pasangan (jurnal_id, akun_kode) unik agar tidak ada pemetaan ganda.
+CREATE TABLE IF NOT EXISTS jurnal_pihak (
+  jurnal_id TEXT NOT NULL,
+  pihak_id TEXT NOT NULL,
+  akun_kode TEXT NOT NULL,
+  PRIMARY KEY (jurnal_id, akun_kode),
+  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
+  FOREIGN KEY (pihak_id) REFERENCES pihak(id),
+  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
+);
+CREATE INDEX IF NOT EXISTS idx_jurnal_pihak_pihak ON jurnal_pihak(pihak_id);
 
 -- Tutup buku v2: hanya penanda + kunci + catatan. Laba selalu dihitung dari jurnal
 -- (P0-7), bukan disimpan sebagai sumber angka.

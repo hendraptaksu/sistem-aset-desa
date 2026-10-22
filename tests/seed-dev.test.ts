@@ -70,6 +70,9 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
           // P1-4: metadata panjar v2 (bukan tabel single-entry lama).
           'panjar',
           'panjar_item',
+          // P1-5: master pihak + penghubung jurnal (tanpa saldo tersimpan).
+          'pihak',
+          'jurnal_pihak',
         ]),
       );
       // tutup_buku v2 tidak menyimpan laba sebagai sumber angka.

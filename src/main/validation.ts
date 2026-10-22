@@ -80,6 +80,8 @@ export type BentukPanjarClose = {
 
 type HasilBentuk<T> = { ok: true; input: T } | { ok: false; error: string };
 
+export type { HasilBentuk };
+
 const teksOpsional = (
   nilai: unknown,
   label: string,
@@ -363,4 +365,67 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
     ok: true,
     input: { header, baris, ...(alasan ? { alasan } : {}) },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Bentuk input pihak & posting piutang/hutang (P1-5)
+// ---------------------------------------------------------------------------
+
+export type BentukPihak = {
+  nama: string;
+  catatan: string;
+};
+
+export type BentukPostingPihak = {
+  pihakId: string;
+  input: JurnalInput;
+};
+
+/** Normalisasi input master pihak; jangan percaya objek mentah dari renderer. */
+export function validasiBentukPihak(nilai: unknown): HasilBentuk<BentukPihak> {
+  if (!objek(nilai)) return { ok: false, error: 'Data pihak tidak lengkap.' };
+
+  if (typeof nilai.nama !== 'string' || !nilai.nama.trim())
+    return { ok: false, error: 'Nama pihak wajib diisi.' };
+  const nama = nilai.nama.trim();
+  if (nama.length > 200) return { ok: false, error: 'Nama pihak maks. 200 karakter.' };
+
+  let catatan = '';
+  if (nilai.catatan !== undefined && nilai.catatan !== null) {
+    if (typeof nilai.catatan !== 'string')
+      return { ok: false, error: 'Catatan pihak tidak valid.' };
+    catatan = nilai.catatan.trim();
+    if (catatan.length > 1000)
+      return { ok: false, error: 'Catatan pihak maks. 1000 karakter.' };
+  }
+
+  return { ok: true, input: { nama, catatan } };
+}
+
+/**
+ * Bentuk request posting pihak: `{ pihakId, input }`. Jurnal memakai
+ * validator bentuk jurnal yang sama dengan form terpandu lain; alur ketat
+ * 1050/2050 diperiksa lagi oleh adapter DB (klasifikasiAlurPihak).
+ */
+export function validasiBentukPostingPihak(
+  nilai: unknown,
+): HasilBentuk<BentukPostingPihak> {
+  if (!objek(nilai)) return { ok: false, error: 'Data transaksi pihak tidak lengkap.' };
+
+  if (typeof nilai.pihakId !== 'string' || !nilai.pihakId.trim())
+    return { ok: false, error: 'Pihak wajib dipilih untuk transaksi piutang/hutang.' };
+  const pihakId = nilai.pihakId.trim();
+  if (pihakId.length > 200) return { ok: false, error: 'ID pihak terlalu panjang.' };
+
+  const jurnal = validasiBentukJurnalInput(nilai.input);
+  if (!jurnal.ok) return jurnal;
+
+  const jenis = jurnal.input.header.jenis;
+  if (jenis !== 'PIUTANG' && jenis !== 'HUTANG')
+    return {
+      ok: false,
+      error: 'Jenis jurnal form piutang/hutang harus PIUTANG atau HUTANG.',
+    };
+
+  return { ok: true, input: { pihakId, input: jurnal.input } };
 }

@@ -237,7 +237,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test open/close/pas/sisa/kurang; `panjar_item` terisi; Neraca Saldo nol.
   - **Dependency:** P0-4
 
-- [ ] **P1-5 — Form Piutang & Hutang + master pihak**
+- [x] **P1-5 — Form Piutang & Hutang + master pihak** (2026-10-22: master pihak + 5 alur terpandu, saldo per pihak dari jurnal, kasus perbaikan gedung kredit menaikkan beban/hutang tanpa menyentuh modal; 198/198 test hijau)
   - **Konteks:** feedback WhatsApp: user bingung "mencari lawan" hutang dan takut pencatatan perbaikan
     gedung menambah modal. Di double-entry lawannya jelas dan modal tidak tersentuh.
   - **Langkah:** tabel `pihak` (nama, catatan); form terpandu 5 alur:
