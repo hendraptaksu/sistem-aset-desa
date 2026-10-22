@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import {
   ArrowDownLeft,
@@ -9,9 +9,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
-import { api } from '../lib/api.js';
-import { Badge, Card, ErrorBox } from './ui.js';
+import { api, type StatusSaldoAwal } from '../lib/api.js';
+import { Badge, Button, Card, ErrorBox } from './ui.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
+import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 
 type KartuJenis = {
   id: JenisFormTransaksi | 'PANJAR' | 'PIUTANG';
@@ -69,6 +70,19 @@ export function TransaksiTab() {
   const [memuat, setMemuat] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [jenis, setJenis] = useState<JenisFormTransaksi>('TERIMA');
+  const [saldoStatus, setSaldoStatus] = useState<StatusSaldoAwal | null>(null);
+  const [statusSaldoErr, setStatusSaldoErr] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [pesanSaldo, setPesanSaldo] = useState<string | null>(null);
+
+  const muatStatusSaldo = useCallback(async () => {
+    try {
+      setSaldoStatus(await api.saldoAwalStatus());
+      setStatusSaldoErr(null);
+    } catch (e) {
+      setStatusSaldoErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   useEffect(() => {
     let aktif = true;
@@ -87,6 +101,10 @@ export function TransaksiTab() {
     };
   }, []);
 
+  useEffect(() => {
+    void muatStatusSaldo();
+  }, [muatStatusSaldo]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -100,6 +118,61 @@ export function TransaksiTab() {
             </p>
           </div>
           <Badge tone="green">Form terpandu</Badge>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">Saldo Awal Pembukuan</h2>
+            <p className="mt-1 max-w-2xl text-sm text-stone-600">
+              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, piutang,
+              hutang, dan aset lain per tanggal mulai; selisih otomatis menjadi modal
+              sehingga terbentuk satu jurnal yang seimbang.
+            </p>
+            {statusSaldoErr && (
+              <p className="mt-2 text-sm text-red-700">{statusSaldoErr}</p>
+            )}
+            {saldoStatus?.boleh && (
+              <p className="mt-2 text-sm text-emerald-800">
+                Belum ada jurnal. Wizard Saldo Awal bisa dipakai satu kali.
+              </p>
+            )}
+            {saldoStatus && !saldoStatus.boleh && (
+              <p className="mt-2 text-sm text-stone-600">
+                {saldoStatus.alasan ??
+                  'Saldo awal hanya bisa diisi saat belum ada jurnal. Gunakan koreksi/jurnal biasa.'}
+              </p>
+            )}
+            {!saldoStatus && !statusSaldoErr && (
+              <p className="mt-2 text-sm text-stone-500">Memeriksa status jurnal…</p>
+            )}
+            {pesanSaldo && (
+              <div className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+                {pesanSaldo}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <Badge tone={saldoStatus?.boleh ? 'green' : 'stone'}>
+              {saldoStatus?.boleh
+                ? 'Belum ada jurnal'
+                : saldoStatus
+                  ? 'Sudah ada jurnal'
+                  : 'Memuat status'}
+            </Badge>
+            <Button
+              disabled={!saldoStatus?.boleh || memuat}
+              title={
+                saldoStatus && !saldoStatus.boleh
+                  ? 'Saldo awal hanya bisa diisi saat belum ada jurnal.'
+                  : undefined
+              }
+              onClick={() => setWizardOpen(true)}
+            >
+              Wizard Saldo Awal
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -179,6 +252,25 @@ export function TransaksiTab() {
         coa={coa}
         memuat={memuat}
       />
+
+      {wizardOpen && (
+        <SaldoAwalWizard
+          coa={coa}
+          onClose={() => setWizardOpen(false)}
+          onSukses={(pesan) => {
+            setPesanSaldo(pesan);
+            setWizardOpen(false);
+            // Optimistis: tombol langsung terkunci walau refresh status gagal.
+            setSaldoStatus((s) => ({
+              boleh: false,
+              jumlahJurnal: (s?.jumlahJurnal ?? 0) + 1,
+              alasan:
+                'Saldo awal hanya bisa diisi saat belum ada jurnal. Gunakan koreksi/jurnal biasa.',
+            }));
+            void muatStatusSaldo();
+          }}
+        />
+      )}
     </div>
   );
 }

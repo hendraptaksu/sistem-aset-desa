@@ -1,5 +1,6 @@
 import type { Coa } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
+import type { FormSaldoAwal } from '../../core/forms.js';
 import type { AlurPihak, SaldoPihak } from '../../core/pihak.js';
 import type {
   Aset,
@@ -49,6 +50,13 @@ export type AuditFilterApi = {
 export type AuditLogPage = {
   rows: AuditLog[];
   total: number;
+};
+
+/** Status Wizard Saldo Awal (P1-6). */
+export type StatusSaldoAwal = {
+  boleh: boolean;
+  jumlahJurnal: number;
+  alasan?: string;
 };
 
 /** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
@@ -128,6 +136,12 @@ export const api = {
   ) => call<{ jurnal: Jurnal }>('jurnal:posting', input, opsi),
   jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
     call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),
+  /** Wizard Saldo Awal: hanya bisa dipakai saat belum ada jurnal (P1-6). */
+  saldoAwalStatus: () => call<StatusSaldoAwal>('saldo-awal:status'),
+  saldoAwalPosting: (
+    input: FormSaldoAwal,
+    opsi: { konfirmasiPeringatan?: boolean } = {},
+  ) => call<{ jurnal: Jurnal }>('saldo-awal:posting', input, opsi),
   jurnalKoreksiIsiUlang: (
     id: string,
     alasan: string,

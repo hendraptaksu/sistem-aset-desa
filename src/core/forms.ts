@@ -327,6 +327,134 @@ export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// Wizard Saldo Awal (P1-6)
+// ---------------------------------------------------------------------------
+// Dipakai SEKALI saat mulai pembukuan nyata. Operator cukup mengisi saldo per
+// akun (kas/bank, piutang, hutang, aset lain); selisih otomatis menjadi baris
+// penyeimbang 3000 MODAL. Hasilnya tetap satu jurnal double-entry biasa —
+// tidak ada tabel saldo atau angka turunan yang disimpan.
+
+export type BarisSaldoAwal = {
+  /** Akun AKTIVA (kas/bank, 1040, 1050, ...) atau KEWAJIBAN (2050, ...). */
+  akun_kode: string;
+  /** Nominal dalam sen; bilangan bulat >= 0. Baris 0 diabaikan. */
+  nominal: number;
+};
+
+export type FormSaldoAwal = {
+  /** Tanggal jangkar / tanggal mulai pembukuan (YYYY-MM-DD). */
+  tanggal: string;
+  /**
+   * Saldo per akun. Akun 3000 MODAL TIDAK boleh diisi di sini: modal selalu
+   * dihitung otomatis sebagai penyeimbang.
+   */
+  saldo: BarisSaldoAwal[];
+  keterangan?: string;
+  noBukti?: string;
+  id?: string;
+  alasan?: string;
+};
+
+export type HasilSaldoAwal = {
+  input: JurnalInput;
+  /** Total saldo akun AKTIVA (debit), tanpa baris modal. */
+  totalAktiva: number;
+  /** Total saldo akun KEWAJIBAN (kredit), tanpa baris modal. */
+  totalKewajiban: number;
+  /** totalAktiva - totalKewajiban; positif = modal dikredit, negatif = modal didebit. */
+  selisih: number;
+  akunModal: string;
+};
+
+/**
+ * Susun satu jurnal saldo awal yang seimbang.
+ *
+ * Aturan:
+ * - Tanggal kalender valid; minimal satu baris bernominal > 0.
+ * - Hanya akun AKTIVA/KEWAJIBAN. PENDAPATAN/BEBAN/EKUITAS ditolak karena saldo
+ *   awal bukan transaksi laba/rugi; 3000 MODAL hanya boleh muncul otomatis.
+ * - Baris bernominal 0 diabaikan; akun ganda digabung agar jurnal rapi.
+ * - Selisih aktiva - kewajiban menjadi baris penyeimbang 3000 MODAL:
+ *   selisih positif -> kredit modal, negatif -> debit modal, nol -> tanpa modal.
+ */
+export function buatJurnalSaldoAwal(form: FormSaldoAwal): HasilSaldoAwal {
+  const tanggal = wajibTanggal(form.tanggal);
+  if (!Array.isArray(form.saldo) || form.saldo.length === 0)
+    throw new Error('Saldo awal masih kosong. Isi minimal satu akun dengan nominal lebih dari 0.');
+
+  // Gabungkan akun yang sama supaya pratinjau jurnal tidak memiliki baris
+  // ganda untuk satu akun. Baris 0 diabaikan lebih dulu.
+  const perAkun = new Map<string, number>();
+  form.saldo.forEach((it, i) => {
+    const no = i + 1;
+    if (!it || typeof it !== 'object')
+      throw new Error(`Saldo awal baris ${no} tidak valid.`);
+    const kode = String(it.akun_kode ?? '').trim();
+    if (!kode) throw new Error(`Akun saldo awal baris ${no} wajib dipilih.`);
+    if (kode === AKUN_MODAL)
+      throw new Error(
+        'Akun 3000 MODAL diisi otomatis sebagai penyeimbang. Jangan memasukkan 3000 di daftar saldo.',
+      );
+    const data = cariAkunCoa(kode);
+    if (!data)
+      throw new Error(`Akun saldo awal baris ${no} (${kode}) tidak dikenal di daftar akun.`);
+    if (data.tipe !== 'AKTIVA' && data.tipe !== 'KEWAJIBAN')
+      throw new Error(
+        `Akun saldo awal baris ${no} (${kode} — ${data.nama}) harus akun AKTIVA atau KEWAJIBAN. ` +
+          'Pendapatan, beban, dan ekuitas tidak boleh dimasukkan; modal diisi otomatis.',
+      );
+    const nominal = it.nominal;
+    if (typeof nominal !== 'number' || !Number.isSafeInteger(nominal) || nominal < 0)
+      throw new Error(
+        `Nominal saldo awal baris ${no} harus bilangan bulat ≥ 0 (satuan sen).`,
+      );
+    if (nominal === 0) return;
+    perAkun.set(kode, (perAkun.get(kode) ?? 0) + nominal);
+  });
+
+  if (perAkun.size === 0)
+    throw new Error('Isi minimal satu saldo dengan nominal lebih dari 0.');
+
+  let totalAktiva = 0;
+  let totalKewajiban = 0;
+  const baris: JurnalBarisInput[] = [];
+  for (const [kode, nominal] of perAkun) {
+    const data = cariAkunCoa(kode);
+    if (!data) continue; // sudah diperiksa di atas; jaring pengaman tipe
+    if (data.tipe === 'AKTIVA') {
+      baris.push(debit(kode, nominal));
+      totalAktiva += nominal;
+    } else {
+      baris.push(kredit(kode, nominal));
+      totalKewajiban += nominal;
+    }
+  }
+
+  const selisih = totalAktiva - totalKewajiban;
+  if (selisih > 0) baris.push(kredit(AKUN_MODAL, selisih));
+  else if (selisih < 0) baris.push(debit(AKUN_MODAL, -selisih));
+
+  // Minimal 2 baris: satu akun + baris modal, atau dua akun berbeda.
+  if (baris.length < 2)
+    throw new Error('Jurnal saldo awal minimal 2 baris (satu debit dan satu kredit).');
+
+  const input = susun(
+    {
+      tanggal,
+      nominal: Math.max(totalAktiva, totalKewajiban),
+      keterangan: String(form.keterangan ?? '').trim() || 'Saldo awal pembukuan',
+      noBukti: form.noBukti,
+      id: form.id,
+      alasan: form.alasan,
+    },
+    'SALDO_AWAL',
+    baris,
+  );
+
+  return { input, totalAktiva, totalKewajiban, selisih, akunModal: AKUN_MODAL };
+}
+
 export type ItemPanjarClose = {
   /** Kode akun realisasi; wajib akun BEBAN (bukan kas/bank/1040). */
   akun: string;

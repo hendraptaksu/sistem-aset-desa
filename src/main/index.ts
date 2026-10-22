@@ -23,6 +23,7 @@ import {
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
 import { postingJurnal } from '../db/posting.js';
+import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
 import {
   closePanjarV2,
   listPanjarItemsV2,
@@ -57,12 +58,14 @@ import {
 } from '../features/export/export.js';
 import type { Aset, Transaksi } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
+import { buatJurnalSaldoAwal } from '../core/forms.js';
 import {
   validasiBentukJurnalInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukPihak,
   validasiBentukPostingPihak,
+  validasiBentukSaldoAwal,
   validateAsetInput,
   validateTransaksiInput,
   type AsetInput,
@@ -184,6 +187,47 @@ function registerIpc(): void {
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
         // Konfirmasi hanya untuk peringatan murni (mis. kas minus), bukan saat
         // masih ada error yang harus diperbaiki.
+        const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        return fail(pesan, perluAlasan, perluKonfirmasi);
+      }
+      return ok({ jurnal: hasil.jurnal });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  // ---- Wizard Saldo Awal (P1-6) ----
+  // Hanya sekali, saat tabel jurnal masih kosong. Renderer mengirim form mentah
+  // (tanggal + saldo per akun); main menyusun jurnal lewat builder murni yang
+  // sama dengan pratinjau UI, lalu adapter DB memeriksa "masih kosong" secara
+  // atomik sebelum menulis jurnal + audit SALDO-AWAL.
+  ipcMain.handle('saldo-awal:status', () => {
+    const k = perluBuka();
+    return k ? fail(k) : ok(statusSaldoAwal(db));
+  });
+
+  ipcMain.handle('saldo-awal:posting', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+
+      const bentuk = validasiBentukSaldoAwal(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const jurnalInput = buatJurnalSaldoAwal(bentuk.input).input;
+      const konfirmasiPeringatan =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+      const hasil = simpanSaldoAwal(db, jurnalInput, { konfirmasiPeringatan });
+      if (!hasil.tersimpan || !hasil.jurnal) {
+        const pesan =
+          hasil.errors.join(' ') ||
+          hasil.peringatan.join(' ') ||
+          'Saldo awal gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
         const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
         return fail(pesan, perluAlasan, perluKonfirmasi);
       }

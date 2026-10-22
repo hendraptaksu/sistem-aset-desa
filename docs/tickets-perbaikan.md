@@ -253,7 +253,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
     kredit → Laba Rugi turun, hutang naik, modal **tidak** berubah.
   - **Dependency:** P0-4
 
-- [ ] **P1-6 — Wizard Saldo Awal**
+- [x] **P1-6 — Wizard Saldo Awal** (2026-10-23: wizard sekali pakai saat jurnal kosong, saldo per akun + selisih otomatis ke 3000 MODAL, audit SALDO-AWAL, tolak dijalankan ulang; 211/211 test hijau)
   - **Langkah:** form saldo per akun (kas/bank, piutang, hutang, aset lain) + tanggal jangkar; selisih
     otomatis ke akun `3000 MODAL`; hanya boleh sekali (saat jurnal masih kosong); audit `SALDO-AWAL`;
     hasil = satu jurnal seimbang. Dipakai saat mulai pembukuan nyata (setelah POC selesai).

@@ -305,6 +305,11 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
       return { ok: false, error: 'Jenis jurnal tidak dikenal.' };
     if (h.jenis === 'REVERSAL')
       return { ok: false, error: 'Jurnal balik harus dibuat lewat menu Koreksi.' };
+    if (h.jenis === 'SALDO_AWAL')
+      return {
+        ok: false,
+        error: 'Saldo awal harus dibuat lewat Wizard Saldo Awal, bukan form jurnal biasa.',
+      };
     jenis = h.jenis as JurnalJenis;
   }
 
@@ -364,6 +369,89 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
   return {
     ok: true,
     input: { header, baris, ...(alasan ? { alasan } : {}) },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bentuk input Wizard Saldo Awal (P1-6)
+// ---------------------------------------------------------------------------
+
+export type BentukSaldoAwal = {
+  tanggal: string;
+  saldo: { akun_kode: string; nominal: number }[];
+  keterangan?: string;
+  noBukti?: string;
+  id?: string;
+  alasan?: string;
+};
+
+/**
+ * Normalisasi input wizard dari renderer. Objek mentah tidak dipercaya:
+ * hanya field yang dikenal yang diteruskan, nominal wajib integer sen >= 0,
+ * dan jumlah baris dibatasi. Aturan akuntansi (jenis akun, modal otomatis)
+ * tetap diperiksa oleh builder murni `buatJurnalSaldoAwal` di main.
+ */
+export function validasiBentukSaldoAwal(
+  nilai: unknown,
+): HasilBentuk<BentukSaldoAwal> {
+  if (!objek(nilai)) return { ok: false, error: 'Data saldo awal tidak lengkap.' };
+
+  const tanggal = teksOpsional(nilai.tanggal, 'Tanggal mulai pembukuan', 10);
+  if (!tanggal.ok) return tanggal;
+  if (!tanggal.nilai)
+    return { ok: false, error: 'Tanggal mulai pembukuan wajib diisi.' };
+
+  if (!Array.isArray(nilai.saldo))
+    return { ok: false, error: 'Daftar saldo awal tidak lengkap.' };
+  if (nilai.saldo.length === 0)
+    return { ok: false, error: 'Daftar saldo awal masih kosong.' };
+  if (nilai.saldo.length > 200)
+    return { ok: false, error: 'Daftar saldo awal maksimal 200 baris.' };
+
+  const saldo: { akun_kode: string; nominal: number }[] = [];
+  for (let i = 0; i < nilai.saldo.length; i += 1) {
+    const it = nilai.saldo[i];
+    const no = i + 1;
+    if (!objek(it)) return { ok: false, error: `Saldo awal baris ${no} tidak valid.` };
+
+    if (typeof it.akun_kode !== 'string' || !it.akun_kode.trim())
+      return { ok: false, error: `Saldo awal baris ${no}: akun belum dipilih.` };
+    const akun = it.akun_kode.trim();
+    if (akun.length > 20)
+      return { ok: false, error: `Saldo awal baris ${no}: kode akun terlalu panjang.` };
+
+    if (
+      typeof it.nominal !== 'number' ||
+      !Number.isSafeInteger(it.nominal) ||
+      it.nominal < 0
+    )
+      return {
+        ok: false,
+        error: `Saldo awal baris ${no}: nominal harus bilangan bulat ≥ 0 (satuan sen).`,
+      };
+
+    saldo.push({ akun_kode: akun, nominal: it.nominal });
+  }
+
+  const keterangan = teksOpsional(nilai.keterangan, 'Keterangan', 1000);
+  if (!keterangan.ok) return keterangan;
+  const noBukti = teksOpsional(nilai.noBukti, 'Nomor bukti', 100);
+  if (!noBukti.ok) return noBukti;
+  const id = teksOpsional(nilai.id, 'ID saldo awal', 200);
+  if (!id.ok) return id;
+  const alasan = teksOpsional(nilai.alasan, 'Alasan', 500);
+  if (!alasan.ok) return alasan;
+
+  return {
+    ok: true,
+    input: {
+      tanggal: tanggal.nilai,
+      saldo,
+      ...(keterangan.nilai ? { keterangan: keterangan.nilai } : {}),
+      ...(noBukti.nilai ? { noBukti: noBukti.nilai } : {}),
+      ...(id.nilai ? { id: id.nilai } : {}),
+      ...(alasan.nilai ? { alasan: alasan.nilai } : {}),
+    },
   };
 }
 
