@@ -26,13 +26,17 @@ import {
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
   buatAuditLog,
-  labaTahun,
-  neraca,
   panjarCloseToTransaksi,
   panjarOpenToTransaksi,
-  saldoSemuaKas,
 } from '../core/ledger.js';
-import { buildDashboard } from '../features/dashboard/dashboard.js';
+import {
+  labaTahun as labaTahunJurnal,
+  neraca as neracaJurnal,
+  saldoAkun,
+  saldoSemuaKas as saldoSemuaKasJurnal,
+} from '../core/reports.js';
+import { listBarisJurnal } from '../db/laporan.js';
+import { buildDashboardJurnal } from '../features/dashboard/dashboard.js';
 import { autoBackupHarian, lastAutoBackup } from '../features/export/export.js';
 import type { Aset, Panjar, Transaksi } from '../core/types.js';
 import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
@@ -293,13 +297,14 @@ function registerIpc(): void {
   });
   ipcMain.handle('tutup:preview', (_e, tahun: number) => {
     const k = perluBuka();
-    return k ? fail(k) : ok({ tahun, laba: labaTahun(listTransaksi(db), tahun) });
+    return k ? fail(k) : ok({ tahun, laba: labaTahunJurnal(listBarisJurnal(db), tahun) });
   });
   ipcMain.handle('tutup:create', (_e, tahun: number, backupPath = '') => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const laba = labaTahun(listTransaksi(db), tahun);
+      // Angka laba hanya snapshot tampilan; sumber perhitungan tetap jurnal.
+      const laba = labaTahunJurnal(listBarisJurnal(db), tahun);
       insertTutupBuku(db, { tahun, laba, created_at: new Date().toISOString(), backup_path: backupPath });
       return ok({ tahun, laba });
     } catch (e) {
@@ -310,8 +315,7 @@ function registerIpc(): void {
   ipcMain.handle('saldo:list', (_e, cutoff?: string) => {
     const k = perluBuka();
     if (k) return fail(k);
-    const tx = listTransaksi(db);
-    const perKas = saldoSemuaKas(tx, KAS_KODES, cutoff);
+    const perKas = saldoSemuaKasJurnal(listBarisJurnal(db), KAS_KODES, cutoff);
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
   });
 
@@ -320,8 +324,33 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
-      const n = neraca(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
-      return ok(n);
+      const baris = listBarisJurnal(db);
+      const n = neracaJurnal(baris, {
+        cutoff,
+        tutup: listTutupBuku(db),
+      });
+      // Bentuk kompatibel untuk tab Neraca lama (P1-9 akan memakai bentuk
+      // rinci per akun dari mesin laporan).
+      const kas: Record<string, number> = {};
+      for (const kode of KAS_KODES) kas[kode] = saldoAkun(baris, kode, cutoff);
+      const modalAwal = n.ekuitas.find((a) => a.kode === '3000')?.saldo ?? 0;
+      return ok({
+        cutoff,
+        aktiva: n.totalAset,
+        aktivaRinci: {
+          kas,
+          piutang: n.aset.find((a) => a.kode === '1050')?.saldo ?? 0,
+          panjarOpen: n.aset.find((a) => a.kode === '1040')?.saldo ?? 0,
+        },
+        hutang: n.totalKewajiban,
+        modalAwal,
+        // Semua ekuitas selain modal + laba tahun lampau (turunan jurnal).
+        kumulatif: n.totalEkuitasAkun - modalAwal + n.labaDitahan + n.labaBelumDitutup,
+        berjalan: n.labaBerjalan,
+        pasiva: n.totalPasiva,
+        selisih: n.selisih,
+        balance: n.balance,
+      });
     } catch (e) {
       return fail(String(e));
     }
@@ -332,7 +361,7 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
-      const d = buildDashboard(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
+      const d = buildDashboardJurnal(listBarisJurnal(db), listTutupBuku(db), cutoff);
       return ok(d);
     } catch (e) {
       return fail(String(e));

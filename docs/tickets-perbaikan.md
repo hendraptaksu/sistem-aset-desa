@@ -118,7 +118,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run tests/ipc-validation.test.ts` (dirombak) + test baru
   - **Dependency:** P0-2
 
-- [ ] **P0-5 — Laporan inti dari jurnal (pure functions)**
+- [x] **P0-5 — Laporan inti dari jurnal (pure functions)** (2026-10-22: mesin laporan `core/reports.ts` (saldoAkun, bukuBesar, neracaSaldo, labaRugi, neraca, arusKas) + adapter `db/laporan.ts`; IPC saldo/neraca/dashboard/tutup-preview pindah ke jurnal; 135/135 test hijau)
   - **Konteks:** laporan lama (`ledger.ts`, `realisasi.ts`, `surplus.ts`, `pembantu.ts`) dibangun dari
     single-entry dengan rumus berbeda-beda. Arah baru: satu mesin laporan dari jurnal.
   - **Langkah:** implementasi + test angka manual:
