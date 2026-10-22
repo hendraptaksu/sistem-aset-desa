@@ -223,7 +223,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test builder + smoke.
   - **Dependency:** P0-4
 
-- [ ] **P1-3 — Form terpandu: Pindah Dana (transfer antar kas/bank)**
+- [x] **P1-3 — Form terpandu: Pindah Dana (transfer antar kas/bank)** (2026-10-22: form Pindah Dana D tujuan/K asal, tolak dompet sama, kasus LPD 1014→1001 total kas tetap & Neraca Saldo nol; 175/175 test hijau)
   - **Langkah:** dari, ke, nominal, tanggal, keterangan; jurnal 2 baris (D tujuan / K asal); tolak dari = ke.
     Label UI: "Pindah Dana" (bukan istilah asing). Kasus utama dari feedback: **LPD → Kas Bendahara (1001)**
     atau bank → kas; semua akun kas/bank boleh jadi asal/tujuan karena tiap dompet adalah akun tersendiri.

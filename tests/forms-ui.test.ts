@@ -1,16 +1,18 @@
-// P1-1/P1-2: kontrak builder form terpandu yang dipakai layar Transaksi.
+// P1-1/P1-2/P1-3: kontrak builder form terpandu yang dipakai layar Transaksi.
 // Fokus: akun kas/pendapatan/modal (Terima), akun beban/hutang (Bayar),
-// nominal SEN, pratinjau seimbang, serta bentuk input IPC yang tidak boleh
-// dipercaya mentah-mentah.
+// perpindahan antar dompet kas/bank (Pindah Dana), nominal SEN, pratinjau
+// seimbang, serta bentuk input IPC yang tidak boleh dipercaya mentah-mentah.
 
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AKUN_MODAL, COA } from '../src/db/coa.js';
+import { AKUN_MODAL, COA, KAS_KODES } from '../src/db/coa.js';
 import {
   buatJurnalBayar,
+  buatJurnalPindahDana,
   buatJurnalTerimaUang,
   type FormBayar,
+  type FormPindahDana,
   type FormTerimaUang,
 } from '../src/core/forms.js';
 import {
@@ -20,6 +22,10 @@ import {
   type PostingContext,
 } from '../src/core/posting.js';
 import { validasiBentukJurnalInput } from '../src/main/validation.js';
+import { openDb } from '../src/db/database.js';
+import { postingJurnal } from '../src/db/posting.js';
+import { listBarisJurnal } from '../src/db/laporan.js';
+import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
 import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
 
@@ -365,8 +371,9 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(kartuBayar).not.toContain('disabled');
     expect(kartuBayar).toContain('Siap dipakai');
     expect(html).toContain('Sedang dipakai');
-    // Hanya tiga jenis yang belum siap yang berstatus "Segera hadir".
-    expect((html.match(/Segera hadir/g) ?? []).length).toBe(3);
+    // Hanya dua jenis yang belum siap (Panjar & Piutang/Hutang) yang
+    // berstatus "Segera hadir"; Pindah Dana sudah aktif sejak P1-3.
+    expect((html.match(/Segera hadir/g) ?? []).length).toBe(2);
     for (const label of ['Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
       expect(html).toContain(label);
     }
@@ -394,5 +401,193 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     // Pendapatan & ekuitas tidak boleh menjadi lawan pembayaran.
     expect(html).not.toContain('PENDAPATAN PARKIR');
     expect(html).not.toContain('3000 — MODAL');
+  });
+});
+
+function dasarPindah(over: Partial<FormPindahDana> = {}): FormPindahDana {
+  return {
+    tanggal: '2026-10-22',
+    dari: '1014',
+    ke: '1001',
+    nominal: RP(250_000),
+    keterangan: 'Pindah kas LPD ke Kas Bendahara',
+    ...over,
+  };
+}
+
+describe('P1-3 — builder Pindah Dana untuk form terpandu', () => {
+  it('menyusun D tujuan / K asal, total seimbang, dan lolos validasiJurnal', () => {
+    const input = buatJurnalPindahDana(
+      dasarPindah({ noBukti: '  JU-2026-0003  ' }),
+    );
+
+    expect(input.header).toMatchObject({
+      tanggal: '2026-10-22',
+      keterangan: 'Pindah kas LPD ke Kas Bendahara',
+      jenis: 'TRANSFER',
+      no_bukti: 'JU-2026-0003',
+    });
+    expect(input.header.id).toBeTruthy();
+    // Dana masuk ke tujuan (debit), keluar dari asal (kredit).
+    expect(input.baris).toEqual([
+      { akun_kode: '1001', debit: RP(250_000), kredit: 0 },
+      { akun_kode: '1014', debit: 0, kredit: RP(250_000) },
+    ]);
+
+    const jumlah = total(input);
+    expect(jumlah).toEqual({ debit: RP(250_000), kredit: RP(250_000) });
+    expect(jumlah.debit).toBe(jumlah.kredit);
+
+    const validasi = validasiJurnal(
+      input,
+      konteks({
+        saldoKas: { '1014': RP(1_000_000), '1001': RP(50_000) },
+      }),
+    );
+    expect(validasi.errors).toEqual([]);
+    expect(validasi.peringatan).toEqual([]);
+    expect(validasi.boleh).toBe(true);
+  });
+
+  it('menolak dari = ke, akun non-kas, dan nominal/tanggal/keterangan tidak valid', () => {
+    expect(() => buatJurnalPindahDana(dasarPindah({ ke: '1014' }))).toThrow(
+      /berbeda/,
+    );
+    // Kedua sisi wajib dompet kas/bank: 1040 panjar & 1050 piutang bukan dompet.
+    expect(() => buatJurnalPindahDana(dasarPindah({ dari: '4005' }))).toThrow(
+      /kas\/bank/,
+    );
+    expect(() => buatJurnalPindahDana(dasarPindah({ dari: '1040' }))).toThrow(
+      /kas\/bank/,
+    );
+    expect(() => buatJurnalPindahDana(dasarPindah({ ke: '1050' }))).toThrow(
+      /kas\/bank/,
+    );
+    expect(() => buatJurnalPindahDana(dasarPindah({ ke: '9999' }))).toThrow(
+      /kas\/bank/,
+    );
+
+    expect(() => buatJurnalPindahDana(dasarPindah({ nominal: 0 }))).toThrow(
+      /Nominal/,
+    );
+    expect(() => buatJurnalPindahDana(dasarPindah({ nominal: -1 }))).toThrow(
+      /Nominal/,
+    );
+    expect(() => buatJurnalPindahDana(dasarPindah({ nominal: 1.5 }))).toThrow(
+      /Nominal/,
+    );
+    expect(() =>
+      buatJurnalPindahDana(dasarPindah({ nominal: Number.NaN })),
+    ).toThrow(/Nominal/);
+    expect(() =>
+      buatJurnalPindahDana(dasarPindah({ tanggal: '2026-02-31' })),
+    ).toThrow(/Tanggal/);
+    expect(() =>
+      buatJurnalPindahDana(dasarPindah({ keterangan: '   ' })),
+    ).toThrow(/Keterangan/);
+
+    // No. bukti opsional: spasi saja tidak disimpan sebagai nomor.
+    expect(
+      buatJurnalPindahDana(dasarPindah({ noBukti: '   ' })).header.no_bukti,
+    ).toBeUndefined();
+  });
+
+  it('kasus feedback LPD 1014 → Kas Bendahara 1001: saldo berpindah, total kas tetap', () => {
+    const db = openDb(':memory:');
+    try {
+      // Saldo awal: LPD 1014 punya dana (lawan akun modal).
+      const modal = postingJurnal(db, {
+        header: {
+          id: 'p1-3-modal',
+          tanggal: '2026-01-01',
+          no_bukti: 'P1-3-0001',
+          keterangan: 'Saldo awal',
+          jenis: 'SALDO_AWAL',
+        },
+        baris: [
+          { akun_kode: '1014', debit: RP(1_000_000), kredit: 0 },
+          { akun_kode: AKUN_MODAL, debit: 0, kredit: RP(1_000_000) },
+        ],
+      });
+      expect(modal.tersimpan, modal.errors.join(' ')).toBe(true);
+
+      const sebelum = listBarisJurnal(db);
+      expect(saldoAkun(sebelum, '1014')).toBe(RP(1_000_000));
+      expect(saldoAkun(sebelum, '1001')).toBe(0);
+      const totalKasSebelum = totalKas(sebelum, KAS_KODES);
+      expect(totalKasSebelum).toBe(RP(1_000_000));
+
+      const hasil = postingJurnal(
+        db,
+        buatJurnalPindahDana({
+          ...dasarPindah(),
+          noBukti: 'P1-3-0002',
+          id: 'p1-3-pindah',
+        }),
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.errors).toEqual([]);
+      expect(hasil.peringatan).toEqual([]);
+
+      const sesudah = listBarisJurnal(db);
+      // Hanya posisi antar dompet yang berubah.
+      expect(saldoAkun(sesudah, '1014')).toBe(RP(750_000));
+      expect(saldoAkun(sesudah, '1001')).toBe(RP(250_000));
+      expect(totalKas(sesudah, KAS_KODES)).toBe(totalKasSebelum);
+      expect(totalKas(sesudah, KAS_KODES)).toBe(RP(1_000_000));
+
+      // Neraca Saldo tetap seimbang setelah transfer.
+      const ns = neracaSaldo(sesudah, '2026-12-31');
+      expect(ns.selisih).toBe(0);
+      expect(ns.totalDebit).toBe(ns.totalKredit);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
+  it('mengaktifkan kartu Pindah Dana dan menyisakan Panjar/Piutang sebagai segera hadir', () => {
+    const html = renderToStaticMarkup(createElement(TransaksiTab));
+
+    const kartuPindah = html
+      .split('<button')
+      .find((s) => s.includes('>Pindah Dana</span>'));
+    expect(kartuPindah).toBeDefined();
+    expect(kartuPindah).not.toContain('disabled');
+    expect(kartuPindah).toContain('Siap dipakai');
+    expect((html.match(/Segera hadir/g) ?? []).length).toBe(2);
+    for (const label of ['Panjar', 'Piutang/Hutang']) {
+      expect(html).toContain(label);
+    }
+  });
+
+  it('merender form Pindah Dana dengan label Dari/Ke dan penjelasan total kas', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: COA,
+        memuat: false,
+      }),
+    );
+
+    expect(html).toContain('Pindah Dana');
+    expect(html).toContain('antar dompet kas/bank');
+    expect(html).toContain('Total kas tidak berubah');
+    expect(html).toContain('Total kas tetap');
+    expect(html).toContain('>Dari<');
+    expect(html).toContain('>Ke<');
+    expect(html).toContain('Nominal');
+    expect(html).toContain('Keterangan');
+    expect(html).toContain('No. bukti (opsional)');
+    expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
+    expect(html).toContain('Simpan Pindah Dana');
+    // Pilihan awal: dua dompet berbeda, bukan akun non-kas.
+    expect(html).toContain('1001 — KAS');
+    expect(html).toContain('1010 — LPD 12.05163/DL/2020 KIOS');
+    expect(html).not.toContain('1040 — UANG PANJAR');
+    expect(html).not.toContain('3000 — MODAL');
+    // Label UI memakai istilah Indonesia, bukan "Transfer".
+    expect(html).not.toContain('Transfer');
   });
 });

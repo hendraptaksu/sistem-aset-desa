@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AKUN_HUTANG, AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
 import {
   buatJurnalBayar,
+  buatJurnalPindahDana,
   buatJurnalTerimaUang,
   type DasarFormJurnal,
 } from '../../core/forms.js';
@@ -21,7 +22,7 @@ import {
 } from './ui.js';
 
 /** Jenis transaksi yang sudah punya form terpandu. */
-export type JenisFormTransaksi = 'TERIMA' | 'BAYAR';
+export type JenisFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
 
 /** Kolom yang sama untuk Terima Uang & Bayar (kas + akun lawan). */
 type FormTransaksi = DasarFormJurnal & {
@@ -29,15 +30,34 @@ type FormTransaksi = DasarFormJurnal & {
   akunLawan: string;
 };
 
+/** Nilai mentah form; dipetakan ke builder sesuai jenis transaksi. */
+type NilaiForm = {
+  tanggal: string;
+  akunKas: string;
+  akunLawan: string;
+  akunKe: string;
+  nominal: number;
+  keterangan: string;
+  noBukti?: string;
+  alasan?: string;
+};
+
 type GrupAkun = { label: string; akun: Coa[] };
 
-type KonfigurasiForm = {
+type KonfigurasiDasar = {
   judul: string;
   deskripsi: string;
+  placeholderKeterangan: string;
+  /** Dipakai pratinjau saat keterangan masih kosong (simpan tetap wajib isi). */
+  keteranganPratinjau: string;
+  labelTombol: string;
+};
+
+type KonfigurasiKasLawan = KonfigurasiDasar & {
+  mode: 'KAS_LAWAN';
   labelKas: string;
   labelLawan: string;
   hintLawan: string;
-  placeholderKeterangan: string;
   labelKasBaris: string;
   labelLawanBaris: string;
   /** Posisi akun kas di baris jurnal: kas bisa di debit (Terima) atau kredit (Bayar). */
@@ -45,7 +65,14 @@ type KonfigurasiForm = {
   buat: (form: FormTransaksi) => JurnalInput;
   grupLawan: (coa: Coa[]) => GrupAkun[];
   akunLawanAwal: (coa: Coa[]) => string;
+  infoTambahan?: string;
 };
+
+type KonfigurasiPindah = KonfigurasiDasar & {
+  mode: 'PINDAH';
+};
+
+type KonfigurasiForm = KonfigurasiKasLawan | KonfigurasiPindah;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -63,6 +90,7 @@ function akunLawanAwalBayar(coa: Coa[]): string {
 
 const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
   TERIMA: {
+    mode: 'KAS_LAWAN',
     judul: 'Terima Uang',
     deskripsi:
       'Catat uang yang masuk ke kas atau bank. Isi sumber uangnya — pendapatan usaha/punia, atau setoran modal.',
@@ -71,6 +99,8 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     hintLawan:
       'Pilih akun pendapatan. Bila uangnya setoran modal, pilih 3000 MODAL.',
     placeholderKeterangan: 'cth: Pendapatan parkir bulan Oktober',
+    keteranganPratinjau: 'Transaksi harian',
+    labelTombol: 'Simpan Transaksi',
     labelKasBaris: 'Uang masuk',
     labelLawanBaris: 'Sumber',
     posisiKas: 'DEBIT',
@@ -88,6 +118,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
         coa.find((a) => a.kode === AKUN_MODAL))?.kode ?? '',
   },
   BAYAR: {
+    mode: 'KAS_LAWAN',
     judul: 'Bayar / Beban',
     deskripsi:
       'Catat uang yang keluar dari kas atau bank untuk belanja, biaya, atau melunasi hutang. Sistem menyusun jurnalnya otomatis.',
@@ -96,6 +127,8 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     hintLawan:
       'Pilih akun beban untuk belanja/biaya, atau 2050 HUTANG untuk melunasi hutang.',
     placeholderKeterangan: 'cth: Bayar listrik bulan Oktober',
+    keteranganPratinjau: 'Transaksi harian',
+    labelTombol: 'Simpan Transaksi',
     labelKasBaris: 'Uang keluar',
     labelLawanBaris: 'Pembayaran',
     posisiKas: 'KREDIT',
@@ -115,6 +148,16 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
       return grup;
     },
     akunLawanAwal: akunLawanAwalBayar,
+    infoTambahan: 'Anggaran: belum diatur (fitur anggaran menyusul).',
+  },
+  PINDAH: {
+    mode: 'PINDAH',
+    judul: 'Pindah Dana',
+    deskripsi:
+      'Pindahkan uang antar dompet kas/bank — misalnya dari LPD ke Kas Bendahara. Total kas tidak berubah; hanya saldo tiap dompet yang berpindah.',
+    placeholderKeterangan: 'cth: Pindah kas LPD ke Kas Bendahara',
+    keteranganPratinjau: 'Pindah dana',
+    labelTombol: 'Simpan Pindah Dana',
   },
 };
 
@@ -128,12 +171,18 @@ export function FormTransaksiTerpandu({
   memuat?: boolean;
 }) {
   const konfigurasi = KONFIG[jenis];
+  const pindah = konfigurasi.mode === 'PINDAH';
+  const kasAwal = coa.find((a) => isAkunKas(a.kode))?.kode ?? '';
 
   const [tanggal, setTanggal] = useState(today());
-  const [akunKas, setAkunKas] = useState(
-    () => coa.find((a) => isAkunKas(a.kode))?.kode ?? '',
+  const [akunKas, setAkunKas] = useState(kasAwal);
+  const [akunLawan, setAkunLawan] = useState(() =>
+    konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.akunLawanAwal(coa) : '',
   );
-  const [akunLawan, setAkunLawan] = useState(() => konfigurasi.akunLawanAwal(coa));
+  const [akunKe, setAkunKe] = useState(
+    () =>
+      coa.find((a) => isAkunKas(a.kode) && a.kode !== kasAwal)?.kode ?? '',
+  );
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
   const [noBukti, setNoBukti] = useState('');
@@ -150,13 +199,19 @@ export function FormTransaksiTerpandu({
   useEffect(() => {
     const kasPertama = coa.find((a) => isAkunKas(a.kode))?.kode ?? '';
     setAkunKas((sebelum) => sebelum || kasPertama);
-    const lawanAwal = konfigurasi.akunLawanAwal(coa);
-    setAkunLawan((sebelum) => sebelum || lawanAwal);
+    if (konfigurasi.mode === 'KAS_LAWAN') {
+      const lawanAwal = konfigurasi.akunLawanAwal(coa);
+      setAkunLawan((sebelum) => sebelum || lawanAwal);
+    } else {
+      const tujuanAwal =
+        coa.find((a) => isAkunKas(a.kode) && a.kode !== kasPertama)?.kode ?? '';
+      setAkunKe((sebelum) => sebelum || tujuanAwal);
+    }
   }, [coa, konfigurasi]);
 
   const kasList = useMemo(() => coa.filter((a) => isAkunKas(a.kode)), [coa]);
   const grupLawan = useMemo(
-    () => konfigurasi.grupLawan(coa),
+    () => (konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.grupLawan(coa) : []),
     [coa, konfigurasi],
   );
   const namaAkun = useMemo(
@@ -165,23 +220,54 @@ export function FormTransaksiTerpandu({
   );
   const labelAkun = (kode: string): string => namaAkun.get(kode) ?? kode;
 
+  const susunJurnal = useCallback(
+    (nilai: NilaiForm): JurnalInput => {
+      if (konfigurasi.mode === 'PINDAH') {
+        return buatJurnalPindahDana({
+          tanggal: nilai.tanggal,
+          dari: nilai.akunKas,
+          ke: nilai.akunKe,
+          nominal: nilai.nominal,
+          keterangan: nilai.keterangan,
+          ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
+          ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
+        });
+      }
+      return konfigurasi.buat({
+        tanggal: nilai.tanggal,
+        akunKas: nilai.akunKas,
+        akunLawan: nilai.akunLawan,
+        nominal: nilai.nominal,
+        keterangan: nilai.keterangan,
+        ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
+        ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
+      });
+    },
+    [konfigurasi],
+  );
+
   // Pratinjau memakai builder yang sama dengan yang dipakai saat menyimpan.
   const pratinjau = useMemo(() => {
     if (!tanggalKalenderValid(tanggal))
       return { input: null as JurnalInput | null, error: 'Tanggal belum valid.' };
-    if (!akunKas || !akunLawan)
+    if (pindah) {
+      if (!akunKas || !akunKe)
+        return { input: null as JurnalInput | null, error: null };
+    } else if (!akunKas || !akunLawan) {
       return { input: null as JurnalInput | null, error: null };
+    }
     if (!Number.isInteger(nominal) || nominal <= 0)
       return { input: null as JurnalInput | null, error: null };
     try {
       return {
-        input: konfigurasi.buat({
+        input: susunJurnal({
           tanggal,
           akunKas,
           akunLawan,
+          akunKe,
           nominal,
           // Keterangan boleh belum diisi saat pratinjau; saat simpan wajib.
-          keterangan: keterangan.trim() || 'Transaksi harian',
+          keterangan: keterangan.trim() || konfigurasi.keteranganPratinjau,
         }),
         error: null,
       };
@@ -191,20 +277,37 @@ export function FormTransaksiTerpandu({
         error: e instanceof Error ? e.message : String(e),
       };
     }
-  }, [akunKas, akunLawan, keterangan, konfigurasi, nominal, tanggal]);
+  }, [
+    akunKas,
+    akunKe,
+    akunLawan,
+    keterangan,
+    konfigurasi.keteranganPratinjau,
+    nominal,
+    pindah,
+    susunJurnal,
+    tanggal,
+  ]);
 
   const totalDebit = pratinjau.input?.baris.reduce((s, b) => s + b.debit, 0) ?? 0;
   const totalKredit = pratinjau.input?.baris.reduce((s, b) => s + b.kredit, 0) ?? 0;
 
+  const akunLengkap = pindah
+    ? Boolean(akunKas && akunKe && akunKas !== akunKe)
+    : Boolean(akunKas && akunLawan);
   const formSah =
     tanggalKalenderValid(tanggal) &&
-    Boolean(akunKas) &&
-    Boolean(akunLawan) &&
+    akunLengkap &&
     Number.isInteger(nominal) &&
     nominal > 0 &&
     Boolean(keterangan.trim());
 
   const labelBaris = (i: number): string => {
+    if (konfigurasi.mode === 'PINDAH') {
+      const tujuan = `Tujuan (masuk) — ${labelAkun(akunKe)}`;
+      const asal = `Asal (keluar) — ${labelAkun(akunKas)}`;
+      return i === 0 ? tujuan : asal;
+    }
     const kas = `${konfigurasi.labelKasBaris} — ${labelAkun(akunKas)}`;
     const lawan = `${konfigurasi.labelLawanBaris} — ${labelAkun(akunLawan)}`;
     const kasDiBarisIni = konfigurasi.posisiKas === 'DEBIT' ? i === 0 : i === 1;
@@ -227,10 +330,11 @@ export function FormTransaksiTerpandu({
 
     let input: JurnalInput;
     try {
-      input = konfigurasi.buat({
+      input = susunJurnal({
         tanggal,
         akunKas,
         akunLawan,
+        akunKe,
         nominal,
         keterangan: keterangan.trim(),
         noBukti: noBukti.trim(),
@@ -250,7 +354,7 @@ export function FormTransaksiTerpandu({
         konfirmasiPeringatan: opsi.konfirmasi === true,
       });
       setInfo(
-        `Transaksi ${formatTanggal(tanggal)} tersimpan${noBuktiTersimpan ? ` (${noBuktiTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
+        `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${noBuktiTersimpan ? ` (${noBuktiTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
       );
       // Tanggal & akun tetap; hanya isian yang mudah berulang yang dikosongkan.
       setNominal(0);
@@ -279,7 +383,10 @@ export function FormTransaksiTerpandu({
             {konfigurasi.deskripsi}
           </p>
         </div>
-        <Badge tone="green">Jurnal otomatis seimbang</Badge>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="green">Jurnal otomatis seimbang</Badge>
+          {pindah && <Badge tone="amber">Total kas tetap</Badge>}
+        </div>
       </div>
 
       <div className="mt-3">
@@ -301,47 +408,95 @@ export function FormTransaksiTerpandu({
           />
         </Field>
 
-        <Field label={konfigurasi.labelKas}>
-          <Select
-            value={akunKas}
-            disabled={busy || memuat}
-            onChange={(e) => setAkunKas(e.target.value)}
-          >
-            <option value="">— Pilih kas / bank —</option>
-            {kasList.map((a) => (
-              <option key={a.kode} value={a.kode}>
-                {a.kode} — {a.nama}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label={konfigurasi.labelLawan}>
-          <Select
-            value={akunLawan}
-            disabled={busy || memuat}
-            onChange={(e) => setAkunLawan(e.target.value)}
-          >
-            <option value="">— Pilih {konfigurasi.labelLawan.toLowerCase()} —</option>
-            {grupLawan.map((grup) => (
-              <optgroup key={grup.label} label={grup.label}>
-                {grup.akun.map((a) => (
+        {konfigurasi.mode === 'PINDAH' ? (
+          <>
+            <Field label="Dari">
+              <Select
+                value={akunKas}
+                disabled={busy || memuat}
+                onChange={(e) => setAkunKas(e.target.value)}
+              >
+                <option value="">— Pilih kas / bank —</option>
+                {kasList.map((a) => (
                   <option key={a.kode} value={a.kode}>
                     {a.kode} — {a.nama}
                   </option>
                 ))}
-              </optgroup>
-            ))}
-          </Select>
-          <span className="mt-1 block text-xs text-stone-500">
-            {konfigurasi.hintLawan}
-          </span>
-          {jenis === 'BAYAR' && (
-            <span className="mt-1 block text-xs text-stone-500">
-              Anggaran: belum diatur (fitur anggaran menyusul).
-            </span>
-          )}
-        </Field>
+              </Select>
+              <span className="mt-1 block text-xs text-stone-500">
+                Dompet asal — uang keluar dari akun ini.
+              </span>
+            </Field>
+
+            <Field label="Ke">
+              <Select
+                value={akunKe}
+                disabled={busy || memuat}
+                onChange={(e) => setAkunKe(e.target.value)}
+              >
+                <option value="">— Pilih kas / bank —</option>
+                {kasList.map((a) => (
+                  <option key={a.kode} value={a.kode}>
+                    {a.kode} — {a.nama}
+                  </option>
+                ))}
+              </Select>
+              <span className="mt-1 block text-xs text-stone-500">
+                Dompet tujuan — uang masuk ke akun ini. Total kas tidak berubah.
+              </span>
+              {akunKas && akunKe && akunKas === akunKe && (
+                <span className="mt-1 block text-xs text-red-700">
+                  Akun Dari dan Ke harus berbeda — pilih dua dompet kas/bank
+                  yang berbeda.
+                </span>
+              )}
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label={konfigurasi.labelKas}>
+              <Select
+                value={akunKas}
+                disabled={busy || memuat}
+                onChange={(e) => setAkunKas(e.target.value)}
+              >
+                <option value="">— Pilih kas / bank —</option>
+                {kasList.map((a) => (
+                  <option key={a.kode} value={a.kode}>
+                    {a.kode} — {a.nama}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label={konfigurasi.labelLawan}>
+              <Select
+                value={akunLawan}
+                disabled={busy || memuat}
+                onChange={(e) => setAkunLawan(e.target.value)}
+              >
+                <option value="">— Pilih {konfigurasi.labelLawan.toLowerCase()} —</option>
+                {grupLawan.map((grup) => (
+                  <optgroup key={grup.label} label={grup.label}>
+                    {grup.akun.map((a) => (
+                      <option key={a.kode} value={a.kode}>
+                        {a.kode} — {a.nama}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+              <span className="mt-1 block text-xs text-stone-500">
+                {konfigurasi.hintLawan}
+              </span>
+              {konfigurasi.infoTambahan && (
+                <span className="mt-1 block text-xs text-stone-500">
+                  {konfigurasi.infoTambahan}
+                </span>
+              )}
+            </Field>
+          </>
+        )}
 
         <Field label="Nominal">
           <CurrencyInput value={nominal} onChange={setNominal} />
@@ -377,6 +532,11 @@ export function FormTransaksiTerpandu({
           Baris di bawah ini yang akan disimpan. Operator tidak perlu mengubahnya;
           akuntan pendamping bisa memeriksa debit dan kredit di sini.
         </p>
+        {pindah && (
+          <p className="mt-1 text-sm text-stone-600">
+            Debit = dompet tujuan, kredit = dompet asal. Total kas tidak berubah.
+          </p>
+        )}
 
         {pratinjau.error ? (
           <p className="mt-2 text-sm text-red-700">{pratinjau.error}</p>
@@ -440,7 +600,7 @@ export function FormTransaksiTerpandu({
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button disabled={busy || memuat || !formSah} onClick={() => void simpan()}>
-          {busy ? 'Menyimpan…' : 'Simpan Transaksi'}
+          {busy ? 'Menyimpan…' : konfigurasi.labelTombol}
         </Button>
         <span className="text-sm text-stone-500">
           Setelah tersimpan, transaksi langsung masuk ke laporan dari jurnal.

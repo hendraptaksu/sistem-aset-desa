@@ -14,14 +14,14 @@ import { Badge, Card, ErrorBox } from './ui.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
 
 type KartuJenis = {
-  id: JenisFormTransaksi | 'PINDAH' | 'PANJAR' | 'PIUTANG';
+  id: JenisFormTransaksi | 'PANJAR' | 'PIUTANG';
   label: string;
   keterangan: string;
   Icon: LucideIcon;
   siap: boolean;
 };
 
-// Slot jenis transaksi dibuat konsisten sejak awal; P1-3..P1-5 akan mengisi
+// Slot jenis transaksi dibuat konsisten sejak awal; P1-4..P1-5 akan mengisi
 // tombol yang sekarang masih "segera hadir".
 const KARTU_JENIS: KartuJenis[] = [
   {
@@ -43,7 +43,7 @@ const KARTU_JENIS: KartuJenis[] = [
     label: 'Pindah Dana',
     keterangan: 'Antar kas / bank',
     Icon: ArrowLeftRight,
-    siap: false,
+    siap: true,
   },
   {
     id: 'PANJAR',
@@ -62,7 +62,7 @@ const KARTU_JENIS: KartuJenis[] = [
 ];
 
 const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
-  id === 'TERIMA' || id === 'BAYAR';
+  id === 'TERIMA' || id === 'BAYAR' || id === 'PINDAH';
 
 export function TransaksiTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
@@ -106,8 +106,8 @@ export function TransaksiTab() {
       <Card>
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
         <p className="mt-1 text-sm text-stone-600">
-          Untuk sekarang, <b>Terima Uang</b> dan <b>Bayar</b> sudah bisa dipakai. Jenis
-          lain menyusul.
+          Untuk sekarang, <b>Terima Uang</b>, <b>Bayar</b>, dan <b>Pindah Dana</b>{' '}
+          sudah bisa dipakai. Jenis lain menyusul.
         </p>
         {err && (
           <div className="mt-3">
