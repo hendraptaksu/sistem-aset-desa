@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS jurnal (
 CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
 CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
+-- P0-4: nomor bukti unik (index parsial; jurnal draft boleh tanpa no_bukti).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jurnal_no_bukti
+  ON jurnal(no_bukti COLLATE NOCASE)
+  WHERE no_bukti <> '';
 
 CREATE TABLE IF NOT EXISTS jurnal_baris (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

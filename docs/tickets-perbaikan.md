@@ -105,7 +105,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run tests/seed-dev.test.ts`
   - **Dependency:** P0-2
 
-- [ ] **P0-4 — Posting layer & aturan validasi bisnis**
+- [x] **P0-4 — Posting layer & aturan validasi bisnis** (2026-10-22: `validasiJurnal` murni + `postingJurnal` DB satu pintu; tanggal kalender, akun aktif/tipe, keseimbangan, kunci periode, peringatan kas minus, no. bukti unik via index parsial; 114/114 test hijau)
   - **Konteks:** aturan akuntansi harus satu pintu, bukan tersebar di UI.
   - **Langkah:** fungsi murni `validasiJurnal(input, ctx)`:
     1. Tanggal kalender valid (tolak 31 Feb — perbaikan bug lama).

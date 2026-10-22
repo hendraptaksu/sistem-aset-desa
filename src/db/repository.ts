@@ -3,6 +3,7 @@
 
 import type Database from 'better-sqlite3';
 import { isPeriodeTerkunci } from '../core/ledger.js';
+import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import type { CoaTipe, PosisiNormal } from './coa.js';
 import type {
   Aset,
@@ -99,7 +100,7 @@ export function insertJurnal(
 ): Jurnal {
   const id = String(header.id ?? '').trim();
   if (!id) throw new Error('ID jurnal wajib diisi.');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(header.tanggal ?? '')))
+  if (!tanggalKalenderValid(String(header.tanggal ?? '')))
     throw new Error('Tanggal jurnal tidak valid (YYYY-MM-DD).');
   const keterangan = String(header.keterangan ?? '').trim();
   if (!keterangan) throw new Error('Keterangan jurnal wajib diisi.');
@@ -107,17 +108,31 @@ export function insertJurnal(
     throw new Error('Jurnal wajib memiliki minimal 2 baris (debit dan kredit).');
   if (getJurnal(db, id)) throw new Error(`Jurnal ${id} sudah ada.`);
 
+  const jenis = header.jenis ?? 'UMUM';
+  if (!JENIS_JURNAL.includes(jenis)) throw new Error('Jenis jurnal tidak dikenal.');
+
+  const noBukti = String(header.no_bukti ?? '').trim();
+  if (noBukti) {
+    const dup = db
+      .prepare('SELECT id FROM jurnal WHERE lower(no_bukti) = lower(?)')
+      .get(noBukti) as { id: string } | undefined;
+    if (dup) throw new Error(`Nomor bukti ${noBukti} sudah dipakai jurnal ${dup.id}.`);
+  }
+
   const reversalOf = header.reversal_of?.trim() || null;
   if (reversalOf && !getJurnal(db, reversalOf))
     throw new Error(`Jurnal yang dikoreksi (${reversalOf}) tidak ditemukan.`);
 
-  const cekAkun = db.prepare('SELECT kode FROM akun WHERE kode = ?');
+  const cekAkun = db.prepare('SELECT kode, aktif FROM akun WHERE kode = ?');
   let totalDebit = 0;
   let totalKredit = 0;
   const bersih = baris.map((b, i) => {
     const akunKode = String(b.akun_kode ?? '').trim();
-    if (!akunKode || !cekAkun.get(akunKode))
+    const akunDb = cekAkun.get(akunKode) as { kode: string; aktif: number } | undefined;
+    if (!akunKode || !akunDb)
       throw new Error(`Baris ${i + 1}: akun ${akunKode || '(kosong)'} tidak dikenal.`);
+    if (Number(akunDb.aktif) !== 1)
+      throw new Error(`Baris ${i + 1}: akun ${akunKode} sudah tidak aktif.`);
     if (!Number.isInteger(b.debit) || b.debit < 0)
       throw new Error(`Baris ${i + 1}: debit harus bilangan bulat ≥ 0.`);
     if (!Number.isInteger(b.kredit) || b.kredit < 0)
@@ -144,9 +159,9 @@ export function insertJurnal(
   const row: Jurnal = {
     id,
     tanggal: header.tanggal,
-    no_bukti: String(header.no_bukti ?? '').trim(),
+    no_bukti: noBukti,
     keterangan,
-    jenis: header.jenis ?? 'UMUM',
+    jenis,
     grup_id: header.grup_id?.trim() || id,
     reversal_of: reversalOf,
     created_at: header.created_at ?? new Date().toISOString(),
@@ -173,7 +188,15 @@ export function insertJurnal(
     for (const b of bersih)
       insBaris.run(row.id, b.akun_kode, b.debit, b.kredit, b.keterangan);
   });
-  simpan();
+  try {
+    simpan();
+  } catch (e) {
+    // Index parsial `idx_jurnal_no_bukti` adalah penjaga terakhir bila ada
+    // pemanggil yang melewati validasi aplikasi.
+    if (String(e).includes('UNIQUE constraint failed: jurnal.no_bukti'))
+      throw new Error(`Nomor bukti ${noBukti} sudah dipakai. Gunakan nomor bukti lain.`);
+    throw e;
+  }
   return row;
 }
 

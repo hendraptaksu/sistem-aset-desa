@@ -1,6 +1,7 @@
 // Validasi input murni (tanpa Electron/DB) — di-test di tests/ipc-validation.test.ts.
 
 import { AKUN_PANJAR, coaByKode, isAkunKas, isBeban } from '../db/coa.js';
+import { tanggalKalenderValid } from '../core/posting.js';
 
 export type TransaksiInput = {
   tanggal: string;
@@ -10,8 +11,6 @@ export type TransaksiInput = {
   masuk: number;
   keluar: number;
 };
-
-const TGL = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Kategori yang boleh dipilih user di form BKU (PANJAR sistem dikecualikan). */
 export function kategoriBolehDipilih(kode: string): boolean {
@@ -25,7 +24,7 @@ export function kategoriBolehDipilih(kode: string): boolean {
 
 export function validateTransaksiInput(t: TransaksiInput): string[] {
   const err: string[] = [];
-  if (!TGL.test(t.tanggal) || Number.isNaN(Date.parse(t.tanggal))) err.push('Tanggal tidak valid (YYYY-MM-DD).');
+  if (!tanggalKalenderValid(t.tanggal)) err.push('Tanggal tidak valid (YYYY-MM-DD).');
   if (!t.keterangan.trim()) err.push('Keterangan wajib diisi.');
   if (!isAkunKas(t.akun_kas)) err.push('Akun Kas tidak dikenal.');
   if (!kategoriBolehDipilih(t.kategori)) err.push('Kategori tidak valid.');
