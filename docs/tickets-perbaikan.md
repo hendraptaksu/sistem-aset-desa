@@ -191,7 +191,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run tests/audit.test.ts`
   - **Dependency:** —
 
-- [ ] **P0-10 — Test invariant & gerbang kualitas**
+- [x] **P0-10 — Test invariant & gerbang kualitas** (2026-10-22: invariant 200 operasi deterministik + DB fresh/seed + koreksi pasca-tutup selalu Neraca Saldo nol, builder form terpandu di `core/forms.ts`, test single-entry lama diganti; 157/157 test hijau)
   - **Konteks:** bukti utama "correctness": apa pun operasinya, Neraca Saldo selalu nol. POC tanpa migrasi,
     jadi fokus ke DB v2 fresh + invariant.
   - **Langkah:**
