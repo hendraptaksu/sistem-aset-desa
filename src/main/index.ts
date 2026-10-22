@@ -14,7 +14,6 @@ import {
   insertAuditLog,
   insertPanjar,
   insertTransaksi,
-  insertTutupBuku,
   listAset,
   listAuditLog,
   listJurnalLengkap,
@@ -26,6 +25,7 @@ import {
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
+import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
   buatAuditLog,
@@ -382,28 +382,76 @@ function registerIpc(): void {
 
   ipcMain.handle('tutup:list', () => {
     const k = perluBuka();
-    return k ? fail(k) : ok(listTutupBuku(db));
+    if (k) return fail(k);
+    // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
+    const baris = listBarisJurnal(db);
+    return ok(
+      listTutupBuku(db).map((t) => ({
+        ...t,
+        laba: labaTahunJurnal(baris, Number(t.tahun)),
+      })),
+    );
   });
   ipcMain.handle('audit:list', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(listAuditLog(db));
   });
   ipcMain.handle('tutup:preview', (_e, tahun: number) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok({ tahun, laba: labaTahunJurnal(listBarisJurnal(db), tahun) });
-  });
-  ipcMain.handle('tutup:create', (_e, tahun: number, backupPath = '') => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      // Angka laba hanya snapshot tampilan; sumber perhitungan tetap jurnal.
-      const laba = labaTahunJurnal(listBarisJurnal(db), tahun);
-      insertTutupBuku(db, { tahun, laba, created_at: new Date().toISOString(), backup_path: backupPath });
-      return ok({ tahun, laba });
+      return ok(previewTutupBuku(db, Number(tahun)));
     } catch (e) {
-      return fail(String(e));
+      return fail(e instanceof Error ? e.message : String(e));
     }
   });
+  ipcMain.handle(
+    'tutup:create',
+    (
+      _e,
+      req:
+        | number
+        | {
+            tahun: number;
+            catatan?: string;
+            backupPath?: string;
+            konfirmasiTimpak?: boolean;
+          },
+      backupPathLama = '',
+    ) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        // Dukungan bentuk lama (tahun, backupPath) + bentuk baru (objek).
+        const input =
+          typeof req === 'number'
+            ? { tahun: req, backupPath: String(backupPathLama ?? '') }
+            : (req ?? {});
+        const hasil = tutupBuku(db, Number(input.tahun), {
+          catatan: typeof input.catatan === 'string' ? input.catatan : '',
+          backupPath: typeof input.backupPath === 'string' ? input.backupPath : '',
+          konfirmasiTimpak: input.konfirmasiTimpak === true,
+        });
+        if (!hasil.tersimpan)
+          return fail(
+            hasil.errors.join(' ') ||
+              hasil.peringatan.join(' ') ||
+              'Tutup buku gagal disimpan.',
+            false,
+            hasil.perluKonfirmasi,
+          );
+        return ok({
+          tahun: hasil.data!.tahun,
+          laba: hasil.laba,
+          labaDitahan: hasil.labaDitahan,
+          aksi: hasil.aksi,
+          data: hasil.data,
+        });
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
 
   ipcMain.handle('saldo:list', (_e, cutoff?: string) => {
     const k = perluBuka();

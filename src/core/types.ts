@@ -83,9 +83,15 @@ export type JurnalHeaderInput = {
 
 export type TutupBuku = {
   tahun: number;
-  laba: number;
   created_at: string; // ISO
   backup_path: string;
+  catatan: string;
+  /**
+   * @deprecated Model v2 TIDAK menyimpan laba. Field ini hanya disisakan agar
+   * test/model single-entry lama tetap terbaca; kode laporan v2 selalu
+   * menghitung laba dari jurnal (`core/reports.ts`).
+   */
+  laba?: number;
 };
 
 export type AuditLog = {

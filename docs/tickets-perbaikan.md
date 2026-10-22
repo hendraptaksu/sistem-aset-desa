@@ -148,7 +148,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run` + smoke manual
   - **Dependency:** P0-2, P0-4
 
-- [ ] **P0-7 — Tutup buku & kunci periode (tanpa angka tersimpan)**
+- [x] **P0-7 — Tutup buku & kunci periode (tanpa angka tersimpan)** (2026-10-22: tutup buku = penanda+kunci+catatan tanpa kolom laba, validasi K2/urut menaik/konfirmasi tutup ulang, audit `TUTUP`/`TUTUP-ULANG`, laba & laba ditahan dihitung ulang dari jurnal; koreksi 2025 setelah tutup tidak membuat Neraca 2026 selisih; 153/153 test hijau)
   - **Konteks:** masalah utama v1 adalah `tutup_buku.laba` disimpan → basi. Di v2, tutup buku hanya
     **penanda + kunci + catatan audit**; laba & laba ditahan selalu dihitung dari jurnal.
     **K2:** hanya tahun yang sudah selesai (≤ tahun lalu) yang boleh ditutup.

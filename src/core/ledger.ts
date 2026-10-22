@@ -121,7 +121,7 @@ export function neraca(
   const aktiva = totalKas + piutang + panjarOpen;
 
   const tahun = yearOf(cutoff);
-  const kumulatif = tutup.filter((t) => t.tahun < tahun).reduce((s, t) => s + t.laba, 0);
+  const kumulatif = tutup.filter((t) => t.tahun < tahun).reduce((s, t) => s + (t.laba ?? 0), 0);
   const berjalan = surplus(transaksi, `${tahun}-01-01`, cutoff);
   const hutang = totalHutang(transaksi, cutoff);
   const modalAwal = totalModalAwal(transaksi, cutoff);

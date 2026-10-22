@@ -106,7 +106,7 @@ describe('T7 tutup buku + kunci longgar (pure)', () => {
   it('tutup 2025, kumulatif 2026 = laba 2025', () => {
     const laba = labaTahun(TX_SEEDED, 2025);
     expect(laba).toBe(500_000_000 - 200_000_000);
-    const tutup: TutupBuku = { tahun: 2025, laba, created_at: new Date().toISOString(), backup_path: '/tmp/backup.db' };
+    const tutup: TutupBuku = { tahun: 2025, laba, created_at: new Date().toISOString(), backup_path: '/tmp/backup.db', catatan: 'Tutup 2025' };
 
     // Neraca 2026: kumulatif = laba 2025
     const n26 = neraca(TX_SEEDED, [{ ...PANJAR }], [tutup], '2026-01-31', KAS_KODES);

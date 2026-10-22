@@ -382,16 +382,30 @@ export function closePanjar(db: Database.Database, id: string, closeRows: Transa
 }
 
 export function listTutupBuku(db: Database.Database): TutupBuku[] {
-  return db.prepare('SELECT * FROM tutup_buku ORDER BY tahun').all() as TutupBuku[];
+  const rows = db
+    .prepare('SELECT tahun, created_at, backup_path, catatan FROM tutup_buku ORDER BY tahun')
+    .all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    tahun: Number(r.tahun),
+    created_at: String(r.created_at),
+    backup_path: String(r.backup_path ?? ''),
+    catatan: String(r.catatan ?? ''),
+  }));
 }
 
+/**
+ * Simpan/ubah penanda tutup buku. Angka laba sengaja TIDAK ditulis: sumber
+ * laba selalu jurnal (P0-7). Pemanggil wajib sudah memvalidasi penimpaan.
+ */
 export function insertTutupBuku(db: Database.Database, t: TutupBuku): void {
-  db.prepare('INSERT OR REPLACE INTO tutup_buku (tahun, laba, created_at, backup_path) VALUES (?, ?, ?, ?)').run(
-    t.tahun,
-    t.laba,
-    t.created_at,
-    t.backup_path,
-  );
+  db.prepare(
+    `INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(tahun) DO UPDATE SET
+       created_at = excluded.created_at,
+       backup_path = excluded.backup_path,
+       catatan = excluded.catatan`,
+  ).run(t.tahun, t.created_at, t.backup_path, t.catatan);
 }
 
 export function insertAuditLog(db: Database.Database, a: AuditLog): void {

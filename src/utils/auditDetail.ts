@@ -73,6 +73,8 @@ export function parseAuditDetail(json: string): AuditDetailView {
 
 /** Label ramah untuk kolom Aksi audit_log (id teknis disembunyikan). */
 export function formatAksiAudit(aksi: string): string {
+  if (aksi.startsWith('TUTUP-ULANG ')) return 'Tutup buku (ulang)';
+  if (aksi.startsWith('TUTUP ')) return 'Tutup buku';
   if (aksi.startsWith('CREATE t-')) return 'Tambah transaksi BKU';
   if (aksi.startsWith('PANJAR-OPEN p-')) return 'Panjar baru';
   if (aksi.startsWith('PANJAR-CLOSE p-')) return 'Tutup panjar';

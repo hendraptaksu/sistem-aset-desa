@@ -32,6 +32,32 @@ export type OpsiKoreksiApi = {
   konfirmasiPeringatan?: boolean;
 };
 
+/** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
+export type TutupBukuTampil = TutupBuku & { laba: number };
+
+export type TutupPreviewData = {
+  tahun: number;
+  laba: number;
+  labaDitahanSekarang: number;
+  labaDitahanSesudah: number;
+  sudahDitutup: boolean;
+  boleh: boolean;
+  errors: string[];
+  peringatan: string[];
+  perluKonfirmasi: boolean;
+  aksi: 'TUTUP' | 'TUTUP-ULANG';
+  tahunTerakhir: number | null;
+  batasTahun: number;
+};
+
+export type TutupTersimpanData = {
+  tahun: number;
+  laba: number;
+  labaDitahan: number;
+  aksi: 'TUTUP' | 'TUTUP-ULANG';
+  data: TutupBuku;
+};
+
 declare global {
   interface Window {
     api: { invoke: (channel: string, ...args: unknown[]) => Promise<Res<never>> };
@@ -118,10 +144,14 @@ export const api = {
     keterangan: string; nilai_sen: number | null;
   }) => call<{ id: string }>('aset:update', id, input),
   asetDelete: (id: string) => call<{ id: string }>('aset:delete', id),
-  tutupList: () => call<TutupBuku[]>('tutup:list'),
-  tutupPreview: (tahun: number) => call<{ tahun: number; laba: number }>('tutup:preview', tahun),
-  tutupCreate: (tahun: number, backupPath = '') =>
-    call<{ tahun: number; laba: number }>('tutup:create', tahun, backupPath),
+  tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
+  tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
+  tutupCreate: (req: {
+    tahun: number;
+    catatan?: string;
+    backupPath?: string;
+    konfirmasiTimpak?: boolean;
+  }) => call<TutupTersimpanData>('tutup:create', req),
   auditList: () => call<AuditLog[]>('audit:list'),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   neraca: (cutoff: string) => call<Neraca>('neraca:get', cutoff),

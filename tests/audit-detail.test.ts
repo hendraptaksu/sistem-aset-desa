@@ -64,6 +64,11 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('PANJAR-CLOSE p-1788665578796-123456')).toBe('Tutup panjar');
   });
 
+  it('TUTUP / TUTUP-ULANG → label tutup buku', () => {
+    expect(formatAksiAudit('TUTUP 2025')).toBe('Tutup buku');
+    expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Tutup buku (ulang)');
+  });
+
   it('aksi tak dikenal tampil mentah', () => {
     expect(formatAksiAudit('EDIT t-1')).toBe('EDIT t-1');
   });
