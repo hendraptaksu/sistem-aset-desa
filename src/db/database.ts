@@ -7,6 +7,14 @@ import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { COA } from './coa.js';
 
+/**
+ * Versi skema di `PRAGMA user_version`.
+ * - 0/v1 = model single-entry lama (transaksi + kategori).
+ * - 2    = model double-entry (jurnal + jurnal_baris). Tabel single-entry lama
+ *          masih ada sampai reset POC di P0-3.
+ */
+export const SCHEMA_VERSION = 2;
+
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
   kode TEXT PRIMARY KEY,
@@ -81,7 +89,54 @@ CREATE TABLE IF NOT EXISTS aset (
 );
 CREATE INDEX IF NOT EXISTS idx_aset_jenis ON aset(jenis);
 CREATE INDEX IF NOT EXISTS idx_aset_kode ON aset(kode);
+
+-- Model double-entry (v2): jurnal = satu transaksi/bukti, jurnal_baris = debit/kredit.
+CREATE TABLE IF NOT EXISTS jurnal (
+  id TEXT PRIMARY KEY,
+  tanggal TEXT NOT NULL,
+  no_bukti TEXT NOT NULL DEFAULT '',
+  keterangan TEXT NOT NULL,
+  jenis TEXT NOT NULL DEFAULT 'UMUM',
+  grup_id TEXT NOT NULL,
+  reversal_of TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (reversal_of) REFERENCES jurnal(id)
+);
+CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
+CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
+CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
+
+CREATE TABLE IF NOT EXISTS jurnal_baris (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  jurnal_id TEXT NOT NULL,
+  akun_kode TEXT NOT NULL,
+  debit INTEGER NOT NULL DEFAULT 0,
+  kredit INTEGER NOT NULL DEFAULT 0,
+  keterangan TEXT NOT NULL DEFAULT '',
+  CHECK (debit >= 0 AND kredit >= 0),
+  CHECK (debit > 0 OR kredit > 0),
+  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
+  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
+);
+CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
+CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 `;
+
+/**
+ * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
+ * Tabel jurnal dibuat oleh DDL di atas (CREATE TABLE IF NOT EXISTS), jadi langkah
+ * v0/v1 → v2 cukup menaikkan versi. Pembuangan tabel single-entry lama dilakukan
+ * di P0-3 setelah seed v2 siap, supaya commit ini tetap kompatibel dengan UI lama.
+ */
+export function migrasi(db: Database.Database): number {
+  const versiAwal = Number(db.pragma('user_version', { simple: true }) ?? 0);
+  if (versiAwal >= SCHEMA_VERSION) return versiAwal;
+  const naik = db.transaction(() => {
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  });
+  naik();
+  return Number(db.pragma('user_version', { simple: true }));
+}
 
 export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database.Database {
   // better-sqlite3 tidak membuat folder induk — pastikan ada dulu.
@@ -92,6 +147,7 @@ export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(DDL);
+  migrasi(db);
   // Upsert daftar akun resmi saat DB dibuka. `akun` adalah master COA untuk
   // model double-entry; `coa` dipertahankan sampai reset skema P0-3.
   const txCount = (db.prepare('SELECT COUNT(*) AS c FROM transaksi').get() as { c: number }).c;

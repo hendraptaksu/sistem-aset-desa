@@ -4,7 +4,18 @@
 import type Database from 'better-sqlite3';
 import { isPeriodeTerkunci } from '../core/ledger.js';
 import type { CoaTipe, PosisiNormal } from './coa.js';
-import type { Aset, AuditLog, Panjar, PanjarItem, Transaksi, TutupBuku } from '../core/types.js';
+import type {
+  Aset,
+  AuditLog,
+  Jurnal,
+  JurnalBaris,
+  JurnalBarisInput,
+  JurnalHeaderInput,
+  Panjar,
+  PanjarItem,
+  Transaksi,
+  TutupBuku,
+} from '../core/types.js';
 
 export type AkunDb = {
   kode: string;
@@ -39,6 +50,189 @@ export function getAkun(db: Database.Database, kode: string): AkunDb | null {
     | undefined;
   return r ? rowToAkun(r) : null;
 }
+
+// ---------------------------------------------------------------------------
+// Jurnal double-entry (P0-2)
+// ---------------------------------------------------------------------------
+
+const rowToJurnal = (r: Record<string, unknown>): Jurnal => ({
+  id: String(r.id),
+  tanggal: String(r.tanggal),
+  no_bukti: String(r.no_bukti ?? ''),
+  keterangan: String(r.keterangan),
+  jenis: String(r.jenis) as Jurnal['jenis'],
+  grup_id: String(r.grup_id),
+  reversal_of: r.reversal_of === null || r.reversal_of === undefined ? null : String(r.reversal_of),
+  created_at: String(r.created_at),
+});
+
+const rowToJurnalBaris = (r: Record<string, unknown>): JurnalBaris => ({
+  id: Number(r.id),
+  jurnal_id: String(r.jurnal_id),
+  akun_kode: String(r.akun_kode),
+  debit: Number(r.debit),
+  kredit: Number(r.kredit),
+  keterangan: String(r.keterangan ?? ''),
+});
+
+export type JurnalFilter = {
+  mulai?: string;
+  sampai?: string;
+  jenis?: string;
+  grup_id?: string;
+  akun_kode?: string;
+  reversal_of?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * Simpan satu jurnal + barisnya secara atomik. Aturan yang ditegakkan di sini
+ * (bukan di UI): minimal 2 baris, tiap baris hanya debit atau kredit > 0,
+ * akun harus ada di master `akun`, total debit = total kredit, total > 0.
+ * Error dilempar dengan pesan berbahasa Indonesia.
+ */
+export function insertJurnal(
+  db: Database.Database,
+  header: JurnalHeaderInput,
+  baris: JurnalBarisInput[],
+): Jurnal {
+  const id = String(header.id ?? '').trim();
+  if (!id) throw new Error('ID jurnal wajib diisi.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(header.tanggal ?? '')))
+    throw new Error('Tanggal jurnal tidak valid (YYYY-MM-DD).');
+  const keterangan = String(header.keterangan ?? '').trim();
+  if (!keterangan) throw new Error('Keterangan jurnal wajib diisi.');
+  if (!Array.isArray(baris) || baris.length < 2)
+    throw new Error('Jurnal wajib memiliki minimal 2 baris (debit dan kredit).');
+  if (getJurnal(db, id)) throw new Error(`Jurnal ${id} sudah ada.`);
+
+  const reversalOf = header.reversal_of?.trim() || null;
+  if (reversalOf && !getJurnal(db, reversalOf))
+    throw new Error(`Jurnal yang dikoreksi (${reversalOf}) tidak ditemukan.`);
+
+  const cekAkun = db.prepare('SELECT kode FROM akun WHERE kode = ?');
+  let totalDebit = 0;
+  let totalKredit = 0;
+  const bersih = baris.map((b, i) => {
+    const akunKode = String(b.akun_kode ?? '').trim();
+    if (!akunKode || !cekAkun.get(akunKode))
+      throw new Error(`Baris ${i + 1}: akun ${akunKode || '(kosong)'} tidak dikenal.`);
+    if (!Number.isInteger(b.debit) || b.debit < 0)
+      throw new Error(`Baris ${i + 1}: debit harus bilangan bulat ≥ 0.`);
+    if (!Number.isInteger(b.kredit) || b.kredit < 0)
+      throw new Error(`Baris ${i + 1}: kredit harus bilangan bulat ≥ 0.`);
+    if (b.debit > 0 && b.kredit > 0)
+      throw new Error(`Baris ${i + 1}: isi salah satu saja — debit ATAU kredit.`);
+    if (b.debit === 0 && b.kredit === 0)
+      throw new Error(`Baris ${i + 1}: nominal debit/kredit harus lebih dari 0.`);
+    totalDebit += b.debit;
+    totalKredit += b.kredit;
+    return {
+      akun_kode: akunKode,
+      debit: b.debit,
+      kredit: b.kredit,
+      keterangan: String(b.keterangan ?? '').trim(),
+    };
+  });
+  if (totalDebit !== totalKredit)
+    throw new Error(
+      `Jurnal tidak seimbang: total debit ${totalDebit} ≠ total kredit ${totalKredit} (satuan sen).`,
+    );
+  if (totalDebit <= 0) throw new Error('Total jurnal harus lebih dari 0.');
+
+  const row: Jurnal = {
+    id,
+    tanggal: header.tanggal,
+    no_bukti: String(header.no_bukti ?? '').trim(),
+    keterangan,
+    jenis: header.jenis ?? 'UMUM',
+    grup_id: header.grup_id?.trim() || id,
+    reversal_of: reversalOf,
+    created_at: header.created_at ?? new Date().toISOString(),
+  };
+
+  const simpan = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO jurnal (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      row.id,
+      row.tanggal,
+      row.no_bukti,
+      row.keterangan,
+      row.jenis,
+      row.grup_id,
+      row.reversal_of,
+      row.created_at,
+    );
+    const insBaris = db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (const b of bersih)
+      insBaris.run(row.id, b.akun_kode, b.debit, b.kredit, b.keterangan);
+  });
+  simpan();
+  return row;
+}
+
+export function getJurnal(db: Database.Database, id: string): Jurnal | null {
+  const r = db.prepare('SELECT * FROM jurnal WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined;
+  return r ? rowToJurnal(r) : null;
+}
+
+export function listJurnalBaris(db: Database.Database, jurnalId: string): JurnalBaris[] {
+  const rows = db
+    .prepare('SELECT * FROM jurnal_baris WHERE jurnal_id = ? ORDER BY id')
+    .all(jurnalId) as Record<string, unknown>[];
+  return rows.map(rowToJurnalBaris);
+}
+
+export function listJurnal(
+  db: Database.Database,
+  f: JurnalFilter = {},
+): Jurnal[] {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (f.mulai) { where.push('j.tanggal >= ?'); params.push(f.mulai); }
+  if (f.sampai) { where.push('j.tanggal <= ?'); params.push(f.sampai); }
+  if (f.jenis) { where.push('j.jenis = ?'); params.push(f.jenis); }
+  if (f.grup_id) { where.push('j.grup_id = ?'); params.push(f.grup_id); }
+  if (f.reversal_of) { where.push('j.reversal_of = ?'); params.push(f.reversal_of); }
+  if (f.akun_kode) {
+    where.push('EXISTS (SELECT 1 FROM jurnal_baris b WHERE b.jurnal_id = j.id AND b.akun_kode = ?)');
+    params.push(f.akun_kode);
+  }
+  let sql = `SELECT j.* FROM jurnal j ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY j.tanggal, j.rowid`;
+  if (f.limit !== undefined) {
+    sql += ' LIMIT ?';
+    params.push(Math.max(0, Math.trunc(f.limit)));
+    if (f.offset !== undefined) {
+      sql += ' OFFSET ?';
+      params.push(Math.max(0, Math.trunc(f.offset)));
+    }
+  } else if (f.offset !== undefined) {
+    sql += ' LIMIT -1 OFFSET ?';
+    params.push(Math.max(0, Math.trunc(f.offset)));
+  }
+  return (db.prepare(sql).all(...params) as Record<string, unknown>[]).map(rowToJurnal);
+}
+
+/** Kepala + baris satu jurnal; null bila tidak ada. */
+export function getJurnalDetail(
+  db: Database.Database,
+  id: string,
+): { jurnal: Jurnal; baris: JurnalBaris[] } | null {
+  const jurnal = getJurnal(db, id);
+  return jurnal ? { jurnal, baris: listJurnalBaris(db, id) } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Model single-entry lama (dihapus di P0-3; dipertahankan sampai UI pindah)
+// ---------------------------------------------------------------------------
 
 const rowToTransaksi = (r: Record<string, unknown>): Transaksi => ({
   id: String(r.id),

@@ -68,7 +68,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run` + test baru
   - **Dependency:** —
 
-- [ ] **P0-2 — Skema & repository jurnal double-entry**
+- [x] **P0-2 — Skema & repository jurnal double-entry** (2026-10-22: tabel `jurnal`/`jurnal_baris` + migrasi `user_version` v2 + `insertJurnal` atomik tervalidasi; 85/85 test hijau)
   - **Konteks:** semua angka harus berasal dari jurnal. Butuh tabel kepala + baris + kerangka versi skema
     (PRAGMA user_version), karena `database.ts` sekarang hanya `CREATE TABLE IF NOT EXISTS`.
   - **Langkah:**
