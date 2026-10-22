@@ -1,6 +1,6 @@
 // Validasi input murni (tanpa Electron/DB) — di-test di tests/ipc-validation.test.ts.
 
-import { coaByKode, isBeban, isKas } from '../db/coa.js';
+import { AKUN_PANJAR, coaByKode, isAkunKas, isBeban } from '../db/coa.js';
 
 export type TransaksiInput = {
   tanggal: string;
@@ -17,7 +17,8 @@ const TGL = /^\d{4}-\d{2}-\d{2}$/;
 export function kategoriBolehDipilih(kode: string): boolean {
   const c = coaByKode(kode);
   if (!c) return false;
-  if (c.tipe === 'KAS') return false;
+  if (isAkunKas(kode)) return false;
+  if (kode === AKUN_PANJAR) return false; // panjar punya alur sendiri
   if (kode === '3001' || kode === '3002') return false; // dihitung otomatis
   return true;
 }
@@ -26,7 +27,7 @@ export function validateTransaksiInput(t: TransaksiInput): string[] {
   const err: string[] = [];
   if (!TGL.test(t.tanggal) || Number.isNaN(Date.parse(t.tanggal))) err.push('Tanggal tidak valid (YYYY-MM-DD).');
   if (!t.keterangan.trim()) err.push('Keterangan wajib diisi.');
-  if (!isKas(t.akun_kas)) err.push('Akun Kas tidak dikenal.');
+  if (!isAkunKas(t.akun_kas)) err.push('Akun Kas tidak dikenal.');
   if (!kategoriBolehDipilih(t.kategori)) err.push('Kategori tidak valid.');
   if (!Number.isInteger(t.masuk) || t.masuk < 0) err.push('Uang masuk harus bilangan bulat ≥ 0.');
   if (!Number.isInteger(t.keluar) || t.keluar < 0) err.push('Uang keluar harus bilangan bulat ≥ 0.');

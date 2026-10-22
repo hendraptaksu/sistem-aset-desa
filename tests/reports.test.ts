@@ -38,9 +38,9 @@ describe('B1 pembantu: filter per kode + total', () => {
     expect(p.totalKeluar).toBe(650_000_000);
     expect(p.saldo).toBe(-650_000_000);
   });
-  it('PANJAR tampil sebagai Mutasi Panjar, saldo 0, tidak bocor ke beban', () => {
-    const p = buildPembantu(MOCK_TRANSAKSI, { kode: 'PANJAR' });
-    expect(p.nama).toBe('Mutasi Panjar');
+  it('1040 Uang Panjar tampil sebagai akun, saldo 0, tidak bocor ke beban', () => {
+    const p = buildPembantu(MOCK_TRANSAKSI, { kode: '1040' });
+    expect(p.nama).toBe('UANG PANJAR (KAS DI MUKA)');
     expect(p.totalMasuk).toBe(500_000_000);
     expect(p.totalKeluar).toBe(500_000_000);
     expect(p.rows).toHaveLength(3);
@@ -58,7 +58,7 @@ describe('B1 pembantu: filter per kode + total', () => {
 });
 
 describe('B2 realisasi: grouping + net (T6-parsial)', () => {
-  it('total pendapatan 14jt, beban 11,8jt, net 2,2jt; 2050/PANJAR eksklusi', () => {
+  it('total pendapatan 14jt, beban 11,8jt, net 2,2jt; 2050/1040 eksklusi', () => {
     const r = buildRealisasi(MOCK_TRANSAKSI, '2025-01-01', '2025-12-31');
     expect(r.totalPendapatan).toBe(1_400_000_000);
     expect(r.totalBeban).toBe(1_180_000_000);

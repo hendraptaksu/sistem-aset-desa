@@ -1,25 +1,23 @@
-// Buku Pembantu — filter per kode (kas dari KAS_KODES atau kategori apa pun:
-// PENDAPATAN/BEBAN/1050/2050/3000/PANJAR) + Total Masuk/Keluar/Saldo.
+// Buku Pembantu — filter per kode akun (kas/bank atau akun lawan apa pun:
+// PENDAPATAN/BEBAN/1040/1050/2050/3000) + Total Masuk/Keluar/Saldo.
 // + Total Masuk/Keluar/Saldo. Delegasi angka ke ledger.totalPerKategori? Tidak —
 // pembantu butuh rows rincian, jadi filter langsung lalu agregat masuk-keluar.
 // Rumus sama dengan Agent A: filter tanggal mulai–selesai (inklusif).
 
-import { coaByKode, isKas } from '../../../db/coa.js';
-import { PANJAR_KATEGORI } from '../../../core/ledger.js';
+import { coaByKode, isAkunKas } from '../../../db/coa.js';
 import type { Transaksi } from '../../../core/types.js';
 import type { PembantuHasil } from '../types.js';
 
 export type PembantuOpts = { kode: string; mulai?: string; sampai?: string };
 
 export function namaKode(kode: string): string {
-  if (kode === PANJAR_KATEGORI) return 'Mutasi Panjar';
   return coaByKode(kode)?.nama ?? kode;
 }
 
 /** Bangun laporan pembantu untuk satu kode rekening. */
 export function buildPembantu(transaksi: Transaksi[], opts: PembantuOpts): PembantuHasil {
   const { kode, mulai, sampai } = opts;
-  const byKas = isKas(kode);
+  const byKas = isAkunKas(kode);
   const rows = transaksi
     .filter((t) => {
       if (mulai && t.tanggal < mulai) return false;

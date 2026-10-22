@@ -3,7 +3,42 @@
 
 import type Database from 'better-sqlite3';
 import { isPeriodeTerkunci } from '../core/ledger.js';
+import type { CoaTipe, PosisiNormal } from './coa.js';
 import type { Aset, AuditLog, Panjar, PanjarItem, Transaksi, TutupBuku } from '../core/types.js';
+
+export type AkunDb = {
+  kode: string;
+  nama: string;
+  tipe: CoaTipe;
+  posisi_normal: PosisiNormal;
+  aktif: boolean;
+};
+
+const rowToAkun = (r: Record<string, unknown>): AkunDb => ({
+  kode: String(r.kode),
+  nama: String(r.nama),
+  tipe: String(r.tipe) as CoaTipe,
+  posisi_normal: String(r.posisi_normal) as PosisiNormal,
+  aktif: Number(r.aktif) === 1,
+});
+
+/** Daftar akun dari master DB (hasil upsert COA saat openDb). */
+export function listAkun(db: Database.Database, opts: { aktif?: boolean } = {}): AkunDb[] {
+  const sql = opts.aktif === undefined
+    ? 'SELECT * FROM akun ORDER BY kode'
+    : 'SELECT * FROM akun WHERE aktif = ? ORDER BY kode';
+  const rows = (opts.aktif === undefined
+    ? db.prepare(sql).all()
+    : db.prepare(sql).all(opts.aktif ? 1 : 0)) as Record<string, unknown>[];
+  return rows.map(rowToAkun);
+}
+
+export function getAkun(db: Database.Database, kode: string): AkunDb | null {
+  const r = db.prepare('SELECT * FROM akun WHERE kode = ?').get(kode) as
+    | Record<string, unknown>
+    | undefined;
+  return r ? rowToAkun(r) : null;
+}
 
 const rowToTransaksi = (r: Record<string, unknown>): Transaksi => ({
   id: String(r.id),

@@ -31,6 +31,7 @@ describe('validateTransaksiInput', () => {
   });
   it('kategori sistem & hasil hitungan tidak bisa dipilih', () => {
     expect(kategoriBolehDipilih('PANJAR')).toBe(false);
+    expect(kategoriBolehDipilih('1040')).toBe(false); // panjar lewat tab Panjar
     expect(kategoriBolehDipilih('3001')).toBe(false);
     expect(kategoriBolehDipilih('3002')).toBe(false);
     expect(kategoriBolehDipilih('1001')).toBe(false);

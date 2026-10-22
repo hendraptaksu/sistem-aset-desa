@@ -21,11 +21,11 @@ export const MOCK_TRANSAKSI: Transaksi[] = [
   { id: 'm13', tanggal: '2025-04-12', keterangan: 'Transport wahana', akun_kas: '1015', kategori: '5005', masuk: 0, keluar: 100_000_000 },
   { id: 'm14', tanggal: '2025-04-15', keterangan: 'Rapat humas', akun_kas: '1001', kategori: '5006', masuk: 0, keluar: 60_000_000 },
   { id: 'm15', tanggal: '2025-04-18', keterangan: 'Listrik & PDAM', akun_kas: '1001', kategori: '5010', masuk: 0, keluar: 90_000_000 },
-  // Mutasi panjar (kategori sistem PANJAR — ekslusif dari Pendapatan/Beban)
-  { id: 'bku-p1-open', tanggal: '2025-04-01', keterangan: 'Panjar Panitia Piodalan', akun_kas: '1001', kategori: 'PANJAR', masuk: 0, keluar: 500_000_000 },
-  { id: 'bku-p1-komp', tanggal: '2025-04-20', keterangan: 'Penyelesaian panjar Panitia Piodalan', akun_kas: '1001', kategori: 'PANJAR', masuk: 450_000_000, keluar: 0 },
+  // Mutasi panjar (akun aset 1040 — ekslusif dari Pendapatan/Beban)
+  { id: 'bku-p1-open', tanggal: '2025-04-01', keterangan: 'Panjar Panitia Piodalan', akun_kas: '1001', kategori: '1040', masuk: 0, keluar: 500_000_000 },
+  { id: 'bku-p1-komp', tanggal: '2025-04-20', keterangan: 'Penyelesaian panjar Panitia Piodalan', akun_kas: '1001', kategori: '1040', masuk: 450_000_000, keluar: 0 },
   { id: 'bku-p1-real-1', tanggal: '2025-04-20', keterangan: 'Realisasi panjar Panitia Piodalan — 5004', akun_kas: '1001', kategori: '5004', masuk: 0, keluar: 450_000_000 },
-  { id: 'bku-p1-sisa', tanggal: '2025-04-20', keterangan: 'Sisa panjar Panitia Piodalan', akun_kas: '1001', kategori: 'PANJAR', masuk: 50_000_000, keluar: 0 },
+  { id: 'bku-p1-sisa', tanggal: '2025-04-20', keterangan: 'Sisa panjar Panitia Piodalan', akun_kas: '1001', kategori: '1040', masuk: 50_000_000, keluar: 0 },
   // Hutang (2050) — masuk menambah hutang, TIDAK masuk Surplus
   { id: 'm20', tanggal: '2025-05-01', keterangan: 'Pinjaman warung', akun_kas: '1001', kategori: '2050', masuk: 100_000_000, keluar: 0 },
 ];

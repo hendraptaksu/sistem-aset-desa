@@ -1,7 +1,7 @@
 // Pure functions akuntansi — tanpa dependency DB/Electron.
 // Semua filter tanggal memakai string YYYY-MM-DD (perbandingan leksikografis aman).
 
-import { isBeban, isKas, isPendapatan } from '../db/coa.js';
+import { AKUN_PANJAR, isBeban, isPendapatan } from '../db/coa.js';
 import type { AuditLog, Panjar, PanjarItem, Transaksi, TutupBuku } from './types.js';
 
 export const yearOf = (tanggal: string): number => Number(tanggal.slice(0, 4));
@@ -149,12 +149,10 @@ export function labaTahun(transaksi: Transaksi[], tahun: number): number {
 // ---- Panjar ----
 
 /**
- * Kategori sistem untuk arus Panjar (BUKAN akun COA, tidak masuk 4xxx/5xxx).
- * Dipakai agar mutasi panjar menggerakkan Kas TANPA dihitung sebagai
- * Pendapatan/Beban di Surplus & Realisasi. Laporan boleh menampilkannya
- * sebagai baris "Mutasi Panjar" atau mengabaikannya.
+ * Panjar memakai akun aset 1040 UANG PANJAR (KAS DI MUKA), bukan kategori
+ * sistem tersembunyi. Saat model double-entry dipasang (P0-5), seluruh
+ * konversi single-entry di bawah ini diganti jurnal.
  */
-export const PANJAR_KATEGORI = 'PANJAR';
 
 /** Baris BKU yang harus dibuat saat Panjar OPEN: keluar dari kas sumber. */
 export function panjarOpenToTransaksi(p: Panjar, keterangan?: string): Transaksi {
@@ -163,7 +161,7 @@ export function panjarOpenToTransaksi(p: Panjar, keterangan?: string): Transaksi
     tanggal: p.tanggal,
     keterangan: keterangan ?? `Panjar ${p.penerima}`,
     akun_kas: p.akun_kas_sumber,
-    kategori: PANJAR_KATEGORI,
+    kategori: AKUN_PANJAR,
     masuk: 0,
     keluar: p.jumlah,
   };
@@ -208,7 +206,7 @@ export function panjarCloseToTransaksi(
     tanggal: tanggalClose,
     keterangan: `Penyelesaian panjar ${p.penerima}`,
     akun_kas: p.akun_kas_sumber,
-    kategori: PANJAR_KATEGORI,
+    kategori: AKUN_PANJAR,
     masuk: kompensasi,
     keluar: 0,
   };
@@ -220,7 +218,7 @@ export function panjarCloseToTransaksi(
           tanggal: tanggalClose,
           keterangan: `Sisa panjar ${p.penerima}`,
           akun_kas: p.akun_kas_sumber,
-          kategori: PANJAR_KATEGORI,
+          kategori: AKUN_PANJAR,
           masuk: sisa,
           keluar: 0,
         }
@@ -267,5 +265,3 @@ export function buatAuditLog(aksi: string, alasan: string, dataLama: unknown): A
     data_lama_json: JSON.stringify(dataLama),
   };
 }
-
-export { isKas };

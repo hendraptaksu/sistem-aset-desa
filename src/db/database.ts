@@ -8,6 +8,13 @@ import { dirname } from 'path';
 import { COA } from './coa.js';
 
 export const DDL = `
+CREATE TABLE IF NOT EXISTS akun (
+  kode TEXT PRIMARY KEY,
+  nama TEXT NOT NULL,
+  tipe TEXT NOT NULL,
+  posisi_normal TEXT NOT NULL,
+  aktif INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS coa (
   kode TEXT PRIMARY KEY,
   nama TEXT NOT NULL,
@@ -85,13 +92,22 @@ export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(DDL);
-  // Upsert COA agar DB lama ikut koreksi nama/kode resmi tanpa menghapus transaksi.
-  // Baris COA yang tidak ada di seed HANYA dihapus bila tabel transaksi masih kosong
-  // (mencegah referensi yatim di DB produksi).
+  // Upsert daftar akun resmi saat DB dibuka. `akun` adalah master COA untuk
+  // model double-entry; `coa` dipertahankan sampai reset skema P0-3.
   const txCount = (db.prepare('SELECT COUNT(*) AS c FROM transaksi').get() as { c: number }).c;
   const seedTx = db.transaction(() => {
-    const upsert = db.prepare('INSERT INTO coa (kode, nama, tipe) VALUES (?, ?, ?) ON CONFLICT(kode) DO UPDATE SET nama = excluded.nama, tipe = excluded.tipe');
-    for (const c of COA) upsert.run(c.kode, c.nama, c.tipe);
+    const upsertAkun = db.prepare(
+      `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
+       VALUES (?, ?, ?, ?, 1)
+       ON CONFLICT(kode) DO UPDATE SET
+         nama = excluded.nama,
+         tipe = excluded.tipe,
+         posisi_normal = excluded.posisi_normal`,
+    );
+    for (const c of COA) upsertAkun.run(c.kode, c.nama, c.tipe, c.posisi_normal);
+
+    const upsertCoa = db.prepare('INSERT INTO coa (kode, nama, tipe) VALUES (?, ?, ?) ON CONFLICT(kode) DO UPDATE SET nama = excluded.nama, tipe = excluded.tipe');
+    for (const c of COA) upsertCoa.run(c.kode, c.nama, c.tipe);
     if (txCount === 0) {
       db.prepare(
         `DELETE FROM coa WHERE kode NOT IN (${COA.map(() => '?').join(',')})`,

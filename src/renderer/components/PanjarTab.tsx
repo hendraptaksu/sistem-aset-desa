@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { isAkunKas } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Panjar } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
@@ -28,7 +29,7 @@ export function PanjarTab() {
   const [tanggalClose, setTanggalClose] = useState(today());
   const [items, setItems] = useState<ItemRow[]>([{ kategori_baga: '5004', nominal: 0 }]);
 
-  const kasList = useMemo(() => coa.filter((c) => c.tipe === 'KAS'), [coa]);
+  const kasList = useMemo(() => coa.filter((c) => isAkunKas(c.kode)), [coa]);
   const bagaList = useMemo(() => coa.filter((c) => c.tipe === 'BEBAN'), [coa]);
   const namaKas = useMemo(() => new Map(kasList.map((c) => [c.kode, c.nama])), [kasList]);
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AKUN_PANJAR, isAkunKas } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Transaksi } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
@@ -31,9 +32,9 @@ export function BkuTab() {
   const [fKat, setFKat] = useState('');
   const [page, setPage] = useState(0);
 
-  const kasList = useMemo(() => coa.filter((c) => c.tipe === 'KAS'), [coa]);
+  const kasList = useMemo(() => coa.filter((c) => isAkunKas(c.kode)), [coa]);
   const katList = useMemo(
-    () => coa.filter((c) => c.tipe !== 'KAS' && c.kode !== '3001' && c.kode !== '3002'),
+    () => coa.filter((c) => !isAkunKas(c.kode) && c.kode !== AKUN_PANJAR && c.kode !== '3001' && c.kode !== '3002'),
     [coa],
   );
   const namaKode = useMemo(() => new Map(coa.map((c) => [c.kode, c.nama])), [coa]);

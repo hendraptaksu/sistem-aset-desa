@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
-import { PANJAR_KATEGORI } from '../../core/ledger.js';
 import type { Transaksi } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { buildPembantu } from '../../features/reports/pembantu/pembantu.js';
@@ -98,7 +97,6 @@ export function PembantuTab() {
               {coa.map((c) => (
                 <option key={c.kode} value={c.kode}>{c.kode} — {c.nama}</option>
               ))}
-              <option value={PANJAR_KATEGORI}>PANJAR — Mutasi Panjar</option>
             </Select>
           </Field>
           <Field label="Mulai">
