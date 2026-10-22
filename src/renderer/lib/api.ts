@@ -1,11 +1,36 @@
 import type { Coa } from '../../db/coa.js';
-import type { Aset, AuditLog, Panjar, PanjarItem, Transaksi, TutupBuku } from '../../core/types.js';
+import type {
+  Aset,
+  AuditLog,
+  Jurnal,
+  JurnalBaris,
+  JurnalBarisInput,
+  JurnalHeaderInput,
+  Panjar,
+  PanjarItem,
+  Transaksi,
+  TutupBuku,
+} from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 
 type Ok<T> = { ok: true; data: T };
-type Fail = { ok: false; error: string; perluAlasan?: boolean };
+type Fail = { ok: false; error: string; perluAlasan?: boolean; perluKonfirmasi?: boolean };
 type Res<T> = Ok<T> | Fail;
+
+/** Jurnal + baris, dipakai layar Jurnal Umum (P0-6). */
+export type JurnalLengkap = Jurnal & {
+  baris: JurnalBaris[];
+  total_debit: number;
+  reversal_id: string | null;
+};
+
+export type OpsiKoreksiApi = {
+  id?: string;
+  tanggal?: string;
+  no_bukti?: string;
+  konfirmasiPeringatan?: boolean;
+};
 
 declare global {
   interface Window {
@@ -19,8 +44,12 @@ async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   }
   const res = (await window.api.invoke(channel, ...args)) as Res<T>;
   if (!res.ok) {
-    const err = new Error(res.error) as Error & { perluAlasan?: boolean };
+    const err = new Error(res.error) as Error & {
+      perluAlasan?: boolean;
+      perluKonfirmasi?: boolean;
+    };
     err.perluAlasan = (res as Fail).perluAlasan;
+    err.perluKonfirmasi = (res as Fail).perluKonfirmasi;
     throw err;
   }
   return res.data;
@@ -44,6 +73,24 @@ export const api = {
   lockReset: (kode: string, pinBaru: string) =>
     call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
   coa: () => call<Coa[]>('coa:list'),
+  jurnalList: (
+    f: { mulai?: string; sampai?: string; jenis?: string; akun_kode?: string; limit?: number; offset?: number } = {},
+  ) => call<JurnalLengkap[]>('jurnal:list', f),
+  jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
+    call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),
+  jurnalKoreksiIsiUlang: (
+    id: string,
+    alasan: string,
+    input: { header: JurnalHeaderInput; baris: JurnalBarisInput[] },
+    opsi: OpsiKoreksiApi = {},
+  ) =>
+    call<{ reversal: Jurnal; jurnalBaru: Jurnal }>(
+      'jurnal:koreksi-isi-ulang',
+      id,
+      alasan,
+      input,
+      opsi,
+    ),
   transaksiList: (f: { mulai?: string; sampai?: string } = {}) => call<Transaksi[]>('transaksi:list', f),
   transaksiCreate: (input: {
     tanggal: string;
@@ -92,6 +139,11 @@ export const api = {
 
 export function isPerluAlasan(e: unknown): boolean {
   return (e as { perluAlasan?: boolean })?.perluAlasan === true;
+}
+
+/** Peringatan (mis. kas minus) yang menunggu konfirmasi operator. */
+export function isPerluKonfirmasi(e: unknown): boolean {
+  return (e as { perluKonfirmasi?: boolean })?.perluKonfirmasi === true;
 }
 
 /** Uint8Array → base64 untuk kirim buffer xlsx/html ke main via IPC. */

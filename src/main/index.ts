@@ -17,12 +17,15 @@ import {
   insertTutupBuku,
   listAset,
   listAuditLog,
+  listJurnalLengkap,
   listPanjar,
   listPanjarItems,
   listTransaksi,
   listTutupBuku,
   updateAset,
+  type JurnalFilter,
 } from '../db/repository.js';
+import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
   buatAuditLog,
@@ -39,6 +42,7 @@ import { listBarisJurnal } from '../db/laporan.js';
 import { buildDashboardJurnal } from '../features/dashboard/dashboard.js';
 import { autoBackupHarian, lastAutoBackup } from '../features/export/export.js';
 import type { Aset, Panjar, Transaksi } from '../core/types.js';
+import type { JurnalInput } from '../core/posting.js';
 import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
 import {
   aturIdle,
@@ -67,7 +71,12 @@ function dbPath(): string {
 }
 
 const ok = <T>(data: T) => ({ ok: true as const, data });
-const fail = (error: string, perluAlasan = false) => ({ ok: false as const, error, perluAlasan });
+const fail = (error: string, perluAlasan = false, perluKonfirmasi = false) => ({
+  ok: false as const,
+  error,
+  perluAlasan,
+  perluKonfirmasi,
+});
 const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 function registerIpc(): void {
@@ -109,6 +118,90 @@ function registerIpc(): void {
   // lock:change & lock:idle-set justru WAJIB terbuka → ikut dijaga di bawah.
   const perluBuka = (): string | null =>
     sudahSetupPin(db) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
+
+  // ---- Jurnal Umum & koreksi (P0-6) ----
+  ipcMain.handle('jurnal:list', (_e, f: JurnalFilter = {}) => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    const filter: JurnalFilter = {
+      mulai: typeof f?.mulai === 'string' && f.mulai ? f.mulai : undefined,
+      sampai: typeof f?.sampai === 'string' && f.sampai ? f.sampai : undefined,
+      jenis: typeof f?.jenis === 'string' && f.jenis ? f.jenis : undefined,
+      akun_kode: typeof f?.akun_kode === 'string' && f.akun_kode ? f.akun_kode : undefined,
+      limit: Number.isFinite(f?.limit) ? Number(f.limit) : undefined,
+      offset: Number.isFinite(f?.offset) ? Number(f.offset) : undefined,
+    };
+    return ok(listJurnalLengkap(db, filter));
+  });
+
+  ipcMain.handle(
+    'jurnal:reverse',
+    (
+      _e,
+      id: string,
+      alasan: string,
+      opsi: { id?: string; tanggal?: string; no_bukti?: string; konfirmasiPeringatan?: boolean } = {},
+    ) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        const hasil = reverseJurnal(db, String(id ?? ''), String(alasan ?? ''), {
+          id: typeof opsi?.id === 'string' ? opsi.id : undefined,
+          tanggal: typeof opsi?.tanggal === 'string' ? opsi.tanggal : undefined,
+          no_bukti: typeof opsi?.no_bukti === 'string' ? opsi.no_bukti : undefined,
+          konfirmasiPeringatan: opsi?.konfirmasiPeringatan === true,
+        });
+        if (!hasil.tersimpan)
+          return fail(
+            hasil.errors.join(' ') || hasil.peringatan.join(' ') || 'Koreksi gagal disimpan.',
+            false,
+            hasil.perluKonfirmasi,
+          );
+        return ok({ jurnal: hasil.reversal });
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'jurnal:koreksi-isi-ulang',
+    (
+      _e,
+      id: string,
+      alasan: string,
+      input: JurnalInput,
+      opsi: { id?: string; tanggal?: string; no_bukti?: string; konfirmasiPeringatan?: boolean } = {},
+    ) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        if (!input || !input.header || !Array.isArray(input.baris))
+          return fail('Data jurnal pengganti tidak lengkap.');
+        const hasil = koreksiDanIsiUlang(
+          db,
+          String(id ?? ''),
+          String(alasan ?? ''),
+          input,
+          {
+            id: typeof opsi?.id === 'string' ? opsi.id : undefined,
+            tanggal: typeof opsi?.tanggal === 'string' ? opsi.tanggal : undefined,
+            no_bukti: typeof opsi?.no_bukti === 'string' ? opsi.no_bukti : undefined,
+            konfirmasiPeringatan: opsi?.konfirmasiPeringatan === true,
+          },
+        );
+        if (!hasil.tersimpan)
+          return fail(
+            hasil.errors.join(' ') || hasil.peringatan.join(' ') || 'Koreksi gagal disimpan.',
+            false,
+            hasil.perluKonfirmasi,
+          );
+        return ok({ reversal: hasil.reversal, jurnalBaru: hasil.jurnalBaru });
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
 
   ipcMain.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
     const k = perluBuka();

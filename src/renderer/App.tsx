@@ -15,7 +15,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
-import { BkuTab } from './components/BkuTab.js';
+import { JurnalTab } from './components/JurnalTab.js';
 import { AsetTab } from './components/AsetTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
@@ -28,11 +28,11 @@ import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'bku' | 'aset' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'jurnal' | 'aset' | 'panjar' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
-  { id: 'bku', label: 'Buku Kas Umum', Icon: BookOpen },
+  { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
   { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pembantu', label: 'Pembantu', Icon: NotebookText },
@@ -140,7 +140,7 @@ export function App() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">Keuangan Pura Dalem Puri Peliatan</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — BKU, Panjar, Aset, Laporan, Neraca</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Aset, Laporan, Neraca</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab />
@@ -148,7 +148,7 @@ export function App() {
           </>
         ) : (
           <div className="px-6 py-6">
-            {tab === 'bku' && <BkuTab />}
+            {tab === 'jurnal' && <JurnalTab />}
             {tab === 'aset' && <AsetTab />}
             {tab === 'panjar' && <PanjarTab />}
             {tab === 'pembantu' && <PembantuTab />}

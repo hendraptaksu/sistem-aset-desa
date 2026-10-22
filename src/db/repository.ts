@@ -120,8 +120,20 @@ export function insertJurnal(
   }
 
   const reversalOf = header.reversal_of?.trim() || null;
-  if (reversalOf && !getJurnal(db, reversalOf))
-    throw new Error(`Jurnal yang dikoreksi (${reversalOf}) tidak ditemukan.`);
+  if (reversalOf) {
+    const asli = getJurnal(db, reversalOf);
+    if (!asli) throw new Error(`Jurnal yang dikoreksi (${reversalOf}) tidak ditemukan.`);
+    // P0-6: jurnal balik tidak boleh dibalik lagi, dan satu jurnal hanya boleh
+    // punya satu reversal. Penjagaan ini juga berlaku untuk pemanggil yang
+    // melewati fungsi koreksi aplikasi.
+    if (asli.reversal_of)
+      throw new Error('Jurnal balik tidak boleh dibalik lagi. Koreksi jurnal aslinya.');
+    const sudah = db
+      .prepare('SELECT id FROM jurnal WHERE reversal_of = ? LIMIT 1')
+      .get(reversalOf) as { id: string } | undefined;
+    if (sudah)
+      throw new Error(`Jurnal ${reversalOf} sudah dikoreksi oleh jurnal ${sudah.id}.`);
+  }
 
   const cekAkun = db.prepare('SELECT kode, aktif FROM akun WHERE kode = ?');
   let totalDebit = 0;
@@ -251,6 +263,40 @@ export function getJurnalDetail(
 ): { jurnal: Jurnal; baris: JurnalBaris[] } | null {
   const jurnal = getJurnal(db, id);
   return jurnal ? { jurnal, baris: listJurnalBaris(db, id) } : null;
+}
+
+export type JurnalLengkap = Jurnal & {
+  baris: JurnalBaris[];
+  total_debit: number;
+  /** ID jurnal balik yang sudah ada untuk jurnal ini (null = belum dikoreksi). */
+  reversal_id: string | null;
+};
+
+/**
+ * Daftar jurnal beserta barisnya untuk layar Jurnal Umum (P0-6).
+ * `reversal_id` menandai jurnal yang sudah dikoreksi agar tombol Koreksi bisa
+ * dinonaktifkan tanpa query tambahan di UI.
+ */
+export function listJurnalLengkap(
+  db: Database.Database,
+  filter: JurnalFilter = {},
+): JurnalLengkap[] {
+  const ambilBaris = db.prepare(
+    'SELECT * FROM jurnal_baris WHERE jurnal_id = ? ORDER BY id',
+  );
+  const ambilReversal = db.prepare(
+    'SELECT id FROM jurnal WHERE reversal_of = ? ORDER BY rowid LIMIT 1',
+  );
+  return listJurnal(db, filter).map((jurnal) => {
+    const baris = (ambilBaris.all(jurnal.id) as Record<string, unknown>[]).map(rowToJurnalBaris);
+    const reversal = ambilReversal.get(jurnal.id) as { id: string } | undefined;
+    return {
+      ...jurnal,
+      baris,
+      total_debit: baris.reduce((s, b) => s + b.debit, 0),
+      reversal_id: reversal ? String(reversal.id) : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

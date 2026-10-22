@@ -134,7 +134,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **Verifikasi:** `npx vitest run tests/laporan.test.ts`
   - **Dependency:** P0-3
 
-- [ ] **P0-6 — Koreksi = jurnal balik (reversal)**
+- [x] **P0-6 — Koreksi = jurnal balik (reversal)** (2026-10-22: `rencanaReversal` + `reverseJurnal`/`koreksiDanIsiUlang` atomik (tolak reversal ganda & reversal atas reversal, kunci periode, audit), layar Jurnal Umum + modal alasan/pratinjau + form isi ulang terisi data lama; 145/145 test hijau)
   - **Konteks:** tidak boleh ada edit/hapus; akuntan butuh koreksi yang bisa diaudit.
   - **Langkah:**
     1. Backend: `jurnal:reverse(id, alasan)` → buat jurnal baru yang menukar debit/kredit semua baris,

@@ -4,18 +4,23 @@
 
 import type Database from 'better-sqlite3';
 import { KAS_KODES, isAkunKas } from './coa.js';
-import { insertJurnal, listAkun, listTutupBuku } from './repository.js';
+import { insertAuditLog, insertJurnal, listAkun, listTutupBuku } from './repository.js';
 import {
   validasiJurnal,
   type HasilValidasiJurnal,
   type JurnalInput,
   type PostingContext,
 } from '../core/posting.js';
-import type { Jurnal } from '../core/types.js';
+import type { AuditLog, Jurnal } from '../core/types.js';
 
 export type OpsiPosting = {
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
   konfirmasiPeringatan?: boolean;
+  /**
+   * Baris audit yang ditulis ATOMIK bersama jurnal. Dipakai reversal (P0-6)
+   * dan nanti operasi lain yang wajib punya jejak audit (P0-9).
+   */
+  audit?: AuditLog[];
 };
 
 export type HasilPosting = HasilValidasiJurnal & {
@@ -82,7 +87,12 @@ export function postingJurnal(
     return { ...hasil, tersimpan: false };
 
   try {
-    const jurnal = insertJurnal(db, input.header, input.baris);
+    const simpan = db.transaction(() => {
+      const jurnal = insertJurnal(db, input.header, input.baris);
+      for (const a of opsi.audit ?? []) insertAuditLog(db, a);
+      return jurnal;
+    });
+    const jurnal = simpan();
     return { ...hasil, tersimpan: true, jurnal };
   } catch (e) {
     return {
