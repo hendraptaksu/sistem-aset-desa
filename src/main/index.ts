@@ -47,7 +47,13 @@ import {
   saldoAkun,
   saldoSemuaKas as saldoSemuaKasJurnal,
 } from '../core/reports.js';
-import { listBarisJurnal } from '../db/laporan.js';
+import {
+  laporanBukuBesar,
+  laporanDetailJurnal,
+  laporanJurnalAkun,
+  laporanNeracaSaldo,
+  listBarisJurnal,
+} from '../db/laporan.js';
 import { buildDashboardJurnal } from '../features/dashboard/dashboard.js';
 import {
   autoBackupHarian,
@@ -66,6 +72,9 @@ import {
   validasiBentukPihak,
   validasiBentukPostingPihak,
   validasiBentukSaldoAwal,
+  validasiCutoffLaporan,
+  validasiFilterBukuBesar,
+  validasiIdJurnal,
   validateAsetInput,
   validateTransaksiInput,
   type AsetInput,
@@ -159,6 +168,69 @@ function registerIpc(): void {
       offset: Number.isFinite(f?.offset) ? Number(f.offset) : undefined,
     };
     return ok(listJurnalLengkap(db, filter));
+  });
+
+  // ---- Laporan Buku Besar & Neraca Saldo + drill-down (P1-8) ----
+  // Semua angka dihitung ulang dari jurnal oleh core/reports.ts. Handler hanya
+  // menormalkan bentuk filter dan memvalidasi tanggal kalender.
+  ipcMain.handle('laporan:buku-besar', (_e, f: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiFilterBukuBesar(f);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(
+        laporanBukuBesar(db, bentuk.input.akun_kode, {
+          mulai: bentuk.input.mulai,
+          sampai: bentuk.input.sampai,
+        }),
+      );
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('laporan:neraca-saldo', (_e, cutoff: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiCutoffLaporan(cutoff);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(laporanNeracaSaldo(db, bentuk.input));
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('laporan:jurnal-akun', (_e, f: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiFilterBukuBesar(f);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(
+        laporanJurnalAkun(db, bentuk.input.akun_kode, {
+          mulai: bentuk.input.mulai,
+          sampai: bentuk.input.sampai,
+        }),
+      );
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('laporan:jurnal-detail', (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiIdJurnal(id);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const detail = laporanDetailJurnal(db, bentuk.input);
+      if (!detail) return fail('Jurnal tidak ditemukan.');
+      return ok(detail);
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
   });
 
   // ---- Simpan jurnal dari form terpandu (P1-1) ----
@@ -734,7 +806,8 @@ function registerIpc(): void {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
+      if (!tanggalKalenderValid(cutoff))
+        return fail('Cut-off tidak valid (YYYY-MM-DD dan harus tanggal kalender).');
       const baris = listBarisJurnal(db);
       const n = neracaJurnal(baris, {
         cutoff,
@@ -771,7 +844,8 @@ function registerIpc(): void {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
+      if (!tanggalKalenderValid(cutoff))
+        return fail('Cut-off tidak valid (YYYY-MM-DD dan harus tanggal kalender).');
       const d = buildDashboardJurnal(listBarisJurnal(db), listTutupBuku(db), cutoff);
       return ok(d);
     } catch (e) {

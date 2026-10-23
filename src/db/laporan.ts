@@ -3,8 +3,16 @@
 // SQLite; seluruh perhitungan tetap di `src/core/reports.ts`.
 
 import type Database from 'better-sqlite3';
+import { COA } from './coa.js';
+import { getJurnalDetail, listJurnalLengkap, type JurnalLengkap } from './repository.js';
 import type { JurnalJenis } from '../core/types.js';
-import type { BarisJurnalSumber } from '../core/reports.js';
+import {
+  bukuBesar,
+  neracaSaldo,
+  type BarisJurnalSumber,
+  type BukuBesarHasil,
+  type NeracaSaldoHasil,
+} from '../core/reports.js';
 
 export type FilterBarisJurnal = {
   mulai?: string;
@@ -109,4 +117,80 @@ export function listBarisSatuJurnal(
   jurnalId: string,
 ): BarisJurnalSumber[] {
   return listBarisJurnal(db, { jurnal_id: jurnalId });
+}
+
+// ---------------------------------------------------------------------------
+// Adapter layar laporan (P1-8)
+// ---------------------------------------------------------------------------
+
+export type FilterBukuBesarDb = {
+  mulai?: string;
+  sampai?: string;
+};
+
+/**
+ * Buku Besar satu akun untuk layar P1-8. Saldo awal tetap dihitung dari
+ * jurnal sebelum `mulai`, jadi query hanya membatasi `sampai`; perhitungan
+ * seluruhnya diserahkan ke fungsi murni `bukuBesar`.
+ */
+export function laporanBukuBesar(
+  db: Database.Database,
+  akunKode: string,
+  filter: FilterBukuBesarDb = {},
+): BukuBesarHasil {
+  const akun = COA.find((a) => a.kode === akunKode);
+  if (!akun) throw new Error(`Akun ${akunKode} tidak dikenal di COA.`);
+  return bukuBesar(
+    listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
+    akun,
+    filter,
+  );
+}
+
+/** Neraca Saldo s/d cut-off; `cutoff` kosong berarti seluruh riwayat. */
+export function laporanNeracaSaldo(
+  db: Database.Database,
+  cutoff?: string,
+): NeracaSaldoHasil {
+  return neracaSaldo(
+    listBarisJurnal(db, cutoff ? { sampai: cutoff } : {}),
+    cutoff,
+  );
+}
+
+/**
+ * Daftar jurnal yang menyentuh satu akun (drill-down). Setiap jurnal
+ * dikembalikan lengkap dengan semua barisnya, bukan hanya baris akun itu,
+ * supaya modal detail bisa menampilkan sisi debit dan kredit berpasangan.
+ */
+export function laporanJurnalAkun(
+  db: Database.Database,
+  akunKode: string,
+  filter: FilterBukuBesarDb = {},
+): JurnalLengkap[] {
+  if (!COA.some((a) => a.kode === akunKode))
+    throw new Error(`Akun ${akunKode} tidak dikenal di COA.`);
+  return listJurnalLengkap(db, {
+    akun_kode: akunKode,
+    ...(filter.mulai ? { mulai: filter.mulai } : {}),
+    ...(filter.sampai ? { sampai: filter.sampai } : {}),
+  });
+}
+
+/** Detail satu jurnal + semua barisnya untuk modal drill-down. */
+export function laporanDetailJurnal(
+  db: Database.Database,
+  jurnalId: string,
+): JurnalLengkap | null {
+  const detail = getJurnalDetail(db, jurnalId);
+  if (!detail) return null;
+  const reversal = db
+    .prepare('SELECT id FROM jurnal WHERE reversal_of = ? ORDER BY rowid LIMIT 1')
+    .get(jurnalId) as { id: string } | undefined;
+  return {
+    ...detail.jurnal,
+    baris: detail.baris,
+    total_debit: detail.baris.reduce((s, b) => s + b.debit, 0),
+    reversal_id: reversal ? String(reversal.id) : null,
+  };
 }

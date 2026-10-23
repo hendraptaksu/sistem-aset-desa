@@ -18,7 +18,10 @@ import type {
   TutupBuku,
 } from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
+import type { BukuBesarHasil, NeracaSaldoHasil } from '../../core/reports.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
+
+export type { BukuBesarHasil, NeracaSaldoHasil };
 
 type Ok<T> = { ok: true; data: T };
 type Fail = { ok: false; error: string; perluAlasan?: boolean; perluKonfirmasi?: boolean };
@@ -29,6 +32,13 @@ export type JurnalLengkap = Jurnal & {
   baris: JurnalBaris[];
   total_debit: number;
   reversal_id: string | null;
+};
+
+/** Filter layar Buku Besar / daftar jurnal per akun (P1-8). */
+export type FilterBukuBesarApi = {
+  akun_kode: string;
+  mulai?: string;
+  sampai?: string;
 };
 
 export type OpsiKoreksiApi = {
@@ -129,6 +139,18 @@ export const api = {
   jurnalList: (
     f: { mulai?: string; sampai?: string; jenis?: string; akun_kode?: string; limit?: number; offset?: number } = {},
   ) => call<JurnalLengkap[]>('jurnal:list', f),
+  /** Buku Besar per akun; saldo awal/berjalan/akhir dihitung dari jurnal. */
+  laporanBukuBesar: (f: FilterBukuBesarApi) =>
+    call<BukuBesarHasil>('laporan:buku-besar', f),
+  /** Neraca Saldo per cut-off; `seimbang`/`selisih` dihitung di core. */
+  laporanNeracaSaldo: (cutoff: string) =>
+    call<NeracaSaldoHasil>('laporan:neraca-saldo', cutoff),
+  /** Drill-down: jurnal yang menyentuh akun, lengkap dengan semua barisnya. */
+  laporanJurnalAkun: (f: FilterBukuBesarApi) =>
+    call<JurnalLengkap[]>('laporan:jurnal-akun', f),
+  /** Drill-down: detail satu jurnal + seluruh baris debit/kredit. */
+  laporanJurnalDetail: (id: string) =>
+    call<JurnalLengkap>('laporan:jurnal-detail', id),
   /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
   jurnalPosting: (
     input: JurnalInput,

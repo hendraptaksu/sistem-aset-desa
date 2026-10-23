@@ -3,12 +3,14 @@ import { clsx } from 'clsx';
 import {
   ArrowLeftRight,
   BarChart3,
+  BookMarked,
   BookOpen,
   Building2,
   ChevronsLeft,
   ChevronsRight,
   HandCoins,
   LayoutDashboard,
+  ListChecks,
   Lock,
   NotebookText,
   Scale,
@@ -19,6 +21,8 @@ import {
 } from 'lucide-react';
 import { TransaksiTab } from './components/TransaksiTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
+import { BukuBesarTab } from './components/BukuBesarTab.js';
+import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
 import { AsetTab } from './components/AsetTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
 import { PihakTab } from './components/PihakTab.js';
@@ -32,12 +36,14 @@ import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { id: 'transaksi', label: 'Transaksi', Icon: ArrowLeftRight },
   { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
+  { id: 'buku-besar', label: 'Buku Besar', Icon: BookMarked },
+  { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
   { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
@@ -53,6 +59,8 @@ export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
+  // Drill-down Neraca Saldo → Buku Besar akun yang diklik (P1-8).
+  const [akunBukuBesar, setAkunBukuBesar] = useState<string | undefined>();
 
   const refreshLock = useCallback(async () => {
     try {
@@ -156,6 +164,15 @@ export function App() {
           <div className="px-6 py-6">
             {tab === 'transaksi' && <TransaksiTab />}
             {tab === 'jurnal' && <JurnalTab />}
+            {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
+            {tab === 'neraca-saldo' && (
+              <NeracaSaldoTab
+                onBukaBukuBesar={(kode) => {
+                  setAkunBukuBesar(kode);
+                  setTab('buku-besar');
+                }}
+              />
+            )}
             {tab === 'aset' && <AsetTab />}
             {tab === 'panjar' && <PanjarTab />}
             {tab === 'pihak' && <PihakTab />}

@@ -267,7 +267,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test validasi form (tidak seimbang tidak bisa simpan); smoke UI; audit tercatat.
   - **Dependency:** P0-4
 
-- [ ] **P1-8 — Layar Buku Besar & Neraca Saldo**
+- [x] **P1-8 — Layar Buku Besar & Neraca Saldo** (2026-10-23: tab Buku Besar + Neraca Saldo dengan saldo awal/berjalan/akhir dari jurnal, drill-down akun→buku besar→detail jurnal, validasi tanggal kalender; 240/240 test hijau)
   - **Langkah:** Buku Besar per akun dengan filter periode + saldo awal/berjalan/akhir; Neraca Saldo per
     cutoff; klik baris → daftar jurnal akun tersebut; klik jurnal → detail debit/kredit + no bukti.
   - **DoD:** test drill-down data; smoke UI.

@@ -517,3 +517,75 @@ export function validasiBentukPostingPihak(
 
   return { ok: true, input: { pihakId, input: jurnal.input } };
 }
+
+// ---------------------------------------------------------------------------
+// Filter laporan Buku Besar & Neraca Saldo (P1-8)
+// ---------------------------------------------------------------------------
+
+export type FilterBukuBesar = {
+  akun_kode: string;
+  mulai?: string;
+  sampai?: string;
+};
+
+/** Tanggal filter boleh kosong, tetapi kalau diisi harus tanggal kalender nyata. */
+function tanggalFilterLaporan(
+  nilai: unknown,
+  label: string,
+): HasilBentuk<string> {
+  if (nilai === undefined || nilai === null) return { ok: true, input: '' };
+  if (typeof nilai !== 'string') return { ok: false, error: `${label} tidak valid.` };
+  const teks = nilai.trim();
+  if (!teks) return { ok: true, input: '' };
+  if (!tanggalKalenderValid(teks))
+    return {
+      ok: false,
+      error: `${label} tidak valid (YYYY-MM-DD dan harus tanggal kalender).`,
+    };
+  return { ok: true, input: teks };
+}
+
+/**
+ * Normalisasi filter Buku Besar / daftar jurnal per akun. Selain format,
+ * urutan tanggal juga diperiksa agar rentang tidak terbalik.
+ */
+export function validasiFilterBukuBesar(nilai: unknown): HasilBentuk<FilterBukuBesar> {
+  if (!objek(nilai)) return { ok: false, error: 'Data filter laporan tidak lengkap.' };
+
+  const akun = teksOpsional(nilai.akun_kode, 'Akun', 20);
+  if (!akun.ok) return akun;
+  if (!akun.nilai) return { ok: false, error: 'Akun wajib dipilih.' };
+
+  const mulai = tanggalFilterLaporan(nilai.mulai, 'Tanggal mulai');
+  if (!mulai.ok) return mulai;
+  const sampai = tanggalFilterLaporan(nilai.sampai, 'Tanggal sampai');
+  if (!sampai.ok) return sampai;
+  if (mulai.input && sampai.input && mulai.input > sampai.input)
+    return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };
+
+  return {
+    ok: true,
+    input: {
+      akun_kode: akun.nilai,
+      ...(mulai.input ? { mulai: mulai.input } : {}),
+      ...(sampai.input ? { sampai: sampai.input } : {}),
+    },
+  };
+}
+
+/** Cut-off Neraca Saldo wajib diisi dan harus tanggal kalender nyata. */
+export function validasiCutoffLaporan(nilai: unknown): HasilBentuk<string> {
+  const cutoff = tanggalFilterLaporan(nilai, 'Tanggal cut-off');
+  if (!cutoff.ok) return cutoff;
+  if (!cutoff.input) return { ok: false, error: 'Tanggal cut-off wajib diisi.' };
+  return { ok: true, input: cutoff.input };
+}
+
+/** ID jurnal untuk drill-down detail; hanya string wajar yang diteruskan. */
+export function validasiIdJurnal(nilai: unknown): HasilBentuk<string> {
+  if (typeof nilai !== 'string' || !nilai.trim())
+    return { ok: false, error: 'Jurnal wajib dipilih.' };
+  const id = nilai.trim();
+  if (id.length > 200) return { ok: false, error: 'ID jurnal terlalu panjang.' };
+  return { ok: true, input: id };
+}
