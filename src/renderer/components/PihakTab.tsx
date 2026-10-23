@@ -34,6 +34,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaranNomorBukti } from './SaranNomorBukti.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -378,7 +379,7 @@ export function PihakTab() {
     busyRef.current = true;
     setBusy(true);
     try {
-      await api.pihakPosting(
+      const tersimpan = await api.pihakPosting(
         { pihakId: hasil.pihakId, input: hasil.input },
         {
           konfirmasiPeringatan: opsi.konfirmasi === true,
@@ -393,7 +394,8 @@ export function PihakTab() {
       await muat();
       setInfoForm(
         `${infoAlur.judul} senilai ${formatRp(nominal)} untuk ` +
-          `${pihak.find((p) => p.id === pihakId)?.nama ?? 'pihak'} tersimpan. ` +
+          `${pihak.find((p) => p.id === pihakId)?.nama ?? 'pihak'} tersimpan` +
+          `${tersimpan.jurnal?.no_bukti ? ` (${tersimpan.jurnal.no_bukti})` : ''}. ` +
           infoAlur.pesanSukses,
       );
     } catch (e) {
@@ -884,14 +886,17 @@ export function PihakTab() {
             />
           </Field>
 
-          <Field label="No. bukti (opsional)">
-            <TextInput
-              value={noBukti}
-              disabled={busy}
-              placeholder="cth: JU-2026-0001 — boleh dikosongkan"
-              onChange={(e) => setNoBukti(e.target.value)}
-            />
-          </Field>
+          <div>
+            <Field label="No. bukti (opsional)">
+              <TextInput
+                value={noBukti}
+                disabled={busy}
+                placeholder="cth: JU-2026-0001 — boleh dikosongkan"
+                onChange={(e) => setNoBukti(e.target.value)}
+              />
+            </Field>
+            <SaranNomorBukti tanggal={tanggal} />
+          </div>
         </div>
 
         {saldoTerpilih && (

@@ -286,7 +286,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test: `typeof cell.value === 'number'`; total baris benar; file terbuka di Excel.
   - **Dependency:** P1-8, P1-9
 
-- [ ] **P1-11 — Nomor bukti `JU` & pencarian jurnal**
+- [x] **P1-11 — Nomor bukti `JU` & pencarian jurnal** (2026-10-23: nomor `JU-<tahun>-<urut>` otomatis per tahun di semua jalur simpan + pencarian/pagination server-side lewat `jurnal:cari`; 303/303 test hijau)
   - **Langkah:** auto nomor **`JU-<tahun>-<urut>`** (K5; bisa diedit, wajib unik per tahun); pencarian
     jurnal by no bukti/keterangan/nominal/akun; filter tanggal + jenis; daftar jurnal dengan pagination.
     Catatan: `JU` = Jurnal Umum (lazim); jangan `JP` (ambigu). Alternatif `BKM/BKK` hanya jika pemilik

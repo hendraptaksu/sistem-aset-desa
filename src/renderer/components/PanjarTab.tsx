@@ -28,6 +28,7 @@ import {
   TextInput,
 } from './ui.js';
 import { ExportActions } from './ExportActions.js';
+import { SaranNomorBukti } from './SaranNomorBukti.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -250,7 +251,8 @@ export function PanjarTab() {
       setNoBukti('');
       await refresh();
       setInfo(
-        `Panjar untuk ${r.panjar.penerima} tersimpan — ${formatRp(r.panjar.jumlah)}. ` +
+        `Panjar untuk ${r.panjar.penerima} tersimpan` +
+          `${r.jurnal?.no_bukti ? ` (${r.jurnal.no_bukti})` : ''} — ${formatRp(r.panjar.jumlah)}. ` +
           'Kas berkurang, Uang Panjar (1040) bertambah.',
       );
     } catch (e) {
@@ -464,14 +466,17 @@ export function PanjarTab() {
               onChange={(e) => setKeterangan(e.target.value)}
             />
           </Field>
-          <Field label="No. bukti (opsional)">
-            <TextInput
-              value={noBukti}
-              disabled={busyOpen}
-              placeholder="cth: JU-2026-0001 — boleh kosong"
-              onChange={(e) => setNoBukti(e.target.value)}
-            />
-          </Field>
+          <div>
+            <Field label="No. bukti (opsional)">
+              <TextInput
+                value={noBukti}
+                disabled={busyOpen}
+                placeholder="cth: JU-2026-0001 — boleh kosong"
+                onChange={(e) => setNoBukti(e.target.value)}
+              />
+            </Field>
+            <SaranNomorBukti tanggal={tanggal} />
+          </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">

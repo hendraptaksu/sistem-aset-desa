@@ -22,6 +22,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaranNomorBukti } from './SaranNomorBukti.js';
 
 type BarisEditor = BarisJurnalForm & {
   key: number;
@@ -386,12 +387,7 @@ export function JurnalUmumEditor({
                 onChange={(e) => setNoBukti(e.target.value)}
               />
             </Field>
-            <p className="mt-1 text-xs text-stone-500">
-              Pratinjau nomor bukti:{' '}
-              <b>{noBukti.trim() || 'otomatis saat disimpan'}</b>. Penomoran
-              otomatis JU-2026-0001 menyusul P1-11; untuk sekarang isi manual
-              bila nomor sudah ada.
-            </p>
+            <SaranNomorBukti tanggal={tanggal} />
           </div>
           <div>
             <Field label="Template jurnal (opsional)">

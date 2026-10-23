@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { JurnalBarisInput } from '../../core/types.js';
 import {
@@ -27,6 +27,7 @@ import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, Select, TextInput 
 import { ExportActions } from './ExportActions.js';
 import { JurnalUmumEditor } from './JurnalUmumEditor.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
+import { SaranNomorBukti } from './SaranNomorBukti.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const PAGE = 25;
@@ -66,14 +67,20 @@ export function JurnalTab({
 }) {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [daftar, setDaftar] = useState<JurnalLengkap[]>([]);
+  const [total, setTotal] = useState(0);
+  const [memuat, setMemuat] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
   const [cari, setCari] = useState('');
+  /** Kata kunci yang sudah di-debounce dan dikirim ke server. */
+  const [cariServer, setCariServer] = useState('');
   const [fMulai, setFMulai] = useState('');
   const [fSampai, setFSampai] = useState('');
   const [fJenis, setFJenis] = useState('');
   const [page, setPage] = useState(0);
+  /** Naikkan untuk memuat ulang halaman setelah simpan/koreksi. */
+  const [versi, setVersi] = useState(0);
 
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
   const [koreksi, setKoreksi] = useState<JurnalLengkap | null>(null);
@@ -111,43 +118,73 @@ export function JurnalTab({
     }
   }
 
-  async function refresh() {
-    try {
-      setErr(null);
-      const [c, j] = await Promise.all([api.coa(), api.jurnalList()]);
-      setCoa(c);
-      setDaftar(j);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  function refresh() {
+    setVersi((v) => v + 1);
   }
 
   useEffect(() => {
-    void refresh();
+    let aktif = true;
+    api
+      .coa()
+      .then((c) => {
+        if (aktif) setCoa(c);
+      })
+      .catch((e) => {
+        if (aktif) setErr(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      aktif = false;
+    };
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = cari.trim().toLowerCase();
-    return daftar.filter(
-      (j) =>
-        (!q ||
-          j.keterangan.toLowerCase().includes(q) ||
-          j.no_bukti.toLowerCase().includes(q)) &&
-        (!fMulai || j.tanggal >= fMulai) &&
-        (!fSampai || j.tanggal <= fSampai) &&
-        (!fJenis || j.jenis === fJenis),
-    );
-  }, [daftar, cari, fMulai, fSampai, fJenis]);
+  // Debounce kata kunci; filter tanggal/jenis langsung memicu muat.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCariServer(cari.trim());
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [cari]);
 
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
-  const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
-  const totalHalaman = filtered.slice(page * PAGE, page * PAGE + PAGE).reduce(
-    (s, j) => s + j.total_debit,
-    0,
-  );
+  useEffect(() => {
+    let aktif = true;
+    setMemuat(true);
+    api
+      .jurnalCari({
+        ...(cariServer ? { cari: cariServer } : {}),
+        ...(fMulai ? { mulai: fMulai } : {}),
+        ...(fSampai ? { sampai: fSampai } : {}),
+        ...(fJenis ? { jenis: fJenis } : {}),
+        limit: PAGE,
+        offset: page * PAGE,
+      })
+      .then((r) => {
+        if (!aktif) return;
+        setDaftar(r.rows);
+        setTotal(r.total);
+        const halamanMaks = Math.max(0, Math.ceil(r.total / PAGE) - 1);
+        if (page > halamanMaks) setPage(halamanMaks);
+      })
+      .catch((e) => {
+        if (aktif) setErr(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (aktif) setMemuat(false);
+      });
+    return () => {
+      aktif = false;
+    };
+  }, [cariServer, fMulai, fSampai, fJenis, page, versi]);
+
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  const pageRows = daftar;
+  const totalHalaman = pageRows.reduce((s, j) => s + j.total_debit, 0);
+  const awalTampil = total === 0 ? 0 : page * PAGE + 1;
+  const akhirTampil = page * PAGE + pageRows.length;
+  const adaFilter = Boolean(cariServer || fMulai || fSampai || fJenis);
 
   const resetHalaman = () => setPage(0);
-  const rentangFiltered = rentangDariRows(filtered);
+  const rentangFiltered = rentangDariRows(pageRows);
   const namaDasarJurnal = `jurnal-umum-${periodeFile(
     fMulai || rentangFiltered.mulai,
     fSampai || rentangFiltered.sampai,
@@ -156,6 +193,26 @@ export function JurnalTab({
     ...(fMulai ? { mulai: fMulai } : {}),
     ...(fSampai ? { sampai: fSampai } : {}),
   };
+  const filterServer = {
+    ...(cariServer ? { cari: cariServer } : {}),
+    ...(fMulai ? { mulai: fMulai } : {}),
+    ...(fSampai ? { sampai: fSampai } : {}),
+    ...(fJenis ? { jenis: fJenis } : {}),
+  };
+
+  /** Export/print memuat SEMUA hasil filter (bukan hanya halaman aktif). */
+  async function muatSemuaJurnal(): Promise<JurnalLengkap[]> {
+    const ukuran = 200;
+    const semua: JurnalLengkap[] = [];
+    let offset = 0;
+    for (let putaran = 0; putaran < 500; putaran += 1) {
+      const r = await api.jurnalCari({ ...filterServer, limit: ukuran, offset });
+      semua.push(...r.rows);
+      offset += r.rows.length;
+      if (r.rows.length === 0 || offset >= r.total) break;
+    }
+    return semua;
+  }
 
   return (
     <div className="space-y-4">
@@ -196,12 +253,9 @@ export function JurnalTab({
         )}
         <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
           <TextInput
-            placeholder="Cari no. bukti / keterangan…"
+            placeholder="Cari no. bukti / keterangan / akun / nominal…"
             value={cari}
-            onChange={(e) => {
-              setCari(e.target.value);
-              resetHalaman();
-            }}
+            onChange={(e) => setCari(e.target.value)}
           />
           <TextInput
             type="date"
@@ -239,9 +293,13 @@ export function JurnalTab({
           <ExportActions
             namaDasar={namaDasarJurnal}
             judul="Jurnal Umum"
-            disabled={filtered.length === 0}
-            buatWorkbook={() => jurnalToWorkbook(filtered, coa, opsiPeriodeJurnal)}
-            buatDokumen={() => jurnalPrintDoc(filtered, coa, opsiPeriodeJurnal)}
+            disabled={total === 0 || memuat}
+            buatWorkbook={async () =>
+              jurnalToWorkbook(await muatSemuaJurnal(), coa, opsiPeriodeJurnal)
+            }
+            buatDokumen={async () =>
+              jurnalPrintDoc(await muatSemuaJurnal(), coa, opsiPeriodeJurnal)
+            }
           />
         </div>
 
@@ -309,9 +367,11 @@ export function JurnalTab({
               {pageRows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-4 text-center text-stone-500">
-                    {daftar.length === 0
-                      ? 'Belum ada jurnal.'
-                      : 'Tidak ada jurnal yang cocok dengan filter.'}
+                    {memuat
+                      ? 'Memuat jurnal…'
+                      : adaFilter
+                        ? 'Tidak ada jurnal yang cocok dengan filter.'
+                        : 'Belum ada jurnal.'}
                   </td>
                 </tr>
               )}
@@ -333,7 +393,8 @@ export function JurnalTab({
             ‹ Prev
           </Button>
           <span className="text-sm text-stone-600">
-            Hal {page + 1} / {pages} — {filtered.length} jurnal
+            Menampilkan {awalTampil}–{akhirTampil} dari {total} jurnal · Hal{' '}
+            {page + 1} / {pages}
           </span>
           <Button
             variant="ghost"
@@ -363,7 +424,8 @@ export function JurnalTab({
           onSelesai={(pesan) => {
             setKoreksi(null);
             setInfo(pesan);
-            void refresh();
+            setPage(0);
+            refresh();
           }}
         />
       )}
@@ -376,7 +438,8 @@ export function JurnalTab({
           onSelesai={(pesan) => {
             setEditor(null);
             setInfo(pesan);
-            void refresh();
+            setPage(0);
+            refresh();
           }}
         />
       )}
@@ -718,14 +781,15 @@ function KoreksiModal({
               <Field label="No. bukti baru (opsional)">
                 <TextInput
                   value={noBukti}
-                  placeholder="kosongkan bila belum ada"
+                  placeholder="kosongkan untuk nomor otomatis"
                   onChange={(e) => setNoBukti(e.target.value)}
                 />
               </Field>
             </div>
+            <SaranNomorBukti tanggal={tanggal} />
             <p className="mt-1 text-xs text-stone-500">
-              Nomor bukti lama tetap menempel di jurnal asli. Isi nomor baru hanya bila
-              memang diterbitkan; nomor bukti tidak boleh sama.
+              Nomor bukti lama tetap menempel di jurnal asli. Nomor baru otomatis
+              memakai urutan berikutnya dan tidak boleh sama.
             </p>
 
             <div className="mt-3 overflow-x-auto">

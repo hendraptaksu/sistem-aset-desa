@@ -3,6 +3,11 @@
 
 import type Database from 'better-sqlite3';
 import { buatAuditLog, isPeriodeTerkunci } from '../core/ledger.js';
+import {
+  formatNomorBukti,
+  nomorBuktiBerikutnya,
+  tahunDariTanggal,
+} from '../core/nomorBukti.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import type { CoaTipe, PosisiNormal } from './coa.js';
 import type {
@@ -83,6 +88,12 @@ export type JurnalFilter = {
   grup_id?: string;
   akun_kode?: string;
   reversal_of?: string;
+  /**
+   * Kata kunci bebas (P1-11): no. bukti, keterangan, kode/nama akun, atau
+   * nominal rupiah (titik/koma/spasi diabaikan). Contoh "150000" cocok dengan
+   * debit/kredit Rp 150.000 (tersimpan 15.000.000 sen).
+   */
+  cari?: string;
   limit?: number;
   offset?: number;
 };
@@ -118,6 +129,9 @@ export function insertJurnal(
       .get(noBukti) as { id: string } | undefined;
     if (dup) throw new Error(`Nomor bukti ${noBukti} sudah dipakai jurnal ${dup.id}.`);
   }
+  // Tahun divalidasi di sini (tanggal sudah lolos tanggalKalenderValid) supaya
+  // penomoran otomatis tidak pernah memakai tahun aneh.
+  const tahunJurnal = tahunDariTanggal(String(header.tanggal));
 
   const reversalOf = header.reversal_of?.trim() || null;
   if (reversalOf) {
@@ -180,6 +194,24 @@ export function insertJurnal(
   };
 
   const simpan = db.transaction(() => {
+    // P1-11: nomor kosong diisi otomatis DI DALAM transaksi yang sama dengan
+    // insert. Membaca nomor terpakai + insert terjadi atomik, sehingga dua
+    // jurnal pada tahun yang sama tidak mungkin mendapat nomor yang sama.
+    if (!row.no_bukti) {
+      const terpakai = (
+        db
+          .prepare("SELECT no_bukti FROM jurnal WHERE no_bukti LIKE ? ESCAPE '\\'")
+          .all(`JU-${tahunJurnal}-%`) as { no_bukti: string }[]
+      ).map((r) => String(r.no_bukti));
+      row.no_bukti = formatNomorBukti(
+        tahunJurnal,
+        nomorBuktiBerikutnya(tahunJurnal, terpakai),
+      );
+      const dup = db
+        .prepare('SELECT id FROM jurnal WHERE lower(no_bukti) = lower(?)')
+        .get(row.no_bukti) as { id: string } | undefined;
+      if (dup) throw new Error(`Nomor bukti ${row.no_bukti} sudah dipakai jurnal ${dup.id}.`);
+    }
     db.prepare(
       `INSERT INTO jurnal (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -206,7 +238,7 @@ export function insertJurnal(
     // Index parsial `idx_jurnal_no_bukti` adalah penjaga terakhir bila ada
     // pemanggil yang melewati validasi aplikasi.
     if (String(e).includes('UNIQUE constraint failed: jurnal.no_bukti'))
-      throw new Error(`Nomor bukti ${noBukti} sudah dipakai. Gunakan nomor bukti lain.`);
+      throw new Error(`Nomor bukti ${row.no_bukti} sudah dipakai. Gunakan nomor bukti lain.`);
     throw e;
   }
   return row;
@@ -226,10 +258,29 @@ export function listJurnalBaris(db: Database.Database, jurnalId: string): Jurnal
   return rows.map(rowToJurnalBaris);
 }
 
-export function listJurnal(
-  db: Database.Database,
-  f: JurnalFilter = {},
-): Jurnal[] {
+/** Escape wildcard LIKE agar kata kunci operator dicari apa adanya. */
+function escapeLike(teks: string): string {
+  return teks.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * Nominal rupiah dari kata kunci pencarian → sen. Titik/koma/spasi (pemisah
+ * ribuan) dan awalan "Rp" diabaikan. Bukan angka → null.
+ */
+function cariNominalSen(teks: string): number | null {
+  const bersih = teks
+    .trim()
+    .replace(/^rp\.?\s*/i, '')
+    .replace(/[.,\s]/g, '');
+  if (!/^\d+$/.test(bersih)) return null;
+  const rupiah = Number(bersih);
+  if (!Number.isSafeInteger(rupiah) || rupiah <= 0) return null;
+  const sen = rupiah * 100;
+  return Number.isSafeInteger(sen) ? sen : null;
+}
+
+/** WHERE bersama untuk daftar & hitung jurnal (termasuk pencarian P1-11). */
+function jurnalWhere(f: JurnalFilter): { sql: string; params: unknown[] } {
   const where: string[] = [];
   const params: unknown[] = [];
   if (f.mulai) { where.push('j.tanggal >= ?'); params.push(f.mulai); }
@@ -241,19 +292,63 @@ export function listJurnal(
     where.push('EXISTS (SELECT 1 FROM jurnal_baris b WHERE b.jurnal_id = j.id AND b.akun_kode = ?)');
     params.push(f.akun_kode);
   }
-  let sql = `SELECT j.* FROM jurnal j ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY j.tanggal, j.rowid`;
+  const cari = String(f.cari ?? '').trim();
+  if (cari) {
+    const like = `%${escapeLike(cari)}%`;
+    const klausa = [
+      "j.no_bukti LIKE ? ESCAPE '\\'",
+      "j.keterangan LIKE ? ESCAPE '\\'",
+      `EXISTS (
+         SELECT 1 FROM jurnal_baris b
+         JOIN akun a ON a.kode = b.akun_kode
+         WHERE b.jurnal_id = j.id
+           AND (b.akun_kode LIKE ? ESCAPE '\\' OR a.nama LIKE ? ESCAPE '\\')
+       )`,
+    ];
+    params.push(like, like, like, like);
+    const nominalSen = cariNominalSen(cari);
+    if (nominalSen !== null) {
+      klausa.push(
+        'EXISTS (SELECT 1 FROM jurnal_baris bn WHERE bn.jurnal_id = j.id AND (bn.debit = ? OR bn.kredit = ?))',
+      );
+      params.push(nominalSen, nominalSen);
+    }
+    where.push(`(${klausa.join(' OR ')})`);
+  }
+  return {
+    sql: where.length ? `WHERE ${where.join(' AND ')}` : '',
+    params,
+  };
+}
+
+export function listJurnal(
+  db: Database.Database,
+  f: JurnalFilter = {},
+): Jurnal[] {
+  const where = jurnalWhere(f);
+  const params = [...where.params];
+  let sql = `SELECT j.* FROM jurnal j ${where.sql} ORDER BY j.tanggal, j.rowid`;
   if (f.limit !== undefined) {
     sql += ' LIMIT ?';
-    params.push(Math.max(0, Math.trunc(f.limit)));
+    params.push(Number.isFinite(f.limit) ? Math.max(0, Math.trunc(f.limit)) : 0);
     if (f.offset !== undefined) {
       sql += ' OFFSET ?';
-      params.push(Math.max(0, Math.trunc(f.offset)));
+      params.push(Number.isFinite(f.offset) ? Math.max(0, Math.trunc(f.offset)) : 0);
     }
   } else if (f.offset !== undefined) {
     sql += ' LIMIT -1 OFFSET ?';
-    params.push(Math.max(0, Math.trunc(f.offset)));
+    params.push(Number.isFinite(f.offset) ? Math.max(0, Math.trunc(f.offset)) : 0);
   }
   return (db.prepare(sql).all(...params) as Record<string, unknown>[]).map(rowToJurnal);
+}
+
+/** Jumlah jurnal yang cocok dengan filter (tanpa limit/offset), untuk pagination. */
+export function hitungJurnal(db: Database.Database, f: JurnalFilter = {}): number {
+  const where = jurnalWhere(f);
+  const row = db
+    .prepare(`SELECT COUNT(*) AS total FROM jurnal j ${where.sql}`)
+    .get(...where.params) as { total: number };
+  return Number(row.total);
 }
 
 /** Kepala + baris satu jurnal; null bila tidak ada. */
@@ -297,6 +392,34 @@ export function listJurnalLengkap(
       reversal_id: reversal ? String(reversal.id) : null,
     };
   });
+}
+
+/**
+ * Halaman daftar jurnal + total server (P1-11). `rows` sudah dipotong oleh
+ * LIMIT/OFFSET; `total` adalah jumlah seluruh baris yang cocok filter.
+ */
+export function listJurnalLengkapPage(
+  db: Database.Database,
+  filter: JurnalFilter = {},
+): { rows: JurnalLengkap[]; total: number } {
+  return {
+    rows: listJurnalLengkap(db, filter),
+    total: hitungJurnal(db, filter),
+  };
+}
+
+/**
+ * Saran nomor bukti berikutnya untuk pratinjau form (P1-11). Hanya membaca DB;
+ * penomoran final tetap dilakukan atomik oleh `insertJurnal`.
+ */
+export function saranNomorBukti(db: Database.Database, tanggal: string): string {
+  const tahun = tahunDariTanggal(tanggal);
+  const terpakai = (
+    db
+      .prepare("SELECT no_bukti FROM jurnal WHERE no_bukti LIKE ? ESCAPE '\\'")
+      .all(`JU-${tahun}-%`) as { no_bukti: string }[]
+  ).map((r) => String(r.no_bukti));
+  return formatNomorBukti(tahun, nomorBuktiBerikutnya(tahun, terpakai));
 }
 
 // ---------------------------------------------------------------------------

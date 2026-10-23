@@ -373,6 +373,84 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
 }
 
 // ---------------------------------------------------------------------------
+// Filter pencarian jurnal (P1-11)
+// ---------------------------------------------------------------------------
+
+export type FilterJurnalCari = {
+  cari?: string;
+  mulai?: string;
+  sampai?: string;
+  jenis?: string;
+  akun_kode?: string;
+  limit: number;
+  offset: number;
+};
+
+/**
+ * Normalisasi filter `jurnal:cari`. Limit wajib 1..200 dan offset >= 0 agar
+ * renderer tidak bisa meminta seluruh tabel sekaligus tanpa batas.
+ */
+export function validasiFilterJurnalCari(
+  nilai: unknown,
+): HasilBentuk<FilterJurnalCari> {
+  if (nilai === undefined || nilai === null)
+    return { ok: true, input: { limit: 50, offset: 0 } };
+  if (!objek(nilai)) return { ok: false, error: 'Data filter jurnal tidak lengkap.' };
+
+  const cari = teksOpsional(nilai.cari, 'Kata kunci', 200);
+  if (!cari.ok) return cari;
+  const akun = teksOpsional(nilai.akun_kode, 'Akun', 20);
+  if (!akun.ok) return akun;
+  const jenis = teksOpsional(nilai.jenis, 'Jenis jurnal', 30);
+  if (!jenis.ok) return jenis;
+  if (jenis.nilai && !(JENIS_JURNAL as readonly string[]).includes(jenis.nilai))
+    return { ok: false, error: 'Jenis jurnal tidak dikenal.' };
+
+  const mulai = tanggalFilterLaporan(nilai.mulai, 'Tanggal mulai');
+  if (!mulai.ok) return mulai;
+  const sampai = tanggalFilterLaporan(nilai.sampai, 'Tanggal sampai');
+  if (!sampai.ok) return sampai;
+  if (mulai.input && sampai.input && mulai.input > sampai.input)
+    return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };
+
+  let limit = 50;
+  if (nilai.limit !== undefined && nilai.limit !== null && nilai.limit !== '') {
+    if (
+      typeof nilai.limit !== 'number' ||
+      !Number.isInteger(nilai.limit) ||
+      nilai.limit < 1 ||
+      nilai.limit > 200
+    )
+      return { ok: false, error: 'Limit harus bilangan bulat 1–200.' };
+    limit = nilai.limit;
+  }
+
+  let offset = 0;
+  if (nilai.offset !== undefined && nilai.offset !== null && nilai.offset !== '') {
+    if (
+      typeof nilai.offset !== 'number' ||
+      !Number.isInteger(nilai.offset) ||
+      nilai.offset < 0
+    )
+      return { ok: false, error: 'Offset harus bilangan bulat ≥ 0.' };
+    offset = nilai.offset;
+  }
+
+  return {
+    ok: true,
+    input: {
+      ...(cari.nilai ? { cari: cari.nilai } : {}),
+      ...(mulai.input ? { mulai: mulai.input } : {}),
+      ...(sampai.input ? { sampai: sampai.input } : {}),
+      ...(jenis.nilai ? { jenis: jenis.nilai } : {}),
+      ...(akun.nilai ? { akun_kode: akun.nilai } : {}),
+      limit,
+      offset,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Bentuk input Wizard Saldo Awal (P1-6)
 // ---------------------------------------------------------------------------
 

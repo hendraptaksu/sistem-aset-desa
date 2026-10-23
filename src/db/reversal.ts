@@ -230,10 +230,24 @@ export function koreksiDanIsiUlang(
     { jurnal: headerBaru, baris: baru.baris },
   );
 
+  // Bila operator mengisi nomor pengganti tetapi membiarkan nomor balik
+  // otomatis, simpan pengganti lebih dulu. Nomor balik otomatis akan memakai
+  // max+1 setelah nomor pilihan operator, bukan menabraknya (P1-11).
+  const penggantiDulu =
+    !String(rencana.input.header.no_bukti ?? '').trim() &&
+    Boolean(String(headerBaru.no_bukti ?? '').trim());
+
   try {
     const simpan = db.transaction(() => {
-      const reversal = insertJurnal(db, rencana.input!.header, rencana.input!.baris);
-      const jurnalBaru = insertJurnal(db, headerBaru, baru.baris);
+      let reversal: Jurnal;
+      let jurnalBaru: Jurnal;
+      if (penggantiDulu) {
+        jurnalBaru = insertJurnal(db, headerBaru, baru.baris);
+        reversal = insertJurnal(db, rencana.input!.header, rencana.input!.baris);
+      } else {
+        reversal = insertJurnal(db, rencana.input!.header, rencana.input!.baris);
+        jurnalBaru = insertJurnal(db, headerBaru, baru.baris);
+      }
       // Metadata pihak ikut ke jurnal balik & pengganti (bila akunnya masih ada),
       // supaya saldo per pihak tetap mencerminkan koreksi.
       salinMappingPihak(db, id, reversal.id);

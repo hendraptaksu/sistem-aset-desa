@@ -53,6 +53,23 @@ export type FilterBukuBesarApi = {
   sampai?: string;
 };
 
+/** Filter pencarian jurnal server-side (P1-11). */
+export type FilterJurnalCariApi = {
+  cari?: string;
+  mulai?: string;
+  sampai?: string;
+  jenis?: string;
+  akun_kode?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/** Halaman jurnal + total seluruh hasil filter (untuk pagination). */
+export type JurnalCariPage = {
+  rows: JurnalLengkap[];
+  total: number;
+};
+
 /** Filter periode layar Laba Rugi & Arus Kas (P1-9). */
 export type FilterPeriodeApi = {
   mulai?: string;
@@ -155,8 +172,14 @@ export const api = {
     call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
   coa: () => call<Coa[]>('coa:list'),
   jurnalList: (
-    f: { mulai?: string; sampai?: string; jenis?: string; akun_kode?: string; limit?: number; offset?: number } = {},
+    f: FilterJurnalCariApi = {},
   ) => call<JurnalLengkap[]>('jurnal:list', f),
+  /** Pencarian jurnal + pagination server-side (P1-11). */
+  jurnalCari: (f: FilterJurnalCariApi = {}) =>
+    call<JurnalCariPage>('jurnal:cari', f),
+  /** Saran nomor bukti berikutnya untuk tanggal tertentu (P1-11). */
+  jurnalNomorBerikutnya: (tanggal: string) =>
+    call<{ nomor: string }>('jurnal:nomor-berikutnya', tanggal),
   /** Buku Besar per akun; saldo awal/berjalan/akhir dihitung dari jurnal. */
   laporanBukuBesar: (f: FilterBukuBesarApi) =>
     call<BukuBesarHasil>('laporan:buku-besar', f),

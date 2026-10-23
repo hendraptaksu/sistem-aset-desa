@@ -15,6 +15,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaranNomorBukti } from './SaranNomorBukti.js';
 
 type BarisSaldo = {
   key: number;
@@ -235,14 +236,17 @@ export function SaldoAwalWizard({
               onChange={(e) => setKeterangan(e.target.value)}
             />
           </Field>
-          <Field label="No. bukti (opsional)">
-            <TextInput
-              value={noBukti}
-              disabled={busy}
-              placeholder="cth: JU-2026-0001 — boleh dikosongkan"
-              onChange={(e) => setNoBukti(e.target.value)}
-            />
-          </Field>
+          <div>
+            <Field label="No. bukti (opsional)">
+              <TextInput
+                value={noBukti}
+                disabled={busy}
+                placeholder="cth: JU-2026-0001 — boleh dikosongkan"
+                onChange={(e) => setNoBukti(e.target.value)}
+              />
+            </Field>
+            <SaranNomorBukti tanggal={tanggal} />
+          </div>
         </div>
 
         <div className="mt-4">

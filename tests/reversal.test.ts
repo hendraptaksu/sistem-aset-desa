@@ -303,7 +303,7 @@ describe('P0-6 — reversal di database', () => {
         {
           id: 'j-lama-2',
           tanggal: '2025-12-21',
-          no_bukti: 'JU-2025-0002',
+          no_bukti: 'JU-2025-0003',
           keterangan: 'Penerimaan lama 2',
         },
         pasangan('1001', '4005', RP(25_000)),
@@ -491,7 +491,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
           header: {
             id: 'j-lama-baru',
             tanggal: '2025-12-20',
-            no_bukti: 'JU-2025-0002',
+            no_bukti: 'JU-2025-0003',
             keterangan: 'Penerimaan lama (koreksi)',
           },
           baris: pasangan('1001', '4005', RP(45_000)),

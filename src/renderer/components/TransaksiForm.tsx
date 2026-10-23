@@ -20,6 +20,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaranNomorBukti } from './SaranNomorBukti.js';
 
 /** Jenis transaksi yang sudah punya form terpandu. */
 export type JenisFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
@@ -346,15 +347,15 @@ export function FormTransaksiTerpandu({
     }
 
     const nominalTersimpan = nominal;
-    const noBuktiTersimpan = noBukti.trim();
     busyRef.current = true;
     setBusy(true);
     try {
-      await api.jurnalPosting(input, {
+      const hasil = await api.jurnalPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
       });
+      const nomorTersimpan = hasil.jurnal.no_bukti;
       setInfo(
-        `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${noBuktiTersimpan ? ` (${noBuktiTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
+        `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${nomorTersimpan ? ` (${nomorTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
       );
       // Tanggal & akun tetap; hanya isian yang mudah berulang yang dikosongkan.
       setNominal(0);
@@ -511,14 +512,17 @@ export function FormTransaksiTerpandu({
           />
         </Field>
 
-        <Field label="No. bukti (opsional)">
-          <TextInput
-            value={noBukti}
-            disabled={busy}
-            placeholder="cth: JU-2026-0001 — boleh dikosongkan"
-            onChange={(e) => setNoBukti(e.target.value)}
-          />
-        </Field>
+        <div>
+          <Field label="No. bukti (opsional)">
+            <TextInput
+              value={noBukti}
+              disabled={busy}
+              placeholder="cth: JU-2026-0001 — boleh dikosongkan"
+              onChange={(e) => setNoBukti(e.target.value)}
+            />
+          </Field>
+          <SaranNomorBukti tanggal={tanggal} />
+        </div>
       </div>
 
       <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">

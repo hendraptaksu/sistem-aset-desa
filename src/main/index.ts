@@ -15,8 +15,10 @@ import {
   listAset,
   listAuditLogPage,
   listJurnalLengkap,
+  listJurnalLengkapPage,
   listTransaksi,
   listTutupBuku,
+  saranNomorBukti,
   updateAset,
   type AuditFilter,
   type JurnalFilter,
@@ -77,6 +79,7 @@ import {
   validasiBentukSaldoAwal,
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
+  validasiFilterJurnalCari,
   validasiFilterNeraca,
   validasiIdJurnal,
   validasiRentangLaporan,
@@ -161,6 +164,8 @@ function registerIpc(): void {
     sudahSetupPin(db) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
 
   // ---- Jurnal Umum & koreksi (P0-6) ----
+  // Bentuk lama dipertahankan: mengembalikan array tanpa total. Layar baru
+  // memakai `jurnal:cari` agar pagination memakai total dari server (P1-11).
   ipcMain.handle('jurnal:list', (_e, f: JurnalFilter = {}) => {
     const k = perluBuka();
     if (k) return fail(k);
@@ -169,10 +174,42 @@ function registerIpc(): void {
       sampai: typeof f?.sampai === 'string' && f.sampai ? f.sampai : undefined,
       jenis: typeof f?.jenis === 'string' && f.jenis ? f.jenis : undefined,
       akun_kode: typeof f?.akun_kode === 'string' && f.akun_kode ? f.akun_kode : undefined,
+      cari:
+        typeof f?.cari === 'string' && f.cari.trim()
+          ? f.cari.trim().slice(0, 200)
+          : undefined,
       limit: Number.isFinite(f?.limit) ? Number(f.limit) : undefined,
       offset: Number.isFinite(f?.offset) ? Number(f.offset) : undefined,
     };
     return ok(listJurnalLengkap(db, filter));
+  });
+
+  // P1-11: pencarian + pagination server-side. Limit 1..200 & offset >= 0
+  // divalidasi di helper murni (tanpa Electron) agar bisa diuji terpisah.
+  ipcMain.handle('jurnal:cari', (_e, f: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiFilterJurnalCari(f);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(listJurnalLengkapPage(db, bentuk.input));
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  // Saran nomor untuk pratinjau form; penomoran final tetap di insertJurnal.
+  ipcMain.handle('jurnal:nomor-berikutnya', (_e, tanggal: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const teks = typeof tanggal === 'string' ? tanggal.trim() : '';
+      if (!tanggalKalenderValid(teks))
+        return fail('Tanggal tidak valid (YYYY-MM-DD dan harus tanggal kalender).');
+      return ok({ nomor: saranNomorBukti(db, teks) });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
   });
 
   // ---- Laporan Buku Besar & Neraca Saldo + drill-down (P1-8) ----

@@ -11,10 +11,18 @@ import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import {
   getJurnal,
   getJurnalDetail,
+  hitungJurnal,
   insertJurnal,
   listJurnal,
   listJurnalBaris,
+  listJurnalLengkapPage,
+  saranNomorBukti,
 } from '../src/db/repository.js';
+import { postingJurnal } from '../src/db/posting.js';
+import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
+import { closePanjarV2, serahkanPanjar } from '../src/db/panjar.js';
+import { createPihak, postingPihak } from '../src/db/pihak.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
 
 const dirs: string[] = [];
@@ -264,6 +272,451 @@ describe('P0-2 — skema jurnal double-entry', () => {
       expect(ids({ limit: 1, offset: 2 })).toEqual(['j-3']);
       expect(ids({ offset: 2 })).toEqual(['j-3', 'j-4']);
       expect(ids({ limit: 0 })).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
+  const D = (akun: string, nominal: number): JurnalBarisInput => ({
+    akun_kode: akun,
+    debit: nominal,
+    kredit: 0,
+  });
+  const K = (akun: string, nominal: number): JurnalBarisInput => ({
+    akun_kode: akun,
+    debit: 0,
+    kredit: nominal,
+  });
+
+  it('insertJurnal tanpa no_bukti mengisi JU-tahun-0001 lalu 0002, per tahun terpisah', () => {
+    const { db } = freshDb();
+    try {
+      const satu = insertJurnal(
+        db,
+        { id: 'j-auto-1', tanggal: '2026-01-02', keterangan: 'Pertama' },
+        pasangan('1001', '4005'),
+      );
+      const dua = insertJurnal(
+        db,
+        { id: 'j-auto-2', tanggal: '2026-03-04', keterangan: 'Kedua' },
+        pasangan('1029', '4005'),
+      );
+      const tahunLalu = insertJurnal(
+        db,
+        { id: 'j-auto-3', tanggal: '2025-12-31', keterangan: 'Tahun lain' },
+        pasangan('1001', '4005'),
+      );
+      const tiga = insertJurnal(
+        db,
+        { id: 'j-auto-4', tanggal: '2026-12-31', keterangan: 'Ketiga' },
+        pasangan('1001', '4005'),
+      );
+
+      expect(satu.no_bukti).toBe('JU-2026-0001');
+      expect(dua.no_bukti).toBe('JU-2026-0002');
+      expect(tahunLalu.no_bukti).toBe('JU-2025-0001');
+      expect(tiga.no_bukti).toBe('JU-2026-0003');
+
+      // Nomor eksplisit operator dipakai apa adanya (bukan dipaksa JU).
+      const manual = insertJurnal(
+        db,
+        {
+          id: 'j-manual',
+          tanggal: '2026-06-01',
+          no_bukti: 'BKM-2026-0099',
+          keterangan: 'Nomor manual',
+        },
+        pasangan('1001', '4005'),
+      );
+      expect(manual.no_bukti).toBe('BKM-2026-0099');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('max+1 setelah celah, saran form ikut bergerak, dan nomor duplikat ditolak', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-gap',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0005',
+          keterangan: 'Nomor loncat',
+        },
+        pasangan('1001', '4005'),
+      );
+      expect(saranNomorBukti(db, '2026-07-01')).toBe('JU-2026-0006');
+
+      const auto = insertJurnal(
+        db,
+        { id: 'j-auto', tanggal: '2026-07-02', keterangan: 'Setelah celah' },
+        pasangan('1001', '4005'),
+      );
+      expect(auto.no_bukti).toBe('JU-2026-0006');
+      expect(saranNomorBukti(db, '2026-07-03')).toBe('JU-2026-0007');
+
+      // Nomor lama (0005) dan nomor baru (0006) tidak boleh dipakai ulang.
+      expect(() =>
+        insertJurnal(
+          db,
+          {
+            id: 'j-dup-lama',
+            tanggal: '2026-07-04',
+            no_bukti: 'ju-2026-0005',
+            keterangan: 'Duplikat lama',
+          },
+          pasangan('1001', '4005'),
+        ),
+      ).toThrow(/sudah dipakai/);
+      expect(() =>
+        insertJurnal(
+          db,
+          {
+            id: 'j-dup-baru',
+            tanggal: '2026-07-05',
+            no_bukti: 'JU-2026-0006',
+            keterangan: 'Duplikat baru',
+          },
+          pasangan('1001', '4005'),
+        ),
+      ).toThrow(/sudah dipakai/);
+
+      // Tanggal kalender/tahun tidak valid tidak menghasilkan nomor.
+      expect(() => saranNomorBukti(db, '2026-02-31')).toThrow(/Tanggal tidak valid/);
+      expect(() => saranNomorBukti(db, '2026-2-3')).toThrow(/Tanggal tidak valid/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('semua jalur simpan mendapat nomor: posting, reversal, koreksi isi ulang, panjar, pihak', () => {
+    const { db } = freshDb();
+    try {
+      const posting = postingJurnal(db, {
+        header: { id: 'j-posting', tanggal: '2026-01-01', keterangan: 'Posting form' },
+        baris: [D('1001', 10_000_000), K('3000', 10_000_000)],
+      });
+      expect(posting.tersimpan, posting.errors.join(' ')).toBe(true);
+      expect(posting.jurnal?.no_bukti).toBe('JU-2026-0001');
+
+      const reversal = reverseJurnal(db, 'j-posting', 'Koreksi uji P1-11', {
+        id: 'j-balik',
+        tanggal: '2026-01-02',
+      });
+      expect(reversal.tersimpan, reversal.errors.join(' ')).toBe(true);
+      expect(reversal.reversal?.no_bukti).toBe('JU-2026-0002');
+      // Jurnal asli tidak berubah nomornya.
+      expect(getJurnal(db, 'j-posting')?.no_bukti).toBe('JU-2026-0001');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('wizard saldo awal juga mendapat nomor otomatis', () => {
+    const { db } = freshDb();
+    try {
+      const hasil = simpanSaldoAwal(db, {
+        header: {
+          id: 'j-saldo-awal',
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal pembukuan',
+        },
+        baris: [D('1001', 10_000_000), K('3000', 10_000_000)],
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnal?.no_bukti).toBe('JU-2026-0001');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('koreksi & isi ulang memberi nomor baru untuk balik dan pengganti', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-asli',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0001',
+          keterangan: 'Jurnal asli',
+        },
+        pasangan('1001', '4005', 50_000),
+      );
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-asli',
+        'Nominal salah input',
+        {
+          header: {
+            id: 'j-baru',
+            tanggal: '2026-01-01',
+            keterangan: 'Jurnal pengganti',
+          },
+          baris: pasangan('1001', '4005', 45_000),
+        },
+        { id: 'j-balik', tanggal: '2026-01-02' },
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal?.no_bukti).toBe('JU-2026-0002');
+      expect(hasil.jurnalBaru?.no_bukti).toBe('JU-2026-0003');
+      expect(getJurnal(db, 'j-asli')?.no_bukti).toBe('JU-2026-0001');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('nomor pengganti pilihan operator tidak ditabrak nomor balik otomatis', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-asli',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0001',
+          keterangan: 'Jurnal asli',
+        },
+        pasangan('1001', '4005', 50_000),
+      );
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-asli',
+        'Perbaiki nomor bukti',
+        {
+          header: {
+            id: 'j-baru',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0002',
+            keterangan: 'Jurnal pengganti',
+          },
+          baris: pasangan('1001', '4005', 60_000),
+        },
+        { id: 'j-balik', tanggal: '2026-01-02' },
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnalBaru?.no_bukti).toBe('JU-2026-0002');
+      expect(hasil.reversal?.no_bukti).toBe('JU-2026-0003');
+      expect(getJurnal(db, 'j-asli')?.no_bukti).toBe('JU-2026-0001');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('panjar dan pihak juga otomatis JU (serah, close, piutang)', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-modal',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0001',
+          keterangan: 'Saldo awal kas',
+        },
+        [D('1001', 10_000_000), K('3000', 10_000_000)],
+      );
+
+      const panjar = serahkanPanjar(db, {
+        id: 'p-1',
+        tanggal: '2026-02-01',
+        penerima: 'Panitia Piodalan',
+        jumlah: 100_000,
+        akunKasSumber: '1001',
+      });
+      expect(panjar.tersimpan, panjar.errors.join(' ')).toBe(true);
+      expect(panjar.jurnal?.no_bukti).toBe('JU-2026-0002');
+
+      const tutup = closePanjarV2(db, {
+        id: 'p-1',
+        tanggalClose: '2026-02-02',
+        items: [{ akun: '5004', nominal: 80_000 }],
+      });
+      expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
+      expect(tutup.jurnal?.no_bukti).toBe('JU-2026-0003');
+
+      const pihak = createPihak(db, { nama: 'Banjar Uji' });
+      const pinjam = postingPihak(db, {
+        pihakId: pihak.id,
+        input: {
+          header: {
+            id: 'j-pinjam',
+            tanggal: '2026-03-01',
+            keterangan: 'Beri pinjaman',
+            jenis: 'PIUTANG',
+          },
+          baris: [D('1050', 500_000), K('1001', 500_000)],
+        },
+      });
+      expect(pinjam.tersimpan, pinjam.errors.join(' ')).toBe(true);
+      expect(pinjam.jurnal?.no_bukti).toBe('JU-2026-0004');
+    } finally {
+      db.close();
+    }
+  });
+
+  function dbPencarian(): ReturnType<typeof openDb> {
+    const { db } = freshDb();
+    insertJurnal(
+      db,
+      {
+        id: 'j-parkir',
+        tanggal: '2026-01-05',
+        no_bukti: 'JU-2026-0001',
+        keterangan: 'Penerimaan parkir bulan Januari',
+        jenis: 'TERIMA',
+      },
+      [D('1001', 15_000_000), K('4005', 15_000_000)],
+    );
+    insertJurnal(
+      db,
+      {
+        id: 'j-listrik',
+        tanggal: '2026-02-10',
+        no_bukti: 'JU-2026-0002',
+        keterangan: 'Bayar listrik kantor',
+        jenis: 'BAYAR',
+      },
+      [D('5010', 5_000_000), K('1001', 5_000_000)],
+    );
+    insertJurnal(
+      db,
+      {
+        id: 'j-transfer',
+        tanggal: '2026-03-01',
+        no_bukti: 'JU-2026-0003',
+        keterangan: 'Pindah dana ke bank',
+        jenis: 'TRANSFER',
+      },
+      [D('1029', 7_500_000), K('1001', 7_500_000)],
+    );
+    insertJurnal(
+      db,
+      {
+        id: 'j-panjar',
+        tanggal: '2026-04-01',
+        no_bukti: 'BKM-2026-0001',
+        keterangan: 'Serah panjar piodalan',
+        jenis: 'PANJAR',
+      },
+      [D('1040', 2_000_000), K('1001', 2_000_000)],
+    );
+    insertJurnal(
+      db,
+      {
+        id: 'j-piutang',
+        tanggal: '2026-05-01',
+        no_bukti: 'JU-2026-0004',
+        keterangan: 'Beri pinjaman Banjar',
+        jenis: 'PIUTANG',
+      },
+      [D('1050', 9_000_000), K('1001', 9_000_000)],
+    );
+    insertJurnal(
+      db,
+      {
+        id: 'j-beji',
+        tanggal: '2026-06-01',
+        no_bukti: 'JU-2026-0005',
+        keterangan: 'Pendapatan beji',
+        jenis: 'TERIMA',
+      },
+      [D('1001', 3_000_000), K('4001', 3_000_000)],
+    );
+    insertJurnal(
+      db,
+      {
+        id: 'j-toilet',
+        tanggal: '2026-07-01',
+        no_bukti: 'JU-2026-0006',
+        keterangan: 'Pendapatan toilet',
+        jenis: 'TERIMA',
+      },
+      [D('1001', 1_000_000), K('4002', 1_000_000)],
+    );
+    return db;
+  }
+
+  it('mencari no bukti, keterangan, kode/nama akun, dan nominal rupiah', () => {
+    const db = dbPencarian();
+    try {
+      const ids = (cari: string, f: Parameters<typeof listJurnalLengkapPage>[1] = {}) =>
+        listJurnalLengkapPage(db, { ...f, cari }).rows.map((j) => j.id);
+
+      expect(ids('JU-2026-0002')).toEqual(['j-listrik']);
+      expect(ids('BKM-2026')).toEqual(['j-panjar']);
+      expect(ids('parkir')).toEqual(['j-parkir']);
+      expect(ids('5010')).toEqual(['j-listrik']);
+      expect(ids('listrik')).toEqual(['j-listrik']);
+      expect(ids('UANG PANJAR')).toEqual(['j-panjar']);
+      expect(ids('PIUTANG LAIN')).toEqual(['j-piutang']);
+      // Input rupiah: titik/spasi diabaikan → cocok dengan nominal sen di DB.
+      expect(ids('150000')).toEqual(['j-parkir']);
+      expect(ids('150.000')).toEqual(['j-parkir']);
+      expect(ids('Rp 150.000')).toEqual(['j-parkir']);
+      expect(ids('20.000')).toEqual(['j-panjar']);
+      // Wildcard LIKE diperlakukan sebagai teks biasa.
+      expect(ids('%')).toEqual([]);
+      expect(ids('_')).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menggabungkan kata kunci dengan filter tanggal & jenis serta total server', () => {
+    const db = dbPencarian();
+    try {
+      const hasil = listJurnalLengkapPage(db, {
+        cari: 'pindah',
+        mulai: '2026-02-01',
+        sampai: '2026-03-31',
+        jenis: 'TRANSFER',
+      });
+      expect(hasil.rows.map((j) => j.id)).toEqual(['j-transfer']);
+      expect(hasil.total).toBe(1);
+      expect(hitungJurnal(db, { cari: 'pindah' })).toBe(1);
+      expect(hitungJurnal(db)).toBe(7);
+
+      const diLuarRentang = listJurnalLengkapPage(db, {
+        cari: 'pindah',
+        mulai: '2026-04-01',
+      });
+      expect(diLuarRentang.rows).toEqual([]);
+      expect(diLuarRentang.total).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('pagination server tidak menduplikasi / menghilangkan jurnal antar halaman', () => {
+    const db = dbPencarian();
+    try {
+      const semua = listJurnalLengkapPage(db, { limit: 200 }).rows.map((j) => j.id);
+      expect(semua).toHaveLength(7);
+
+      const halaman = [
+        listJurnalLengkapPage(db, { limit: 3, offset: 0 }),
+        listJurnalLengkapPage(db, { limit: 3, offset: 3 }),
+        listJurnalLengkapPage(db, { limit: 3, offset: 6 }),
+      ];
+      expect(halaman.map((h) => h.total)).toEqual([7, 7, 7]);
+      const gabungan = halaman.flatMap((h) => h.rows.map((j) => j.id));
+      expect(gabungan).toEqual(semua);
+      expect(new Set(gabungan).size).toBe(7);
+      expect(halaman[2]!.rows).toHaveLength(1);
+
+      const cariPaged = listJurnalLengkapPage(db, {
+        cari: 'pendapatan',
+        limit: 1,
+        offset: 1,
+      });
+      // Cocok lewat nama akun 4005/4001/4002 → tiga jurnal, urut tanggal.
+      expect(cariPaged.total).toBe(3);
+      expect(cariPaged.rows.map((j) => j.id)).toEqual(['j-beji']);
     } finally {
       db.close();
     }
