@@ -48,9 +48,12 @@ import {
   saldoSemuaKas as saldoSemuaKasJurnal,
 } from '../core/reports.js';
 import {
+  laporanArusKas,
   laporanBukuBesar,
   laporanDetailJurnal,
   laporanJurnalAkun,
+  laporanLabaRugi,
+  laporanNeraca,
   laporanNeracaSaldo,
   listBarisJurnal,
 } from '../db/laporan.js';
@@ -74,7 +77,9 @@ import {
   validasiBentukSaldoAwal,
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
+  validasiFilterNeraca,
   validasiIdJurnal,
+  validasiRentangLaporan,
   validateAsetInput,
   validateTransaksiInput,
   type AsetInput,
@@ -228,6 +233,45 @@ function registerIpc(): void {
       const detail = laporanDetailJurnal(db, bentuk.input);
       if (!detail) return fail('Jurnal tidak ditemukan.');
       return ok(detail);
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  // ---- Layar Laba Rugi, Neraca, Arus Kas (P1-9) ----
+  // Angka tetap 100% dari core/reports.ts. Handler hanya memvalidasi bentuk
+  // filter dan tanggal kalender; tidak ada perhitungan ulang di main/renderer.
+  ipcMain.handle('laporan:laba-rugi', (_e, f: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiRentangLaporan(f);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(laporanLabaRugi(db, bentuk.input));
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('laporan:neraca', (_e, f: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiFilterNeraca(f);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(laporanNeraca(db, bentuk.input.cutoff));
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  ipcMain.handle('laporan:arus-kas', (_e, f: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiRentangLaporan(f);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(laporanArusKas(db, bentuk.input));
     } catch (e) {
       return fail(e instanceof Error ? e.message : String(e));
     }

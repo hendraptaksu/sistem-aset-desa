@@ -581,6 +581,55 @@ export function validasiCutoffLaporan(nilai: unknown): HasilBentuk<string> {
   return { ok: true, input: cutoff.input };
 }
 
+// ---------------------------------------------------------------------------
+// Filter laporan Laba Rugi, Neraca, dan Arus Kas (P1-9)
+// ---------------------------------------------------------------------------
+
+export type FilterPeriodeLaporan = {
+  mulai?: string;
+  sampai?: string;
+};
+
+/**
+ * Rentang periode laporan (Laba Rugi / Arus Kas). Kedua tanggal opsional,
+ * tetapi bila diisi wajib tanggal kalender nyata dan urutannya tidak terbalik.
+ */
+export function validasiRentangLaporan(
+  nilai: unknown,
+): HasilBentuk<FilterPeriodeLaporan> {
+  if (!objek(nilai)) return { ok: false, error: 'Data filter laporan tidak lengkap.' };
+
+  const mulai = tanggalFilterLaporan(nilai.mulai, 'Tanggal mulai');
+  if (!mulai.ok) return mulai;
+  const sampai = tanggalFilterLaporan(nilai.sampai, 'Tanggal sampai');
+  if (!sampai.ok) return sampai;
+  if (mulai.input && sampai.input && mulai.input > sampai.input)
+    return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };
+
+  return {
+    ok: true,
+    input: {
+      ...(mulai.input ? { mulai: mulai.input } : {}),
+      ...(sampai.input ? { sampai: sampai.input } : {}),
+    },
+  };
+}
+
+export type FilterNeracaLaporan = {
+  cutoff: string;
+};
+
+/** Bentuk request Neraca: `{ cutoff }`, wajib tanggal kalender nyata. */
+export function validasiFilterNeraca(
+  nilai: unknown,
+): HasilBentuk<FilterNeracaLaporan> {
+  if (!objek(nilai))
+    return { ok: false, error: 'Data laporan Neraca tidak lengkap.' };
+  const cutoff = validasiCutoffLaporan(nilai.cutoff);
+  if (!cutoff.ok) return cutoff;
+  return { ok: true, input: { cutoff: cutoff.input } };
+}
+
 /** ID jurnal untuk drill-down detail; hanya string wajar yang diteruskan. */
 export function validasiIdJurnal(nilai: unknown): HasilBentuk<string> {
   if (typeof nilai !== 'string' || !nilai.trim())

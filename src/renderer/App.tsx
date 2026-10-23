@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import {
   ArrowLeftRight,
+  Banknote,
   BarChart3,
   BookMarked,
   BookOpen,
@@ -28,7 +29,8 @@ import { PanjarTab } from './components/PanjarTab.js';
 import { PihakTab } from './components/PihakTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
 import { RealisasiTab } from './components/RealisasiTab.js';
-import { SurplusTab } from './components/SurplusTab.js';
+import { LabaRugiTab } from './components/LabaRugiTab.js';
+import { ArusKasTab } from './components/ArusKasTab.js';
 import { NeracaTab } from './components/NeracaTab.js';
 import { TutupTab } from './components/TutupTab.js';
 import { DashboardTab } from './components/DashboardTab.js';
@@ -36,7 +38,7 @@ import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'surplus' | 'neraca' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -49,8 +51,9 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Pembantu', Icon: NotebookText },
   { id: 'realisasi', label: 'Realisasi', Icon: BarChart3 },
-  { id: 'surplus', label: 'Surplus', Icon: TrendingUp },
+  { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
+  { id: 'arus-kas', label: 'Arus Kas', Icon: Banknote },
   { id: 'tutup', label: 'Tutup Buku', Icon: Lock },
   { id: 'pengaturan', label: 'Pengaturan', Icon: Settings },
 ];
@@ -154,7 +157,7 @@ export function App() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">Keuangan Pura Dalem Puri Peliatan</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laporan, Neraca</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab />
@@ -178,8 +181,16 @@ export function App() {
             {tab === 'pihak' && <PihakTab />}
             {tab === 'pembantu' && <PembantuTab />}
             {tab === 'realisasi' && <RealisasiTab />}
-            {tab === 'surplus' && <SurplusTab />}
-            {tab === 'neraca' && <NeracaTab />}
+            {tab === 'laba-rugi' && <LabaRugiTab />}
+            {tab === 'neraca' && (
+              <NeracaTab
+                onBukaBukuBesar={(kode) => {
+                  setAkunBukuBesar(kode);
+                  setTab('buku-besar');
+                }}
+              />
+            )}
+            {tab === 'arus-kas' && <ArusKasTab />}
             {tab === 'tutup' && <TutupTab />}
             {tab === 'pengaturan' && (
               <PengaturanTab

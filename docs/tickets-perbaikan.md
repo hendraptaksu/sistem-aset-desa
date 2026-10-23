@@ -273,7 +273,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test drill-down data; smoke UI.
   - **Dependency:** P0-5
 
-- [ ] **P1-9 — Layar Laba Rugi, Neraca, Arus Kas**
+- [x] **P1-9 — Layar Laba Rugi, Neraca, Arus Kas** (2026-10-23: layar Laba Rugi/Neraca/Arus Kas memakai mesin laporan dari jurnal + drill-down jurnal, badge Neraca Saldo seimbang, IPC `laporan:laba-rugi`/`laporan:neraca`/`laporan:arus-kas`; 251/251 test hijau)
   - **Langkah:** tampilkan dari mesin laporan P0-5; filter periode/cutoff; badge "Neraca Saldo: seimbang/
     selisih"; drill-down ke jurnal; format Rupiah & kurung untuk negatif.
   - **DoD:** test/smoke; angka sama dengan P0-5 untuk dataset contoh.

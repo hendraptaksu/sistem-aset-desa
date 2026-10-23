@@ -18,10 +18,22 @@ import type {
   TutupBuku,
 } from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
-import type { BukuBesarHasil, NeracaSaldoHasil } from '../../core/reports.js';
+import type {
+  ArusKasHasil,
+  BukuBesarHasil,
+  LabaRugiHasil,
+  NeracaHasil,
+  NeracaSaldoHasil,
+} from '../../core/reports.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 
-export type { BukuBesarHasil, NeracaSaldoHasil };
+export type {
+  ArusKasHasil,
+  BukuBesarHasil,
+  LabaRugiHasil,
+  NeracaHasil,
+  NeracaSaldoHasil,
+};
 
 type Ok<T> = { ok: true; data: T };
 type Fail = { ok: false; error: string; perluAlasan?: boolean; perluKonfirmasi?: boolean };
@@ -37,6 +49,12 @@ export type JurnalLengkap = Jurnal & {
 /** Filter layar Buku Besar / daftar jurnal per akun (P1-8). */
 export type FilterBukuBesarApi = {
   akun_kode: string;
+  mulai?: string;
+  sampai?: string;
+};
+
+/** Filter periode layar Laba Rugi & Arus Kas (P1-9). */
+export type FilterPeriodeApi = {
   mulai?: string;
   sampai?: string;
 };
@@ -151,6 +169,15 @@ export const api = {
   /** Drill-down: detail satu jurnal + seluruh baris debit/kredit. */
   laporanJurnalDetail: (id: string) =>
     call<JurnalLengkap>('laporan:jurnal-detail', id),
+  /** Laba Rugi periode dari mesin laporan (P1-9). */
+  laporanLabaRugi: (f: FilterPeriodeApi = {}) =>
+    call<LabaRugiHasil>('laporan:laba-rugi', f),
+  /** Neraca per cut-off, termasuk laba ditahan dari daftar tutup buku. */
+  laporanNeraca: (cutoff: string) =>
+    call<NeracaHasil>('laporan:neraca', { cutoff }),
+  /** Arus Kas metode langsung per periode (P1-9). */
+  laporanArusKas: (f: FilterPeriodeApi = {}) =>
+    call<ArusKasHasil>('laporan:arus-kas', f),
   /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
   jurnalPosting: (
     input: JurnalInput,

@@ -1,148 +1,297 @@
 import { useEffect, useState } from 'react';
-import type { Neraca } from '../../core/ledger.js';
+import { ChevronRight } from 'lucide-react';
 import { formatRp, formatTanggal } from '../../utils/format.js';
-import {
-  neracaToHtml,
-  neracaToWorkbook,
-  printLaporan,
-  workbookToBuffer,
-  wrapPrintDocument,
-} from '../../features/export/workbooks.js';
-import { api, strToB64, u8ToB64 } from '../lib/api.js';
+import { api, type NeracaHasil, type NeracaSaldoHasil } from '../lib/api.js';
+import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = (): string => new Date().toISOString().slice(0, 10);
 
-export function NeracaTab() {
+function pesanError(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Layar Neraca (P1-9). Aset, kewajiban, dan ekuitas berasal langsung dari
+ * `laporan:neraca` (core/reports.ts), termasuk laba ditahan dan laba berjalan
+ * yang dihitung ulang dari jurnal. Badge status memakai `laporan:neraca-saldo`.
+ */
+export function NeracaTab({
+  onBukaBukuBesar,
+}: {
+  onBukaBukuBesar?: (akunKode: string) => void;
+}) {
   const [cutoff, setCutoff] = useState(today());
-  const [data, setData] = useState<Neraca | null>(null);
+  const [data, setData] = useState<NeracaHasil | null>(null);
+  const [neracaSaldo, setNeracaSaldo] = useState<NeracaSaldoHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-
-  async function muat(c = cutoff) {
-    setErr(null);
-    try {
-      const n = await api.neraca(c);
-      setData(n);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }
+  const [memuat, setMemuat] = useState(false);
 
   useEffect(() => {
-    void muat();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function exportXlsx() {
+    if (!cutoff) {
+      setData(null);
+      setNeracaSaldo(null);
+      return;
+    }
+    let aktif = true;
+    setMemuat(true);
     setErr(null);
-    setInfo(null);
-    if (!data) return;
-    try {
-      const wb = await neracaToWorkbook(data);
-      const buf = await workbookToBuffer(wb);
-      const r = await api.saveBuffer({
-        bufferB64: u8ToB64(new Uint8Array(buf)),
-        defaultName: `neraca-${cutoff}.xlsx`,
-        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+    Promise.all([api.laporanNeraca(cutoff), api.laporanNeracaSaldo(cutoff)])
+      .then(([n, ns]) => {
+        if (!aktif) return;
+        setData(n);
+        setNeracaSaldo(ns);
+      })
+      .catch((e) => {
+        if (!aktif) return;
+        setData(null);
+        setNeracaSaldo(null);
+        setErr(pesanError(e));
+      })
+      .finally(() => {
+        if (aktif) setMemuat(false);
       });
-      if (r.saved) setInfo(`Tersimpan: ${r.path}`);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }
+    return () => {
+      aktif = false;
+    };
+  }, [cutoff]);
 
-  async function simpanPdf() {
-    setErr(null);
-    setInfo(null);
-    if (!data) return;
-    try {
-      const html = wrapPrintDocument(`Neraca ${cutoff}`, neracaToHtml(data), { autoPrint: false });
-      const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: `neraca-${cutoff}.pdf` });
-      if (r.saved) setInfo(`Tersimpan: ${r.path}`);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  const badge = neracaSaldo ? badgeNeracaSaldo(neracaSaldo) : null;
+  const aset = data?.aset.filter((a) => a.saldo !== 0) ?? [];
+  const kewajiban = data?.kewajiban.filter((a) => a.saldo !== 0) ?? [];
+  const ekuitas = data?.ekuitas.filter((a) => a.saldo !== 0) ?? [];
+
+  function barisAkun(a: { kode: string; nama: string; saldo: number }) {
+    return (
+      <tr
+        key={a.kode}
+        className={
+          onBukaBukuBesar
+            ? 'cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50'
+            : 'border-b align-top last:border-0'
+        }
+        tabIndex={onBukaBukuBesar ? 0 : undefined}
+        title={onBukaBukuBesar ? `Buka Buku Besar ${a.kode} — ${a.nama}` : undefined}
+        onClick={() => onBukaBukuBesar?.(a.kode)}
+        onKeyDown={(e) => {
+          if (!onBukaBukuBesar) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onBukaBukuBesar(a.kode);
+          }
+        }}
+      >
+        <td className="whitespace-nowrap py-2 pr-3 font-semibold">{a.kode}</td>
+        <td className="py-2 pr-3">{a.nama}</td>
+        <td className="whitespace-nowrap py-2 pr-3 text-right">{formatRp(a.saldo)}</td>
+        <td className="py-2 text-right text-stone-400">
+          {onBukaBukuBesar && <ChevronRight size={16} className="ml-auto" />}
+        </td>
+      </tr>
+    );
   }
 
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="mb-3 text-lg font-bold">
-          Neraca per {formatTanggal(cutoff)}{' '}
-          {data && <Badge tone={data.balance ? 'green' : 'red'}>{data.balance ? 'BALANCE' : `SELISIH ${formatRp(data.selisih)}`}</Badge>}
-        </h2>
-        <ErrorBox msg={err} />
-        {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Field label="Cut-off">
-            <TextInput type="date" value={cutoff} onChange={(e) => setCutoff(e.target.value)} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+              Neraca per {cutoff ? formatTanggal(cutoff) : '—'}{' '}
+              {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-stone-600">
+              Neraca menunjukkan aset, kewajiban, dan ekuitas pada satu tanggal.
+              Laba ditahan dan laba berjalan dihitung ulang dari jurnal — tidak ada
+              angka laba yang disimpan. Klik akun untuk membuka Buku Besar.
+            </p>
+          </div>
+          <Badge tone="green">Dihitung dari jurnal</Badge>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <Field label="Cut-off (sampai tanggal)">
+            <TextInput
+              type="date"
+              value={cutoff}
+              onChange={(e) => setCutoff(e.target.value)}
+            />
           </Field>
-          <div className="flex items-end gap-2">
-            <Button onClick={() => void muat()}>Muat</Button>
+          <div className="flex items-end">
+            <Button variant="ghost" onClick={() => setCutoff(today())}>
+              Hari ini
+            </Button>
+          </div>
+          <div className="flex items-end">
+            {neracaSaldo && (
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Badge tone="stone">Debit {formatRp(neracaSaldo.totalDebit)}</Badge>
+                <Badge tone="stone">Kredit {formatRp(neracaSaldo.totalKredit)}</Badge>
+              </div>
+            )}
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="ghost" disabled={!data} onClick={() => data && printLaporan(`Neraca ${formatTanggal(cutoff)}`, neracaToHtml(data))}>Print / PDF</Button>
-          <Button variant="ghost" disabled={!data} onClick={() => void exportXlsx()}>Export .xlsx</Button>
-          <Button variant="ghost" disabled={!data} onClick={() => void simpanPdf()}>Simpan PDF</Button>
+        <div className="mt-3">
+          <ErrorBox msg={err} />
         </div>
+        {!cutoff && (
+          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+            Isi tanggal cut-off terlebih dahulu.
+          </p>
+        )}
+        {memuat && !data && <p className="mt-3 text-stone-500">Memuat Neraca…</p>}
       </Card>
 
       {data && (
         <>
           <Card>
-            <h3 className="mb-2 font-bold">Aktiva — {formatRp(data.aktiva)}</h3>
-            <table className="w-full text-left text-[15px]">
-              <tbody>
-                {Object.entries(data.aktivaRinci.kas).map(([k, v]) => (
-                  <tr key={k} className="border-b last:border-0">
-                    <td className="py-2 pr-3">Kas {k}</td>
-                    <td className="py-2 text-right">{formatRp(v)}</td>
+            <h3 className="mb-2 font-bold">ASET — {formatRp(data.totalAset)}</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[15px]">
+                <thead>
+                  <tr className="border-b text-stone-500">
+                    <th className="py-2 pr-3">Kode</th>
+                    <th className="py-2 pr-3">Akun</th>
+                    <th className="py-2 pr-3 text-right">Saldo</th>
+                    <th className="py-2" />
                   </tr>
-                ))}
-                <tr className="border-b">
-                  <td className="py-2 pr-3">Piutang 1050</td>
-                  <td className="py-2 text-right">{formatRp(data.aktivaRinci.piutang)}</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-2 pr-3">Panjar OPEN</td>
-                  <td className="py-2 text-right">{formatRp(data.aktivaRinci.panjarOpen)}</td>
-                </tr>
-                <tr className="font-bold">
-                  <td className="py-2 pr-3 text-right">Total Aktiva</td>
-                  <td className="py-2 text-right">{formatRp(data.aktiva)}</td>
-                </tr>
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {aset.map(barisAkun)}
+                  {aset.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-3 text-stone-500">
+                        Belum ada aset bersaldo sampai tanggal ini.
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="font-bold">
+                    <td colSpan={2} className="py-2 pr-3 text-right">
+                      Total Aset
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                      {formatRp(data.totalAset)}
+                    </td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </Card>
 
           <Card>
-            <h3 className="mb-2 font-bold">Pasiva — {formatRp(data.pasiva)}</h3>
-            <table className="w-full text-left text-[15px]">
-              <tbody>
-                <tr className="border-b">
-                  <td className="py-2 pr-3">Hutang 2050</td>
-                  <td className="py-2 text-right">{formatRp(data.hutang)}</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-2 pr-3">Modal awal 3000</td>
-                  <td className="py-2 text-right">{formatRp(data.modalAwal)}</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-2 pr-3">Kumulatif 3001</td>
-                  <td className="py-2 text-right">{formatRp(data.kumulatif)}</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-2 pr-3">Berjalan 3002 (Jan s/d cut-off)</td>
-                  <td className="py-2 text-right">{formatRp(data.berjalan)}</td>
-                </tr>
-                <tr className="font-bold">
-                  <td className="py-2 pr-3 text-right">Total Pasiva</td>
-                  <td className="py-2 text-right">{formatRp(data.pasiva)}</td>
-                </tr>
-              </tbody>
-            </table>
+            <h3 className="mb-2 font-bold">
+              KEWAJIBAN — {formatRp(data.totalKewajiban)}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[15px]">
+                <thead>
+                  <tr className="border-b text-stone-500">
+                    <th className="py-2 pr-3">Kode</th>
+                    <th className="py-2 pr-3">Akun</th>
+                    <th className="py-2 pr-3 text-right">Saldo</th>
+                    <th className="py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {kewajiban.map(barisAkun)}
+                  {kewajiban.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-3 text-stone-500">
+                        Tidak ada kewajiban sampai tanggal ini.
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="font-bold">
+                    <td colSpan={2} className="py-2 pr-3 text-right">
+                      Total Kewajiban
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                      {formatRp(data.totalKewajiban)}
+                    </td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="mb-2 font-bold">EKUITAS — {formatRp(data.totalEkuitas)}</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[15px]">
+                <thead>
+                  <tr className="border-b text-stone-500">
+                    <th className="py-2 pr-3">Kode</th>
+                    <th className="py-2 pr-3">Akun</th>
+                    <th className="py-2 pr-3 text-right">Saldo</th>
+                    <th className="py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {ekuitas.map(barisAkun)}
+                  <tr className="border-b">
+                    <td className="py-2 pr-3 font-semibold">—</td>
+                    <td className="py-2 pr-3">Laba ditahan (tahun sudah tutup)</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                      {formatRp(data.labaDitahan)}
+                    </td>
+                    <td />
+                  </tr>
+                  {data.labaBelumDitutup !== 0 && (
+                    <tr className="border-b">
+                      <td className="py-2 pr-3 font-semibold">—</td>
+                      <td className="py-2 pr-3">Laba tahun lampau belum ditutup</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">
+                        {formatRp(data.labaBelumDitutup)}
+                      </td>
+                      <td />
+                    </tr>
+                  )}
+                  <tr className="border-b">
+                    <td className="py-2 pr-3 font-semibold">—</td>
+                    <td className="py-2 pr-3">
+                      Laba berjalan (1 Januari s/d cut-off)
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                      {formatRp(data.labaBerjalan)}
+                    </td>
+                    <td />
+                  </tr>
+                  <tr className="font-bold">
+                    <td colSpan={2} className="py-2 pr-3 text-right">
+                      Total Ekuitas
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                      {formatRp(data.totalEkuitas)}
+                    </td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold">Total Pasiva</h3>
+                <p className="text-sm text-stone-600">
+                  Kewajiban + ekuitas, termasuk laba yang dihitung dari jurnal.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge tone="stone">Aset {formatRp(data.totalAset)}</Badge>
+                <Badge tone="stone">Pasiva {formatRp(data.totalPasiva)}</Badge>
+                {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+              </div>
+            </div>
+            {!data.balance && (
+              <p className="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-800">
+                Selisih Neraca: {formatRp(data.selisih)}. Periksa jurnal yang tidak
+                seimbang di Jurnal Umum.
+              </p>
+            )}
           </Card>
         </>
       )}

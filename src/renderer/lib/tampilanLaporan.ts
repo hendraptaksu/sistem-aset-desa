@@ -3,6 +3,8 @@
 // konsisten di seluruh layar.
 
 import type { CoaTipe, PosisiNormal } from '../../db/coa.js';
+import type { KelompokArusKas } from '../../core/reports.js';
+import { formatRp } from '../../utils/format.js';
 
 export const LABEL_TIPE_AKUN: Record<CoaTipe, string> = {
   AKTIVA: 'Aktiva',
@@ -40,4 +42,43 @@ export function toneSisiSaldo(sisi: PosisiNormal | null): 'green' | 'amber' | 's
   if (sisi === 'DEBIT') return 'green';
   if (sisi === 'KREDIT') return 'amber';
   return 'stone';
+}
+
+/** Label kelompok Arus Kas untuk operator awam. */
+export const LABEL_KELOMPOK_ARUS_KAS: Record<KelompokArusKas, string> = {
+  OPERASI: 'Operasi',
+  INVESTASI: 'Investasi',
+  PENDANAAN: 'Pendanaan',
+  TRANSFER: 'Transfer',
+};
+
+export function labelKelompokArusKas(kelompok: KelompokArusKas): string {
+  return LABEL_KELOMPOK_ARUS_KAS[kelompok];
+}
+
+export type BadgeLaporan = {
+  tone: 'green' | 'red';
+  label: string;
+};
+
+/**
+ * Badge status Neraca Saldo. Selalu memakai angka `selisih` dari mesin
+ * laporan; tidak menghitung ulang di renderer.
+ */
+export function badgeNeracaSaldo(hasil: {
+  seimbang: boolean;
+  selisih: number;
+}): BadgeLaporan {
+  if (hasil.seimbang) return { tone: 'green', label: 'Neraca Saldo: seimbang' };
+  return {
+    tone: 'red',
+    label: `Neraca Saldo: selisih ${formatRp(hasil.selisih)}`,
+  };
+}
+
+/** Badge Laba Rugi: SURPLUS bila laba >= 0, DEFISIT bila negatif. */
+export function badgeLabaRugi(defisit: boolean): BadgeLaporan {
+  return defisit
+    ? { tone: 'red', label: 'DEFISIT' }
+    : { tone: 'green', label: 'SURPLUS' };
 }

@@ -4,13 +4,24 @@
 
 import type Database from 'better-sqlite3';
 import { COA } from './coa.js';
-import { getJurnalDetail, listJurnalLengkap, type JurnalLengkap } from './repository.js';
+import {
+  getJurnalDetail,
+  listJurnalLengkap,
+  listTutupBuku,
+  type JurnalLengkap,
+} from './repository.js';
 import type { JurnalJenis } from '../core/types.js';
 import {
+  arusKas,
   bukuBesar,
+  labaRugi,
+  neraca,
   neracaSaldo,
+  type ArusKasHasil,
   type BarisJurnalSumber,
   type BukuBesarHasil,
+  type LabaRugiHasil,
+  type NeracaHasil,
   type NeracaSaldoHasil,
 } from '../core/reports.js';
 
@@ -193,4 +204,56 @@ export function laporanDetailJurnal(
     total_debit: detail.baris.reduce((s, b) => s + b.debit, 0),
     reversal_id: reversal ? String(reversal.id) : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Adapter layar Laba Rugi, Neraca, Arus Kas (P1-9)
+// ---------------------------------------------------------------------------
+
+export type FilterPeriodeLaporanDb = {
+  mulai?: string;
+  sampai?: string;
+};
+
+/**
+ * Laba Rugi periode. Adapter hanya mengambil baris jurnal; seluruh
+ * perhitungan (termasuk akun bernominal nol) diserahkan ke `labaRugi` murni.
+ */
+export function laporanLabaRugi(
+  db: Database.Database,
+  filter: FilterPeriodeLaporanDb = {},
+): LabaRugiHasil {
+  return labaRugi(
+    listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
+    filter,
+  );
+}
+
+/**
+ * Neraca per cut-off. Daftar tutup buku ikut dikirim agar laba tahun yang
+ * sudah ditutup masuk `labaDitahan` dan tahun yang belum ditutup tetap
+ * dilaporkan di `labaBelumDitutup` — tidak ada laba tersimpan.
+ */
+export function laporanNeraca(
+  db: Database.Database,
+  cutoff: string,
+): NeracaHasil {
+  return neraca(listBarisJurnal(db, { sampai: cutoff }), {
+    cutoff,
+    tutup: listTutupBuku(db),
+  });
+}
+
+/**
+ * Arus Kas periode. Query hanya dibatasi `sampai`; baris sebelum `mulai`
+ * tetap diambil karena dibutuhkan untuk menghitung `saldoAwal`.
+ */
+export function laporanArusKas(
+  db: Database.Database,
+  filter: FilterPeriodeLaporanDb = {},
+): ArusKasHasil {
+  return arusKas(
+    listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
+    filter,
+  );
 }
