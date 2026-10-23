@@ -337,7 +337,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
 
 ## P2 — Lanjutan
 
-- [ ] **P2-1 — Anggaran & Realisasi Anggaran**
+- [x] **P2-1 — Anggaran & Realisasi Anggaran** (2026-10-23: skema `anggaran` v6 + realisasi dari jurnal via `hitungRealisasiAnggaran`, layar input/export/print A4 dan audit `ANGGARAN`; 366/366 test hijau)
   - **Langkah:** tabel `anggaran(tahun, akun_kode, nominal)`; CRUD; laporan realisasi vs pagu per akun
     (anggaran, realisasi, sisa, %); export; hanya akun PENDAPATAN/BEBAN.
   - **DoD:** test sisa/% + laporan; UI input per tahun.

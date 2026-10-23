@@ -19,11 +19,13 @@ import { COA } from './coa.js';
  * - 5    = master pihak + penghubung jurnal-pihak (P1-5). `jurnal_pihak`
  *          hanya metadata penghubung; saldo per pihak tetap dihitung dari
  *          baris jurnal 1050/2050.
+ * - 6    = pagu anggaran per tahun (P2-1). Hanya pagu yang disimpan; realisasi
+ *          dan sisa SELALU dihitung dari jurnal lewat core/reports.ts.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
- * DDL v2–v5. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
+ * DDL v2–v6. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
  * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
@@ -174,6 +176,20 @@ CREATE TABLE IF NOT EXISTS panjar_item (
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
 );
 CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
+
+-- Pagu anggaran per tahun (P2-1). HANYA pagu yang disimpan; realisasi, sisa,
+-- dan % tidak pernah menjadi kolom/tabel — semuanya dihitung ulang dari jurnal.
+-- Satu akun hanya punya satu pagu per tahun (PRIMARY KEY), simpan = upsert.
+CREATE TABLE IF NOT EXISTS anggaran (
+  tahun INTEGER NOT NULL,
+  akun_kode TEXT NOT NULL,
+  nominal INTEGER NOT NULL CHECK (nominal >= 0),
+  created_at TEXT,
+  updated_at TEXT,
+  PRIMARY KEY (tahun, akun_kode),
+  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
+);
+CREATE INDEX IF NOT EXISTS idx_anggaran_akun ON anggaran(akun_kode);
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {

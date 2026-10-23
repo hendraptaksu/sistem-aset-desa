@@ -188,7 +188,15 @@ export function PinInput({
 
 /** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
  * Desimal opsional — ketik '1500' jadi Rp 1.500,00; '1500,50' jadi Rp 1.500,50. */
-export function CurrencyInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+export function CurrencyInput({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+}) {
   const [teks, setTeks] = useState<string | null>(null);
   const [fokus, setFokus] = useState(false);
   // Perubahan value dari luar (cth. reset form setelah submit) tersinkron saat blur.
@@ -200,6 +208,7 @@ export function CurrencyInput({ value, onChange }: { value: number; onChange: (n
     <TextInput
       inputMode="decimal"
       placeholder="0"
+      disabled={disabled}
       value={shown}
       onFocus={() => {
         setFokus(true);

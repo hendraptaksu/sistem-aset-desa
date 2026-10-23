@@ -55,7 +55,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Pembantu', Icon: NotebookText },
-  { id: 'realisasi', label: 'Realisasi', Icon: BarChart3 },
+  { id: 'realisasi', label: 'Anggaran', Icon: BarChart3 },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
   { id: 'arus-kas', label: 'Arus Kas', Icon: Banknote },

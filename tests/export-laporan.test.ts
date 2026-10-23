@@ -17,11 +17,13 @@ import {
   neracaSaldo,
   type BarisJurnalSumber,
 } from '../src/core/reports.js';
+import { hitungRealisasiAnggaran } from '../src/core/anggaran.js';
 import type { Panjar } from '../src/core/types.js';
 import {
   KOP_ORG_NAMA,
   NUMFMT_PERSEN,
   NUMFMT_RP,
+  anggaranToWorkbook,
   arusKasToHtml,
   arusKasToWorkbook,
   bukuBesarToHtml,
@@ -264,6 +266,15 @@ const lr = labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
 const lrDefisit = labaRugi(baris, { mulai: '2026-02-01', sampai: '2026-02-28' });
 const n = neraca(baris, '2026-12-31');
 const ak = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
+const anggaranHasil = hitungRealisasiAnggaran(
+  [
+    { tahun: 2026, akun_kode: '4005', nominal: RP(3_000_000) },
+    { tahun: 2026, akun_kode: '5010', nominal: RP(400_000) },
+    { tahun: 2026, akun_kode: '5003', nominal: RP(500_000) },
+  ],
+  baris,
+  { mulai: '2026-01-01', sampai: '2026-12-31' },
+);
 
 const jurnal: JurnalTampil[] = [
   {
@@ -521,6 +532,34 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(cariBaris(ws, 2, 'Belum ada rincian pertanggungjawaban')).toBeGreaterThan(0);
   });
 
+  it('Anggaran: pagu/realisasi/sisa number, persen fraksi, total gabungan', async () => {
+    const wb = await anggaranToWorkbook(anggaranHasil);
+    const ws = wb.worksheets[0]!;
+    const header = cariBaris(ws, 1, 'Kode');
+    cekNominal(ws, [3, 4, 5], header + 1);
+    cekPersen(ws, 6, header + 1);
+
+    const row = cariBaris(ws, 1, '4005');
+    expect(ws.getRow(row).getCell(3).value).toBe(3_000_000);
+    expect(ws.getRow(row).getCell(4).value).toBe(2_000_000);
+    expect(ws.getRow(row).getCell(5).value).toBe(1_000_000);
+    expect(ws.getRow(row).getCell(6).value).toBeCloseTo(2 / 3, 10);
+    expect(ws.getRow(row).getCell(7).value).toBe('Sesuai');
+
+    const lebih = cariBaris(ws, 1, '5010');
+    expect(ws.getRow(lebih).getCell(5).value).toBe(-100_000);
+    expect(ws.getRow(lebih).getCell(7).value).toBe('Lebih');
+
+    const total = cariBaris(ws, 2, 'TOTAL ANGGARAN & REALISASI');
+    expect(ws.getRow(total).getCell(3).value).toBe(anggaranHasil.total.anggaran / 100);
+    expect(ws.getRow(total).getCell(4).value).toBe(anggaranHasil.total.realisasi / 100);
+    expect(ws.getRow(total).getCell(5).value).toBe(anggaranHasil.total.sisa / 100);
+    expect(ws.getRow(total).getCell(6).value).toBeCloseTo(
+      anggaranHasil.total.persen / 100,
+      10,
+    );
+  });
+
   it('semua workbook bisa dibaca ulang ExcelJS dan tetap numerik (round-trip)', async () => {
     const wbs = [
       await jurnalToWorkbook(jurnal, COA),
@@ -530,6 +569,7 @@ describe('P1-10 — builder XLSX numerik', () => {
       await neracaHasilToWorkbook(n),
       await arusKasToWorkbook(ak),
       await panjarToWorkbook(panjar, COA),
+      await anggaranToWorkbook(anggaranHasil),
     ];
     for (const wb of wbs) {
       const hasil = await roundTrip(wb);
