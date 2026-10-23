@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import type { ArusKasHasil } from '../../core/reports.js';
+import {
+  arusKasToHtml,
+  arusKasToWorkbook,
+  periodeFile,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
 import { labelKelompokArusKas } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
+import { ExportActions } from './ExportActions.js';
 
 function pesanError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -148,6 +154,17 @@ export function ArusKasTab() {
           Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik baris mutasi
           untuk melihat jurnal asal dan nomor buktinya.
         </p>
+        {data && (
+          <div className="mt-3">
+            <ExportActions
+              namaDasar={`arus-kas-${periodeFile(data.mulai, data.sampai)}`}
+              judul="Arus Kas"
+              disabled={memuat}
+              buatWorkbook={() => arusKasToWorkbook(data)}
+              buatHtml={() => arusKasToHtml(data)}
+            />
+          </div>
+        )}
         <div className="mt-3">
           <ErrorBox msg={err} />
         </div>

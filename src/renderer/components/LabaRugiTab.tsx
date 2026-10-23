@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
+import {
+  labaRugiToHtml,
+  labaRugiToWorkbook,
+  periodeFile,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type LabaRugiHasil } from '../lib/api.js';
 import { badgeLabaRugi } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { ExportActions } from './ExportActions.js';
 import { JurnalAkunModal } from './JurnalAkunModal.js';
 
 function pesanError(e: unknown): string {
@@ -127,6 +133,18 @@ export function LabaRugiTab() {
           melihat daftar jurnal pada periode ini, lalu klik jurnal untuk detail
           debit/kredit.
         </p>
+
+        {data && (
+          <div className="mt-3">
+            <ExportActions
+              namaDasar={`laba-rugi-${periodeFile(data.mulai, data.sampai)}`}
+              judul="Laba Rugi"
+              disabled={memuat}
+              buatWorkbook={() => labaRugiToWorkbook(data)}
+              buatHtml={() => labaRugiToHtml(data)}
+            />
+          </div>
+        )}
 
         <div className="mt-3">
           <ErrorBox msg={err} />

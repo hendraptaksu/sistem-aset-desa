@@ -279,7 +279,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test/smoke; angka sama dengan P0-5 untuk dataset contoh.
   - **Dependency:** P0-5
 
-- [ ] **P1-10 — Export & print semua laporan (xlsx numerik + PDF)**
+- [x] **P1-10 — Export & print semua laporan (xlsx numerik + PDF)** (2026-10-23: builder XLSX/HTML Jurnal, Buku Besar, Neraca Saldo, Laba Rugi, Neraca, Arus Kas, Panjar dengan nominal/persen numerik + tombol Export/PDF di tiap layar; 263/263 test hijau)
   - **Langkah:** builder xlsx untuk Jurnal Umum, Buku Besar, Neraca Saldo, Laba Rugi, Neraca, Arus Kas,
     Panjar; **sel nominal = number + numFmt** `'"Rp"#,##0.00;(Rp"#,##0.00)'` (bukan string); persen = number;
     tombol Export + Print/Simpan PDF di tiap layar; kop & periode.

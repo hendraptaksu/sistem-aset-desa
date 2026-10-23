@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Coa, PosisiNormal } from '../../db/coa.js';
+import {
+  bukuBesarToHtml,
+  bukuBesarToWorkbook,
+  periodeFile,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type BukuBesarHasil, type JurnalLengkap } from '../lib/api.js';
 import {
@@ -10,6 +15,7 @@ import {
 } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, Select, TextInput } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
+import { ExportActions } from './ExportActions.js';
 
 function pesanError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -178,6 +184,18 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
           Kosongkan tanggal untuk melihat seluruh riwayat. Saldo awal adalah saldo sebelum
           tanggal “Dari”; saldo akhir adalah saldo sampai tanggal “Sampai”.
         </p>
+
+        {data && (
+          <div className="mt-3">
+            <ExportActions
+              namaDasar={`buku-besar-${data.kode}-${periodeFile(data.mulai, data.sampai)}`}
+              judul={`Buku Besar ${data.kode} — ${data.nama}`}
+              disabled={memuat || (data.rows.length === 0 && data.saldoAwal === 0)}
+              buatWorkbook={() => bukuBesarToWorkbook(data)}
+              buatHtml={() => bukuBesarToHtml(data)}
+            />
+          </div>
+        )}
 
         <div className="mt-3">
           <ErrorBox msg={err} />

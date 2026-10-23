@@ -8,6 +8,12 @@ import {
 } from '../../core/forms.js';
 import type { JurnalInput } from '../../core/posting.js';
 import type { Panjar, PanjarItem } from '../../core/types.js';
+import {
+  panjarToHtml,
+  panjarToWorkbook,
+  periodeFile,
+  rentangDariRows,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
@@ -21,6 +27,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { ExportActions } from './ExportActions.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -360,6 +367,22 @@ export function PanjarTab() {
     }
   }
 
+  /** Data export = panjar yang sedang ditampilkan + rincian itemnya. */
+  async function dataPanjarExport() {
+    return Promise.all(
+      shown.map(async (p) => ({
+        ...p,
+        items: detailItems[p.id] ?? (await api.panjarItems(p.id)),
+      })),
+    );
+  }
+
+  const rentangPanjar = rentangDariRows(shown);
+  const namaDasarPanjar = `panjar-${fStatus ? `${fStatus.toLowerCase()}-` : ''}${periodeFile(
+    rentangPanjar.mulai,
+    rentangPanjar.sampai,
+  )}`;
+
   const labelSerah = (index: number, akun: string): string =>
     index === 0 ? `Uang Panjar (1040) — bertambah` : `Kas sumber — ${labelAkun(akun)} berkurang`;
 
@@ -685,16 +708,29 @@ export function PanjarTab() {
       </Card>
 
       <Card>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <h2 className="shrink-0 whitespace-nowrap text-lg font-bold">Daftar Panjar</h2>
-          <Select
-            value={fStatus}
-            onChange={(e) => setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED')}
-          >
-            <option value="">Semua status</option>
-            <option value="OPEN">Belum dipertanggungjawabkan</option>
-            <option value="CLOSED">Sudah dipertanggungjawabkan</option>
-          </Select>
+          <div className="flex flex-col items-start gap-2 md:items-end">
+            <Select
+              value={fStatus}
+              onChange={(e) => setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED')}
+            >
+              <option value="">Semua status</option>
+              <option value="OPEN">Belum dipertanggungjawabkan</option>
+              <option value="CLOSED">Sudah dipertanggungjawabkan</option>
+            </Select>
+            <ExportActions
+              namaDasar={namaDasarPanjar}
+              judul="Panjar (Uang Muka)"
+              disabled={shown.length === 0}
+              buatWorkbook={() =>
+                dataPanjarExport().then((daftar) => panjarToWorkbook(daftar, coa))
+              }
+              buatHtml={() =>
+                dataPanjarExport().then((daftar) => panjarToHtml(daftar, coa))
+              }
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">

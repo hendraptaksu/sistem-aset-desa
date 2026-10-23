@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import {
+  neracaHasilToHtml,
+  neracaHasilToWorkbook,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type NeracaHasil, type NeracaSaldoHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { ExportActions } from './ExportActions.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -131,6 +136,17 @@ export function NeracaTab({
             )}
           </div>
         </div>
+        {data && (
+          <div className="mt-3">
+            <ExportActions
+              namaDasar={`neraca-${data.cutoff}`}
+              judul={`Neraca per ${formatTanggal(data.cutoff)}`}
+              disabled={memuat}
+              buatWorkbook={() => neracaHasilToWorkbook(data)}
+              buatHtml={() => neracaHasilToHtml(data)}
+            />
+          </div>
+        )}
         <div className="mt-3">
           <ErrorBox msg={err} />
         </div>

@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import {
+  neracaSaldoToHtml,
+  neracaSaldoToWorkbook,
+} from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type NeracaSaldoHasil } from '../lib/api.js';
 import { LABEL_TIPE_AKUN } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { ExportActions } from './ExportActions.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -98,6 +103,17 @@ export function NeracaSaldoTab({
         <p className="mt-2 text-xs text-stone-500">
           Klik baris akun untuk membuka Buku Besar akun tersebut dan menelusuri jurnal asalnya.
         </p>
+        {data && (
+          <div className="mt-3">
+            <ExportActions
+              namaDasar={`neraca-saldo-${data.cutoff ?? cutoff}`}
+              judul="Neraca Saldo"
+              disabled={memuat || data.rows.length === 0}
+              buatWorkbook={() => neracaSaldoToWorkbook(data)}
+              buatHtml={() => neracaSaldoToHtml(data)}
+            />
+          </div>
+        )}
         <div className="mt-3">
           <ErrorBox msg={err} />
         </div>

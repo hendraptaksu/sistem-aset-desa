@@ -8,12 +8,17 @@ import {
 import { JENIS_JURNAL, tanggalKalenderValid } from '../../core/posting.js';
 import { ALASAN_REVERSAL_MIN } from '../../core/reversal.js';
 import {
+  jurnalDaftarToHtml,
   jurnalToHtml,
+  jurnalToWorkbook,
+  periodeFile,
   printLaporan,
+  rentangDariRows,
 } from '../../features/export/workbooks.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, Select, TextInput } from './ui.js';
+import { ExportActions } from './ExportActions.js';
 import { JurnalUmumEditor } from './JurnalUmumEditor.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -119,6 +124,15 @@ export function JurnalTab({
   );
 
   const resetHalaman = () => setPage(0);
+  const rentangFiltered = rentangDariRows(filtered);
+  const namaDasarJurnal = `jurnal-umum-${periodeFile(
+    fMulai || rentangFiltered.mulai,
+    fSampai || rentangFiltered.sampai,
+  )}`;
+  const opsiPeriodeJurnal = {
+    ...(fMulai ? { mulai: fMulai } : {}),
+    ...(fSampai ? { sampai: fSampai } : {}),
+  };
 
   return (
     <div className="space-y-4">
@@ -196,6 +210,16 @@ export function JurnalTab({
               </option>
             ))}
           </Select>
+        </div>
+
+        <div className="mb-3">
+          <ExportActions
+            namaDasar={namaDasarJurnal}
+            judul="Jurnal Umum"
+            disabled={filtered.length === 0}
+            buatWorkbook={() => jurnalToWorkbook(filtered, coa, opsiPeriodeJurnal)}
+            buatHtml={() => jurnalDaftarToHtml(filtered, coa, opsiPeriodeJurnal)}
+          />
         </div>
 
         <div className="overflow-x-auto">
