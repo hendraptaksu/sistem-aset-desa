@@ -866,3 +866,141 @@ export function validasiFilterAnggaran(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Rekonsiliasi bank (P2-2)
+// ---------------------------------------------------------------------------
+
+export type BentukRekonsiliasiCreate = {
+  akun_kode: string;
+  tanggal: string;
+  saldo_bank: number;
+  catatan: string;
+};
+
+export type BentukRekonsiliasiList = {
+  akun_kode?: string;
+  selesai?: boolean;
+};
+
+export type BentukRekonsiliasiSelesai = {
+  catatan?: string;
+};
+
+/**
+ * Bentuk `rekonsiliasi:create`. Hanya memeriksa bentuk + tanggal kalender;
+ * keharusan akun kas/bank dan keberadaan akun diperiksa lagi oleh core + DB
+ * adapter supaya aturannya satu pintu dan bisa diuji tanpa Electron.
+ */
+export function validasiBentukRekonsiliasiCreate(
+  nilai: unknown,
+): HasilBentuk<BentukRekonsiliasiCreate> {
+  if (!objek(nilai))
+    return { ok: false, error: 'Data rekonsiliasi bank tidak lengkap.' };
+
+  if (typeof nilai.akun_kode !== 'string' || !nilai.akun_kode.trim())
+    return { ok: false, error: 'Akun kas/bank wajib dipilih.' };
+  const akunKode = nilai.akun_kode.trim();
+  if (akunKode.length > 20)
+    return { ok: false, error: 'Kode akun terlalu panjang.' };
+
+  if (typeof nilai.tanggal !== 'string' || !nilai.tanggal.trim())
+    return { ok: false, error: 'Tanggal rekonsiliasi wajib diisi.' };
+  const tanggal = nilai.tanggal.trim();
+  if (!tanggalKalenderValid(tanggal))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
+
+  if (
+    typeof nilai.saldo_bank !== 'number' ||
+    !Number.isSafeInteger(nilai.saldo_bank) ||
+    nilai.saldo_bank < 0
+  )
+    return {
+      ok: false,
+      error: 'Saldo menurut rekening koran harus bilangan bulat ≥ 0 (satuan sen).',
+    };
+
+  let catatan = '';
+  if (nilai.catatan !== undefined && nilai.catatan !== null) {
+    if (typeof nilai.catatan !== 'string')
+      return { ok: false, error: 'Catatan rekonsiliasi tidak valid.' };
+    catatan = nilai.catatan.trim();
+    if (catatan.length > 1000)
+      return { ok: false, error: 'Catatan rekonsiliasi maks. 1000 karakter.' };
+  }
+
+  return {
+    ok: true,
+    input: {
+      akun_kode: akunKode,
+      tanggal,
+      saldo_bank: nilai.saldo_bank,
+      catatan,
+    },
+  };
+}
+
+/** Bentuk filter `rekonsiliasi:list`; semua field opsional. */
+export function validasiBentukRekonsiliasiList(
+  nilai: unknown = {},
+): HasilBentuk<BentukRekonsiliasiList> {
+  if (nilai === undefined || nilai === null) return { ok: true, input: {} };
+  if (!objek(nilai))
+    return { ok: false, error: 'Data filter rekonsiliasi tidak lengkap.' };
+
+  let akunKode: string | undefined;
+  if (nilai.akun_kode !== undefined && nilai.akun_kode !== null) {
+    if (typeof nilai.akun_kode !== 'string')
+      return { ok: false, error: 'Kode akun filter tidak valid.' };
+    const kode = nilai.akun_kode.trim();
+    if (kode.length > 20)
+      return { ok: false, error: 'Kode akun terlalu panjang.' };
+    if (kode) akunKode = kode;
+  }
+
+  let selesai: boolean | undefined;
+  if (nilai.selesai !== undefined) {
+    if (typeof nilai.selesai !== 'boolean')
+      return { ok: false, error: 'Filter status selesai tidak valid.' };
+    selesai = nilai.selesai;
+  }
+
+  return {
+    ok: true,
+    input: {
+      ...(akunKode ? { akun_kode: akunKode } : {}),
+      ...(selesai === undefined ? {} : { selesai }),
+    },
+  };
+}
+
+/** ID rekonsiliasi untuk `detail`/`selesai`; hanya string wajar. */
+export function validasiIdRekonsiliasi(nilai: unknown): HasilBentuk<string> {
+  if (typeof nilai !== 'string' || !nilai.trim())
+    return { ok: false, error: 'Rekonsiliasi wajib dipilih.' };
+  const id = nilai.trim();
+  if (id.length > 200)
+    return { ok: false, error: 'ID rekonsiliasi terlalu panjang.' };
+  return { ok: true, input: id };
+}
+
+/** Bentuk `rekonsiliasi:selesai`: opsi catatan opsional. */
+export function validasiBentukRekonsiliasiSelesai(
+  nilai: unknown = {},
+): HasilBentuk<BentukRekonsiliasiSelesai> {
+  if (nilai === undefined || nilai === null) return { ok: true, input: {} };
+  if (!objek(nilai))
+    return { ok: false, error: 'Data penyelesaian rekonsiliasi tidak lengkap.' };
+
+  let catatan: string | undefined;
+  if (nilai.catatan !== undefined && nilai.catatan !== null) {
+    if (typeof nilai.catatan !== 'string')
+      return { ok: false, error: 'Catatan rekonsiliasi tidak valid.' };
+    const teks = nilai.catatan.trim();
+    if (teks.length > 1000)
+      return { ok: false, error: 'Catatan rekonsiliasi maks. 1000 karakter.' };
+    if (teks) catatan = teks;
+  }
+
+  return { ok: true, input: catatan === undefined ? {} : { catatan } };
+}

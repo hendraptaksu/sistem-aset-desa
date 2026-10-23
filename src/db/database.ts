@@ -21,11 +21,13 @@ import { COA } from './coa.js';
  *          baris jurnal 1050/2050.
  * - 6    = pagu anggaran per tahun (P2-1). Hanya pagu yang disimpan; realisasi
  *          dan sisa SELALU dihitung dari jurnal lewat core/reports.ts.
+ * - 7    = rekonsiliasi bank (P2-2). Hanya saldo menurut rekening koran yang
+ *          disimpan; saldo buku, selisih, dan daftar mutasi dihitung dari jurnal.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
- * DDL v2–v6. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
+ * DDL v2–v7. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
  * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
@@ -190,6 +192,23 @@ CREATE TABLE IF NOT EXISTS anggaran (
   FOREIGN KEY (akun_kode) REFERENCES akun(kode)
 );
 CREATE INDEX IF NOT EXISTS idx_anggaran_akun ON anggaran(akun_kode);
+
+-- Rekonsiliasi bank (P2-2). HANYA saldo menurut rekening koran yang disimpan.
+-- Saldo buku, selisih, status cocok, dan daftar mutasi TIDAK disimpan: semuanya
+-- dihitung ulang dari jurnal supaya tidak basi saat ada koreksi.
+CREATE TABLE IF NOT EXISTS rekonsiliasi_bank (
+  id TEXT PRIMARY KEY,
+  akun_kode TEXT NOT NULL,
+  tanggal TEXT NOT NULL,
+  saldo_bank INTEGER NOT NULL CHECK (saldo_bank >= 0),
+  catatan TEXT NOT NULL DEFAULT '',
+  selesai INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  selesai_at TEXT,
+  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
+);
+CREATE INDEX IF NOT EXISTS idx_rekonsiliasi_akun_tanggal
+  ON rekonsiliasi_bank(akun_kode, tanggal);
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {

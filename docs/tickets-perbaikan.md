@@ -343,7 +343,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test sisa/% + laporan; UI input per tahun.
   - **Dependency:** P1-10
 
-- [ ] **P2-2 — Rekonsiliasi bank**
+- [x] **P2-2 — Rekonsiliasi bank** (2026-10-23: skema `rekonsiliasi_bank` v7 + core/DB/IPC/tab Rekonsiliasi Bank, saldo buku/selisih selalu dihitung dari jurnal; 376/376 test hijau)
   - **Langkah:** input saldo menurut rekening koran per tanggal; bandingkan dengan saldo buku; tampilkan
     selisih + daftar jurnal di antara; tandai selesai + audit.
   - **DoD:** test perhitungan selisih.

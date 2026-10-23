@@ -4,6 +4,11 @@ import type { PengaturanPembukuan } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
 import type { AlurPihak, SaldoPihak } from '../../core/pihak.js';
 import type { RealisasiAnggaranHasil } from '../../core/anggaran.js';
+import type { StatusRekonsiliasi } from '../../core/rekonsiliasi.js';
+import type {
+  RekonsiliasiDetail,
+  RekonsiliasiTampil,
+} from '../../db/rekonsiliasi.js';
 import type {
   Aset,
   AuditLog,
@@ -36,6 +41,9 @@ export type {
   NeracaHasil,
   NeracaSaldoHasil,
   RealisasiAnggaranHasil,
+  RekonsiliasiDetail,
+  RekonsiliasiTampil,
+  StatusRekonsiliasi,
 };
 
 type Ok<T> = { ok: true; data: T };
@@ -114,6 +122,20 @@ export type FilterLaporanAnggaranApi = {
   tahun: number;
   mulai?: string;
   sampai?: string;
+};
+
+/** Filter riwayat rekonsiliasi bank (P2-2). */
+export type FilterRekonsiliasiApi = {
+  akun_kode?: string;
+  selesai?: boolean;
+};
+
+/** Input rekonsiliasi baru; saldo_bank dalam SEN (integer ≥ 0). */
+export type InputRekonsiliasiApi = {
+  akun_kode: string;
+  tanggal: string;
+  saldo_bank: number;
+  catatan?: string;
 };
 
 export type OpsiKoreksiApi = {
@@ -254,6 +276,18 @@ export const api = {
   /** Realisasi vs pagu; realisasi dihitung dari jurnal (bukan angka tersimpan). */
   laporanAnggaran: (f: FilterLaporanAnggaranApi) =>
     call<RealisasiAnggaranHasil>('laporan:anggaran', f),
+  /** Riwayat rekonsiliasi bank; saldo buku/selisih dihitung dari jurnal (P2-2). */
+  rekonsiliasiList: (f: FilterRekonsiliasiApi = {}) =>
+    call<RekonsiliasiTampil[]>('rekonsiliasi:list', f),
+  /** Detail + mutasi jurnal sejak rekonsiliasi selesai sebelumnya (P2-2). */
+  rekonsiliasiDetail: (id: string) =>
+    call<RekonsiliasiDetail>('rekonsiliasi:detail', id),
+  /** Simpan saldo menurut rekening koran; tidak menyimpan saldo buku/selisih. */
+  rekonsiliasiCreate: (input: InputRekonsiliasiApi) =>
+    call<RekonsiliasiTampil>('rekonsiliasi:create', input),
+  /** Tandai selesai; audit mencatat kondisi lama/baru. */
+  rekonsiliasiSelesai: (id: string, opsi: { catatan?: string } = {}) =>
+    call<RekonsiliasiTampil>('rekonsiliasi:selesai', id, opsi),
   /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
   jurnalPosting: (
     input: JurnalInput,
