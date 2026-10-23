@@ -3,7 +3,6 @@ import type { Transaksi } from '../../core/types.js';
 import { formatRp } from '../../utils/format.js';
 import { buildRealisasi } from '../../features/reports/realisasi/realisasi.js';
 import {
-  printLaporan,
   realisasiToHtml,
   realisasiToWorkbook,
   workbookToBuffer,
@@ -11,6 +10,7 @@ import {
 } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { PratinjauHtmlModal } from './PratinjauHtmlModal.js';
 import {
   PESAN_MUAT_GAGAL,
   PESAN_PROSES_GAGAL,
@@ -25,6 +25,7 @@ export function RealisasiTab() {
   const [sampai, setSampai] = useState('');
   const [sibuk, setSibuk] = useState(false);
   const busyRef = useRef(false);
+  const [pratinjau, setPratinjau] = useState<{ judul: string; body: string } | null>(null);
 
   async function muat() {
     if (busyRef.current) return;
@@ -123,7 +124,9 @@ export function RealisasiTab() {
           <Button
             variant="ghost"
             disabled={sibuk}
-            onClick={() => printLaporan('Realisasi', realisasiToHtml(hasil, rows))}
+            onClick={() =>
+              setPratinjau({ judul: 'Realisasi', body: realisasiToHtml(hasil, rows) })
+            }
           >
             Print / PDF
           </Button>
@@ -188,6 +191,14 @@ export function RealisasiTab() {
           </tbody>
         </table>
       </Card>
+
+      {pratinjau && (
+        <PratinjauHtmlModal
+          judul={pratinjau.judul}
+          body={pratinjau.body}
+          onClose={() => setPratinjau(null)}
+        />
+      )}
     </div>
   );
 }

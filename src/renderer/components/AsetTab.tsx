@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Aset } from '../../core/types.js';
 import { formatRp } from '../../utils/format.js';
-import { asetToHtml, asetToWorkbook, printLaporan, workbookToBuffer, wrapPrintDocument } from '../../features/export/workbooks.js';
+import { asetToHtml, asetToWorkbook, workbookToBuffer, wrapPrintDocument } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
 import {
@@ -15,6 +15,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { PratinjauHtmlModal } from './PratinjauHtmlModal.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 const JENIS = ['TANAH', 'BANGUNAN', 'LAINNYA'] as const;
@@ -36,6 +37,7 @@ export function AsetTab() {
   const [nilai, setNilai] = useState(0);
   const [editId, setEditId] = useState<string | null>(null);
   const [hapusTarget, setHapusTarget] = useState<Aset | null>(null);
+  const [pratinjau, setPratinjau] = useState<{ judul: string; body: string } | null>(null);
   const { sibuk, jalankan } = useAksiSibuk();
 
   async function refresh() {
@@ -247,7 +249,9 @@ export function AsetTab() {
           <Button
             variant="ghost"
             disabled={sibuk}
-            onClick={() => printLaporan('Inventaris Aset', asetToHtml(shown))}
+            onClick={() =>
+              setPratinjau({ judul: 'Inventaris Aset', body: asetToHtml(shown) })
+            }
           >
             Print / PDF
           </Button>
@@ -297,6 +301,14 @@ export function AsetTab() {
           </table>
         </div>
       </Card>
+
+      {pratinjau && (
+        <PratinjauHtmlModal
+          judul={pratinjau.judul}
+          body={pratinjau.body}
+          onClose={() => setPratinjau(null)}
+        />
+      )}
 
       {hapusTarget && (
         <KonfirmasiModal

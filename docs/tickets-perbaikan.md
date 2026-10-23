@@ -313,11 +313,12 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** angka sama dengan laporan; smoke.
   - **Dependency:** P0-5
 
-- [ ] **P1-15 — Hardening Electron ringan**
+- [x] **P1-15 — Hardening Electron ringan** (2026-10-23: single-instance lock + fokus window lama, CSP produksi ketat via plugin build (dev tetap boleh inline script), window baru/navigasi luar diblokir, print lama Aset/Realisasi/Pembantu pindah ke pratinjau in-app; 348/348 test hijau)
   - **Langkah:** `app.requestSingleInstanceLock()`; `setWindowOpenHandler` deny; CSP di `index.html`;
     pastikan dev & build tetap jalan.
   - **DoD:** dua instance tidak membuka window baru; `npm run build` hijau.
   - **Dependency:** —
+  - **Bukti tambahan:** `docs/hardening-electron.md` (cara uji dua instance + CSP).
 
 - [x] **P1-16 — Template cetak resmi & pratinjau** (2026-10-23: model cetak A4 eksplisit + paginator/header berulang + pratinjau iframe & PDF identik untuk 7 laporan; 280/280 test hijau)
   - **Konteks:** feedback WhatsApp: "bagaimana dengan layout print?". v1.2.0 mencetak HTML sederhana;

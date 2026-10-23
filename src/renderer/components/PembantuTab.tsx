@@ -6,12 +6,12 @@ import { buildPembantu } from '../../features/reports/pembantu/pembantu.js';
 import {
   pembantuToHtml,
   pembantuToWorkbook,
-  printLaporan,
   workbookToBuffer,
   wrapPrintDocument,
 } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Badge, Button, Card, ErrorBox, Field, Select, TextInput } from './ui.js';
+import { PratinjauHtmlModal } from './PratinjauHtmlModal.js';
 import {
   PESAN_MUAT_GAGAL,
   PESAN_PROSES_GAGAL,
@@ -29,6 +29,7 @@ export function PembantuTab() {
   const [sampai, setSampai] = useState('');
   const [sibuk, setSibuk] = useState(false);
   const busyRef = useRef(false);
+  const [pratinjau, setPratinjau] = useState<{ judul: string; body: string } | null>(null);
 
   useEffect(() => {
     api
@@ -146,7 +147,12 @@ export function PembantuTab() {
           <Button
             variant="ghost"
             disabled={sibuk}
-            onClick={() => printLaporan(`Pembantu ${kode}`, pembantuToHtml(hasil))}
+            onClick={() =>
+              setPratinjau({
+                judul: `Pembantu ${kode}`,
+                body: pembantuToHtml(hasil),
+              })
+            }
           >
             Print / PDF
           </Button>
@@ -195,6 +201,14 @@ export function PembantuTab() {
           </table>
         </div>
       </Card>
+
+      {pratinjau && (
+        <PratinjauHtmlModal
+          judul={pratinjau.judul}
+          body={pratinjau.body}
+          onClose={() => setPratinjau(null)}
+        />
+      )}
     </div>
   );
 }

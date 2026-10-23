@@ -109,6 +109,7 @@ import {
   ubahPin,
 } from './kunci.js';
 import { sudahSetupPin } from '../db/repository.js';
+import { urlDiizinkan } from './windowSecurity.js';
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
@@ -1066,7 +1067,15 @@ function registerIpc(): void {
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
         });
         if (canceled || !filePath) return ok({ saved: false, path: '' });
-        pdfWin = new BrowserWindow({ show: false, webPreferences: { offscreen: true } });
+        pdfWin = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            offscreen: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        });
         await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
         const pdf = await pdfWin.webContents.printToPDF({
           pageSize: 'A4',
@@ -1196,50 +1205,86 @@ function preloadPath(): string {
 }
 
 function createWindow(): void {
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  const rendererFile = join(__dirname, '../renderer/index.html');
+
   win = new BrowserWindow({
     width: 1280,
     height: 800,
     title: 'Keuangan Pura Dalem Puri',
-    webPreferences: { preload: preloadPath() },
+    webPreferences: {
+      preload: preloadPath(),
+      // P1-15: preload hanya memakai contextBridge + ipcRenderer sehingga aman
+      // dijalankan sandbox; preload tetap CJS sesuai catatan electron-vite.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    void win.loadURL(process.env['ELECTRON_RENDERER_URL']);
+
+  // Cegah window baru (target=_blank/window.open) dari renderer.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Hanya izinkan navigasi ke dev server aplikasi atau file renderer sendiri.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!urlDiizinkan(url, { devUrl, rendererFile })) event.preventDefault();
+  });
+
+  if (devUrl) {
+    void win.loadURL(devUrl);
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    void win.loadFile(rendererFile);
   }
   win.on('closed', () => (win = null));
 }
 
-void app.whenReady().then(() => {
-  const pathDb = dbPath();
-  // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak hilang.
-  try {
-    const p = backupPraUpgrade(pathDb);
-    if (p) console.log(`[backup-upgrade] ${p}`);
-  } catch (e) {
-    console.warn('[backup-upgrade] gagal:', String(e));
-  }
-  db = openDb(pathDb);
-  // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
-  try {
-    const p = autoBackupHarian(db, join(dirname(dbPath()), 'backups'), 7);
-    console.log(`[backup-auto] ${p}`);
-  } catch (e) {
-    console.warn('[backup-auto] gagal:', String(e));
-  }
-  // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
-  // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
-  if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
-    const n = seedDev(db);
-    if (n > 0) console.log(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
-  }
-  registerIpc();
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+function mulaiAplikasi(): void {
+  // Instance kedua tidak boleh membuka window baru: fokus/restore window utama.
+  app.on('second-instance', () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
   });
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  void app.whenReady().then(() => {
+    const pathDb = dbPath();
+    // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak hilang.
+    try {
+      const p = backupPraUpgrade(pathDb);
+      if (p) console.log(`[backup-upgrade] ${p}`);
+    } catch (e) {
+      console.warn('[backup-upgrade] gagal:', String(e));
+    }
+    db = openDb(pathDb);
+    // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
+    try {
+      const p = autoBackupHarian(db, join(dirname(dbPath()), 'backups'), 7);
+      console.log(`[backup-auto] ${p}`);
+    } catch (e) {
+      console.warn('[backup-auto] gagal:', String(e));
+    }
+    // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
+    // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
+    if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
+      const n = seedDev(db);
+      if (n > 0) console.log(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
+    }
+    registerIpc();
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}
+
+// Wajib sebelum whenReady: instance kedua langsung keluar dan tidak mendaftar
+// IPC/window apa pun. Instance pertama menerima event `second-instance`.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  mulaiAplikasi();
+}
