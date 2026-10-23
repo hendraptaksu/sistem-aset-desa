@@ -368,7 +368,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** dokumen cocok dengan perilaku build Windows.
   - **Dependency:** —
 
-- [ ] **P2-9 — Import data massal dari Excel**
+- [x] **P2-9 — Import data massal dari Excel** (2026-10-23: template xlsx 3 sheet + parser dua bentuk + adapter posting per grup dengan preview/konfirmasi kas minus/audit `IMPORT-EXCEL` + tab Import Excel; 425/425 test hijau)
   - **Langkah:** template xlsx → validasi → buat jurnal; laporan hasil per baris (sukses/gagal + alasan);
     berguna untuk migrasi awal dari pembukuan lama.
   - **DoD:** test parser + pembuatan jurnal; tolak file tidak seimbang.

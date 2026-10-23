@@ -133,6 +133,42 @@ Foto kuitansi/nota atau PDF ditempelkan per jurnal:
 Lampiran disimpan sebagai file di folder `attachments`, **bukan** di dalam file
 database. Karena itu lampiran **tidak ikut backup `.db`** — lihat bagian 5.
 
+### 2.8 Import Excel (migrasi data lama / banyak jurnal sekaligus)
+
+Menu **Import Excel** dipakai bila data sudah ada di Excel dan ingin dimasukkan
+sekaligus. Alurnya empat langkah:
+
+1. **Unduh Template** → simpan file `.xlsx`. Di dalamnya ada sheet:
+   - **Jurnal** — tabel yang diisi (contoh 3 grup sudah tersedia),
+   - **Petunjuk** — cara pakai singkat,
+   - **Akun** — daftar kode akun yang sah beserta nama dan tipenya.
+2. **Isi file.** Satu **grup** = satu jurnal. Kolom sheet Jurnal:
+   `grup`, `tanggal`, `no_bukti`, `keterangan`, `akun`, `debit`, `kredit`,
+   `catatan`.
+   - `tanggal` ditulis `YYYY-MM-DD` (mis. `2026-01-31`) atau `DD/MM/YYYY`
+     (mis. `31/01/2026`). Tanggal yang tidak ada (31 Feb) ditolak.
+   - `akun` berisi **kode akun**, bukan nama (mis. `1001`).
+   - `debit` dan `kredit` berisi **angka rupiah** pada salah satu kolom saja,
+     bukan sen dan tanpa tulisan `Rp`.
+   - `tanggal`, `keterangan`, dan `no_bukti` boleh hanya diisi di baris pertama
+     grup; baris berikutnya otomatis mengikuti.
+   - Setiap grup minimal 2 baris dan **total debit harus sama dengan total
+     kredit**. Grup yang tidak seimbang ditolak seluruhnya.
+   - `no_bukti` opsional. Kosong = sistem membuat `JU-<tahun>-<urut>`.
+3. **Pilih & Pratinjau** → pilih file `.xlsx`. Sistem menampilkan ringkasan dan
+   hasil **per baris** (baris Excel, grup, tanggal, keterangan, akun, debit,
+   kredit, status, alasan). Tahap ini **belum menyimpan apa pun**.
+4. **Impor N Jurnal Valid** → konfirmasi. Hanya grup valid yang disimpan. Bila
+   ada peringatan kas/bank minus, centang izin khusus setelah memeriksa saldo;
+   tanpa centang, grup tersebut tidak diimpor. Setelah selesai, nomor bukti yang
+   dibuat ditampilkan dan jurnal bisa dilihat di **Jurnal Umum**.
+
+Bentuk sederhana juga didukung: satu baris Excel dengan kolom `tanggal`,
+`keterangan`, `akun_debit`, `akun_kredit`, `nominal` menjadi satu jurnal dua
+baris. Batas aman: file maksimal **10 MB** dan maksimal **5.000 baris** data.
+Jurnal yang sudah diimpor tetap permanen; koreksi dilakukan lewat jurnal balik,
+bukan edit/hapus.
+
 ---
 
 ## 3. Rutinitas mingguan dan bulanan

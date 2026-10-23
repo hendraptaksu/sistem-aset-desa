@@ -9,6 +9,7 @@ import {
   Building2,
   ChevronsLeft,
   ChevronsRight,
+  FileSpreadsheet,
   HandCoins,
   Landmark,
   LayoutDashboard,
@@ -31,6 +32,7 @@ import { PihakTab } from './components/PihakTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
 import { RealisasiTab } from './components/RealisasiTab.js';
 import { RekonsiliasiBankTab } from './components/RekonsiliasiBankTab.js';
+import { ImportExcelTab } from './components/ImportExcelTab.js';
 import { LabaRugiTab } from './components/LabaRugiTab.js';
 import { ArusKasTab } from './components/ArusKasTab.js';
 import { NeracaTab } from './components/NeracaTab.js';
@@ -45,7 +47,7 @@ import { PengaturanTab } from './components/PengaturanTab.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -59,6 +61,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'pembantu', label: 'Pembantu', Icon: NotebookText },
   { id: 'realisasi', label: 'Anggaran', Icon: BarChart3 },
   { id: 'rekonsiliasi', label: 'Rekonsiliasi Bank', Icon: Landmark },
+  { id: 'import', label: 'Import Excel', Icon: FileSpreadsheet },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
   { id: 'arus-kas', label: 'Arus Kas', Icon: Banknote },
@@ -219,6 +222,7 @@ export function App() {
             {tab === 'pembantu' && <PembantuTab />}
             {tab === 'realisasi' && <RealisasiTab />}
             {tab === 'rekonsiliasi' && <RekonsiliasiBankTab />}
+            {tab === 'import' && <ImportExcelTab />}
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (
               <NeracaTab

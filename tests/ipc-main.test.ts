@@ -136,6 +136,9 @@ const CHANNEL_IPC = [
   'dashboard:get',
   'file:save-buffer',
   'file:save-pdf',
+  'import:preview',
+  'import:proses',
+  'import:template',
   'jurnal:cari',
   'jurnal:koreksi-isi-ulang',
   'jurnal:list',
@@ -191,11 +194,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 69 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 72 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(69);
+    expect(env.handlers.size).toBe(72);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(69);
+    expect(CHANNEL_IPC).toHaveLength(72);
   });
 });
 
@@ -235,6 +238,56 @@ describe('P2-8 — info lokasi & buka folder', () => {
     expect(auto.ok, auto.error).toBe(true);
     expect(auto.data.path).toBe(join(env.dir, 'data', 'backups', 'pura-2025.db'));
     expect(existsSync(auto.data.path)).toBe(true);
+  });
+});
+
+describe('P2-9 — import Excel lewat IPC', () => {
+  it('unduh template → pratinjau tanpa menulis → proses membuat jurnal', async () => {
+    const env = buatEnv();
+    const target = join(env.dir, 'template-import.xlsx');
+
+    env.saveQueue.push({ canceled: false, filePath: target });
+    const template = await env.panggil('import:template');
+    expect(template.ok, template.error).toBe(true);
+    expect(template.data).toEqual({ saved: true, path: target });
+    expect(existsSync(target)).toBe(true);
+
+    // Dialog batal → {diproses:false}, bukan error.
+    const batal = await env.panggil('import:preview');
+    expect(batal.ok, batal.error).toBe(true);
+    expect(batal.data).toMatchObject({ diproses: false });
+
+    env.openQueue.push({ canceled: false, filePaths: [target] });
+    const preview = await env.panggil('import:preview');
+    expect(preview.ok, preview.error).toBe(true);
+    expect(preview.data).toMatchObject({
+      diproses: true,
+      namaFile: 'template-import.xlsx',
+    });
+    expect(preview.data.hasil.ringkasan).toMatchObject({
+      totalGrup: 3,
+      grupValid: 3,
+      seimbang: true,
+    });
+    // Pratinjau tidak boleh menulis jurnal.
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
+
+    const proses = await env.panggil('import:proses', target, {
+      konfirmasiPeringatan: true,
+    });
+    expect(proses.ok, proses.error).toBe(true);
+    expect(proses.data.hasil.ringkasan).toMatchObject({
+      jurnalDibuat: 3,
+      grupBerhasil: 3,
+      grupGagal: 0,
+    });
+    const daftar = (await env.panggil('jurnal:list', {})).data;
+    expect(daftar).toHaveLength(3);
+    expect(daftar.map((j: { no_bukti: string }) => j.no_bukti)).toEqual(
+      expect.arrayContaining(['JU-2026-0001', 'JU-2026-0002', 'JU-2026-0099']),
+    );
+    const audit = await env.panggil('audit:list', { aksi: 'IMPORT-EXCEL' });
+    expect(audit.data.total).toBe(1);
   });
 });
 
