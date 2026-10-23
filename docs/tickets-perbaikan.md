@@ -349,7 +349,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test perhitungan selisih.
   - **Dependency:** P0-5
 
-- [ ] **P2-4 — Lampiran bukti jurnal**
+- [x] **P2-4 — Lampiran bukti jurnal** (2026-10-23: metadata `lampiran_jurnal` v8 + file di `userData/attachments` + IPC/UI detail bersama (Unggah/Lihat/Buka/Hapus) + dokumen peringatan backup; 389/389 test hijau)
   - **Langkah:** unggah foto/PDF kuitansi per jurnal (disimpan di `userData/attachments`, bukan di DB);
     tampil di detail jurnal; dokumentasikan bahwa lampiran TIDAK ikut backup `.db`.
   - **DoD:** test metadata; smoke.

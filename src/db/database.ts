@@ -23,11 +23,13 @@ import { COA } from './coa.js';
  *          dan sisa SELALU dihitung dari jurnal lewat core/reports.ts.
  * - 7    = rekonsiliasi bank (P2-2). Hanya saldo menurut rekening koran yang
  *          disimpan; saldo buku, selisih, dan daftar mutasi dihitung dari jurnal.
+ * - 8    = lampiran bukti jurnal (P2-4). Hanya metadata; file fisik ada di
+ *          `<userData>/attachments` dan TIDAK ikut backup `.db`.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
- * DDL v2–v7. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
+ * DDL v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
  * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
@@ -209,6 +211,21 @@ CREATE TABLE IF NOT EXISTS rekonsiliasi_bank (
 );
 CREATE INDEX IF NOT EXISTS idx_rekonsiliasi_akun_tanggal
   ON rekonsiliasi_bank(akun_kode, tanggal);
+
+-- Lampiran bukti jurnal (P2-4). HANYA metadata: file fisik tinggal di folder
+-- <userData>/attachments dan TIDAK ikut backup .db. nama_simpan relatif
+-- terhadap folder itu; DB tidak pernah menyimpan path absolut.
+CREATE TABLE IF NOT EXISTS lampiran_jurnal (
+  id TEXT PRIMARY KEY,
+  jurnal_id TEXT NOT NULL,
+  nama_asli TEXT NOT NULL,
+  nama_simpan TEXT NOT NULL UNIQUE,
+  mime TEXT NOT NULL,
+  ukuran INTEGER NOT NULL CHECK (ukuran >= 0),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_lampiran_jurnal ON lampiran_jurnal(jurnal_id);
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {

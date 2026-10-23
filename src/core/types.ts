@@ -99,6 +99,19 @@ export type JurnalHeaderInput = {
   created_at?: string;
 };
 
+// ---- Lampiran bukti jurnal (P2-4) ----
+// HANYA metadata. Isi file disimpan di `<userData>/attachments`, bukan di DB,
+// dan TIDAK ikut backup `.db`. `nama_simpan` relatif terhadap folder tersebut.
+export type LampiranJurnal = {
+  id: string;
+  jurnal_id: string;
+  nama_asli: string;
+  nama_simpan: string;
+  mime: string;
+  ukuran: number; // byte
+  created_at: string; // ISO datetime
+};
+
 // ---- Pihak & piutang/hutang (P1-5) ----
 // `pihak` hanya master nama; `jurnal_pihak` hanya metadata penghubung.
 // Saldo TIDAK disimpan — selalu dihitung dari baris jurnal 1050/2050.

@@ -734,6 +734,15 @@ export function validasiIdJurnal(nilai: unknown): HasilBentuk<string> {
   return { ok: true, input: id };
 }
 
+/** ID lampiran untuk pratinjau/buka/hapus; hanya string wajar. */
+export function validasiIdLampiran(nilai: unknown): HasilBentuk<string> {
+  if (typeof nilai !== 'string' || !nilai.trim())
+    return { ok: false, error: 'Lampiran wajib dipilih.' };
+  const id = nilai.trim();
+  if (id.length > 200) return { ok: false, error: 'ID lampiran terlalu panjang.' };
+  return { ok: true, input: id };
+}
+
 // ---------------------------------------------------------------------------
 // Pengaturan pembukuan (P1-13)
 // ---------------------------------------------------------------------------

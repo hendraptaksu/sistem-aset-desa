@@ -17,6 +17,7 @@ import type {
   JurnalBarisInput,
   JurnalHeaderInput,
   JurnalPihakTampil,
+  LampiranJurnal,
   Panjar,
   PanjarItem,
   Pihak,
@@ -38,6 +39,7 @@ export type {
   ArusKasHasil,
   BukuBesarHasil,
   LabaRugiHasil,
+  LampiranJurnal,
   NeracaHasil,
   NeracaSaldoHasil,
   RealisasiAnggaranHasil,
@@ -79,6 +81,19 @@ export type FilterJurnalCariApi = {
 export type JurnalCariPage = {
   rows: JurnalLengkap[];
   total: number;
+};
+
+/** Pratinjau lampiran; `dataUrl` hanya tersedia untuk gambar ≤ 5 MB. */
+export type PreviewLampiranApi = {
+  dataUrl?: string;
+  mime: string;
+  namaAsli: string;
+};
+
+/** Hasil dialog unggah lampiran; `saved:false` = operator membatalkan. */
+export type UploadLampiranApi = {
+  saved: boolean;
+  lampiran?: LampiranJurnal;
 };
 
 /** Filter periode layar Laba Rugi & Arus Kas (P1-9). */
@@ -314,6 +329,22 @@ export const api = {
       input,
       opsi,
     ),
+  // ---- Lampiran bukti jurnal (P2-4) ----
+  /** Metadata lampiran satu jurnal; file fisik ada di folder aplikasi. */
+  lampiranList: (jurnalId: string) =>
+    call<LampiranJurnal[]>('lampiran:list', jurnalId),
+  /** Dialog unggah di main; batalkan = `{ saved:false }`. */
+  lampiranUpload: (jurnalId: string) =>
+    call<UploadLampiranApi>('lampiran:upload', jurnalId),
+  /** Pratinjau gambar inline (≤ 5 MB); PDF hanya metadata, buka via OS. */
+  lampiranPreview: (id: string) =>
+    call<PreviewLampiranApi>('lampiran:preview', id),
+  /** Buka file lampiran dengan aplikasi OS; path divalidasi di main. */
+  lampiranOpen: (id: string) =>
+    call<{ opened: boolean }>('lampiran:open', id),
+  /** Hapus metadata + file (best-effort); audit LAMPIRAN-HAPUS. */
+  lampiranDelete: (id: string) =>
+    call<{ deleted: boolean; id: string }>('lampiran:delete', id),
   // ---- Piutang & Hutang + master pihak (P1-5) ----
   pihakList: () => call<Pihak[]>('pihak:list'),
   pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),

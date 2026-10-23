@@ -1,7 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { config as loadEnv } from 'dotenv';
 import { join, dirname, basename } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
@@ -9,6 +9,7 @@ import {
   catatAudit,
   deleteAset,
   getAset,
+  getJurnal,
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
   insertAset,
@@ -56,6 +57,20 @@ import {
   listRekonsiliasi,
   selesaikanRekonsiliasi,
 } from '../db/rekonsiliasi.js';
+import {
+  getLampiran,
+  hapusLampiran,
+  listLampiran,
+  tambahLampiran,
+} from '../db/lampiran.js';
+import {
+  dataUrlLampiran,
+  folderLampiranDefault,
+  hapusFileLampiran,
+  pathFileLampiran,
+  simpanLampiranDenganMetadata,
+} from '../features/lampiran/lampiran.js';
+import { validasiLampiran } from '../core/lampiran.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
@@ -110,6 +125,7 @@ import {
   validasiFilterJurnalCari,
   validasiFilterNeraca,
   validasiIdJurnal,
+  validasiIdLampiran,
   validasiIdRekonsiliasi,
   validasiRentangLaporan,
   validasiTanggalOpsional,
@@ -145,6 +161,14 @@ function dbPath(): string {
   return join(dir, 'pura.db');
 }
 
+/**
+ * Folder file lampiran. Selalu di userData (bukan di samping PURA_DB dev),
+ * sesuai P2-4. File TIDAK ikut backup `.db`.
+ */
+function folderLampiran(): string {
+  return folderLampiranDefault(app.getPath('userData'));
+}
+
 const ok = <T>(data: T) => ({ ok: true as const, data });
 const fail = (error: string, perluAlasan = false, perluKonfirmasi = false) => ({
   ok: false as const,
@@ -170,6 +194,8 @@ const GAGAL_ANGGARAN =
   'Terjadi kesalahan saat menyimpan pagu anggaran. Coba lagi; bila tetap gagal, hubungi pendamping.';
 const GAGAL_REKONSILIASI =
   'Terjadi kesalahan saat memproses rekonsiliasi bank. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_LAMPIRAN =
+  'Terjadi kesalahan saat memproses lampiran. Coba lagi; bila tetap gagal, hubungi pendamping.';
 const GAGAL_TUTUP =
   'Terjadi kesalahan saat memproses tutup buku. Coba lagi; bila tetap gagal, hubungi pendamping.';
 const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
@@ -676,6 +702,140 @@ function registerIpc(): void {
       }
     },
   );
+
+  // ---- Lampiran bukti jurnal (P2-4) ----
+  // Renderer hanya mengirim ID jurnal/lampiran, TIDAK PERNAH path absolut.
+  // File fisik disimpan di `<userData>/attachments`; DB hanya metadata.
+  ipcMain.handle('lampiran:list', (_e, jurnalId: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiIdJurnal(jurnalId);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(listLampiran(db, bentuk.input));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  ipcMain.handle('lampiran:upload', async (_e, jurnalId: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiIdJurnal(jurnalId);
+      if (!bentuk.ok) return fail(bentuk.error);
+      if (!getJurnal(db, bentuk.input)) return fail('Jurnal tidak ditemukan.');
+
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Pilih lampiran bukti jurnal',
+        filters: [
+          { name: 'Foto atau PDF', extensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'] },
+        ],
+        properties: ['openFile'],
+      });
+      if (canceled || filePaths.length === 0) return ok({ saved: false });
+
+      const sumber = filePaths[0]!;
+      const namaAsli = basename(sumber);
+      let ukuran = 0;
+      try {
+        ukuran = statSync(sumber).size;
+      } catch {
+        return fail('File lampiran tidak bisa dibaca. Coba pilih file lain.');
+      }
+      // Validasi awal sebelum menyalin file besar ke folder aplikasi.
+      const cek = validasiLampiran({ namaAsli, ukuran });
+      if (!cek.ok) return fail(cek.error);
+
+      const id = uid('lamp');
+      const dir = folderLampiran();
+      const meta = simpanLampiranDenganMetadata(
+        dir,
+        sumber,
+        namaAsli,
+        id,
+        (file) =>
+          tambahLampiran(db, {
+            id,
+            jurnal_id: bentuk.input,
+            nama_asli: file.namaAsli,
+            nama_simpan: file.namaSimpan,
+            mime: file.mime,
+            ukuran: file.ukuran,
+          }),
+      );
+      return ok({ saved: true, lampiran: meta });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_LAMPIRAN));
+    }
+  });
+
+  ipcMain.handle('lampiran:preview', (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiIdLampiran(id);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const meta = getLampiran(db, bentuk.input);
+      if (!meta) return fail('Lampiran tidak ditemukan.');
+
+      // PDF tidak di-inline; renderer memakai tombol Buka (aplikasi OS).
+      if (!meta.mime.startsWith('image/')) {
+        return ok({ mime: meta.mime, namaAsli: meta.nama_asli });
+      }
+      let dataUrl: string | null = null;
+      try {
+        dataUrl = dataUrlLampiran(folderLampiran(), meta.nama_simpan, meta.mime);
+      } catch (e) {
+        return fail(pesanError(e, 'File lampiran tidak ditemukan di folder aplikasi.'));
+      }
+      return ok({
+        mime: meta.mime,
+        namaAsli: meta.nama_asli,
+        ...(dataUrl ? { dataUrl } : {}),
+      });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_LAMPIRAN));
+    }
+  });
+
+  ipcMain.handle('lampiran:open', async (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiIdLampiran(id);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const meta = getLampiran(db, bentuk.input);
+      if (!meta) return fail('Lampiran tidak ditemukan.');
+
+      // pathFileLampiran memvalidasi nama relatif & memastikan file ada di
+      // dalam folder attachments sebelum dibuka.
+      const path = pathFileLampiran(folderLampiran(), meta.nama_simpan);
+      const galat = await shell.openPath(path);
+      if (galat) {
+        return fail('File lampiran tidak bisa dibuka. Pastikan aplikasi pembukanya tersedia.');
+      }
+      return ok({ opened: true });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_LAMPIRAN));
+    }
+  });
+
+  ipcMain.handle('lampiran:delete', (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiIdLampiran(id);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const meta = hapusLampiran(db, bentuk.input);
+      if (!meta) return fail('Lampiran tidak ditemukan.');
+      // Metadata + audit sudah terhapus atomik; file dihapus best-effort.
+      hapusFileLampiran(folderLampiran(), meta.nama_simpan);
+      return ok({ deleted: true, id: meta.id });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_LAMPIRAN));
+    }
+  });
 
   // ---- Piutang & Hutang + master pihak (P1-5) ----
   // Renderer tidak dipercaya: bentuk input dinormalisasi dulu, lalu adapter DB
