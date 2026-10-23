@@ -34,6 +34,10 @@ import { ArusKasTab } from './components/ArusKasTab.js';
 import { NeracaTab } from './components/NeracaTab.js';
 import { TutupTab } from './components/TutupTab.js';
 import { DashboardTab } from './components/DashboardTab.js';
+import type {
+  DashboardFormTransaksi,
+  DashboardTabTujuan,
+} from './components/DashboardTab.js';
 import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
@@ -66,6 +70,17 @@ export function App() {
   const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
   // Drill-down Neraca Saldo → Buku Besar akun yang diklik (P1-8).
   const [akunBukuBesar, setAkunBukuBesar] = useState<string | undefined>();
+  // Pintasan dashboard → form terpandu yang langsung dipilih (P1-14).
+  const [jenisTransaksiAwal, setJenisTransaksiAwal] =
+    useState<DashboardFormTransaksi>('TERIMA');
+
+  const bukaDariDashboard = useCallback(
+    (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => {
+      if (form) setJenisTransaksiAwal(form);
+      setTab(tab);
+    },
+    [],
+  );
 
   const refreshLock = useCallback(async () => {
     try {
@@ -179,12 +194,12 @@ export function App() {
               <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
-              <DashboardTab />
+              <DashboardTab onBukaTab={bukaDariDashboard} />
             </div>
           </>
         ) : (
           <div className="px-6 py-6">
-            {tab === 'transaksi' && <TransaksiTab />}
+            {tab === 'transaksi' && <TransaksiTab jenisAwal={jenisTransaksiAwal} />}
             {tab === 'jurnal' && <JurnalTab />}
             {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
             {tab === 'neraca-saldo' && (

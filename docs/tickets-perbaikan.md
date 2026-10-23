@@ -307,7 +307,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test simpan/baca pengaturan; kop export terpengaruh.
   - **Dependency:** P0-2
 
-- [ ] **P1-14 — Dashboard akuntan**
+- [x] **P1-14 — Dashboard akuntan** (2026-10-23: dashboard akuntan sepenuhnya dari jurnal — kas/bank, laba berjalan mengikuti awal tahun buku, status Neraca Saldo, periode, jurnal & backup terakhir, plus pintasan form terpandu; 340/340 test hijau)
   - **Langkah:** kartu: saldo kas & bank, laba/rugi tahun berjalan, status Neraca Saldo (selalu seimbang),
     periode terbuka/terkunci, jurnal terakhir, backup terakhir; pintasan ke form terpandu.
   - **DoD:** angka sama dengan laporan; smoke.

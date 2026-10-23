@@ -66,11 +66,15 @@ const KARTU_JENIS: KartuJenis[] = [
 const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
   id === 'TERIMA' || id === 'BAYAR' || id === 'PINDAH';
 
-export function TransaksiTab() {
+export function TransaksiTab({
+  jenisAwal,
+}: {
+  jenisAwal?: JenisFormTransaksi;
+} = {}) {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [memuat, setMemuat] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [jenis, setJenis] = useState<JenisFormTransaksi>('TERIMA');
+  const [jenis, setJenis] = useState<JenisFormTransaksi>(jenisAwal ?? 'TERIMA');
   const [saldoStatus, setSaldoStatus] = useState<StatusSaldoAwal | null>(null);
   const [statusSaldoErr, setStatusSaldoErr] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);

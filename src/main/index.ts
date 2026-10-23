@@ -61,7 +61,7 @@ import {
   laporanNeracaSaldo,
   listBarisJurnal,
 } from '../db/laporan.js';
-import { buildDashboardJurnal } from '../features/dashboard/dashboard.js';
+import { buildDashboardJurnal, denganBackupTerakhir } from '../features/dashboard/dashboard.js';
 import {
   autoBackupHarian,
   backupPraUpgrade,
@@ -1003,14 +1003,26 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle('dashboard:get', (_e, cutoff: string) => {
+  ipcMain.handle('dashboard:get', (_e, cutoff: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      if (!tanggalKalenderValid(cutoff))
-        return fail(PESAN_TANGGAL_TIDAK_VALID);
-      const d = buildDashboardJurnal(listBarisJurnal(db), listTutupBuku(db), cutoff);
-      return ok(d);
+      // Cut-off wajib tanggal kalender nyata (P1-12/P1-14).
+      const bentuk = validasiCutoffLaporan(cutoff);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const pengaturan = getPengaturanPembukuan(db);
+      const d = buildDashboardJurnal(
+        listBarisJurnal(db),
+        listTutupBuku(db),
+        bentuk.input,
+        {
+          awalTahunBuku: pengaturan.awalTahunBuku,
+          // Batas tutup buku mengikuti hari ini, bukan cut-off pelaporan.
+          sekarang: new Date().toISOString().slice(0, 10),
+        },
+      );
+      const dirBackup = join(dirname(dbPath()), 'backups');
+      return ok(denganBackupTerakhir(d, lastAutoBackup(dirBackup)));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }
