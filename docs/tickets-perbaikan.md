@@ -355,7 +355,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test metadata; smoke.
   - **Dependency:** P0-2
 
-- [ ] **P2-7 — Test integrasi IPC/main**
+- [x] **P2-7 — Test integrasi IPC/main** (2026-10-23: 67 handler diekstrak ke `registerIpc(deps)` tanpa Electron runtime + alur create→reverse→tutup→backup→restore teruji di DB temp; 393/393 test hijau)
   - **Langkah:** ekstrak handler IPC jadi `registerIpc(deps)` yang bisa di-mock; uji alur create → reverse →
     tutup → backup → restore tanpa Electron runtime.
   - **DoD:** `tests/ipc-main.test.ts` hijau.
