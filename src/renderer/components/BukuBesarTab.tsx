@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Coa, PosisiNormal } from '../../db/coa.js';
 import {
-  bukuBesarToHtml,
   bukuBesarToWorkbook,
   periodeFile,
 } from '../../features/export/workbooks.js';
+import { bukuBesarPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type BukuBesarHasil, type JurnalLengkap } from '../lib/api.js';
 import {
@@ -192,7 +192,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
               judul={`Buku Besar ${data.kode} — ${data.nama}`}
               disabled={memuat || (data.rows.length === 0 && data.saldoAwal === 0)}
               buatWorkbook={() => bukuBesarToWorkbook(data)}
-              buatHtml={() => bukuBesarToHtml(data)}
+              buatDokumen={() => bukuBesarPrintDoc(data)}
             />
           </div>
         )}

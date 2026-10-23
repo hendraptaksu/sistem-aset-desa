@@ -1,43 +1,54 @@
 import { useState } from 'react';
 import type ExcelJS from 'exceljs';
 import {
-  printLaporan,
-  workbookToBuffer,
-  wrapPrintDocument,
-} from '../../features/export/workbooks.js';
+  renderPrintDocument,
+  type PrintDoc,
+  type PrintOrientation,
+} from '../../features/export/printDoc.js';
+import { workbookToBuffer } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Button, ErrorBox } from './ui.js';
+import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 
 function pesanError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+type Pratinjau = {
+  html: string;
+  jumlahHalaman: number;
+  orientasi: PrintOrientation;
+};
+
 /**
- * Tombol export bersama untuk semua layar laporan (P1-10).
+ * Tombol export bersama untuk semua layar laporan (P1-10/P1-16).
  * Renderer hanya membangun workbook/HTML; penyimpanan file tetap di main
  * lewat `file:save-buffer` / `file:save-pdf` (tidak ada akses fs di renderer).
+ * Tombol Print sekarang membuka PRATINJAU; PDF memakai HTML paginator yang sama.
  */
 export function ExportActions({
   namaDasar,
   judul,
   disabled = false,
   buatWorkbook,
-  buatHtml,
+  buatDokumen,
   tampilkanPrint = true,
 }: {
   /** Nama file tanpa ekstensi; sebaiknya sudah memuat periode/cut-off. */
   namaDasar: string;
-  /** Judul dokumen untuk HTML/PDF. */
+  /** Judul dokumen untuk pratinjau/PDF. */
   judul: string;
   /** Data kosong / belum siap → semua tombol nonaktif. */
   disabled?: boolean;
   buatWorkbook: () => Promise<ExcelJS.Workbook>;
-  buatHtml: () => string | Promise<string>;
+  /** Dokumen cetak P1-16 (model yang sama untuk pratinjau & PDF). */
+  buatDokumen: () => PrintDoc | Promise<PrintDoc>;
   tampilkanPrint?: boolean;
 }) {
   const [sibuk, setSibuk] = useState<null | 'excel' | 'pdf' | 'print'>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [pratinjau, setPratinjau] = useState<Pratinjau | null>(null);
   const nonaktif = disabled || sibuk !== null;
 
   async function exportExcel(): Promise<void> {
@@ -61,35 +72,40 @@ export function ExportActions({
     }
   }
 
+  async function siapkanCetak(): Promise<Pratinjau> {
+    const doc = await buatDokumen();
+    return renderPrintDocument(doc);
+  }
+
   async function simpanPdf(): Promise<void> {
     if (nonaktif) return;
     setErr(null);
     setInfo(null);
     setSibuk('pdf');
     try {
-      const html = await buatHtml();
-      const dokumen = wrapPrintDocument(judul, html, { autoPrint: false });
+      const hasilCetak = await siapkanCetak();
       const hasil = await api.savePdf({
-        htmlB64: strToB64(dokumen),
+        htmlB64: strToB64(hasilCetak.html),
         defaultName: `${namaDasar}.pdf`,
+        landscape: hasilCetak.orientasi === 'landscape',
       });
       setInfo(hasil.saved ? `Tersimpan: ${hasil.path}` : 'Penyimpanan dibatalkan.');
     } catch (e) {
-      setErr(`Gagal menyimpan PDF. ${pesanError(e)}`);
+      setErr(`Gagal menyiapkan dokumen PDF. ${pesanError(e)}`);
     } finally {
       setSibuk(null);
     }
   }
 
-  async function cetak(): Promise<void> {
+  async function bukaPratinjau(): Promise<void> {
     if (nonaktif) return;
     setErr(null);
     setInfo(null);
     setSibuk('print');
     try {
-      printLaporan(judul, await buatHtml());
+      setPratinjau(await siapkanCetak());
     } catch (e) {
-      setErr(`Gagal membuka jendela cetak. ${pesanError(e)}`);
+      setErr(`Gagal membuat pratinjau cetak. ${pesanError(e)}`);
     } finally {
       setSibuk(null);
     }
@@ -105,8 +121,8 @@ export function ExportActions({
           {sibuk === 'pdf' ? 'Menyiapkan PDF…' : 'Simpan PDF'}
         </Button>
         {tampilkanPrint && (
-          <Button variant="ghost" disabled={nonaktif} onClick={() => void cetak()}>
-            Print
+          <Button variant="ghost" disabled={nonaktif} onClick={() => void bukaPratinjau()}>
+            {sibuk === 'print' ? 'Menyiapkan pratinjau…' : 'Pratinjau Cetak'}
           </Button>
         )}
       </div>
@@ -116,6 +132,16 @@ export function ExportActions({
         </div>
       )}
       <ErrorBox msg={err} />
+
+      {pratinjau && (
+        <PratinjauCetakModal
+          judul={judul}
+          html={pratinjau.html}
+          jumlahHalaman={pratinjau.jumlahHalaman}
+          orientasi={pratinjau.orientasi}
+          onClose={() => setPratinjau(null)}
+        />
+      )}
     </div>
   );
 }

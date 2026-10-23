@@ -319,7 +319,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** dua instance tidak membuka window baru; `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **P1-16 — Template cetak resmi & pratinjau**
+- [x] **P1-16 — Template cetak resmi & pratinjau** (2026-10-23: model cetak A4 eksplisit + paginator/header berulang + pratinjau iframe & PDF identik untuk 7 laporan; 280/280 test hijau)
   - **Konteks:** feedback WhatsApp: "bagaimana dengan layout print?". v1.2.0 mencetak HTML sederhana;
     perlu tata letak yang rapi dan cocok dengan dokumen resmi pura.
   - **Langkah:**

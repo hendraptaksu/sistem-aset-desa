@@ -9,11 +9,11 @@ import {
 import type { JurnalInput } from '../../core/posting.js';
 import type { Panjar, PanjarItem } from '../../core/types.js';
 import {
-  panjarToHtml,
   panjarToWorkbook,
   periodeFile,
   rentangDariRows,
 } from '../../features/export/workbooks.js';
+import { panjarPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
@@ -726,8 +726,8 @@ export function PanjarTab() {
               buatWorkbook={() =>
                 dataPanjarExport().then((daftar) => panjarToWorkbook(daftar, coa))
               }
-              buatHtml={() =>
-                dataPanjarExport().then((daftar) => panjarToHtml(daftar, coa))
+              buatDokumen={() =>
+                dataPanjarExport().then((daftar) => panjarPrintDoc(daftar, coa))
               }
             />
           </div>

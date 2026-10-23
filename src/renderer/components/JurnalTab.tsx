@@ -8,18 +8,25 @@ import {
 import { JENIS_JURNAL, tanggalKalenderValid } from '../../core/posting.js';
 import { ALASAN_REVERSAL_MIN } from '../../core/reversal.js';
 import {
-  jurnalDaftarToHtml,
-  jurnalToHtml,
   jurnalToWorkbook,
   periodeFile,
-  printLaporan,
   rentangDariRows,
 } from '../../features/export/workbooks.js';
+import {
+  jurnalDetailPrintDoc,
+  jurnalPrintDoc,
+} from '../../features/export/printAdapters.js';
+import {
+  renderPrintDocument,
+  type PrintDoc,
+  type PrintOrientation,
+} from '../../features/export/printDoc.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, Select, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { JurnalUmumEditor } from './JurnalUmumEditor.js';
+import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const PAGE = 25;
@@ -71,6 +78,22 @@ export function JurnalTab({
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
   const [koreksi, setKoreksi] = useState<JurnalLengkap | null>(null);
   const [editor, setEditor] = useState<{ awal?: FormJurnalUmum } | null>(null);
+  const [pratinjau, setPratinjau] = useState<{
+    judul: string;
+    html: string;
+    jumlahHalaman: number;
+    orientasi: PrintOrientation;
+  } | null>(null);
+
+  function bukaPratinjau(doc: PrintDoc): void {
+    try {
+      setErr(null);
+      const hasil = renderPrintDocument(doc);
+      setPratinjau({ judul: doc.judul, ...hasil });
+    } catch (e) {
+      setErr(`Gagal membuat pratinjau cetak. ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   function bukaEditor(awal?: FormJurnalUmum): void {
     setErr(null);
@@ -218,7 +241,7 @@ export function JurnalTab({
             judul="Jurnal Umum"
             disabled={filtered.length === 0}
             buatWorkbook={() => jurnalToWorkbook(filtered, coa, opsiPeriodeJurnal)}
-            buatHtml={() => jurnalDaftarToHtml(filtered, coa, opsiPeriodeJurnal)}
+            buatDokumen={() => jurnalPrintDoc(filtered, coa, opsiPeriodeJurnal)}
           />
         </div>
 
@@ -328,12 +351,7 @@ export function JurnalTab({
           coa={coa}
           onClose={() => setDetail(null)}
           onDuplikat={bukaDuplikat}
-          onPrint={(jurnal) =>
-            printLaporan(
-              `Jurnal Umum ${jurnal.no_bukti || jurnal.id}`,
-              jurnalToHtml(jurnal, coa),
-            )
-          }
+          onPrint={(jurnal) => bukaPratinjau(jurnalDetailPrintDoc(jurnal, coa))}
         />
       )}
 
@@ -360,6 +378,16 @@ export function JurnalTab({
             setInfo(pesan);
             void refresh();
           }}
+        />
+      )}
+
+      {pratinjau && (
+        <PratinjauCetakModal
+          judul={pratinjau.judul}
+          html={pratinjau.html}
+          jumlahHalaman={pratinjau.jumlahHalaman}
+          orientasi={pratinjau.orientasi}
+          onClose={() => setPratinjau(null)}
         />
       )}
     </div>
@@ -442,7 +470,7 @@ function DetailJurnalModal({
             Duplikat
           </Button>
           <Button variant="ghost" onClick={() => onPrint(jurnal)}>
-            Print
+            Pratinjau Cetak
           </Button>
           <Button variant="ghost" onClick={onClose}>Tutup</Button>
         </div>

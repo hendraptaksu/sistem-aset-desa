@@ -919,10 +919,10 @@ function registerIpc(): void {
   );
 
   // Simpan PDF langsung: render HTML laporan di hidden window lalu printToPDF.
-  // Renderer membangun HTML via wrapPrintDocument(..., { autoPrint: false }).
+  // Renderer mengirim HTML paginator P1-16 (tanpa script, halaman eksplisit).
   ipcMain.handle(
     'file:save-pdf',
-    async (_e, req: { htmlB64: string; defaultName: string }) => {
+    async (_e, req: { htmlB64: string; defaultName: string; landscape?: boolean }) => {
       let pdfWin: BrowserWindow | null = null;
       try {
         const k = perluBuka();
@@ -939,8 +939,12 @@ function registerIpc(): void {
         await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
         const pdf = await pdfWin.webContents.printToPDF({
           pageSize: 'A4',
+          landscape: req.landscape === true,
           printBackground: true,
-          margins: { top: 0.55, bottom: 0.55, left: 0.47, right: 0.47 },
+          // Margin diatur oleh @page + padding .halaman pada HTML paginator,
+          // supaya PDF identik dengan pratinjau (tidak dobel margin).
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          preferCSSPageSize: true,
         });
         writeFileSync(filePath, pdf);
         return ok({ saved: true, path: filePath });

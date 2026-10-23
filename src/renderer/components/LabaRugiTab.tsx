@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import {
-  labaRugiToHtml,
   labaRugiToWorkbook,
   periodeFile,
 } from '../../features/export/workbooks.js';
+import { labaRugiPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type LabaRugiHasil } from '../lib/api.js';
 import { badgeLabaRugi } from '../lib/tampilanLaporan.js';
@@ -141,7 +141,7 @@ export function LabaRugiTab() {
               judul="Laba Rugi"
               disabled={memuat}
               buatWorkbook={() => labaRugiToWorkbook(data)}
-              buatHtml={() => labaRugiToHtml(data)}
+              buatDokumen={() => labaRugiPrintDoc(data)}
             />
           </div>
         )}

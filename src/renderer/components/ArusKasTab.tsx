@@ -3,10 +3,10 @@ import { ChevronRight } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import type { ArusKasHasil } from '../../core/reports.js';
 import {
-  arusKasToHtml,
   arusKasToWorkbook,
   periodeFile,
 } from '../../features/export/workbooks.js';
+import { arusKasPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
 import { labelKelompokArusKas } from '../lib/tampilanLaporan.js';
@@ -161,7 +161,7 @@ export function ArusKasTab() {
               judul="Arus Kas"
               disabled={memuat}
               buatWorkbook={() => arusKasToWorkbook(data)}
-              buatHtml={() => arusKasToHtml(data)}
+              buatDokumen={() => arusKasPrintDoc(data)}
             />
           </div>
         )}

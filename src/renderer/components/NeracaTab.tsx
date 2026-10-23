@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import {
-  neracaHasilToHtml,
-  neracaHasilToWorkbook,
-} from '../../features/export/workbooks.js';
+import { neracaHasilToWorkbook } from '../../features/export/workbooks.js';
+import { neracaPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type NeracaHasil, type NeracaSaldoHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
@@ -143,7 +141,7 @@ export function NeracaTab({
               judul={`Neraca per ${formatTanggal(data.cutoff)}`}
               disabled={memuat}
               buatWorkbook={() => neracaHasilToWorkbook(data)}
-              buatHtml={() => neracaHasilToHtml(data)}
+              buatDokumen={() => neracaPrintDoc(data)}
             />
           </div>
         )}
