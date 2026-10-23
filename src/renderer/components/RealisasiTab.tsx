@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Transaksi } from '../../core/types.js';
 import { formatRp } from '../../utils/format.js';
 import { buildRealisasi } from '../../features/reports/realisasi/realisasi.js';
@@ -11,6 +11,11 @@ import {
 } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_PROSES_GAGAL,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 export function RealisasiTab() {
   const [rows, setRows] = useState<Transaksi[]>([]);
@@ -18,8 +23,13 @@ export function RealisasiTab() {
   const [info, setInfo] = useState<string | null>(null);
   const [mulai, setMulai] = useState('');
   const [sampai, setSampai] = useState('');
+  const [sibuk, setSibuk] = useState(false);
+  const busyRef = useRef(false);
 
   async function muat() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSibuk(true);
     setErr(null);
     setInfo(null);
     try {
@@ -29,7 +39,10 @@ export function RealisasiTab() {
       });
       setRows(t);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      busyRef.current = false;
+      setSibuk(false);
     }
   }
 
@@ -44,6 +57,9 @@ export function RealisasiTab() {
   );
 
   async function exportXlsx() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSibuk(true);
     setErr(null);
     setInfo(null);
     try {
@@ -56,11 +72,17 @@ export function RealisasiTab() {
       });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
+    } finally {
+      busyRef.current = false;
+      setSibuk(false);
     }
   }
 
   async function simpanPdf() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSibuk(true);
     setErr(null);
     setInfo(null);
     try {
@@ -68,7 +90,10 @@ export function RealisasiTab() {
       const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'realisasi.pdf' });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
+    } finally {
+      busyRef.current = false;
+      setSibuk(false);
     }
   }
 
@@ -86,13 +111,25 @@ export function RealisasiTab() {
             <TextInput type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </Field>
           <div className="flex items-end gap-2">
-            <Button onClick={() => void muat()}>Muat</Button>
+            <Button disabled={sibuk} onClick={() => void muat()}>
+              {sibuk ? 'Memuat…' : 'Muat'}
+            </Button>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
-          <Button variant="ghost" onClick={() => printLaporan('Realisasi', realisasiToHtml(hasil, rows))}>Print / PDF</Button>
-          <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void exportXlsx()}>
+            {sibuk ? 'Memproses…' : 'Export .xlsx'}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() => printLaporan('Realisasi', realisasiToHtml(hasil, rows))}
+          >
+            Print / PDF
+          </Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void simpanPdf()}>
+            {sibuk ? 'Memproses…' : 'Simpan PDF'}
+          </Button>
         </div>
       </Card>
 

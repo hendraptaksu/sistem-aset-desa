@@ -294,7 +294,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test nomor unik & urut; smoke.
   - **Dependency:** P0-2
 
-- [ ] **P1-12 — Validasi & UX lintas form**
+- [x] **P1-12 — Validasi & UX lintas form** (2026-10-23: helper `pesanError`/`pesanValidasi` + `KonfirmasiModal` & guard anti double-submit di semua form, validasi tanggal kalender seragam di IPC/filter; 320/320 test hijau)
   - **Langkah:** tanggal kalender (P0-4) dipakai di semua form & cutoff; tombol simpan disable saat proses
     (anti double-submit); peringatan kas minus konsisten; pesan error berbahasa Indonesia (tanpa `String(e)`
     mentah); konfirmasi sebelum aksi besar (tutup buku, restore, reversal).

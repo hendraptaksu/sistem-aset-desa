@@ -30,11 +30,17 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  KonfirmasiModal,
   LockModal,
   Select,
   TextInput,
 } from './ui.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -185,11 +191,14 @@ export function PihakTab() {
   const [editNama, setEditNama] = useState('');
   const [editCatatan, setEditCatatan] = useState('');
   const [busyMaster, setBusyMaster] = useState(false);
+  const busyMasterRef = useRef(false);
+  const [hapusTarget, setHapusTarget] = useState<Pihak | null>(null);
 
   // Riwayat per pihak
   const [riwayatId, setRiwayatId] = useState('');
   const [riwayat, setRiwayat] = useState<JurnalPihakTampil[]>([]);
   const [busyRiwayat, setBusyRiwayat] = useState(false);
+  const busyRiwayatRef = useRef(false);
 
   // Form transaksi pihak
   const [alur, setAlur] = useState<AlurPihak>('BERI_PINJAMAN');
@@ -231,7 +240,7 @@ export function PihakTab() {
       setSaldo(s);
       setPihakId((sebelum) => (p.some((x) => x.id === sebelum) ? sebelum : ''));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
       setMemuat(false);
     }
@@ -269,7 +278,8 @@ export function PihakTab() {
 
   const pratinjau = useMemo<{ hasil: HasilJurnalPihak | null; error: string | null }>(() => {
     if (!pihakId) return { hasil: null, error: null };
-    if (!tanggalKalenderValid(tanggal)) return { hasil: null, error: 'Tanggal belum valid.' };
+    if (!tanggalKalenderValid(tanggal))
+      return { hasil: null, error: PESAN_TANGGAL_TIDAK_VALID };
     if (!Number.isInteger(nominal) || nominal <= 0) return { hasil: null, error: null };
 
     const dasar = {
@@ -293,7 +303,7 @@ export function PihakTab() {
               : buatJurnalBayarHutang;
       return { hasil: buat({ ...dasar, akunKas }), error: null };
     } catch (e) {
-      return { hasil: null, error: e instanceof Error ? e.message : String(e) };
+      return { hasil: null, error: pesanError(e) };
     }
   }, [akunBeban, akunKas, alur, infoAlur.placeholder, keterangan, noBukti, nominal, pihakId, tanggal]);
 
@@ -372,7 +382,7 @@ export function PihakTab() {
     try {
       hasil = bangunInput(alasan);
     } catch (e) {
-      setErrForm(e instanceof Error ? e.message : String(e));
+      setErrForm(pesanError(e));
       return;
     }
 
@@ -402,9 +412,9 @@ export function PihakTab() {
       if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErrForm(e instanceof Error ? e.message : String(e));
+        setErrForm(pesanError(e));
       }
     } finally {
       busyRef.current = false;
@@ -413,13 +423,14 @@ export function PihakTab() {
   }
 
   async function tambahPihak(): Promise<void> {
-    if (busyMaster) return;
+    if (busyMasterRef.current) return;
     setErr(null);
     setInfo(null);
     if (!namaBaru.trim()) {
       setErr('Nama pihak wajib diisi.');
       return;
     }
+    busyMasterRef.current = true;
     setBusyMaster(true);
     try {
       const r = await api.pihakCreate({
@@ -432,8 +443,9 @@ export function PihakTab() {
       setPihakId(r.id);
       setInfo(`Pihak "${r.pihak.nama}" ditambahkan.`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e));
     } finally {
+      busyMasterRef.current = false;
       setBusyMaster(false);
     }
   }
@@ -447,9 +459,10 @@ export function PihakTab() {
   }
 
   async function simpanEdit(): Promise<void> {
-    if (busyMaster || !editId) return;
+    if (busyMasterRef.current || !editId) return;
     setErr(null);
     setInfo(null);
+    busyMasterRef.current = true;
     setBusyMaster(true);
     try {
       const r = await api.pihakUpdate(editId, {
@@ -460,22 +473,22 @@ export function PihakTab() {
       await muat();
       setInfo(`Pihak "${r.pihak.nama}" diperbarui.`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e));
     } finally {
+      busyMasterRef.current = false;
       setBusyMaster(false);
     }
   }
 
+  function mintaHapusPihak(p: Pihak): void {
+    setHapusTarget(p);
+  }
+
   async function hapusPihak(p: Pihak): Promise<void> {
-    if (busyMaster) return;
-    const yakin =
-      typeof window === 'undefined' ||
-      window.confirm(
-        `Hapus pihak "${p.nama}"? Pihak yang sudah dipakai jurnal tidak bisa dihapus.`,
-      );
-    if (!yakin) return;
+    if (busyMasterRef.current) return;
     setErr(null);
     setInfo(null);
+    busyMasterRef.current = true;
     setBusyMaster(true);
     try {
       await api.pihakDelete(p.id);
@@ -487,25 +500,36 @@ export function PihakTab() {
       await muat();
       setInfo(`Pihak "${p.nama}" dihapus.`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e));
     } finally {
+      busyMasterRef.current = false;
       setBusyMaster(false);
     }
   }
 
+  async function konfirmasiHapusPihak(): Promise<void> {
+    if (!hapusTarget) return;
+    const target = hapusTarget;
+    await hapusPihak(target);
+    setHapusTarget(null);
+  }
+
   async function bukaRiwayat(id: string): Promise<void> {
+    if (busyRiwayatRef.current) return;
     if (riwayatId === id) {
       setRiwayatId('');
       setRiwayat([]);
       return;
     }
     setRiwayatId(id);
+    busyRiwayatRef.current = true;
     setBusyRiwayat(true);
     try {
       setRiwayat(await api.pihakJurnal(id));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
+      busyRiwayatRef.current = false;
       setBusyRiwayat(false);
     }
   }
@@ -628,7 +652,7 @@ export function PihakTab() {
                               disabled={busyMaster || !editNama.trim()}
                               onClick={() => void simpanEdit()}
                             >
-                              Simpan
+                              {busyMaster ? 'Menyimpan…' : 'Simpan'}
                             </Button>
                             <Button
                               variant="ghost"
@@ -646,7 +670,7 @@ export function PihakTab() {
                             <Button
                               variant="ghost"
                               disabled={busyMaster}
-                              onClick={() => void hapusPihak(p)}
+                              onClick={() => mintaHapusPihak(p)}
                             >
                               Hapus
                             </Button>
@@ -1014,6 +1038,27 @@ export function PihakTab() {
           />
         )}
       </Card>
+
+      {hapusTarget && (
+        <KonfirmasiModal
+          judul="Hapus pihak?"
+          deskripsi={
+            <>
+              <p>
+                Pihak <b>{hapusTarget.nama}</b> akan dihapus dari daftar.
+              </p>
+              <p className="text-sm text-stone-600">
+                Pihak yang sudah dipakai jurnal tidak bisa dihapus. Riwayat jurnal
+                tetap aman dan tidak berubah.
+              </p>
+            </>
+          }
+          labelYa="Ya, hapus"
+          sibuk={busyMaster}
+          onBatal={() => setHapusTarget(null)}
+          onKonfirmasi={() => void konfirmasiHapusPihak()}
+        />
+      )}
     </div>
   );
 }

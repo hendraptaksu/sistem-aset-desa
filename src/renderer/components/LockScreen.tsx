@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { Button, Card, ErrorBox, Field, PinInput, TextInput } from './ui.js';
+import { PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 type Mode = 'buka' | 'setup' | 'reset';
 
@@ -16,16 +17,20 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
   const [gagal, setGagal] = useState(0);
 
   const hanyaDigit = (s: string) => s.replace(/\D/g, '').slice(0, 6);
+  const kirimRef = useRef(false);
 
   async function kirim(fn: () => Promise<unknown>) {
+    if (kirimRef.current) return;
+    kirimRef.current = true;
     setErr(null);
     setSibuk(true);
     try {
       await fn();
       onTerbuka();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
     } finally {
+      kirimRef.current = false;
       setSibuk(false);
     }
   }
@@ -42,7 +47,7 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
       await api.lockUnlock(pinLengkap);
       onTerbuka();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
       setPin('');
       setGagal((g) => g + 1);
     } finally {

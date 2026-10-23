@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import type { ArusKasHasil } from '../../core/reports.js';
@@ -13,10 +13,8 @@ import { labelKelompokArusKas } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 const KELOMPOK: {
   kunci: 'operasi' | 'investasi' | 'pendanaan' | 'transfer';
@@ -42,6 +40,7 @@ export function ArusKasTab() {
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [memuat, setMemuat] = useState(false);
+  const detailBusyRef = useRef(false);
 
   useEffect(() => {
     let aktif = true;
@@ -73,7 +72,7 @@ export function ArusKasTab() {
       .catch((e) => {
         if (aktif) {
           setData(null);
-          setErr(pesanError(e));
+          setErr(pesanError(e, PESAN_MUAT_GAGAL));
         }
       })
       .finally(() => {
@@ -85,12 +84,15 @@ export function ArusKasTab() {
   }, [mulai, sampai]);
 
   async function bukaDetail(jurnalId: string): Promise<void> {
-    if (!jurnalId) return;
+    if (!jurnalId || detailBusyRef.current) return;
+    detailBusyRef.current = true;
     setErr(null);
     try {
       setDetail(await api.laporanJurnalDetail(jurnalId));
     } catch (e) {
-      setErr(pesanError(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      detailBusyRef.current = false;
     }
   }
 

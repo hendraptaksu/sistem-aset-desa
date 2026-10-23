@@ -5,7 +5,22 @@ import {
   type TutupBukuTampil,
   type TutupPreviewData,
 } from '../lib/api.js';
-import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { useAksiSibuk } from '../lib/aksiSibuk.js';
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorBox,
+  Field,
+  KonfirmasiModal,
+  TextInput,
+} from './ui.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_PROSES_GAGAL,
+  pesanError,
+  pesanValidasi,
+} from '../../utils/pesanError.js';
 
 type Step = 1 | 2 | 3;
 
@@ -21,12 +36,14 @@ export function TutupTab() {
   const [preview, setPreview] = useState<TutupPreviewData | null>(null);
   const [backupPath, setBackupPath] = useState('');
   const [catatan, setCatatan] = useState('');
+  const [konfirmasiOpen, setKonfirmasiOpen] = useState(false);
+  const { sibuk, jalankan } = useAksiSibuk();
 
   async function refresh() {
     try {
       setList(await api.tutupList());
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
   }
 
@@ -34,59 +51,67 @@ export function TutupTab() {
     void refresh();
   }, []);
 
-  async function mulaiPreview() {
-    setErr(null);
-    setInfo(null);
-    try {
-      const r = await api.tutupPreview(tahun);
-      setPreview(r);
-      if (!r.boleh && !r.perluKonfirmasi) {
-        setErr(r.errors.join(' ') || 'Tahun belum bisa ditutup.');
-        setStep(1);
-        return;
+  async function mulaiPreview(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      try {
+        const r = await api.tutupPreview(tahun);
+        setPreview(r);
+        if (!r.boleh && !r.perluKonfirmasi) {
+          setErr(pesanValidasi(r.errors) || 'Tahun belum bisa ditutup.');
+          setStep(1);
+          return;
+        }
+        // Tahun yang sudah ditutup boleh dilanjutkan, tetapi langkah konfirmasi
+        // akan menampilkan peringatan "tutup ulang".
+        setStep(2);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_MUAT_GAGAL));
       }
-      // Tahun yang sudah ditutup boleh dilanjutkan, tetapi langkah konfirmasi
-      // akan menampilkan peringatan "tutup ulang".
-      setStep(2);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+    });
   }
 
-  async function autoBackup() {
-    setErr(null);
-    try {
-      const r = await api.backupAuto(tahun);
-      setBackupPath(r.path);
-      setStep(3);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function autoBackup(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      try {
+        const r = await api.backupAuto(tahun);
+        setBackupPath(r.path);
+        setStep(3);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      }
+    });
   }
 
-  async function konfirmasi() {
-    setErr(null);
-    setInfo(null);
-    try {
-      const r = await api.tutupCreate({
-        tahun,
-        catatan,
-        backupPath,
-        konfirmasiTimpak: preview?.sudahDitutup === true,
-      });
-      setInfo(
-        `Tahun ${r.tahun} ${r.aksi === 'TUTUP-ULANG' ? 'ditutup ulang' : 'ditutup'}. ` +
-          `Laba ${formatRp(r.laba)}. Laba ditahan ${formatRp(r.labaDitahan)}. ` +
-          `Backup: ${backupPath || '-'}`,
-      );
-      setStep(1);
-      setPreview(null);
-      setBackupPath('');
-      setCatatan('');
-      await refresh();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function konfirmasi(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      try {
+        const r = await api.tutupCreate({
+          tahun,
+          catatan,
+          backupPath,
+          konfirmasiTimpak: preview?.sudahDitutup === true,
+        });
+        setInfo(
+          `Tahun ${r.tahun} ${r.aksi === 'TUTUP-ULANG' ? 'ditutup ulang' : 'ditutup'}. ` +
+            `Laba ${formatRp(r.laba)}. Laba ditahan ${formatRp(r.labaDitahan)}. ` +
+            `Backup: ${backupPath || '-'}`,
+        );
+        setStep(1);
+        setPreview(null);
+        setBackupPath('');
+        setCatatan('');
+        await refresh();
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setKonfirmasiOpen(false);
+      }
+    });
   }
 
   return (
@@ -120,7 +145,9 @@ export function TutupTab() {
               />
             </Field>
             <div className="flex items-end">
-              <Button onClick={() => void mulaiPreview()}>Preview laba</Button>
+              <Button disabled={sibuk} onClick={() => void mulaiPreview()}>
+                {sibuk ? 'Memuat…' : 'Preview laba'}
+              </Button>
             </div>
           </div>
         )}
@@ -140,8 +167,12 @@ export function TutupTab() {
               </div>
             )}
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep(1)}>Kembali</Button>
-              <Button onClick={() => void autoBackup()}>Backup otomatis & lanjut</Button>
+              <Button variant="ghost" disabled={sibuk} onClick={() => setStep(1)}>
+                Kembali
+              </Button>
+              <Button disabled={sibuk} onClick={() => void autoBackup()}>
+                {sibuk ? 'Memproses…' : 'Backup otomatis & lanjut'}
+              </Button>
             </div>
           </div>
         )}
@@ -166,8 +197,10 @@ export function TutupTab() {
               </p>
             )}
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep(2)}>Kembali</Button>
-              <Button onClick={() => void konfirmasi()}>
+              <Button variant="ghost" disabled={sibuk} onClick={() => setStep(2)}>
+                Kembali
+              </Button>
+              <Button disabled={sibuk} onClick={() => setKonfirmasiOpen(true)}>
                 {preview.sudahDitutup ? 'Konfirmasi tutup ulang' : 'Konfirmasi tutup buku'}
               </Button>
             </div>
@@ -206,6 +239,41 @@ export function TutupTab() {
         </table>
       </Card>
 
+      {konfirmasiOpen && preview && (
+        <KonfirmasiModal
+          judul={
+            preview.sudahDitutup
+              ? `Tutup ulang tahun ${preview.tahun}?`
+              : `Tutup buku tahun ${preview.tahun}?`
+          }
+          deskripsi={
+            <>
+              <p>
+                Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>.
+              </p>
+              <p>
+                Laba ditahan setelah tutup:{' '}
+                <b>{formatRp(preview.labaDitahanSesudah)}</b>.
+              </p>
+              <p className="text-sm text-stone-600">
+                Periode akan dikunci. Koreksi setelah ini tetap boleh, tetapi wajib
+                alasan dan tercatat di audit. Backup sudah dibuat:{' '}
+                <span className="break-all">{backupPath || '-'}</span>.
+              </p>
+              {preview.sudahDitutup && (
+                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+                  Tahun ini sudah pernah ditutup. Melanjutkan akan mencatat{' '}
+                  <b>TUTUP-ULANG</b>.
+                </p>
+              )}
+            </>
+          }
+          labelYa={preview.sudahDitutup ? 'Ya, tutup ulang' : 'Ya, tutup buku'}
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiOpen(false)}
+          onKonfirmasi={() => void konfirmasi()}
+        />
+      )}
     </div>
   );
 }

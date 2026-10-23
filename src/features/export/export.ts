@@ -16,6 +16,7 @@ import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION } from '../../db/database.js';
 import { catatAudit } from '../../db/repository.js';
+import { pesanError } from '../../utils/pesanError.js';
 
 export {
   KOP_ORG_NAMA,
@@ -110,10 +111,6 @@ export const TABEL_WAJIB_RESTORE = [
 
 export type ValidasiRestore = { valid: true } | { valid: false; error: string };
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 /**
  * Validasi kandidat restore SEBELUM menyentuh DB aktif:
  * file ada & berupa file, SQLite terbaca, `integrity_check` = ok, bukan dari
@@ -133,7 +130,7 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
     if (pesanIntegritas.toLowerCase() !== 'ok')
       return {
         valid: false,
-        error: `File backup rusak (integrity_check: ${pesanIntegritas || 'gagal'}).`,
+        error: 'File backup rusak. Pilih file backup lain.',
       };
 
     const versi = Number(kandidat.pragma('user_version', { simple: true }) ?? 0);
@@ -156,8 +153,11 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
       };
 
     return { valid: true };
-  } catch (e) {
-    return { valid: false, error: `File backup tidak bisa dibaca: ${pesanError(e)}` };
+  } catch {
+    return {
+      valid: false,
+      error: 'File backup tidak bisa dibaca. Pastikan file .db berasal dari aplikasi ini.',
+    };
   } finally {
     try {
       kandidat?.close();
@@ -205,7 +205,10 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
   } catch (e) {
     return {
       ok: false,
-      error: `Gagal membuat cadangan sebelum restore: ${pesanError(e)}`,
+      error: `Gagal membuat cadangan sebelum restore. ${pesanError(
+        e,
+        'Coba lagi; bila tetap gagal, hubungi pendamping.',
+      )}`,
       db,
     };
   }
@@ -218,7 +221,7 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
     // rename menimpa file yang sudah dihapus; aman di POSIX & Windows.
     renameSync(tmp, opsi.dbPath);
     return { ok: true, db: openDb(opsi.dbPath), preRestorePath };
-  } catch (e) {
+  } catch {
     try {
       if (existsSync(tmp)) unlinkSync(tmp);
     } catch {
@@ -230,12 +233,13 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
       copyFileSync(preRestorePath, opsi.dbPath);
       return {
         ok: false,
-        error: `Restore gagal, data lama tetap dipakai: ${pesanError(e)}`,
+        error:
+          'Restore gagal, data lama tetap dipakai. Coba lagi; bila tetap gagal, hubungi pendamping.',
         db: openDb(opsi.dbPath),
       };
-    } catch (e2) {
+    } catch {
       throw new Error(
-        `Restore gagal dan pemulihan otomatis juga gagal: ${pesanError(e)}; ${pesanError(e2)}`,
+        'Restore gagal dan pemulihan otomatis juga gagal. Hubungi pendamping sebelum memakai aplikasi lagi.',
       );
     }
   }

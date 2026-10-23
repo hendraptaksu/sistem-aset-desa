@@ -24,6 +24,7 @@ import {
   validasiFilterBukuBesar,
   validasiIdJurnal,
 } from '../src/main/validation.js';
+import { PESAN_TANGGAL_TIDAK_VALID } from '../src/utils/pesanError.js';
 import {
   labelSisiSaldo,
   sisiSaldo,
@@ -334,11 +335,11 @@ describe('P1-8 — validasi tanggal/cut-off laporan', () => {
       mulai: '2026-02-31',
     });
     expect(mulai.ok).toBe(false);
-    if (!mulai.ok) expect(mulai.error).toContain('Tanggal mulai tidak valid');
+    if (!mulai.ok) expect(mulai.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
 
     const cutoff = validasiCutoffLaporan('2026-04-31');
     expect(cutoff.ok).toBe(false);
-    if (!cutoff.ok) expect(cutoff.error).toContain('Tanggal cut-off tidak valid');
+    if (!cutoff.ok) expect(cutoff.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
   });
 
   it('menerima tanggal kalender nyata termasuk 29 Februari kabisat', () => {

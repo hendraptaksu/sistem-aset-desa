@@ -4,10 +4,8 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
 import { Badge, Button } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /**
  * Daftar jurnal yang menyentuh satu akun pada periode laporan (drill-down
@@ -50,7 +48,7 @@ export function JurnalAkunModal({
       .catch((e) => {
         if (aktif) {
           setDaftar([]);
-          setErr(pesanError(e));
+          setErr(pesanError(e, PESAN_MUAT_GAGAL));
         }
       });
     return () => {

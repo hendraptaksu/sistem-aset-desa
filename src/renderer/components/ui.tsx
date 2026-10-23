@@ -259,6 +259,56 @@ export function LockModal({
   );
 }
 
+/**
+ * Konfirmasi aksi besar (tutup buku, restore, koreksi, hapus).
+ *
+ * Selalu dirender di atas modal lain (z-30) dan memakai bahasa operator awam:
+ * judul singkat, akibat aksi, lalu tombol Batal / Ya, lanjutkan.
+ */
+export function KonfirmasiModal({
+  judul,
+  deskripsi,
+  labelYa = 'Ya, lanjutkan',
+  labelBatal = 'Batal',
+  variant = 'danger',
+  sibuk = false,
+  onBatal,
+  onKonfirmasi,
+}: {
+  judul: string;
+  deskripsi: ReactNode;
+  labelYa?: string;
+  labelBatal?: string;
+  variant?: 'primary' | 'danger';
+  sibuk?: boolean;
+  onBatal: () => void;
+  onKonfirmasi: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="judul-konfirmasi"
+    >
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+        <h3 id="judul-konfirmasi" className="text-lg font-bold">
+          {judul}
+        </h3>
+        <div className="mt-2 space-y-2 text-[15px] text-stone-700">{deskripsi}</div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" disabled={sibuk} onClick={onBatal}>
+            {labelBatal}
+          </Button>
+          <Button variant={variant} disabled={sibuk} onClick={onKonfirmasi}>
+            {sibuk ? 'Memproses…' : labelYa}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Modal baca-saja generik (dipakai popup detail koreksi). */
 export function DetailModal({
   title,

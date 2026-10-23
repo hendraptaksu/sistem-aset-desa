@@ -7,12 +7,10 @@ import { api, type NeracaHasil, type NeracaSaldoHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /**
  * Layar Neraca (P1-9). Aset, kewajiban, dan ekuitas berasal langsung dari
@@ -49,7 +47,7 @@ export function NeracaTab({
         if (!aktif) return;
         setData(null);
         setNeracaSaldo(null);
-        setErr(pesanError(e));
+        setErr(pesanError(e, PESAN_MUAT_GAGAL));
       })
       .finally(() => {
         if (aktif) setMemuat(false);

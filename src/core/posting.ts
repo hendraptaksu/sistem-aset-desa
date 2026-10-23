@@ -10,6 +10,7 @@ import { POSISI_NORMAL, isAkunKas, type CoaTipe, type PosisiNormal } from '../db
 import { validasiSimpanLonggar } from './ledger.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from './types.js';
 import { formatRp } from '../utils/format.js';
+import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
 
 export const JENIS_JURNAL: readonly JurnalJenis[] = [
   'UMUM',
@@ -105,7 +106,7 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
 
   // ---- 1. Kepala jurnal ----
   if (!tanggalKalenderValid(header.tanggal))
-    errors.push('Tanggal tidak valid. Gunakan tanggal kalender yang benar (contoh: 2026-02-28).');
+    errors.push(PESAN_TANGGAL_TIDAK_VALID);
   if (!String(header.keterangan ?? '').trim()) errors.push('Keterangan wajib diisi.');
   if (baris.length < 2)
     errors.push('Jurnal wajib memiliki minimal 2 baris (satu debit dan satu kredit).');

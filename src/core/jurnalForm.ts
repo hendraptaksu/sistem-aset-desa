@@ -13,6 +13,7 @@ import type { Coa } from '../db/coa.js';
 import { tanggalKalenderValid, type JurnalInput } from './posting.js';
 import type { JurnalBarisInput } from './types.js';
 import { formatRp } from '../utils/format.js';
+import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
 
 export type BarisJurnalForm = {
   akun_kode: string;
@@ -164,7 +165,7 @@ export function buatJurnalUmumForm(form: FormJurnalUmum): JurnalInput {
 
   const tanggal = String(form.tanggal ?? '').trim();
   if (!tanggalKalenderValid(tanggal))
-    throw new Error('Tanggal tidak valid. Gunakan tanggal kalender YYYY-MM-DD yang benar.');
+    throw new Error(PESAN_TANGGAL_TIDAK_VALID);
 
   const keterangan = String(form.keterangan ?? '').trim();
   if (!keterangan) throw new Error('Keterangan jurnal wajib diisi.');

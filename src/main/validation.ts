@@ -11,6 +11,7 @@ import type {
   JurnalHeaderInput,
   JurnalJenis,
 } from '../core/types.js';
+import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
 
 export type TransaksiInput = {
   tanggal: string;
@@ -33,7 +34,7 @@ export function kategoriBolehDipilih(kode: string): boolean {
 
 export function validateTransaksiInput(t: TransaksiInput): string[] {
   const err: string[] = [];
-  if (!tanggalKalenderValid(t.tanggal)) err.push('Tanggal tidak valid (YYYY-MM-DD).');
+  if (!tanggalKalenderValid(t.tanggal)) err.push(PESAN_TANGGAL_TIDAK_VALID);
   if (!t.keterangan.trim()) err.push('Keterangan wajib diisi.');
   if (!isAkunKas(t.akun_kas)) err.push('Akun Kas tidak dikenal.');
   if (!kategoriBolehDipilih(t.kategori)) err.push('Kategori tidak valid.');
@@ -107,6 +108,8 @@ export function validasiBentukPanjarSerah(
   const tanggal = teksOpsional(nilai.tanggal, 'Tanggal panjar', 10);
   if (!tanggal.ok) return tanggal;
   if (!tanggal.nilai) return { ok: false, error: 'Tanggal panjar wajib diisi.' };
+  if (!tanggalKalenderValid(tanggal.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
 
   const penerima = teksOpsional(nilai.penerima, 'Nama penerima', 200);
   if (!penerima.ok) return penerima;
@@ -154,6 +157,8 @@ export function validasiBentukPanjarClose(
   if (!tanggalClose.ok) return tanggalClose;
   if (!tanggalClose.nilai)
     return { ok: false, error: 'Tanggal realisasi panjar wajib diisi.' };
+  if (!tanggalKalenderValid(tanggalClose.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
 
   if (!Array.isArray(nilai.items))
     return { ok: false, error: 'Rincian realisasi panjar belum diisi.' };
@@ -273,6 +278,8 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
   const tanggal = h.tanggal;
   if (typeof tanggal !== 'string' || !tanggal.trim())
     return { ok: false, error: 'Tanggal jurnal wajib diisi.' };
+  if (!tanggalKalenderValid(tanggal.trim()))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
 
   const keterangan = h.keterangan;
   if (typeof keterangan !== 'string' || !keterangan.trim())
@@ -406,9 +413,9 @@ export function validasiFilterJurnalCari(
   if (jenis.nilai && !(JENIS_JURNAL as readonly string[]).includes(jenis.nilai))
     return { ok: false, error: 'Jenis jurnal tidak dikenal.' };
 
-  const mulai = tanggalFilterLaporan(nilai.mulai, 'Tanggal mulai');
+  const mulai = tanggalFilterLaporan(nilai.mulai);
   if (!mulai.ok) return mulai;
-  const sampai = tanggalFilterLaporan(nilai.sampai, 'Tanggal sampai');
+  const sampai = tanggalFilterLaporan(nilai.sampai);
   if (!sampai.ok) return sampai;
   if (mulai.input && sampai.input && mulai.input > sampai.input)
     return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };
@@ -478,6 +485,8 @@ export function validasiBentukSaldoAwal(
   if (!tanggal.ok) return tanggal;
   if (!tanggal.nilai)
     return { ok: false, error: 'Tanggal mulai pembukuan wajib diisi.' };
+  if (!tanggalKalenderValid(tanggal.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
 
   if (!Array.isArray(nilai.saldo))
     return { ok: false, error: 'Daftar saldo awal tidak lengkap.' };
@@ -606,21 +615,23 @@ export type FilterBukuBesar = {
   sampai?: string;
 };
 
-/** Tanggal filter boleh kosong, tetapi kalau diisi harus tanggal kalender nyata. */
-function tanggalFilterLaporan(
-  nilai: unknown,
-  label: string,
-): HasilBentuk<string> {
+/**
+ * Tanggal filter boleh kosong, tetapi kalau diisi harus tanggal kalender
+ * nyata. Pesan selalu seragam agar operator awam tidak bingung.
+ */
+function tanggalFilterLaporan(nilai: unknown): HasilBentuk<string> {
   if (nilai === undefined || nilai === null) return { ok: true, input: '' };
-  if (typeof nilai !== 'string') return { ok: false, error: `${label} tidak valid.` };
+  if (typeof nilai !== 'string') return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
   const teks = nilai.trim();
   if (!teks) return { ok: true, input: '' };
   if (!tanggalKalenderValid(teks))
-    return {
-      ok: false,
-      error: `${label} tidak valid (YYYY-MM-DD dan harus tanggal kalender).`,
-    };
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
   return { ok: true, input: teks };
+}
+
+/** Dipakai main untuk tanggal opsional di luar filter laporan (mis. koreksi). */
+export function validasiTanggalOpsional(nilai: unknown): HasilBentuk<string> {
+  return tanggalFilterLaporan(nilai);
 }
 
 /**
@@ -634,9 +645,9 @@ export function validasiFilterBukuBesar(nilai: unknown): HasilBentuk<FilterBukuB
   if (!akun.ok) return akun;
   if (!akun.nilai) return { ok: false, error: 'Akun wajib dipilih.' };
 
-  const mulai = tanggalFilterLaporan(nilai.mulai, 'Tanggal mulai');
+  const mulai = tanggalFilterLaporan(nilai.mulai);
   if (!mulai.ok) return mulai;
-  const sampai = tanggalFilterLaporan(nilai.sampai, 'Tanggal sampai');
+  const sampai = tanggalFilterLaporan(nilai.sampai);
   if (!sampai.ok) return sampai;
   if (mulai.input && sampai.input && mulai.input > sampai.input)
     return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };
@@ -653,7 +664,7 @@ export function validasiFilterBukuBesar(nilai: unknown): HasilBentuk<FilterBukuB
 
 /** Cut-off Neraca Saldo wajib diisi dan harus tanggal kalender nyata. */
 export function validasiCutoffLaporan(nilai: unknown): HasilBentuk<string> {
-  const cutoff = tanggalFilterLaporan(nilai, 'Tanggal cut-off');
+  const cutoff = tanggalFilterLaporan(nilai);
   if (!cutoff.ok) return cutoff;
   if (!cutoff.input) return { ok: false, error: 'Tanggal cut-off wajib diisi.' };
   return { ok: true, input: cutoff.input };
@@ -677,9 +688,9 @@ export function validasiRentangLaporan(
 ): HasilBentuk<FilterPeriodeLaporan> {
   if (!objek(nilai)) return { ok: false, error: 'Data filter laporan tidak lengkap.' };
 
-  const mulai = tanggalFilterLaporan(nilai.mulai, 'Tanggal mulai');
+  const mulai = tanggalFilterLaporan(nilai.mulai);
   if (!mulai.ok) return mulai;
-  const sampai = tanggalFilterLaporan(nilai.sampai, 'Tanggal sampai');
+  const sampai = tanggalFilterLaporan(nilai.sampai);
   if (!sampai.ok) return sampai;
   if (mulai.input && sampai.input && mulai.input > sampai.input)
     return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };

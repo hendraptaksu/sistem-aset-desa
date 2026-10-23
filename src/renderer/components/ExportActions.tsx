@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type ExcelJS from 'exceljs';
 import {
   renderPrintDocument,
@@ -9,10 +9,8 @@ import { workbookToBuffer } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Button, ErrorBox } from './ui.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
+import { pesanError } from '../../utils/pesanError.js';
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 type Pratinjau = {
   html: string;
@@ -49,10 +47,12 @@ export function ExportActions({
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pratinjau, setPratinjau] = useState<Pratinjau | null>(null);
+  const busyRef = useRef(false);
   const nonaktif = disabled || sibuk !== null;
 
   async function exportExcel(): Promise<void> {
-    if (nonaktif) return;
+    if (nonaktif || busyRef.current) return;
+    busyRef.current = true;
     setErr(null);
     setInfo(null);
     setSibuk('excel');
@@ -66,8 +66,14 @@ export function ExportActions({
       });
       setInfo(hasil.saved ? `Tersimpan: ${hasil.path}` : 'Penyimpanan dibatalkan.');
     } catch (e) {
-      setErr(`Gagal membuat file Excel. ${pesanError(e)}`);
+      setErr(
+        pesanError(
+          e,
+          'Gagal membuat file Excel. Coba lagi; bila tetap gagal, hubungi pendamping.',
+        ),
+      );
     } finally {
+      busyRef.current = false;
       setSibuk(null);
     }
   }
@@ -78,7 +84,8 @@ export function ExportActions({
   }
 
   async function simpanPdf(): Promise<void> {
-    if (nonaktif) return;
+    if (nonaktif || busyRef.current) return;
+    busyRef.current = true;
     setErr(null);
     setInfo(null);
     setSibuk('pdf');
@@ -91,22 +98,35 @@ export function ExportActions({
       });
       setInfo(hasil.saved ? `Tersimpan: ${hasil.path}` : 'Penyimpanan dibatalkan.');
     } catch (e) {
-      setErr(`Gagal menyiapkan dokumen PDF. ${pesanError(e)}`);
+      setErr(
+        pesanError(
+          e,
+          'Gagal menyiapkan dokumen PDF. Coba lagi; bila tetap gagal, hubungi pendamping.',
+        ),
+      );
     } finally {
+      busyRef.current = false;
       setSibuk(null);
     }
   }
 
   async function bukaPratinjau(): Promise<void> {
-    if (nonaktif) return;
+    if (nonaktif || busyRef.current) return;
+    busyRef.current = true;
     setErr(null);
     setInfo(null);
     setSibuk('print');
     try {
       setPratinjau(await siapkanCetak());
     } catch (e) {
-      setErr(`Gagal membuat pratinjau cetak. ${pesanError(e)}`);
+      setErr(
+        pesanError(
+          e,
+          'Gagal membuat pratinjau cetak. Coba lagi; bila tetap gagal, hubungi pendamping.',
+        ),
+      );
     } finally {
+      busyRef.current = false;
       setSibuk(null);
     }
   }

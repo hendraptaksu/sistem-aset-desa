@@ -6,7 +6,7 @@ import {
   buatJurnalPanjarSerah,
   type HasilPanjarClose,
 } from '../../core/forms.js';
-import type { JurnalInput } from '../../core/posting.js';
+import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
 import type { Panjar, PanjarItem } from '../../core/types.js';
 import {
   panjarToWorkbook,
@@ -29,6 +29,11 @@ import {
 } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -103,6 +108,7 @@ export function PanjarTab() {
   const [keterangan, setKeterangan] = useState('');
   const [noBukti, setNoBukti] = useState('');
   const [busyOpen, setBusyOpen] = useState(false);
+  const busyOpenRef = useRef(false);
   const [pesanKonfirmasiSerah, setPesanKonfirmasiSerah] = useState<string | null>(null);
   // Alasan periode terkunci disimpan agar retry konfirmasi kas minus tidak
   // kehilangan alasan yang sudah diisi operator.
@@ -114,6 +120,7 @@ export function PanjarTab() {
   const [items, setItems] = useState<ItemRow[]>([{ kategori_baga: '5004', nominal: 0 }]);
   const [setujuKurang, setSetujuKurang] = useState(false);
   const [busyClose, setBusyClose] = useState(false);
+  const busyCloseRef = useRef(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const alasanCloseRef = useRef('');
 
@@ -121,6 +128,7 @@ export function PanjarTab() {
   const [detailId, setDetailId] = useState('');
   const [detailItems, setDetailItems] = useState<Record<string, PanjarItem[]>>({});
   const [detailBusy, setDetailBusy] = useState('');
+  const detailBusyRef = useRef(false);
 
   const kasList = useMemo(() => coa.filter((c) => isAkunKas(c.kode)), [coa]);
   const bagaList = useMemo(() => coa.filter((c) => c.tipe === 'BEBAN'), [coa]);
@@ -133,7 +141,7 @@ export function PanjarTab() {
       setCoa(c);
       setList(p);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
   }
 
@@ -172,7 +180,7 @@ export function PanjarTab() {
     } catch (e) {
       return {
         input: null,
-        error: e instanceof Error ? e.message : String(e),
+        error: pesanError(e),
       };
     }
   }, [tanggal, penerima, sumber, jumlah, keterangan, noBukti]);
@@ -194,13 +202,13 @@ export function PanjarTab() {
     } catch (e) {
       return {
         hasil: null,
-        error: e instanceof Error ? e.message : String(e),
+        error: pesanError(e),
       };
     }
   }, [closeTarget, totalRealisasi, tanggalClose, items]);
 
   const formSerahSah =
-    Boolean(tanggal) &&
+    tanggalKalenderValid(tanggal) &&
     Boolean(penerima.trim()) &&
     Boolean(sumber) &&
     Number.isInteger(jumlah) &&
@@ -208,7 +216,7 @@ export function PanjarTab() {
 
   const formCloseSah =
     Boolean(closeTarget) &&
-    Boolean(tanggalClose) &&
+    tanggalKalenderValid(tanggalClose) &&
     totalRealisasi > 0 &&
     pratinjauClose.error === null;
 
@@ -216,20 +224,25 @@ export function PanjarTab() {
     alasan?: string,
     opsi: { konfirmasiPeringatan?: boolean } = {},
   ): Promise<void> {
-    if (busyOpen) return;
+    if (busyOpenRef.current) return;
     setErr(null);
     setInfo(null);
     setLockRetry(null);
     setPesanKonfirmasiSerah(null);
 
     if (!formSerahSah) {
-      setErr('Lengkapi tanggal, penerima, nominal, dan sumber kas terlebih dahulu.');
+      setErr(
+        tanggalKalenderValid(tanggal)
+          ? 'Lengkapi penerima, nominal, dan sumber kas terlebih dahulu.'
+          : PESAN_TANGGAL_TIDAK_VALID,
+      );
       return;
     }
 
     if (alasan !== undefined) alasanOpenRef.current = alasan;
     const alasanPakai = alasan ?? (alasanOpenRef.current || undefined);
 
+    busyOpenRef.current = true;
     setBusyOpen(true);
     try {
       const r = await api.panjarCreate(
@@ -259,11 +272,12 @@ export function PanjarTab() {
       if (isPerluAlasan(e)) {
         setLockRetry(() => (a: string) => submitOpen(a));
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
-        setPesanKonfirmasiSerah(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasiSerah(pesanError(e));
       } else {
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(pesanError(e));
       }
     } finally {
+      busyOpenRef.current = false;
       setBusyOpen(false);
     }
   }
@@ -272,7 +286,7 @@ export function PanjarTab() {
     alasan?: string,
     opsi: { konfirmasiPeringatan?: boolean } = {},
   ): Promise<void> {
-    if (busyClose) return;
+    if (busyCloseRef.current) return;
     setErrClose(null);
     setInfoClose(null);
     setLockRetry(null);
@@ -283,7 +297,11 @@ export function PanjarTab() {
       return;
     }
     if (!formCloseSah) {
-      setErrClose('Lengkapi tanggal realisasi dan rincian beban terlebih dahulu.');
+      setErrClose(
+        tanggalKalenderValid(tanggalClose)
+          ? 'Lengkapi rincian beban terlebih dahulu.'
+          : PESAN_TANGGAL_TIDAK_VALID,
+      );
       return;
     }
     if (kurang > 0 && !setujuKurang) {
@@ -297,6 +315,7 @@ export function PanjarTab() {
     if (alasan !== undefined) alasanCloseRef.current = alasan;
     const alasanPakai = alasan ?? (alasanCloseRef.current || undefined);
 
+    busyCloseRef.current = true;
     setBusyClose(true);
     try {
       const r = await api.panjarClose(
@@ -325,11 +344,12 @@ export function PanjarTab() {
       if (isPerluAlasan(e)) {
         setLockRetry(() => (a: string) => submitClose(a));
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErrClose(e instanceof Error ? e.message : String(e));
+        setErrClose(pesanError(e));
       }
     } finally {
+      busyCloseRef.current = false;
       setBusyClose(false);
     }
   }
@@ -352,19 +372,22 @@ export function PanjarTab() {
   }
 
   async function toggleDetail(id: string) {
+    if (detailBusyRef.current) return;
     if (detailId === id) {
       setDetailId('');
       return;
     }
     setDetailId(id);
     if (detailItems[id]) return;
+    detailBusyRef.current = true;
     setDetailBusy(id);
     try {
       const its = await api.panjarItems(id);
       setDetailItems((prev) => ({ ...prev, [id]: its }));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
+      detailBusyRef.current = false;
       setDetailBusy('');
     }
   }

@@ -28,6 +28,7 @@ import { listBarisJurnal } from '../src/db/laporan.js';
 import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
 import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
+import { KonfirmasiModal } from '../src/renderer/components/ui.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 const AKUN: AkunPosting[] = COA.map((a) => ({ ...a, aktif: true }));
@@ -543,6 +544,39 @@ describe('P1-3 — builder Pindah Dana untuk form terpandu', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('P1-12 — komponen konfirmasi aksi besar', () => {
+  it('merender judul, akibat aksi, tombol Batal, dan tombol lanjut', () => {
+    const html = renderToStaticMarkup(
+      createElement(KonfirmasiModal, {
+        judul: 'Hapus aset dari inventaris?',
+        deskripsi: 'Aset AST-001 akan dihapus. Angka laporan tidak berubah.',
+        labelYa: 'Ya, hapus',
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(html).toContain('Hapus aset dari inventaris?');
+    expect(html).toContain('Aset AST-001 akan dihapus.');
+    expect(html).toContain('Batal');
+    expect(html).toContain('Ya, hapus');
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('menampilkan status sibuk dan menonaktifkan kedua tombol', () => {
+    const html = renderToStaticMarkup(
+      createElement(KonfirmasiModal, {
+        judul: 'Tutup buku?',
+        deskripsi: 'Periode akan dikunci.',
+        sibuk: true,
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(html).toContain('Memproses…');
+    expect((html.match(/disabled=""/g) ?? []).length).toBe(2);
   });
 });
 

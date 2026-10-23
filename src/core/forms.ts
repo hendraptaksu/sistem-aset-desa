@@ -18,6 +18,7 @@ import {
   type Coa,
 } from '../db/coa.js';
 import { tanggalKalenderValid, type JurnalInput } from './posting.js';
+import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
 import type { JurnalBarisInput, JurnalJenis } from './types.js';
 
 /** Kolom dasar yang sama untuk semua form terpandu. */
@@ -76,7 +77,7 @@ function idOtomatis(): string {
 function wajibTanggal(tanggal: string): string {
   const nilai = String(tanggal ?? '').trim();
   if (!tanggalKalenderValid(nilai))
-    throw new Error('Tanggal tidak valid. Gunakan tanggal kalender YYYY-MM-DD yang benar.');
+    throw new Error(PESAN_TANGGAL_TIDAK_VALID);
   return nilai;
 }
 

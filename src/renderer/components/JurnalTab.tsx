@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { JurnalBarisInput } from '../../core/types.js';
 import {
@@ -23,11 +23,22 @@ import {
 } from '../../features/export/printDoc.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
-import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, Select, TextInput } from './ui.js';
+import {
+  Badge,
+  Button,
+  Card,
+  CurrencyInput,
+  ErrorBox,
+  Field,
+  KonfirmasiModal,
+  Select,
+  TextInput,
+} from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { JurnalUmumEditor } from './JurnalUmumEditor.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const PAGE = 25;
@@ -98,7 +109,7 @@ export function JurnalTab({
       const hasil = renderPrintDocument(doc);
       setPratinjau({ judul: doc.judul, ...hasil });
     } catch (e) {
-      setErr(`Gagal membuat pratinjau cetak. ${e instanceof Error ? e.message : String(e)}`);
+      setErr(`Gagal membuat pratinjau cetak. ${pesanError(e, PESAN_PROSES_GAGAL)}`);
     }
   }
 
@@ -114,7 +125,7 @@ export function JurnalTab({
       setDetail(null);
       bukaEditor(awal);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
     }
   }
 
@@ -130,7 +141,7 @@ export function JurnalTab({
         if (aktif) setCoa(c);
       })
       .catch((e) => {
-        if (aktif) setErr(e instanceof Error ? e.message : String(e));
+        if (aktif) setErr(pesanError(e, PESAN_MUAT_GAGAL));
       });
     return () => {
       aktif = false;
@@ -166,7 +177,7 @@ export function JurnalTab({
         if (page > halamanMaks) setPage(halamanMaks);
       })
       .catch((e) => {
-        if (aktif) setErr(e instanceof Error ? e.message : String(e));
+        if (aktif) setErr(pesanError(e, PESAN_MUAT_GAGAL));
       })
       .finally(() => {
         if (aktif) setMemuat(false);
@@ -558,7 +569,11 @@ function KoreksiModal({
   const [tanggalBalik, setTanggalBalik] = useState(today());
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [pending, setPending] = useState<null | 'balik' | 'isi-ulang'>(null);
+  const [konfirmasiFinal, setKonfirmasiFinal] = useState<null | 'balik' | 'isi-ulang'>(
+    null,
+  );
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState('');
 
   // Form isi ulang: terisi data lama supaya operator tinggal membetulkan typo.
@@ -607,8 +622,11 @@ function KoreksiModal({
   }
 
   async function kirimBalik(konfirmasi = false) {
+    if (busyRef.current) return;
     setErr(null);
     setPending(null);
+    setKonfirmasiFinal(null);
+    busyRef.current = true;
     setBusy(true);
     try {
       await api.jurnalReverse(jurnal.id, alasan.trim(), {
@@ -621,18 +639,22 @@ function KoreksiModal({
     } catch (e) {
       if (isPerluKonfirmasi(e) && !konfirmasi) {
         setPending('balik');
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(pesanError(e));
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   async function kirimIsiUlang(konfirmasi = false) {
+    if (busyRef.current) return;
     setErr(null);
     setPending(null);
+    setKonfirmasiFinal(null);
+    busyRef.current = true;
     setBusy(true);
     try {
       const isi: JurnalBarisInput[] = baris.map((b) => ({
@@ -663,11 +685,12 @@ function KoreksiModal({
     } catch (e) {
       if (isPerluKonfirmasi(e) && !konfirmasi) {
         setPending('isi-ulang');
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(pesanError(e));
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -754,9 +777,9 @@ function KoreksiModal({
               <Button
                 variant="ghost"
                 disabled={busy || !alasanSah || !tanggalKalenderValid(tanggalBalik)}
-                onClick={() => void kirimBalik()}
+                onClick={() => setKonfirmasiFinal('balik')}
               >
-                Jurnal balik saja
+                {busy ? 'Menyimpan…' : 'Jurnal balik saja'}
               </Button>
               <Button
                 disabled={busy || !alasanSah || !tanggalKalenderValid(tanggalBalik)}
@@ -896,11 +919,55 @@ function KoreksiModal({
               <Button variant="ghost" disabled={busy} onClick={onBatal}>
                 Batal
               </Button>
-              <Button disabled={busy || !formSah} onClick={() => void kirimIsiUlang()}>
-                Simpan koreksi
+              <Button
+                disabled={busy || !formSah}
+                onClick={() => setKonfirmasiFinal('isi-ulang')}
+              >
+                {busy ? 'Menyimpan…' : 'Simpan koreksi'}
               </Button>
             </div>
           </>
+        )}
+
+        {konfirmasiFinal && (
+          <KonfirmasiModal
+            judul={
+              konfirmasiFinal === 'balik'
+                ? 'Simpan jurnal balik?'
+                : 'Simpan koreksi & isi ulang?'
+            }
+            deskripsi={
+              <>
+                <p>
+                  No. bukti: <b>{jurnal.no_bukti || 'tanpa nomor'}</b>
+                </p>
+                <p>Tanggal: <b>{formatTanggal(jurnal.tanggal)}</b></p>
+                <p>Nominal: <b>{formatRp(jurnal.total_debit)}</b></p>
+                <p>Alasan: <b>{alasan.trim()}</b></p>
+                {konfirmasiFinal === 'isi-ulang' && (
+                  <p>
+                    Jurnal pengganti: <b>{formatTanggal(tanggal)}</b> —{' '}
+                    <b>{formatRp(totalDebit)}</b>
+                  </p>
+                )}
+                <p className="text-sm text-stone-600">
+                  Jurnal asli tetap disimpan. Tindakan ini tercatat di riwayat audit
+                  dan tidak bisa dibatalkan.
+                </p>
+              </>
+            }
+            labelYa={
+              konfirmasiFinal === 'balik' ? 'Ya, simpan jurnal balik' : 'Ya, simpan koreksi'
+            }
+            sibuk={busy}
+            onBatal={() => setKonfirmasiFinal(null)}
+            onKonfirmasi={() => {
+              const aksi = konfirmasiFinal;
+              setKonfirmasiFinal(null);
+              if (aksi === 'balik') void kirimBalik();
+              else void kirimIsiUlang();
+            }}
+          />
         )}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Coa, PosisiNormal } from '../../db/coa.js';
 import {
   bukuBesarToWorkbook,
@@ -16,10 +16,8 @@ import {
 import { Badge, Button, Card, ErrorBox, Field, Select, TextInput } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 function SisiSaldoBadge({
   saldo,
@@ -41,6 +39,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [memuat, setMemuat] = useState(false);
+  const detailBusyRef = useRef(false);
 
   // Muat daftar akun sekali; pilih 1001 bila ada agar operator langsung melihat kas.
   useEffect(() => {
@@ -60,7 +59,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
       .catch((e) => {
         if (aktif) {
           setCoa([]);
-          setErr(pesanError(e));
+          setErr(pesanError(e, PESAN_MUAT_GAGAL));
         }
       });
     return () => {
@@ -97,7 +96,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
       .catch((e) => {
         if (aktif) {
           setData(null);
-          setErr(pesanError(e));
+          setErr(pesanError(e, PESAN_MUAT_GAGAL));
         }
       })
       .finally(() => {
@@ -109,12 +108,15 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
   }, [akun, mulai, sampai]);
 
   async function bukaDetail(jurnalId: string): Promise<void> {
-    if (!jurnalId) return;
+    if (!jurnalId || detailBusyRef.current) return;
+    detailBusyRef.current = true;
     setErr(null);
     try {
       setDetail(await api.laporanJurnalDetail(jurnalId));
     } catch (e) {
-      setErr(pesanError(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      detailBusyRef.current = false;
     }
   }
 

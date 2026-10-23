@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { Transaksi } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
@@ -12,6 +12,11 @@ import {
 } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Badge, Button, Card, ErrorBox, Field, Select, TextInput } from './ui.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_PROSES_GAGAL,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 export function PembantuTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
@@ -22,12 +27,20 @@ export function PembantuTab() {
   const [kode, setKode] = useState('1001');
   const [mulai, setMulai] = useState('');
   const [sampai, setSampai] = useState('');
+  const [sibuk, setSibuk] = useState(false);
+  const busyRef = useRef(false);
 
   useEffect(() => {
-    api.coa().then(setCoa).catch((e) => setErr(String(e)));
+    api
+      .coa()
+      .then(setCoa)
+      .catch((e) => setErr(pesanError(e, PESAN_MUAT_GAGAL)));
   }, []);
 
   async function muat() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSibuk(true);
     setErr(null);
     setInfo(null);
     try {
@@ -37,7 +50,10 @@ export function PembantuTab() {
       });
       setRows(t);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      busyRef.current = false;
+      setSibuk(false);
     }
   }
 
@@ -57,6 +73,9 @@ export function PembantuTab() {
   );
 
   async function exportXlsx() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSibuk(true);
     setErr(null);
     setInfo(null);
     try {
@@ -69,11 +88,17 @@ export function PembantuTab() {
       });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
+    } finally {
+      busyRef.current = false;
+      setSibuk(false);
     }
   }
 
   async function simpanPdf() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSibuk(true);
     setErr(null);
     setInfo(null);
     try {
@@ -81,7 +106,10 @@ export function PembantuTab() {
       const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: `pembantu-${kode}.pdf` });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
+    } finally {
+      busyRef.current = false;
+      setSibuk(false);
     }
   }
 
@@ -106,13 +134,25 @@ export function PembantuTab() {
             <TextInput type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </Field>
           <div className="flex items-end gap-2">
-            <Button onClick={() => void muat()}>Muat</Button>
+            <Button disabled={sibuk} onClick={() => void muat()}>
+              {sibuk ? 'Memuat…' : 'Muat'}
+            </Button>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
-          <Button variant="ghost" onClick={() => printLaporan(`Pembantu ${kode}`, pembantuToHtml(hasil))}>Print / PDF</Button>
-          <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void exportXlsx()}>
+            {sibuk ? 'Memproses…' : 'Export .xlsx'}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() => printLaporan(`Pembantu ${kode}`, pembantuToHtml(hasil))}
+          >
+            Print / PDF
+          </Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void simpanPdf()}>
+            {sibuk ? 'Memproses…' : 'Simpan PDF'}
+          </Button>
           <Badge tone={hasil.rows.length > 0 ? 'stone' : 'amber'}>{hasil.rows.length} baris</Badge>
         </div>
       </Card>

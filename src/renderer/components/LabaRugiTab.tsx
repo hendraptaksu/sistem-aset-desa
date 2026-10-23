@@ -12,10 +12,8 @@ import { badgeLabaRugi } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { JurnalAkunModal } from './JurnalAkunModal.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-function pesanError(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 type AkunDipilih = { kode: string; nama: string };
 
@@ -63,7 +61,7 @@ export function LabaRugiTab() {
       .catch((e) => {
         if (aktif) {
           setData(null);
-          setErr(pesanError(e));
+          setErr(pesanError(e, PESAN_MUAT_GAGAL));
         }
       })
       .finally(() => {

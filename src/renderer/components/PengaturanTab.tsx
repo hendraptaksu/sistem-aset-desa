@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IDLE_MAKS_MENIT, IDLE_MIN_MENIT } from '../../core/pin.js';
 import type { AuditLog } from '../../core/types.js';
 import {
@@ -7,6 +7,7 @@ import {
   formatWaktuAudit,
 } from '../../utils/auditDetail.js';
 import { api } from '../lib/api.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
   Button,
   Card,
@@ -49,8 +50,12 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
   const [idle, setIdle] = useState(String(idleAwal));
   const [errPin, setErrPin] = useState<string | null>(null);
   const [okPin, setOkPin] = useState<string | null>(null);
+  const [busyPin, setBusyPin] = useState(false);
+  const busyPinRef = useRef(false);
   const [errIdle, setErrIdle] = useState<string | null>(null);
   const [okIdle, setOkIdle] = useState<string | null>(null);
+  const [busyIdle, setBusyIdle] = useState(false);
+  const busyIdleRef = useRef(false);
 
   const [audit, setAudit] = useState<AuditLog[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
@@ -79,7 +84,7 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
       setAudit(r.rows);
       setAuditTotal(r.total);
     } catch (e) {
-      setAuditErr(e instanceof Error ? e.message : String(e));
+      setAuditErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
       setAuditLoading(false);
     }
@@ -99,12 +104,15 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
   }, [auditTotal, offset, limit]);
 
   async function gantiPin() {
+    if (busyPinRef.current) return;
     setErrPin(null);
     setOkPin(null);
     if (baru !== ulang) {
       setErrPin('Ulangi PIN tidak sama.');
       return;
     }
+    busyPinRef.current = true;
+    setBusyPin(true);
     try {
       await api.lockChange(lama, baru);
       setOkPin('PIN berhasil diganti.');
@@ -113,20 +121,29 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
       setUlang('');
       void muatAudit();
     } catch (e) {
-      setErrPin(e instanceof Error ? e.message : String(e));
+      setErrPin(pesanError(e));
+    } finally {
+      busyPinRef.current = false;
+      setBusyPin(false);
     }
   }
 
   async function simpanIdle() {
+    if (busyIdleRef.current) return;
     setErrIdle(null);
     setOkIdle(null);
+    busyIdleRef.current = true;
+    setBusyIdle(true);
     try {
       const r = await api.lockIdleSet(Number(idle));
       setOkIdle(`Auto-kunci disimpan: ${r.idleMenit} menit.`);
       onIdleBerubah(r.idleMenit);
       void muatAudit();
     } catch (e) {
-      setErrIdle(e instanceof Error ? e.message : String(e));
+      setErrIdle(pesanError(e));
+    } finally {
+      busyIdleRef.current = false;
+      setBusyIdle(false);
     }
   }
 
@@ -155,8 +172,11 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
             <TextInput type="password" inputMode="numeric" value={ulang} onChange={(e) => setUlang(digit(e.target.value))} placeholder="••••••" />
           </Field>
           <div>
-            <Button disabled={lama.length !== 6 || baru.length !== 6 || ulang !== baru} onClick={() => void gantiPin()}>
-              Ganti PIN
+            <Button
+              disabled={busyPin || lama.length !== 6 || baru.length !== 6 || ulang !== baru}
+              onClick={() => void gantiPin()}
+            >
+              {busyPin ? 'Menyimpan…' : 'Ganti PIN'}
             </Button>
           </div>
         </div>
@@ -177,7 +197,9 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
               <TextInput type="number" min={IDLE_MIN_MENIT} max={IDLE_MAKS_MENIT} value={idle} onChange={(e) => setIdle(e.target.value)} />
             </Field>
           </div>
-          <Button onClick={() => void simpanIdle()}>Simpan</Button>
+          <Button disabled={busyIdle} onClick={() => void simpanIdle()}>
+            {busyIdle ? 'Menyimpan…' : 'Simpan'}
+          </Button>
         </div>
       </Card>
 

@@ -18,11 +18,13 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  KonfirmasiModal,
   LockModal,
   Select,
   TextInput,
 } from './ui.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import { pesanError } from '../../utils/pesanError.js';
 
 type BarisEditor = BarisJurnalForm & {
   key: number;
@@ -108,6 +110,7 @@ export function JurnalUmumEditor({
   const [err, setErr] = useState<string | null>(null);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
+  const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
 
   // COA bisa datang setelah editor dirender (mis. duplikat saat daftar akun
   // belum termuat). Lengkapi teks kode—nama tanpa menimpa isian manual.
@@ -162,13 +165,10 @@ export function JurnalUmumEditor({
 
   function mintaTutup(): void {
     if (busyRef.current) return;
-    if (
-      adaIsian &&
-      !window.confirm(
-        'Tutup editor Jurnal Umum? Isian yang belum disimpan akan hilang.',
-      )
-    )
+    if (adaIsian) {
+      setKonfirmasiTutup(true);
       return;
+    }
     onBatal();
   }
 
@@ -176,13 +176,10 @@ export function JurnalUmumEditor({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || busyRef.current || lockOpen || pesanKonfirmasi)
         return;
-      if (
-        adaIsian &&
-        !window.confirm(
-          'Tutup editor Jurnal Umum? Isian yang belum disimpan akan hilang.',
-        )
-      )
+      if (adaIsian) {
+        setKonfirmasiTutup(true);
         return;
+      }
       onBatal();
     };
     window.addEventListener('keydown', onKey);
@@ -323,9 +320,9 @@ export function JurnalUmumEditor({
       if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(pesanError(e));
       }
     } finally {
       busyRef.current = false;
@@ -630,6 +627,20 @@ export function JurnalUmumEditor({
             onSubmit={(alasan) => {
               setLockOpen(false);
               void simpan({ alasan });
+            }}
+          />
+        )}
+
+        {konfirmasiTutup && (
+          <KonfirmasiModal
+            judul="Tutup editor Jurnal Umum?"
+            deskripsi="Isian yang belum disimpan akan hilang. Jurnal yang sudah tersimpan tidak terpengaruh."
+            labelYa="Ya, tutup editor"
+            sibuk={busy}
+            onBatal={() => setKonfirmasiTutup(false)}
+            onKonfirmasi={() => {
+              setKonfirmasiTutup(false);
+              onBatal();
             }}
           />
         )}

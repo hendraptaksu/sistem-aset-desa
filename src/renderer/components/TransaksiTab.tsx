@@ -13,6 +13,7 @@ import { api, type StatusSaldoAwal } from '../lib/api.js';
 import { Badge, Button, Card, ErrorBox } from './ui.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
+import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 type KartuJenis = {
   id: JenisFormTransaksi | 'PANJAR' | 'PIUTANG';
@@ -80,7 +81,7 @@ export function TransaksiTab() {
       setSaldoStatus(await api.saldoAwalStatus());
       setStatusSaldoErr(null);
     } catch (e) {
-      setStatusSaldoErr(e instanceof Error ? e.message : String(e));
+      setStatusSaldoErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
   }, []);
 
@@ -91,7 +92,7 @@ export function TransaksiTab() {
         const data = await api.coa();
         if (aktif) setCoa(data);
       } catch (e) {
-        if (aktif) setErr(e instanceof Error ? e.message : String(e));
+        if (aktif) setErr(pesanError(e, PESAN_MUAT_GAGAL));
       } finally {
         if (aktif) setMemuat(false);
       }

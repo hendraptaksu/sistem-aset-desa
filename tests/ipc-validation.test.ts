@@ -13,7 +13,25 @@ import {
   type PostingContext,
 } from '../src/core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from '../src/core/types.js';
-import { validatePanjarItems, validateTransaksiInput } from '../src/main/validation.js';
+import {
+  validasiBentukJurnalInput,
+  validasiBentukPanjarClose,
+  validasiBentukPanjarSerah,
+  validasiBentukSaldoAwal,
+  validasiCutoffLaporan,
+  validasiFilterBukuBesar,
+  validasiFilterJurnalCari,
+  validasiFilterNeraca,
+  validasiRentangLaporan,
+  validasiTanggalOpsional,
+  validatePanjarItems,
+  validateTransaksiInput,
+} from '../src/main/validation.js';
+import {
+  PESAN_SIMPAN_GAGAL,
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+} from '../src/utils/pesanError.js';
 
 const AKUN: AkunPosting[] = COA.map((a) => ({ ...a, aktif: true }));
 
@@ -302,6 +320,131 @@ describe('P0-4 — kombinasi aturan', () => {
     expect(hasil.peringatan).toHaveLength(1);
     expect(hasil.perluKonfirmasi).toBe(true);
     expect(hasil.boleh).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-12 — validasi tanggal kalender seragam di semua jalur IPC utama.
+// ---------------------------------------------------------------------------
+
+describe('P1-12 — tanggal kalender seragam', () => {
+  const tanggalSalah = ['2026-02-31', '2026-04-31', '2026-13-01', '12-03-2026'];
+
+  const jurnal = {
+    header: {
+      id: 'j-p1-12',
+      tanggal: '2026-03-12',
+      keterangan: 'Uji tanggal',
+      no_bukti: 'JU-2026-9001',
+      jenis: 'TERIMA',
+    },
+    baris: pasangan(),
+  };
+
+  it('menolak tanggal kalender salah di validator form jurnal', () => {
+    for (const tanggal of tanggalSalah) {
+      const hasil = validasiBentukJurnalInput({
+        ...jurnal,
+        header: { ...jurnal.header, tanggal },
+      });
+      expect(hasil.ok, tanggal).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
+    }
+    expect(validasiBentukJurnalInput(jurnal).ok).toBe(true);
+    expect(
+      validasiBentukJurnalInput({
+        ...jurnal,
+        header: { ...jurnal.header, tanggal: '2028-02-29' },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it('menolak tanggal kalender salah di panjar, saldo awal, dan transaksi lama', () => {
+    for (const tanggal of tanggalSalah) {
+      const serah = validasiBentukPanjarSerah({
+        tanggal,
+        penerima: 'Panitia',
+        jumlah: 100_000,
+        akunKasSumber: '1001',
+      });
+      expect(serah.ok, tanggal).toBe(false);
+      if (!serah.ok) expect(serah.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
+
+      const close = validasiBentukPanjarClose({
+        id: 'p-1',
+        tanggalClose: tanggal,
+        items: [{ kategori_baga: '5004', nominal: 100_000 }],
+      });
+      expect(close.ok, tanggal).toBe(false);
+      if (!close.ok) expect(close.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
+
+      const saldo = validasiBentukSaldoAwal({
+        tanggal,
+        saldo: [{ akun_kode: '1001', nominal: 100_000 }],
+      });
+      expect(saldo.ok, tanggal).toBe(false);
+      if (!saldo.ok) expect(saldo.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
+
+      expect(
+        validateTransaksiInput({
+          tanggal,
+          keterangan: 'Uji',
+          akun_kas: '1001',
+          kategori: '4001',
+          masuk: 100_000,
+          keluar: 0,
+        }),
+      ).toContain(PESAN_TANGGAL_TIDAK_VALID);
+    }
+  });
+
+  it('menolak tanggal kalender salah di filter, cutoff, dan opsi koreksi', () => {
+    for (const tanggal of tanggalSalah) {
+      for (const hasil of [
+        validasiFilterBukuBesar({ akun_kode: '1001', mulai: tanggal }),
+        validasiFilterBukuBesar({ akun_kode: '1001', sampai: tanggal }),
+        validasiCutoffLaporan(tanggal),
+        validasiRentangLaporan({ mulai: tanggal }),
+        validasiRentangLaporan({ sampai: tanggal }),
+        validasiFilterNeraca({ cutoff: tanggal }),
+        validasiFilterJurnalCari({ mulai: tanggal }),
+        validasiFilterJurnalCari({ sampai: tanggal }),
+        validasiTanggalOpsional(tanggal),
+      ]) {
+        expect(hasil.ok, tanggal).toBe(false);
+        if (!hasil.ok) expect(hasil.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
+      }
+    }
+
+    // Tanggal kosong tetap diperbolehkan untuk filter opsional.
+    expect(validasiRentangLaporan({}).ok).toBe(true);
+    expect(validasiFilterBukuBesar({ akun_kode: '1001' }).ok).toBe(true);
+    expect(validasiTanggalOpsional('').ok).toBe(true);
+    expect(validasiCutoffLaporan('2028-02-29').ok).toBe(true);
+  });
+
+  it('menolak rentang tanggal terbalik dengan pesan sederhana', () => {
+    const hasil = validasiRentangLaporan({
+      mulai: '2026-12-31',
+      sampai: '2026-01-01',
+    });
+    expect(hasil.ok).toBe(false);
+    if (!hasil.ok)
+      expect(hasil.error).toBe('Tanggal mulai tidak boleh setelah tanggal sampai.');
+  });
+});
+
+describe('P1-12 — pesan teknis tidak bocor', () => {
+  it('menyamarkan error SQLite dan TypeError dari jalur main', () => {
+    expect(
+      pesanError(new Error('SqliteError: UNIQUE constraint failed: jurnal.no_bukti')),
+    ).toBe(PESAN_SIMPAN_GAGAL);
+    expect(
+      pesanError(new Error('TypeError: Cannot read properties of undefined')),
+    ).toBe(PESAN_SIMPAN_GAGAL);
+    expect(
+      pesanError(new Error('/Users/taksu/app/src/main/index.ts:42:7')),
+    ).toBe(PESAN_SIMPAN_GAGAL);
   });
 });
 

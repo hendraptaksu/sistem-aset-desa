@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AKUN_PANJAR, isAkunKas } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Transaksi } from '../../core/types.js';
+import { tanggalKalenderValid } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluAlasan } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, LockModal, Select, TextInput } from './ui.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const PAGE = 20;
@@ -14,6 +20,8 @@ export function BkuTab() {
   const [rows, setRows] = useState<Transaksi[]>([]);
   const [saldo, setSaldo] = useState<Record<string, number>>({});
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
 
   // form
@@ -46,7 +54,7 @@ export function BkuTab() {
       setRows(t);
       setSaldo(s.perKas);
     } catch (e) {
-      setErr(String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
   }
   useEffect(() => {
@@ -69,9 +77,23 @@ export function BkuTab() {
   const pageRows = filtered.slice(page * PAGE, page * PAGE + PAGE);
   const totMasuk = filtered.reduce((s, t) => s + t.masuk, 0);
   const totKeluar = filtered.reduce((s, t) => s + t.keluar, 0);
+  const formSah =
+    tanggalKalenderValid(tanggal) &&
+    Boolean(keterangan.trim()) &&
+    Number.isInteger(nominal) &&
+    nominal > 0;
 
   async function submit(alasan?: string) {
+    if (busyRef.current) return;
     setErr(null);
+    if (!tanggalKalenderValid(tanggal)) {
+      setErr(PESAN_TANGGAL_TIDAK_VALID);
+      return;
+    }
+    if (!formSah) {
+      setErr('Lengkapi keterangan dan nominal terlebih dahulu.');
+      return;
+    }
     const input = {
       tanggal,
       keterangan: keterangan.trim(),
@@ -80,6 +102,8 @@ export function BkuTab() {
       masuk: tipe === 'masuk' ? nominal : 0,
       keluar: tipe === 'keluar' ? nominal : 0,
     };
+    busyRef.current = true;
+    setBusy(true);
     try {
       await api.transaksiCreate(input, alasan);
       setKeterangan('');
@@ -89,7 +113,10 @@ export function BkuTab() {
     } catch (e) {
       if (isPerluAlasan(e)) {
         setLockRetry(() => (a: string) => submit(a));
-      } else setErr(e instanceof Error ? e.message : String(e));
+      } else setErr(pesanError(e));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
   }
 
@@ -154,7 +181,9 @@ export function BkuTab() {
           </Field>
         </div>
         <div className="mt-3">
-          <Button onClick={() => void submit()}>Simpan</Button>
+          <Button disabled={busy || !formSah} onClick={() => void submit()}>
+            {busy ? 'Menyimpan…' : 'Simpan'}
+          </Button>
         </div>
       </Card>
 

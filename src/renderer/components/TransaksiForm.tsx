@@ -21,6 +21,11 @@ import {
   TextInput,
 } from './ui.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import {
+  PESAN_PROSES_GAGAL,
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 /** Jenis transaksi yang sudah punya form terpandu. */
 export type JenisFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
@@ -250,7 +255,7 @@ export function FormTransaksiTerpandu({
   // Pratinjau memakai builder yang sama dengan yang dipakai saat menyimpan.
   const pratinjau = useMemo(() => {
     if (!tanggalKalenderValid(tanggal))
-      return { input: null as JurnalInput | null, error: 'Tanggal belum valid.' };
+      return { input: null as JurnalInput | null, error: PESAN_TANGGAL_TIDAK_VALID };
     if (pindah) {
       if (!akunKas || !akunKe)
         return { input: null as JurnalInput | null, error: null };
@@ -275,7 +280,7 @@ export function FormTransaksiTerpandu({
     } catch (e) {
       return {
         input: null as JurnalInput | null,
-        error: e instanceof Error ? e.message : String(e),
+        error: pesanError(e, PESAN_PROSES_GAGAL),
       };
     }
   }, [
@@ -342,7 +347,7 @@ export function FormTransaksiTerpandu({
         ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
       });
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e));
       return;
     }
 
@@ -365,9 +370,9 @@ export function FormTransaksiTerpandu({
       if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(pesanError(e));
       }
     } finally {
       busyRef.current = false;

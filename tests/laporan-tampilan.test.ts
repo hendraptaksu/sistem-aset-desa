@@ -29,6 +29,7 @@ import {
   validasiFilterNeraca,
   validasiRentangLaporan,
 } from '../src/main/validation.js';
+import { PESAN_TANGGAL_TIDAK_VALID } from '../src/utils/pesanError.js';
 import {
   badgeLabaRugi,
   badgeNeracaSaldo,
@@ -300,15 +301,15 @@ describe('P1-9 — validasi tanggal laporan', () => {
   it('menolak tanggal yang tidak ada di kalender dengan pesan Indonesia', () => {
     const mulai = validasiRentangLaporan({ mulai: '2026-02-31' });
     expect(mulai.ok).toBe(false);
-    if (!mulai.ok) expect(mulai.error).toContain('Tanggal mulai tidak valid');
+    if (!mulai.ok) expect(mulai.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
 
     const sampai = validasiRentangLaporan({ sampai: '2026-13-01' });
     expect(sampai.ok).toBe(false);
-    if (!sampai.ok) expect(sampai.error).toContain('Tanggal sampai tidak valid');
+    if (!sampai.ok) expect(sampai.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
 
     const neraca = validasiFilterNeraca({ cutoff: '2026-04-31' });
     expect(neraca.ok).toBe(false);
-    if (!neraca.ok) expect(neraca.error).toContain('Tanggal cut-off tidak valid');
+    if (!neraca.ok) expect(neraca.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
   });
 
   it('menerima rentang kosong/valid dan menolak rentang terbalik', () => {

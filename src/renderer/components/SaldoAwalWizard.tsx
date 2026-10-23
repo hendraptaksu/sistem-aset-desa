@@ -16,6 +16,10 @@ import {
   TextInput,
 } from './ui.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import {
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+} from '../../utils/pesanError.js';
 
 type BarisSaldo = {
   key: number;
@@ -95,7 +99,7 @@ export function SaldoAwalWizard({
     if (!tanggalKalenderValid(tanggal))
       return {
         data: null as ReturnType<typeof buatJurnalSaldoAwal> | null,
-        error: 'Tanggal mulai pembukuan belum valid.',
+        error: PESAN_TANGGAL_TIDAK_VALID,
       };
     const saldo = rows.map((r) => ({ akun_kode: r.akun, nominal: r.nominal }));
     if (!saldo.some((s) => Number.isInteger(s.nominal) && s.nominal > 0))
@@ -116,7 +120,7 @@ export function SaldoAwalWizard({
     } catch (e) {
       return {
         data: null as ReturnType<typeof buatJurnalSaldoAwal> | null,
-        error: e instanceof Error ? e.message : String(e),
+        error: pesanError(e),
       };
     }
   }, [tanggal, rows, keterangan, noBukti]);
@@ -182,9 +186,9 @@ export function SaldoAwalWizard({
       if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(e instanceof Error ? e.message : String(e));
+        setPesanKonfirmasi(pesanError(e));
       } else {
-        setErr(e instanceof Error ? e.message : String(e));
+        setErr(pesanError(e));
       }
     } finally {
       busyRef.current = false;

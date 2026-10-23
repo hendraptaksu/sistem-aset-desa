@@ -71,6 +71,12 @@ import type { Aset, Transaksi } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
 import {
+  PESAN_SIMPAN_GAGAL,
+  PESAN_TANGGAL_TIDAK_VALID,
+  pesanError,
+  pesanValidasi,
+} from '../utils/pesanError.js';
+import {
   validasiBentukJurnalInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
@@ -83,6 +89,7 @@ import {
   validasiFilterNeraca,
   validasiIdJurnal,
   validasiRentangLaporan,
+  validasiTanggalOpsional,
   validateAsetInput,
   validateTransaksiInput,
   type AsetInput,
@@ -122,6 +129,25 @@ const fail = (error: string, perluAlasan = false, perluKonfirmasi = false) => ({
   perluKonfirmasi,
 });
 const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+// Error internal tidak pernah dikirim mentah ke renderer. Pesan bisnis yang
+// sudah berbahasa Indonesia tetap lolos lewat `pesanError`.
+const GAGAL_MUAT =
+  'Terjadi kesalahan saat memuat data. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_KOREKSI =
+  'Terjadi kesalahan saat menyimpan koreksi. Jurnal asli tidak diubah; coba lagi atau hubungi pendamping.';
+const GAGAL_PIHAK =
+  'Terjadi kesalahan saat menyimpan data pihak. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_PANJAR =
+  'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_ASET =
+  'Terjadi kesalahan saat menyimpan data aset. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_TUTUP =
+  'Terjadi kesalahan saat memproses tutup buku. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_BACKUP = 'Gagal membuat cadangan. Coba lagi; bila tetap gagal, hubungi pendamping.';
+const GAGAL_RESTORE =
+  'Gagal memulihkan data. Data lama tetap dipakai; coba lagi atau hubungi pendamping.';
 
 function registerIpc(): void {
   ipcMain.handle('coa:list', () => ok(COA));
@@ -169,9 +195,15 @@ function registerIpc(): void {
   ipcMain.handle('jurnal:list', (_e, f: JurnalFilter = {}) => {
     const k = perluBuka();
     if (k) return fail(k);
+    const mulai = validasiTanggalOpsional(f?.mulai);
+    if (!mulai.ok) return fail(mulai.error);
+    const sampai = validasiTanggalOpsional(f?.sampai);
+    if (!sampai.ok) return fail(sampai.error);
+    if (mulai.input && sampai.input && mulai.input > sampai.input)
+      return fail('Tanggal mulai tidak boleh setelah tanggal sampai.');
     const filter: JurnalFilter = {
-      mulai: typeof f?.mulai === 'string' && f.mulai ? f.mulai : undefined,
-      sampai: typeof f?.sampai === 'string' && f.sampai ? f.sampai : undefined,
+      mulai: mulai.input || undefined,
+      sampai: sampai.input || undefined,
       jenis: typeof f?.jenis === 'string' && f.jenis ? f.jenis : undefined,
       akun_kode: typeof f?.akun_kode === 'string' && f.akun_kode ? f.akun_kode : undefined,
       cari:
@@ -194,7 +226,7 @@ function registerIpc(): void {
       if (!bentuk.ok) return fail(bentuk.error);
       return ok(listJurnalLengkapPage(db, bentuk.input));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -205,10 +237,10 @@ function registerIpc(): void {
       if (k) return fail(k);
       const teks = typeof tanggal === 'string' ? tanggal.trim() : '';
       if (!tanggalKalenderValid(teks))
-        return fail('Tanggal tidak valid (YYYY-MM-DD dan harus tanggal kalender).');
+        return fail(PESAN_TANGGAL_TIDAK_VALID);
       return ok({ nomor: saranNomorBukti(db, teks) });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -228,7 +260,7 @@ function registerIpc(): void {
         }),
       );
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -240,7 +272,7 @@ function registerIpc(): void {
       if (!bentuk.ok) return fail(bentuk.error);
       return ok(laporanNeracaSaldo(db, bentuk.input));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -257,7 +289,7 @@ function registerIpc(): void {
         }),
       );
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -271,7 +303,7 @@ function registerIpc(): void {
       if (!detail) return fail('Jurnal tidak ditemukan.');
       return ok(detail);
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -286,7 +318,7 @@ function registerIpc(): void {
       if (!bentuk.ok) return fail(bentuk.error);
       return ok(laporanLabaRugi(db, bentuk.input));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -298,7 +330,7 @@ function registerIpc(): void {
       if (!bentuk.ok) return fail(bentuk.error);
       return ok(laporanNeraca(db, bentuk.input.cutoff));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -310,7 +342,7 @@ function registerIpc(): void {
       if (!bentuk.ok) return fail(bentuk.error);
       return ok(laporanArusKas(db, bentuk.input));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -334,8 +366,8 @@ function registerIpc(): void {
       const hasil = postingJurnal(db, bentuk.input, { konfirmasiPeringatan });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
-          hasil.errors.join(' ') ||
-          hasil.peringatan.join(' ') ||
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
           'Jurnal gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
         // Konfirmasi hanya untuk peringatan murni (mis. kas minus), bukan saat
@@ -345,7 +377,7 @@ function registerIpc(): void {
       }
       return ok({ jurnal: hasil.jurnal });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
   });
 
@@ -377,8 +409,8 @@ function registerIpc(): void {
       const hasil = simpanSaldoAwal(db, jurnalInput, { konfirmasiPeringatan });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
-          hasil.errors.join(' ') ||
-          hasil.peringatan.join(' ') ||
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
           'Saldo awal gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
         const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
@@ -386,7 +418,7 @@ function registerIpc(): void {
       }
       return ok({ jurnal: hasil.jurnal });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
   });
 
@@ -401,21 +433,25 @@ function registerIpc(): void {
       try {
         const k = perluBuka();
         if (k) return fail(k);
+        const tanggal = validasiTanggalOpsional(opsi?.tanggal);
+        if (!tanggal.ok) return fail(tanggal.error);
         const hasil = reverseJurnal(db, String(id ?? ''), String(alasan ?? ''), {
           id: typeof opsi?.id === 'string' ? opsi.id : undefined,
-          tanggal: typeof opsi?.tanggal === 'string' ? opsi.tanggal : undefined,
+          tanggal: tanggal.input || undefined,
           no_bukti: typeof opsi?.no_bukti === 'string' ? opsi.no_bukti : undefined,
           konfirmasiPeringatan: opsi?.konfirmasiPeringatan === true,
         });
         if (!hasil.tersimpan)
           return fail(
-            hasil.errors.join(' ') || hasil.peringatan.join(' ') || 'Koreksi gagal disimpan.',
+            pesanValidasi(hasil.errors) ||
+              pesanValidasi(hasil.peringatan) ||
+              'Koreksi gagal disimpan.',
             false,
             hasil.perluKonfirmasi,
           );
         return ok({ jurnal: hasil.reversal });
       } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e));
+        return fail(pesanError(e, GAGAL_KOREKSI));
       }
     },
   );
@@ -434,6 +470,11 @@ function registerIpc(): void {
         if (k) return fail(k);
         if (!input || !input.header || !Array.isArray(input.baris))
           return fail('Data jurnal pengganti tidak lengkap.');
+        const tanggalJurnal = validasiTanggalOpsional(input.header.tanggal);
+        if (!tanggalJurnal.ok || !tanggalJurnal.input)
+          return fail(PESAN_TANGGAL_TIDAK_VALID);
+        const tanggal = validasiTanggalOpsional(opsi?.tanggal);
+        if (!tanggal.ok) return fail(tanggal.error);
         const hasil = koreksiDanIsiUlang(
           db,
           String(id ?? ''),
@@ -441,20 +482,22 @@ function registerIpc(): void {
           input,
           {
             id: typeof opsi?.id === 'string' ? opsi.id : undefined,
-            tanggal: typeof opsi?.tanggal === 'string' ? opsi.tanggal : undefined,
+            tanggal: tanggal.input || undefined,
             no_bukti: typeof opsi?.no_bukti === 'string' ? opsi.no_bukti : undefined,
             konfirmasiPeringatan: opsi?.konfirmasiPeringatan === true,
           },
         );
         if (!hasil.tersimpan)
           return fail(
-            hasil.errors.join(' ') || hasil.peringatan.join(' ') || 'Koreksi gagal disimpan.',
+            pesanValidasi(hasil.errors) ||
+              pesanValidasi(hasil.peringatan) ||
+              'Koreksi gagal disimpan.',
             false,
             hasil.perluKonfirmasi,
           );
         return ok({ reversal: hasil.reversal, jurnalBaru: hasil.jurnalBaru });
       } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e));
+        return fail(pesanError(e, GAGAL_KOREKSI));
       }
     },
   );
@@ -489,7 +532,7 @@ function registerIpc(): void {
       const pihak = createPihak(db, bentuk.input);
       return ok({ id: pihak.id, pihak });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_PIHAK));
     }
   });
 
@@ -504,7 +547,7 @@ function registerIpc(): void {
       const pihak = updatePihak(db, pihakId, bentuk.input);
       return ok({ id: pihak.id, pihak });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_PIHAK));
     }
   });
 
@@ -517,7 +560,7 @@ function registerIpc(): void {
       deletePihak(db, pihakId);
       return ok({ id: pihakId });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_PIHAK));
     }
   });
 
@@ -542,8 +585,8 @@ function registerIpc(): void {
 
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
-          hasil.errors.join(' ') ||
-          hasil.peringatan.join(' ') ||
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
           'Transaksi piutang/hutang gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) =>
           m.includes('Periode sudah ditutup'),
@@ -562,13 +605,16 @@ function registerIpc(): void {
         saldoSesudah: hasil.saldoSesudah,
       });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_PIHAK));
     }
   });
 
   ipcMain.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
     const k = perluBuka();
-    return k ? fail(k) : ok(listTransaksi(db, f));
+    if (k) return fail(k);
+    const bentuk = validasiRentangLaporan(f);
+    if (!bentuk.ok) return fail(bentuk.error);
+    return ok(listTransaksi(db, bentuk.input));
   });
 
   ipcMain.handle('transaksi:create', (_e, input: TransaksiInput, alasan?: string) => {
@@ -576,7 +622,7 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       const errs = validateTransaksiInput(input);
-      if (errs.length) return fail(errs.join(' '));
+      if (errs.length) return fail(pesanValidasi(errs));
       const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
       if (lockedErr) return fail(lockedErr, true);
       const row: Transaksi = { id: uid('t'), ...input };
@@ -588,7 +634,7 @@ function registerIpc(): void {
       simpan();
       return ok({ id: row.id });
     } catch (e) {
-      return fail(String(e));
+      return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
   });
 
@@ -629,8 +675,8 @@ function registerIpc(): void {
         });
         if (!hasil.tersimpan || !hasil.panjar) {
           const pesan =
-            hasil.errors.join(' ') ||
-            hasil.peringatan.join(' ') ||
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
             'Panjar gagal disimpan.';
           const perluAlasan = hasil.errors.some((m) =>
             m.includes('Periode sudah ditutup'),
@@ -645,7 +691,7 @@ function registerIpc(): void {
           jurnal: hasil.jurnal,
         });
       } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e));
+        return fail(pesanError(e, GAGAL_PANJAR));
       }
     },
   );
@@ -675,8 +721,8 @@ function registerIpc(): void {
         });
         if (!hasil.tersimpan || !hasil.panjar) {
           const pesan =
-            hasil.errors.join(' ') ||
-            hasil.peringatan.join(' ') ||
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
             'Pertanggungjawaban panjar gagal disimpan.';
           const perluAlasan = hasil.errors.some((m) =>
             m.includes('Periode sudah ditutup'),
@@ -693,7 +739,7 @@ function registerIpc(): void {
           jurnal: hasil.jurnal,
         });
       } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e));
+        return fail(pesanError(e, GAGAL_PANJAR));
       }
     },
   );
@@ -709,7 +755,7 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       const errs = validateAsetInput(input);
-      if (errs.length) return fail(errs.join(' '));
+      if (errs.length) return fail(pesanValidasi(errs));
       const now = new Date().toISOString();
       const row: Aset = {
         id: uid('a'),
@@ -731,7 +777,7 @@ function registerIpc(): void {
       return ok({ id: row.id });
     } catch (e) {
       if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(String(e));
+      return fail(pesanError(e, GAGAL_ASET));
     }
   });
 
@@ -740,7 +786,7 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       const errs = validateAsetInput(input);
-      if (errs.length) return fail(errs.join(' '));
+      if (errs.length) return fail(pesanValidasi(errs));
       const lama = getAset(db, String(id));
       if (!lama) return fail('Aset tidak ditemukan.');
       updateAset(db, {
@@ -761,7 +807,7 @@ function registerIpc(): void {
       return ok({ id });
     } catch (e) {
       if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(String(e));
+      return fail(pesanError(e, GAGAL_ASET));
     }
   });
 
@@ -772,7 +818,7 @@ function registerIpc(): void {
       deleteAset(db, String(id));
       return ok({ id });
     } catch (e) {
-      return fail(String(e));
+      return fail(pesanError(e, GAGAL_ASET));
     }
   });
 
@@ -800,9 +846,11 @@ function registerIpc(): void {
       const mulai = tanggalFilter(f?.mulai);
       const sampai = tanggalFilter(f?.sampai);
       if (mulai && !tanggalKalenderValid(mulai))
-        return fail('Tanggal mulai tidak valid (YYYY-MM-DD).');
+        return fail(PESAN_TANGGAL_TIDAK_VALID);
       if (sampai && !tanggalKalenderValid(sampai))
-        return fail('Tanggal sampai tidak valid (YYYY-MM-DD).');
+        return fail(PESAN_TANGGAL_TIDAK_VALID);
+      if (mulai && sampai && mulai > sampai)
+        return fail('Tanggal mulai tidak boleh setelah tanggal sampai.');
       const aksi =
         typeof f?.aksi === 'string' && f.aksi.trim()
           ? f.aksi.trim().slice(0, 120)
@@ -816,7 +864,7 @@ function registerIpc(): void {
       const offset = Math.max(0, Math.trunc(angka(f?.offset, 0)));
       return ok(listAuditLogPage(db, { aksi, mulai, sampai, limit, offset }));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
   ipcMain.handle('tutup:preview', (_e, tahun: number) => {
@@ -825,7 +873,7 @@ function registerIpc(): void {
       if (k) return fail(k);
       return ok(previewTutupBuku(db, Number(tahun)));
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
   ipcMain.handle(
@@ -857,8 +905,8 @@ function registerIpc(): void {
         });
         if (!hasil.tersimpan)
           return fail(
-            hasil.errors.join(' ') ||
-              hasil.peringatan.join(' ') ||
+            pesanValidasi(hasil.errors) ||
+              pesanValidasi(hasil.peringatan) ||
               'Tutup buku gagal disimpan.',
             false,
             hasil.perluKonfirmasi,
@@ -871,7 +919,7 @@ function registerIpc(): void {
           data: hasil.data,
         });
       } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e));
+        return fail(pesanError(e, GAGAL_TUTUP));
       }
     },
   );
@@ -879,7 +927,13 @@ function registerIpc(): void {
   ipcMain.handle('saldo:list', (_e, cutoff?: string) => {
     const k = perluBuka();
     if (k) return fail(k);
-    const perKas = saldoSemuaKasJurnal(listBarisJurnal(db), KAS_KODES, cutoff);
+    const tanggal = validasiTanggalOpsional(cutoff);
+    if (!tanggal.ok) return fail(tanggal.error);
+    const perKas = saldoSemuaKasJurnal(
+      listBarisJurnal(db),
+      KAS_KODES,
+      tanggal.input || undefined,
+    );
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
   });
 
@@ -888,7 +942,7 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       if (!tanggalKalenderValid(cutoff))
-        return fail('Cut-off tidak valid (YYYY-MM-DD dan harus tanggal kalender).');
+        return fail(PESAN_TANGGAL_TIDAK_VALID);
       const baris = listBarisJurnal(db);
       const n = neracaJurnal(baris, {
         cutoff,
@@ -917,7 +971,7 @@ function registerIpc(): void {
         balance: n.balance,
       });
     } catch (e) {
-      return fail(String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -926,11 +980,11 @@ function registerIpc(): void {
       const k = perluBuka();
       if (k) return fail(k);
       if (!tanggalKalenderValid(cutoff))
-        return fail('Cut-off tidak valid (YYYY-MM-DD dan harus tanggal kalender).');
+        return fail(PESAN_TANGGAL_TIDAK_VALID);
       const d = buildDashboardJurnal(listBarisJurnal(db), listTutupBuku(db), cutoff);
       return ok(d);
     } catch (e) {
-      return fail(String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -950,7 +1004,7 @@ function registerIpc(): void {
         writeFileSync(filePath, Buffer.from(req.bufferB64, 'base64'));
         return ok({ saved: true, path: filePath });
       } catch (e) {
-        return fail(String(e));
+        return fail(pesanError(e, GAGAL_FILE));
       }
     },
   );
@@ -986,7 +1040,7 @@ function registerIpc(): void {
         writeFileSync(filePath, pdf);
         return ok({ saved: true, path: filePath });
       } catch (e) {
-        return fail(String(e));
+        return fail(pesanError(e, GAGAL_FILE));
       } finally {
         pdfWin?.close();
       }
@@ -1012,7 +1066,7 @@ function registerIpc(): void {
       });
       return ok({ saved: true, path: filePath });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_BACKUP));
     }
   });
 
@@ -1032,7 +1086,7 @@ function registerIpc(): void {
       });
       return ok({ path: dest });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_BACKUP));
     }
   });
 
@@ -1044,7 +1098,7 @@ function registerIpc(): void {
       const dir = join(dirname(dbPath()), 'backups');
       return ok({ path: lastAutoBackup(dir) });
     } catch (e) {
-      return fail(String(e));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
@@ -1078,7 +1132,7 @@ function registerIpc(): void {
       }
       return ok({ restored: true, path: dbPath(), preRestorePath: hasil.preRestorePath });
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e));
+      return fail(pesanError(e, GAGAL_RESTORE));
     }
   });
 }
