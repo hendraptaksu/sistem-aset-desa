@@ -193,8 +193,8 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
               namaDasar={`buku-besar-${data.kode}-${periodeFile(data.mulai, data.sampai)}`}
               judul={`Buku Besar ${data.kode} — ${data.nama}`}
               disabled={memuat || (data.rows.length === 0 && data.saldoAwal === 0)}
-              buatWorkbook={() => bukuBesarToWorkbook(data)}
-              buatDokumen={() => bukuBesarPrintDoc(data)}
+              buatWorkbook={(kop) => bukuBesarToWorkbook(data, kop)}
+              buatDokumen={(kop) => bukuBesarPrintDoc(data, { kop })}
             />
           </div>
         )}

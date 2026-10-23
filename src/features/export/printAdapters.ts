@@ -12,6 +12,7 @@ import type {
   NeracaSaldoHasil,
 } from '../../core/reports.js';
 import { formatPersen, formatRp, formatTanggal } from '../../utils/format.js';
+import type { KopOrganisasi } from '../../core/pengaturan.js';
 import {
   kopPeriodeCutoff,
   kopPeriodeEfektif,
@@ -86,11 +87,22 @@ function baris(
   };
 }
 
+/** Field kop dokumen dari pengaturan pembukuan (P1-13); kosong = default. */
+function opsiKop(kop?: KopOrganisasi): Pick<PrintDoc, 'kop' | 'kopTambahan'> {
+  if (!kop) return {};
+  const nama = String(kop.nama ?? '').trim();
+  const tambahan = String(kop.tambahan ?? '').trim();
+  return {
+    ...(nama ? { kop: nama } : {}),
+    ...(tambahan ? { kopTambahan: tambahan } : {}),
+  };
+}
+
 /** Jurnal Umum (satu/banyak jurnal) + subtotal per jurnal + total keseluruhan. */
 export function jurnalPrintDoc(
   jurnal: JurnalTampil | readonly JurnalTampil[],
   coa: readonly Coa[] = [],
-  opts: { mulai?: string; sampai?: string; tanggalCetak?: string } = {},
+  opts: { mulai?: string; sampai?: string; tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const daftar: readonly JurnalTampil[] = Array.isArray(jurnal)
     ? jurnal
@@ -170,6 +182,7 @@ export function jurnalPrintDoc(
     judul: 'JURNAL UMUM',
     subjudul: kopPeriodeEfektif(opts.mulai, opts.sampai, daftar),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'portrait',
     blok:
       daftar.length === 0
@@ -184,7 +197,7 @@ export function jurnalPrintDoc(
 /** Buku Besar satu akun — LANDSCAPE, saldo awal/mutasi/saldo akhir. */
 export function bukuBesarPrintDoc(
   bb: BukuBesarHasil,
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const rows: PrintRow[] = [
     baris(
@@ -259,6 +272,7 @@ export function bukuBesarPrintDoc(
     judul: `BUKU BESAR — ${bb.kode} ${bb.nama}`,
     subjudul: kopPeriodeEfektif(bb.mulai, bb.sampai, bb.rows),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'landscape',
     blok: [
       {
@@ -279,7 +293,7 @@ export function bukuBesarPrintDoc(
 /** Neraca Saldo — semua akun + total + status seimbang/selisih. */
 export function neracaSaldoPrintDoc(
   ns: NeracaSaldoHasil,
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const rows = ns.rows.map((r) =>
     baris(
@@ -317,6 +331,7 @@ export function neracaSaldoPrintDoc(
     judul: 'NERACA SALDO',
     subjudul: kopPeriodeCutoff(ns.cutoff),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'portrait',
     blok: [{ jenis: 'tabel', tabel }],
   };
@@ -325,7 +340,7 @@ export function neracaSaldoPrintDoc(
 /** Laba Rugi — pendapatan, beban, total, laba/defisit + persen. */
 export function labaRugiPrintDoc(
   lr: LabaRugiHasil,
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const pendapatan = lr.pendapatan.filter((b) => b.nominal !== 0);
   const beban = lr.beban.filter((b) => b.nominal !== 0);
@@ -389,6 +404,7 @@ export function labaRugiPrintDoc(
     judul: 'LABA RUGI',
     subjudul: kopPeriodeEfektif(lr.mulai, lr.sampai),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'portrait',
     blok: [{ jenis: 'tabel', tabel }],
   };
@@ -397,7 +413,7 @@ export function labaRugiPrintDoc(
 /** Neraca — aset, kewajiban, ekuitas + laba turunan + total aset/pasiva. */
 export function neracaPrintDoc(
   n: NeracaHasil,
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const rows: PrintRow[] = [];
   const bagian = (judul: string, daftar: { kode: string; nama: string; saldo: number }[]): void => {
@@ -458,6 +474,7 @@ export function neracaPrintDoc(
     judul: 'NERACA',
     subjudul: `${kopPeriodeCutoff(n.cutoff)} — ${statusText}`,
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'portrait',
     blok: [{ jenis: 'tabel', tabel }],
   };
@@ -466,7 +483,7 @@ export function neracaPrintDoc(
 /** Arus Kas — ringkasan kelompok + tabel mutasi kas + total. */
 export function arusKasPrintDoc(
   ak: ArusKasHasil,
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const ringkasanRows: PrintRow[] = [
     baris(
@@ -575,6 +592,7 @@ export function arusKasPrintDoc(
     judul: 'ARUS KAS',
     subjudul: kopPeriodeEfektif(ak.mulai, ak.sampai, ak.rows),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'portrait',
     blok: [
       { jenis: 'heading', teks: 'RINGKASAN KELOMPOK' },
@@ -589,7 +607,7 @@ export function arusKasPrintDoc(
 export function panjarPrintDoc(
   daftar: readonly PanjarTampil[],
   coa: readonly Coa[] = [],
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   const rows: PrintRow[] = [];
   let totalJumlah = 0;
@@ -713,6 +731,7 @@ export function panjarPrintDoc(
     judul: 'PANJAR (UANG MUKA)',
     subjudul: kopPeriodeEfektif(undefined, undefined, daftar),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
+    ...opsiKop(opts.kop),
     orientasi: 'portrait',
     blok: [
       { jenis: 'tabel', tabel: daftarTabel },
@@ -726,7 +745,7 @@ export function panjarPrintDoc(
 export function jurnalDetailPrintDoc(
   jurnal: JurnalTampil,
   coa: readonly Coa[] = [],
-  opts: { tanggalCetak?: string } = {},
+  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
   return jurnalPrintDoc(jurnal, coa, opts);
 }

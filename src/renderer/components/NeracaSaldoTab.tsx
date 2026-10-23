@@ -105,8 +105,8 @@ export function NeracaSaldoTab({
               namaDasar={`neraca-saldo-${data.cutoff ?? cutoff}`}
               judul="Neraca Saldo"
               disabled={memuat || data.rows.length === 0}
-              buatWorkbook={() => neracaSaldoToWorkbook(data)}
-              buatDokumen={() => neracaSaldoPrintDoc(data)}
+              buatWorkbook={(kop) => neracaSaldoToWorkbook(data, kop)}
+              buatDokumen={(kop) => neracaSaldoPrintDoc(data, { kop })}
             />
           </div>
         )}

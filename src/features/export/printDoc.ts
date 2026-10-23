@@ -62,6 +62,8 @@ export type PrintDoc = {
   subjudul?: string;
   /** Default KOP_ORG_NAMA. */
   kop?: string;
+  /** Baris tambahan di bawah nama entitas (maks. 2 baris, P1-13). */
+  kopTambahan?: string;
   /** Tanggal cetak ISO YYYY-MM-DD; default tanggal hari ini. */
   tanggalCetak?: string;
   orientasi?: PrintOrientation;
@@ -340,8 +342,15 @@ function renderBlok(blok: PrintBlock): string {
 
 function renderKop(doc: PrintDoc, lanjutan: boolean): string {
   const org = doc.kop ?? KOP_ORG_NAMA;
+  const tambahan = String(doc.kopTambahan ?? '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .slice(0, 2);
   return `<header class="kop ${lanjutan ? 'kop-ringkas' : 'kop-lengkap'}">
 <div class="kop-org">${esc(org)}</div>
+${tambahan.map((t) => `<div class="kop-tambahan">${esc(t)}</div>`).join('\n')}
 <div class="kop-judul">${esc(doc.judul)}</div>
 ${doc.subjudul ? `<div class="kop-periode">${esc(doc.subjudul)}</div>` : ''}
 </header>`;
@@ -368,6 +377,8 @@ body{font-family:"Times New Roman",Georgia,serif;font-size:10pt;color:#111}
 .kop-ringkas{border-bottom:1px solid #777;padding-bottom:4px;margin-bottom:6px}
 .kop-org{font-weight:700;font-size:14pt;letter-spacing:.3px}
 .kop-ringkas .kop-org{font-size:10pt}
+.kop-tambahan{font-size:9pt}
+.kop-ringkas .kop-tambahan{font-size:8pt}
 .kop-judul{font-weight:700;font-size:12pt;text-transform:uppercase}
 .kop-ringkas .kop-judul{font-size:9.5pt}
 .kop-periode{font-size:9.5pt}

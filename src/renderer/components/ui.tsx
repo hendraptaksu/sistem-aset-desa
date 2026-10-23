@@ -23,6 +23,10 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={clsx(inputCls, props.className)} />;
 }
 
+export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={clsx(inputCls, 'min-h-[4.5rem]', props.className)} />;
+}
+
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={clsx(inputCls, props.className)} />;
 }

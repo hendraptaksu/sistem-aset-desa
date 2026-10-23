@@ -138,8 +138,8 @@ export function NeracaTab({
               namaDasar={`neraca-${data.cutoff}`}
               judul={`Neraca per ${formatTanggal(data.cutoff)}`}
               disabled={memuat}
-              buatWorkbook={() => neracaHasilToWorkbook(data)}
-              buatDokumen={() => neracaPrintDoc(data)}
+              buatWorkbook={(kop) => neracaHasilToWorkbook(data, kop)}
+              buatDokumen={(kop) => neracaPrintDoc(data, { kop })}
             />
           </div>
         )}

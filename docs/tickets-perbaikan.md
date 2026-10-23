@@ -301,7 +301,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test validasi; smoke double-click.
   - **Dependency:** P0-4
 
-- [ ] **P1-13 — Pengaturan pembukuan**
+- [x] **P1-13 — Pengaturan pembukuan** (2026-10-23: pengaturan entitas/kop/tahun buku/prefix bukti tersimpan tervalidasi + audit dan dipakai export XLSX/PDF, nomor lama tidak berubah; 334/334 test hijau)
   - **Langkah:** nama entitas & kop laporan, tanggal mulai pembukuan, awal tahun buku, format nomor bukti,
     idle lock & ganti PIN; semua perubahan masuk audit.
   - **DoD:** test simpan/baca pengaturan; kop export terpengaruh.

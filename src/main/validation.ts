@@ -6,6 +6,11 @@ import {
   tanggalKalenderValid,
   type JurnalInput,
 } from '../core/posting.js';
+import {
+  normalisasiPengaturan,
+  validasiPengaturan,
+  type PengaturanPembukuan,
+} from '../core/pengaturan.js';
 import type {
   JurnalBarisInput,
   JurnalHeaderInput,
@@ -726,4 +731,26 @@ export function validasiIdJurnal(nilai: unknown): HasilBentuk<string> {
   const id = nilai.trim();
   if (id.length > 200) return { ok: false, error: 'ID jurnal terlalu panjang.' };
   return { ok: true, input: id };
+}
+
+// ---------------------------------------------------------------------------
+// Pengaturan pembukuan (P1-13)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalisasi + validasi bentuk pengaturan dari renderer. Hanya field yang
+ * dikenal yang diteruskan; nilai mentah tidak pernah masuk DB.
+ */
+export function validasiBentukPengaturanPembukuan(
+  nilai: unknown,
+): HasilBentuk<PengaturanPembukuan> {
+  if (!objek(nilai))
+    return { ok: false, error: 'Data pengaturan pembukuan tidak lengkap.' };
+
+  const input = normalisasiPengaturan(nilai);
+  const errors = validasiPengaturan(input);
+  if (errors.length > 0)
+    return { ok: false, error: errors.join(' ') };
+
+  return { ok: true, input };
 }

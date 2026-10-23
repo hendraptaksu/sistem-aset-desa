@@ -5,7 +5,8 @@ import {
   type PrintDoc,
   type PrintOrientation,
 } from '../../features/export/printDoc.js';
-import { workbookToBuffer } from '../../features/export/workbooks.js';
+import { KOP_ORG_NAMA, workbookToBuffer } from '../../features/export/workbooks.js';
+import { kopDariPengaturan, type KopOrganisasi } from '../../core/pengaturan.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
 import { Button, ErrorBox } from './ui.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
@@ -38,9 +39,10 @@ export function ExportActions({
   judul: string;
   /** Data kosong / belum siap → semua tombol nonaktif. */
   disabled?: boolean;
-  buatWorkbook: () => Promise<ExcelJS.Workbook>;
+  /** Builder menerima kop dari pengaturan pembukuan (P1-13). */
+  buatWorkbook: (kop: KopOrganisasi) => Promise<ExcelJS.Workbook>;
   /** Dokumen cetak P1-16 (model yang sama untuk pratinjau & PDF). */
-  buatDokumen: () => PrintDoc | Promise<PrintDoc>;
+  buatDokumen: (kop: KopOrganisasi) => PrintDoc | Promise<PrintDoc>;
   tampilkanPrint?: boolean;
 }) {
   const [sibuk, setSibuk] = useState<null | 'excel' | 'pdf' | 'print'>(null);
@@ -50,6 +52,15 @@ export function ExportActions({
   const busyRef = useRef(false);
   const nonaktif = disabled || sibuk !== null;
 
+  /** Kop laporan dari pengaturan saat aksi dijalankan (fallback kop lama). */
+  async function kopSaatIni(): Promise<KopOrganisasi> {
+    try {
+      return kopDariPengaturan(await api.pengaturanGet());
+    } catch {
+      return { nama: KOP_ORG_NAMA };
+    }
+  }
+
   async function exportExcel(): Promise<void> {
     if (nonaktif || busyRef.current) return;
     busyRef.current = true;
@@ -57,7 +68,8 @@ export function ExportActions({
     setInfo(null);
     setSibuk('excel');
     try {
-      const wb = await buatWorkbook();
+      const kop = await kopSaatIni();
+      const wb = await buatWorkbook(kop);
       const buf = await workbookToBuffer(wb);
       const hasil = await api.saveBuffer({
         bufferB64: u8ToB64(buf),
@@ -79,8 +91,18 @@ export function ExportActions({
   }
 
   async function siapkanCetak(): Promise<Pratinjau> {
-    const doc = await buatDokumen();
-    return renderPrintDocument(doc);
+    const kop = await kopSaatIni();
+    const doc = await buatDokumen(kop);
+    const dokumen: PrintDoc = {
+      ...doc,
+      kop: doc.kop ?? kop.nama,
+      ...(doc.kopTambahan !== undefined
+        ? { kopTambahan: doc.kopTambahan }
+        : kop.tambahan
+          ? { kopTambahan: kop.tambahan }
+          : {}),
+    };
+    return renderPrintDocument(dokumen);
   }
 
   async function simpanPdf(): Promise<void> {

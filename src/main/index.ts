@@ -9,6 +9,7 @@ import {
   catatAudit,
   deleteAset,
   getAset,
+  getPengaturanPembukuan,
   guardPeriodeTerkunci,
   insertAset,
   insertTransaksi,
@@ -19,6 +20,7 @@ import {
   listTransaksi,
   listTutupBuku,
   saranNomorBukti,
+  simpanPengaturanPembukuan,
   updateAset,
   type AuditFilter,
   type JurnalFilter,
@@ -80,6 +82,7 @@ import {
   validasiBentukJurnalInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
+  validasiBentukPengaturanPembukuan,
   validasiBentukPihak,
   validasiBentukPostingPihak,
   validasiBentukSaldoAwal,
@@ -188,6 +191,31 @@ function registerIpc(): void {
   // lock:change & lock:idle-set justru WAJIB terbuka → ikut dijaga di bawah.
   const perluBuka = (): string | null =>
     sudahSetupPin(db) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
+
+  // ---- Pengaturan pembukuan (P1-13) ----
+  // Semua perubahan wajib lewat PIN terbuka; repository yang menulis audit
+  // sebelum/sesudah dan tidak pernah menyertakan PIN.
+  ipcMain.handle('pengaturan:get', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(getPengaturanPembukuan(db));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  ipcMain.handle('pengaturan:simpan', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPengaturanPembukuan(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(simpanPengaturanPembukuan(db, bentuk.input));
+    } catch (e) {
+      return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
+    }
+  });
 
   // ---- Jurnal Umum & koreksi (P0-6) ----
   // Bentuk lama dipertahankan: mengembalikan array tanpa total. Layar baru

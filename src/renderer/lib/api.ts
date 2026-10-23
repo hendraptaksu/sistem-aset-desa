@@ -1,5 +1,6 @@
 import type { Coa } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
+import type { PengaturanPembukuan } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
 import type { AlurPihak, SaldoPihak } from '../../core/pihak.js';
 import type {
@@ -170,6 +171,10 @@ export const api = {
   lockIdleSet: (menit: number) => call<{ idleMenit: number }>('lock:idle-set', menit),
   lockReset: (kode: string, pinBaru: string) =>
     call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
+  /** Pengaturan pembukuan (P1-13); hanya bisa dibaca saat PIN terbuka. */
+  pengaturanGet: () => call<PengaturanPembukuan>('pengaturan:get'),
+  pengaturanSimpan: (input: PengaturanPembukuan) =>
+    call<PengaturanPembukuan>('pengaturan:simpan', input),
   coa: () => call<Coa[]>('coa:list'),
   jurnalList: (
     f: FilterJurnalCariApi = {},

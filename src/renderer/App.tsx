@@ -36,6 +36,7 @@ import { TutupTab } from './components/TutupTab.js';
 import { DashboardTab } from './components/DashboardTab.js';
 import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
+import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
 
 type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
@@ -62,6 +63,7 @@ export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
+  const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
   // Drill-down Neraca Saldo → Buku Besar akun yang diklik (P1-8).
   const [akunBukuBesar, setAkunBukuBesar] = useState<string | undefined>();
 
@@ -77,6 +79,23 @@ export function App() {
   useEffect(() => {
     void refreshLock();
   }, [refreshLock]);
+
+  // Kop layar mengikuti nama entitas tersimpan (P1-13); gagal = pakai default.
+  useEffect(() => {
+    if (!lock?.terbuka) return;
+    let batal = false;
+    void api
+      .pengaturanGet()
+      .then((p) => {
+        if (!batal) setNamaEntitas(p.namaEntitas || DEFAULT_PENGATURAN.namaEntitas);
+      })
+      .catch(() => {
+        /* biarkan nama default bila IPC belum siap */
+      });
+    return () => {
+      batal = true;
+    };
+  }, [lock?.terbuka]);
 
   // Auto-kunci saat idle: timer di-reset oleh aktivitas. Tanpa tombol kunci manual.
   useEffect(() => {
@@ -156,7 +175,7 @@ export function App() {
         {tab === 'dashboard' ? (
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
-              <h1 className="text-xl font-bold">Keuangan Pura Dalem Puri Peliatan</h1>
+              <h1 className="text-xl font-bold">{namaEntitas}</h1>
               <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">

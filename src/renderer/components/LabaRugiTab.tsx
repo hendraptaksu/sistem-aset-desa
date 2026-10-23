@@ -138,8 +138,8 @@ export function LabaRugiTab() {
               namaDasar={`laba-rugi-${periodeFile(data.mulai, data.sampai)}`}
               judul="Laba Rugi"
               disabled={memuat}
-              buatWorkbook={() => labaRugiToWorkbook(data)}
-              buatDokumen={() => labaRugiPrintDoc(data)}
+              buatWorkbook={(kop) => labaRugiToWorkbook(data, kop)}
+              buatDokumen={(kop) => labaRugiPrintDoc(data, { kop })}
             />
           </div>
         )}

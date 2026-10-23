@@ -8,6 +8,12 @@ import {
   nomorBuktiBerikutnya,
   tahunDariTanggal,
 } from '../core/nomorBukti.js';
+import {
+  DEFAULT_PENGATURAN,
+  normalisasiPengaturan,
+  validasiPengaturan,
+  type PengaturanPembukuan,
+} from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import type { CoaTipe, PosisiNormal } from './coa.js';
 import type {
@@ -194,18 +200,28 @@ export function insertJurnal(
   };
 
   const simpan = db.transaction(() => {
-    // P1-11: nomor kosong diisi otomatis DI DALAM transaksi yang sama dengan
-    // insert. Membaca nomor terpakai + insert terjadi atomik, sehingga dua
-    // jurnal pada tahun yang sama tidak mungkin mendapat nomor yang sama.
+    // P1-11/P1-13: nomor kosong diisi otomatis DI DALAM transaksi yang sama
+    // dengan insert. Prefix & padding dibaca dari pengaturan pembukuan saat
+    // nomor dibuat, sehingga nomor lama tidak berubah saat pengaturan diubah.
     if (!row.no_bukti) {
+      const pengaturan = getPengaturanPembukuan(db);
       const terpakai = (
         db
           .prepare("SELECT no_bukti FROM jurnal WHERE no_bukti LIKE ? ESCAPE '\\'")
-          .all(`JU-${tahunJurnal}-%`) as { no_bukti: string }[]
+          .all(`${pengaturan.prefixNomorBukti}-${tahunJurnal}-%`) as {
+          no_bukti: string;
+        }[]
       ).map((r) => String(r.no_bukti));
       row.no_bukti = formatNomorBukti(
         tahunJurnal,
-        nomorBuktiBerikutnya(tahunJurnal, terpakai),
+        nomorBuktiBerikutnya(
+          tahunJurnal,
+          terpakai,
+          pengaturan.prefixNomorBukti,
+          pengaturan.paddingNomorBukti,
+        ),
+        pengaturan.prefixNomorBukti,
+        pengaturan.paddingNomorBukti,
       );
       const dup = db
         .prepare('SELECT id FROM jurnal WHERE lower(no_bukti) = lower(?)')
@@ -409,17 +425,31 @@ export function listJurnalLengkapPage(
 }
 
 /**
- * Saran nomor bukti berikutnya untuk pratinjau form (P1-11). Hanya membaca DB;
- * penomoran final tetap dilakukan atomik oleh `insertJurnal`.
+ * Saran nomor bukti berikutnya untuk pratinjau form (P1-11/P1-13). Hanya
+ * membaca DB; penomoran final tetap dilakukan atomik oleh `insertJurnal`.
+ * Prefix & padding mengikuti pengaturan pembukuan saat ini.
  */
 export function saranNomorBukti(db: Database.Database, tanggal: string): string {
   const tahun = tahunDariTanggal(tanggal);
+  const pengaturan = getPengaturanPembukuan(db);
   const terpakai = (
     db
       .prepare("SELECT no_bukti FROM jurnal WHERE no_bukti LIKE ? ESCAPE '\\'")
-      .all(`JU-${tahun}-%`) as { no_bukti: string }[]
+      .all(`${pengaturan.prefixNomorBukti}-${tahun}-%`) as {
+      no_bukti: string;
+    }[]
   ).map((r) => String(r.no_bukti));
-  return formatNomorBukti(tahun, nomorBuktiBerikutnya(tahun, terpakai));
+  return formatNomorBukti(
+    tahun,
+    nomorBuktiBerikutnya(
+      tahun,
+      terpakai,
+      pengaturan.prefixNomorBukti,
+      pengaturan.paddingNomorBukti,
+    ),
+    pengaturan.prefixNomorBukti,
+    pengaturan.paddingNomorBukti,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +731,78 @@ export function getIdleMenit(db: Database.Database, fallback = 30): number {
   const v = getPengaturan(db, KUNCI_IDLE_MENIT);
   const n = v === null ? NaN : Number(v);
   return Number.isInteger(n) ? n : fallback;
+}
+
+// --- Pengaturan pembukuan (P1-13). Tetap key-value di tabel `pengaturan`. ---
+export const KUNCI_AKUNTANSI_NAMA_ENTITAS = 'akuntansi_nama_entitas';
+export const KUNCI_AKUNTANSI_KOP_TAMBAHAN = 'akuntansi_kop_tambahan';
+export const KUNCI_AKUNTANSI_TANGGAL_MULAI = 'akuntansi_tanggal_mulai';
+export const KUNCI_AKUNTANSI_AWAL_TAHUN = 'akuntansi_awal_tahun_buku';
+export const KUNCI_AKUNTANSI_PREFIX_BUKTI = 'akuntansi_prefix_bukti';
+export const KUNCI_AKUNTANSI_PADDING_BUKTI = 'akuntansi_padding_bukti';
+
+/**
+ * Baca pengaturan pembukuan lengkap. DB kosong / field belum pernah disimpan
+ * otomatis memakai `DEFAULT_PENGATURAN` (kop lama, JU, 4 digit).
+ */
+export function getPengaturanPembukuan(
+  db: Database.Database,
+): PengaturanPembukuan {
+  return normalisasiPengaturan({
+    namaEntitas:
+      getPengaturan(db, KUNCI_AKUNTANSI_NAMA_ENTITAS) ??
+      DEFAULT_PENGATURAN.namaEntitas,
+    kopTambahan: getPengaturan(db, KUNCI_AKUNTANSI_KOP_TAMBAHAN) ?? '',
+    tanggalMulaiPembukuan:
+      getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI) ?? '',
+    awalTahunBuku:
+      getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN) ??
+      DEFAULT_PENGATURAN.awalTahunBuku,
+    prefixNomorBukti:
+      getPengaturan(db, KUNCI_AKUNTANSI_PREFIX_BUKTI) ??
+      DEFAULT_PENGATURAN.prefixNomorBukti,
+    paddingNomorBukti:
+      getPengaturan(db, KUNCI_AKUNTANSI_PADDING_BUKTI) ??
+      DEFAULT_PENGATURAN.paddingNomorBukti,
+  });
+}
+
+export type OpsiSimpanPengaturan = {
+  alasan?: string;
+};
+
+/**
+ * Simpan pengaturan pembukuan secara atomik + audit `PENGATURAN-PEMBUKUAN`.
+ * Data audit hanya berisi model pembukuan (tidak pernah PIN/salt/hash).
+ * Melempar Error berbahasa Indonesia bila validasi gagal.
+ */
+export function simpanPengaturanPembukuan(
+  db: Database.Database,
+  input: unknown,
+  opsi: OpsiSimpanPengaturan = {},
+): PengaturanPembukuan {
+  const bersih = normalisasiPengaturan(input);
+  const errors = validasiPengaturan(bersih);
+  if (errors.length > 0) throw new Error(errors[0]!);
+
+  const lama = getPengaturanPembukuan(db);
+  const simpan = db.transaction(() => {
+    setPengaturan(db, KUNCI_AKUNTANSI_NAMA_ENTITAS, bersih.namaEntitas);
+    setPengaturan(db, KUNCI_AKUNTANSI_KOP_TAMBAHAN, bersih.kopTambahan);
+    setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, bersih.tanggalMulaiPembukuan);
+    setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, String(bersih.awalTahunBuku));
+    setPengaturan(db, KUNCI_AKUNTANSI_PREFIX_BUKTI, bersih.prefixNomorBukti);
+    setPengaturan(db, KUNCI_AKUNTANSI_PADDING_BUKTI, String(bersih.paddingNomorBukti));
+
+    catatAudit(db, {
+      aksi: 'PENGATURAN-PEMBUKUAN',
+      alasan: String(opsi.alasan ?? '').trim() || 'Pengaturan pembukuan diubah',
+      lama,
+      baru: bersih,
+    });
+  });
+  simpan();
+  return bersih;
 }
 
 // --- Inventaris Aset (non-keuangan, isolasi penuh dari ledger/neraca) ---

@@ -162,8 +162,8 @@ export function ArusKasTab() {
               namaDasar={`arus-kas-${periodeFile(data.mulai, data.sampai)}`}
               judul="Arus Kas"
               disabled={memuat}
-              buatWorkbook={() => arusKasToWorkbook(data)}
-              buatDokumen={() => arusKasPrintDoc(data)}
+              buatWorkbook={(kop) => arusKasToWorkbook(data, kop)}
+              buatDokumen={(kop) => arusKasPrintDoc(data, { kop })}
             />
           </div>
         )}

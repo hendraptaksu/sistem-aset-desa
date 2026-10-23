@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { IDLE_MAKS_MENIT, IDLE_MIN_MENIT } from '../../core/pin.js';
+import {
+  DEFAULT_PENGATURAN,
+  MAKS_KOP_TAMBAHAN,
+  MAKS_NAMA_ENTITAS,
+  type PengaturanPembukuan,
+} from '../../core/pengaturan.js';
+import { formatNomorBukti } from '../../core/nomorBukti.js';
 import type { AuditLog } from '../../core/types.js';
 import {
   formatAksiAudit,
@@ -15,6 +22,7 @@ import {
   ErrorBox,
   Field,
   Select,
+  TextArea,
   TextInput,
 } from './ui.js';
 
@@ -33,6 +41,21 @@ const OPSI_AKSI = [
 ] as const;
 
 const OPSI_LIMIT = [10, 25, 50, 100] as const;
+
+const NAMA_BULAN = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+] as const;
 
 function Baris({ label, value }: { label: string; value: string }) {
   return (
@@ -56,6 +79,19 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
   const [okIdle, setOkIdle] = useState<string | null>(null);
   const [busyIdle, setBusyIdle] = useState(false);
   const busyIdleRef = useRef(false);
+
+  // ---- Pengaturan pembukuan (P1-13) ----
+  const [entitas, setEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
+  const [kopTambahan, setKopTambahan] = useState('');
+  const [tanggalMulai, setTanggalMulai] = useState('');
+  const [awalBulan, setAwalBulan] = useState(String(DEFAULT_PENGATURAN.awalTahunBuku));
+  const [prefix, setPrefix] = useState(DEFAULT_PENGATURAN.prefixNomorBukti);
+  const [padding, setPadding] = useState(String(DEFAULT_PENGATURAN.paddingNomorBukti));
+  const [errPembukuan, setErrPembukuan] = useState<string | null>(null);
+  const [okPembukuan, setOkPembukuan] = useState<string | null>(null);
+  const [busyPembukuan, setBusyPembukuan] = useState(false);
+  const [memuatPembukuan, setMemuatPembukuan] = useState(true);
+  const busyPembukuanRef = useRef(false);
 
   const [audit, setAudit] = useState<AuditLog[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
@@ -95,6 +131,34 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
     // Filter & pagination adalah satu-satunya pemicu muat ulang.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fAksi, fMulai, fSampai, limit, offset]);
+
+  function terapkanPembukuan(p: PengaturanPembukuan): void {
+    setEntitas(p.namaEntitas);
+    setKopTambahan(p.kopTambahan);
+    setTanggalMulai(p.tanggalMulaiPembukuan);
+    setAwalBulan(String(p.awalTahunBuku));
+    setPrefix(p.prefixNomorBukti);
+    setPadding(String(p.paddingNomorBukti));
+  }
+
+  // Tampilkan nilai tersimpan saat mount (bukan default form).
+  useEffect(() => {
+    let batal = false;
+    void (async () => {
+      setMemuatPembukuan(true);
+      try {
+        const p = await api.pengaturanGet();
+        if (!batal) terapkanPembukuan(p);
+      } catch (e) {
+        if (!batal) setErrPembukuan(pesanError(e, PESAN_MUAT_GAGAL));
+      } finally {
+        if (!batal) setMemuatPembukuan(false);
+      }
+    })();
+    return () => {
+      batal = true;
+    };
+  }, []);
 
   // Bila jumlah baris menyusut (mis. filter berubah), jangan biarkan offset
   // melewati halaman terakhir.
@@ -145,6 +209,40 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
       busyIdleRef.current = false;
       setBusyIdle(false);
     }
+  }
+
+  async function simpanPembukuan() {
+    if (busyPembukuanRef.current) return;
+    setErrPembukuan(null);
+    setOkPembukuan(null);
+    busyPembukuanRef.current = true;
+    setBusyPembukuan(true);
+    try {
+      const hasil = await api.pengaturanSimpan({
+        namaEntitas: entitas,
+        kopTambahan,
+        tanggalMulaiPembukuan: tanggalMulai,
+        awalTahunBuku: Number(awalBulan),
+        prefixNomorBukti: prefix,
+        paddingNomorBukti: Number(padding),
+      });
+      terapkanPembukuan(hasil);
+      setOkPembukuan('Pengaturan pembukuan disimpan.');
+      void muatAudit();
+    } catch (e) {
+      setErrPembukuan(pesanError(e));
+    } finally {
+      busyPembukuanRef.current = false;
+      setBusyPembukuan(false);
+    }
+  }
+
+  const tahunContoh = new Date().getFullYear();
+  let pratinjauNomor = '—';
+  try {
+    pratinjauNomor = formatNomorBukti(tahunContoh, 1, prefix, Number(padding));
+  } catch {
+    pratinjauNomor = '—';
   }
 
   const halaman = Math.floor(offset / limit) + 1;
@@ -201,6 +299,89 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
             {busyIdle ? 'Menyimpan…' : 'Simpan'}
           </Button>
         </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 text-lg font-bold">Pengaturan Pembukuan</h2>
+        <p className="mb-3 text-sm text-stone-600">
+          Nama entitas dan kop tambahan dipakai di semua laporan Excel &amp; PDF.
+          Nomor bukti baru mengikuti prefix dan jumlah digit di bawah; nomor lama
+          tidak berubah.
+        </p>
+        <ErrorBox msg={errPembukuan} />
+        {okPembukuan && (
+          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okPembukuan}</div>
+        )}
+        {memuatPembukuan ? (
+          <p className="text-sm text-stone-500">Memuat pengaturan…</p>
+        ) : (
+          <div className="grid max-w-2xl gap-3 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <Field label="Nama entitas (kop laporan)">
+                <TextInput
+                  value={entitas}
+                  maxLength={MAKS_NAMA_ENTITAS}
+                  onChange={(e) => setEntitas(e.target.value)}
+                  placeholder="PURA DALEM PURI PELIATAN"
+                />
+              </Field>
+            </div>
+            <div className="md:col-span-2">
+              <Field label={`Kop tambahan (opsional, maks. 2 baris / ${MAKS_KOP_TAMBAHAN} karakter)`}>
+                <TextArea
+                  value={kopTambahan}
+                  maxLength={MAKS_KOP_TAMBAHAN}
+                  rows={2}
+                  onChange={(e) => setKopTambahan(e.target.value)}
+                  placeholder={'cth: Jl. Raya Peliatan\nDesa Peliatan, Ubud'}
+                />
+              </Field>
+            </div>
+            <Field label="Tanggal mulai pembukuan (opsional)">
+              <TextInput
+                type="date"
+                value={tanggalMulai}
+                onChange={(e) => setTanggalMulai(e.target.value)}
+              />
+            </Field>
+            <Field label="Awal tahun buku">
+              <Select value={awalBulan} onChange={(e) => setAwalBulan(e.target.value)}>
+                {NAMA_BULAN.map((nama, i) => (
+                  <option key={nama} value={String(i + 1)}>
+                    {i + 1} — {nama}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Prefix nomor bukti (1–8 huruf/angka)">
+              <TextInput
+                value={prefix}
+                maxLength={8}
+                onChange={(e) =>
+                  setPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
+                }
+                placeholder="JU"
+              />
+            </Field>
+            <Field label="Jumlah digit urutan (3–6)">
+              <Select value={padding} onChange={(e) => setPadding(e.target.value)}>
+                {[3, 4, 5, 6].map((n) => (
+                  <option key={n} value={String(n)}>{n} digit</option>
+                ))}
+              </Select>
+            </Field>
+            <div className="md:col-span-2">
+              <p className="text-sm text-stone-600">
+                Contoh nomor bukti: <span className="font-mono font-semibold">{pratinjauNomor}</span>
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <Button disabled={busyPembukuan} onClick={() => void simpanPembukuan()}>
+                {busyPembukuan ? 'Menyimpan…' : 'Simpan Pengaturan Pembukuan'}
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card>

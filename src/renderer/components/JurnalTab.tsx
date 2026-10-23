@@ -305,11 +305,17 @@ export function JurnalTab({
             namaDasar={namaDasarJurnal}
             judul="Jurnal Umum"
             disabled={total === 0 || memuat}
-            buatWorkbook={async () =>
-              jurnalToWorkbook(await muatSemuaJurnal(), coa, opsiPeriodeJurnal)
+            buatWorkbook={async (kop) =>
+              jurnalToWorkbook(await muatSemuaJurnal(), coa, {
+                ...opsiPeriodeJurnal,
+                kop,
+              })
             }
-            buatDokumen={async () =>
-              jurnalPrintDoc(await muatSemuaJurnal(), coa, opsiPeriodeJurnal)
+            buatDokumen={async (kop) =>
+              jurnalPrintDoc(await muatSemuaJurnal(), coa, {
+                ...opsiPeriodeJurnal,
+                kop,
+              })
             }
           />
         </div>

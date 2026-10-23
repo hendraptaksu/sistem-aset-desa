@@ -751,11 +751,11 @@ export function PanjarTab() {
               namaDasar={namaDasarPanjar}
               judul="Panjar (Uang Muka)"
               disabled={shown.length === 0}
-              buatWorkbook={() =>
-                dataPanjarExport().then((daftar) => panjarToWorkbook(daftar, coa))
+              buatWorkbook={(kop) =>
+                dataPanjarExport().then((daftar) => panjarToWorkbook(daftar, coa, kop))
               }
-              buatDokumen={() =>
-                dataPanjarExport().then((daftar) => panjarPrintDoc(daftar, coa))
+              buatDokumen={(kop) =>
+                dataPanjarExport().then((daftar) => panjarPrintDoc(daftar, coa, { kop }))
               }
             />
           </div>
