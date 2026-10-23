@@ -27,6 +27,7 @@ type Env = {
   setDbCalls: Database.Database[];
   saveQueue: { canceled: boolean; filePath?: string }[];
   openQueue: { canceled: boolean; filePaths: string[] }[];
+  openPaths: string[];
   panggil: (channel: string, ...args: any[]) => Promise<JawabanIpc>;
   db: () => Database.Database;
   tutup: () => void;
@@ -36,12 +37,21 @@ const envs: Env[] = [];
 
 function buatEnv(): Env {
   const dir = mkdtempSync(join(tmpdir(), 'pura-ipc-'));
-  const dbFile = join(dir, 'pura.db');
+  const dataDir = join(dir, 'data');
+  const dbFile = join(dataDir, 'pura.db');
   let db = openDb(dbFile);
   const handlers = new Map<string, Handler>();
   const setDbCalls: Database.Database[] = [];
   const saveQueue: { canceled: boolean; filePath?: string }[] = [];
   const openQueue: { canceled: boolean; filePaths: string[] }[] = [];
+  const openPaths: string[] = [];
+  const lokasi = {
+    mode: 'INSTALLED' as const,
+    dataDir,
+    dbPath: dbFile,
+    attachmentsDir: join(dir, 'attachments'),
+    backupsDir: join(dataDir, 'backups'),
+  };
 
   const deps: IpcDeps = {
     handle: (channel, listener) => handlers.set(channel, listener),
@@ -59,8 +69,12 @@ function buatEnv(): Env {
     printPdf: async (html, path) => {
       writeFileSync(path, Buffer.from(html, 'utf-8'));
     },
-    openPath: async () => '',
-    lampiranDir: () => join(dir, 'attachments'),
+    openPath: async (path) => {
+      openPaths.push(path);
+      return '';
+    },
+    lampiranDir: () => lokasi.attachmentsDir,
+    lokasiData: () => lokasi,
     // Tanggal tetap agar K2 (tutup hanya tahun selesai) deterministik.
     now: () => new Date('2026-10-23T08:00:00.000Z'),
   };
@@ -77,6 +91,7 @@ function buatEnv(): Env {
     setDbCalls,
     saveQueue,
     openQueue,
+    openPaths,
     panggil: async (channel, ...args) => {
       const handler = handlers.get(channel);
       if (!handler) throw new Error(`Channel ${channel} tidak terdaftar.`);
@@ -106,6 +121,8 @@ const K = (akun_kode: string, kredit: number) => ({ akun_kode, debit: 0, kredit 
 const CHANNEL_IPC = [
   'anggaran:list',
   'anggaran:simpan',
+  'app:buka-folder',
+  'app:info-lokasi',
   'aset:create',
   'aset:delete',
   'aset:list',
@@ -174,11 +191,50 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 67 channel lama lewat deps.handle', () => {
+  it('mendaftarkan seluruh 69 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(67);
+    expect(env.handlers.size).toBe(69);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(67);
+    expect(CHANNEL_IPC).toHaveLength(69);
+  });
+});
+
+describe('P2-8 — info lokasi & buka folder', () => {
+  it('mengembalikan lokasi deps dan hanya membuka tiga folder tetap', async () => {
+    const env = buatEnv();
+
+    const info = await env.panggil('app:info-lokasi');
+    expect(info.ok, info.error).toBe(true);
+    expect(info.data).toEqual({
+      mode: 'INSTALLED',
+      dataDir: join(env.dir, 'data'),
+      dbPath: join(env.dir, 'data', 'pura.db'),
+      attachmentsDir: join(env.dir, 'attachments'),
+      backupsDir: join(env.dir, 'data', 'backups'),
+    });
+
+    const buka = await env.panggil('app:buka-folder', 'attachments');
+    expect(buka.ok, buka.error).toBe(true);
+    expect(buka.data).toEqual({
+      opened: true,
+      jenis: 'attachments',
+      path: join(env.dir, 'attachments'),
+    });
+    expect(env.openPaths).toEqual([join(env.dir, 'attachments')]);
+    expect(existsSync(join(env.dir, 'attachments'))).toBe(true);
+
+    // Path dari renderer tidak pernah diterima, hanya tiga nama folder tetap.
+    for (const jenis of ['../../etc', '/tmp', 'data/../../', '', null]) {
+      const salah = await env.panggil('app:buka-folder', jenis);
+      expect(salah.ok).toBe(false);
+    }
+    expect(env.openPaths).toHaveLength(1);
+
+    // Backup internal memakai folder backup dari lokasi yang sama.
+    const auto = await env.panggil('backup:auto', 2025);
+    expect(auto.ok, auto.error).toBe(true);
+    expect(auto.data.path).toBe(join(env.dir, 'data', 'backups', 'pura-2025.db'));
+    expect(existsSync(auto.data.path)).toBe(true);
   });
 });
 

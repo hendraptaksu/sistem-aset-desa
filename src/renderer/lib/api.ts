@@ -34,6 +34,7 @@ import type {
   NeracaSaldoHasil,
 } from '../../core/reports.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
+import type { LokasiData } from '../../main/lokasiData.js';
 
 export type {
   ArusKasHasil,
@@ -47,6 +48,10 @@ export type {
   RekonsiliasiTampil,
   StatusRekonsiliasi,
 };
+export type { LokasiData };
+
+/** Nama folder tetap yang boleh dibuka dari layar Pengaturan (P2-8). */
+export type JenisFolderLokasiApi = 'data' | 'backups' | 'attachments';
 
 type Ok<T> = { ok: true; data: T };
 type Fail = { ok: false; error: string; perluAlasan?: boolean; perluKonfirmasi?: boolean };
@@ -251,6 +256,14 @@ export const api = {
   pengaturanGet: () => call<PengaturanPembukuan>('pengaturan:get'),
   pengaturanSimpan: (input: PengaturanPembukuan) =>
     call<PengaturanPembukuan>('pengaturan:simpan', input),
+  /** Lokasi data & backup aktual (P2-8); dipakai kartu Pengaturan. */
+  infoLokasi: () => call<LokasiData>('app:info-lokasi'),
+  /** Buka salah satu folder tetap di file manager; bukan path dari renderer. */
+  bukaFolder: (jenis: JenisFolderLokasiApi) =>
+    call<{ opened: boolean; jenis: JenisFolderLokasiApi; path: string }>(
+      'app:buka-folder',
+      jenis,
+    ),
   coa: () => call<Coa[]>('coa:list'),
   jurnalList: (
     f: FilterJurnalCariApi = {},

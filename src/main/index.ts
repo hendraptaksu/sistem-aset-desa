@@ -1,27 +1,39 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { config as loadEnv } from 'dotenv';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
 import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
-import { folderLampiranDefault } from '../features/lampiran/lampiran.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
+import { tentukanLokasiData, type LokasiData } from './lokasiData.js';
 import { urlDiizinkan } from './windowSecurity.js';
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
+let lokasi: LokasiData | null = null;
 
 // Dev saja: baca .env di root repo agar PURA_DB bisa di-override.
-// App production (isPackaged) selalu pakai userData/data/pura.db.
+// Production: installer memakai userData/data/pura.db; build portable memakai
+// <folder exe>/data/pura.db (P2-8) lewat PORTABLE_EXECUTABLE_DIR.
 if (!app.isPackaged) loadEnv();
 
+/** Lokasi final (P2-8); dihitung sekali setelah Electron siap. */
+function lokasiData(): LokasiData {
+  if (!lokasi) {
+    lokasi = tentukanLokasiData({
+      userDataDir: app.getPath('userData'),
+      portableDir: process.env.PORTABLE_EXECUTABLE_DIR,
+      overrideDbPath: process.env.PURA_DB,
+    });
+    mkdirSync(lokasi.dataDir, { recursive: true });
+  }
+  return lokasi;
+}
+
 function dbPath(): string {
-  if (process.env.PURA_DB) return process.env.PURA_DB;
-  const dir = join(app.getPath('userData'), 'data');
-  mkdirSync(dir, { recursive: true });
-  return join(dir, 'pura.db');
+  return lokasiData().dbPath;
 }
 
 /**
@@ -77,7 +89,8 @@ function buatIpcDeps(): IpcDeps {
     writeFile: (path, data) => writeFileSync(path, data),
     printPdf: printPdfKeFile,
     openPath: (path) => shell.openPath(path),
-    lampiranDir: () => folderLampiranDefault(app.getPath('userData')),
+    lampiranDir: () => lokasiData().attachmentsDir,
+    lokasiData,
   };
 }
 
@@ -142,10 +155,11 @@ function mulaiAplikasi(): void {
   });
 
   void app.whenReady().then(() => {
-    const pathDb = dbPath();
+    const lokasiAktif = lokasiData();
+    const pathDb = lokasiAktif.dbPath;
     // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak hilang.
     try {
-      const p = backupPraUpgrade(pathDb);
+      const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
       if (p) console.log(`[backup-upgrade] ${p}`);
     } catch (e) {
       console.warn('[backup-upgrade] gagal:', String(e));
@@ -153,7 +167,7 @@ function mulaiAplikasi(): void {
     db = openDb(pathDb);
     // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
     try {
-      const p = autoBackupHarian(db, join(dirname(dbPath()), 'backups'), 7);
+      const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);
       console.log(`[backup-auto] ${p}`);
     } catch (e) {
       console.warn('[backup-auto] gagal:', String(e));

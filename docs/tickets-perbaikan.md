@@ -361,7 +361,7 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** `tests/ipc-main.test.ts` hijau.
   - **Dependency:** P0-10
 
-- [ ] **P2-8 — Dokumentasi pengguna & paket portable**
+- [x] **P2-8 — Dokumentasi pengguna & paket portable** (2026-10-23: helper lokasi data portable/installer/override + IPC info & buka folder + kartu Pengaturan + panduan pengguna/pemeriksaan/portable; 407/407 test hijau)
   - **Langkah:** SOP singkat berbahasa awam untuk operator (input harian, tutup bulan/tahun, backup,
     ganti laptop) + panduan pemeriksaan untuk akuntan pendamping (Jurnal Umum, Buku Besar, Neraca Saldo);
     glosarium debit/kredit; pastikan target `portable` menyimpan data di lokasi yang didokumentasikan.

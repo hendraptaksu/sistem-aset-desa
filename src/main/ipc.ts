@@ -8,7 +8,7 @@
 
 import type Database from 'better-sqlite3';
 import { mkdirSync, statSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   catatAudit,
   deleteAset,
@@ -146,6 +146,7 @@ import {
   ubahPin,
 } from './kunci.js';
 import { sudahSetupPin } from '../db/repository.js';
+import type { LokasiData } from './lokasiData.js';
 
 export type IpcDeps = {
   handle(
@@ -169,6 +170,8 @@ export type IpcDeps = {
   /** `shell.openPath`; string kosong = berhasil, selain itu pesan galat OS. */
   openPath(path: string): Promise<string>;
   lampiranDir(): string;
+  /** Lokasi data final (P2-8): folder data, DB, lampiran, backup. */
+  lokasiData(): LokasiData;
   /** Waktu acuan yang bisa dipatok di test; default `new Date()`. */
   now?(): Date;
 };
@@ -249,6 +252,48 @@ export function registerIpc(deps: IpcDeps): void {
   // lock:change & lock:idle-set justru WAJIB terbuka → ikut dijaga di bawah.
   const perluBuka = (): string | null =>
     sudahSetupPin(deps.db()) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
+
+  // ---- Lokasi data & folder (P2-8) ----
+  // Renderer hanya boleh meminta tiga nama folder tetap; TIDAK PERNAH path.
+  const JENIS_FOLDER_LOKASI = ['data', 'backups', 'attachments'] as const;
+  type JenisFolderLokasi = (typeof JENIS_FOLDER_LOKASI)[number];
+  const folderLokasi = (lokasi: LokasiData, jenis: JenisFolderLokasi): string => {
+    if (jenis === 'data') return lokasi.dataDir;
+    if (jenis === 'backups') return lokasi.backupsDir;
+    return lokasi.attachmentsDir;
+  };
+
+  deps.handle('app:info-lokasi', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(deps.lokasiData());
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  deps.handle('app:buka-folder', async (_e, jenis: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      if (
+        typeof jenis !== 'string' ||
+        !(JENIS_FOLDER_LOKASI as readonly string[]).includes(jenis)
+      ) {
+        return fail('Folder yang diminta tidak dikenal.');
+      }
+      const lokasi = deps.lokasiData();
+      const folder = folderLokasi(lokasi, jenis as JenisFolderLokasi);
+      // Folder backup/lampiran mungkin belum ada pada pemakaian pertama.
+      mkdirSync(folder, { recursive: true });
+      const galat = await deps.openPath(folder);
+      if (galat) return fail('Folder tidak bisa dibuka. Coba lagi atau hubungi pendamping.');
+      return ok({ opened: true, jenis, path: folder });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
 
   // ---- Pengaturan pembukuan (P1-13) ----
   // Semua perubahan wajib lewat PIN terbuka; repository yang menulis audit
@@ -1337,7 +1382,7 @@ export function registerIpc(deps: IpcDeps): void {
           sekarang: tanggalSekarang(),
         },
       );
-      const dirBackup = join(dirname(deps.dbPath()), 'backups');
+      const dirBackup = deps.lokasiData().backupsDir;
       return ok(denganBackupTerakhir(d, lastAutoBackup(dirBackup)));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
@@ -1417,7 +1462,7 @@ export function registerIpc(deps: IpcDeps): void {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const dir = join(dirname(deps.dbPath()), 'backups');
+      const dir = deps.lokasiData().backupsDir;
       mkdirSync(dir, { recursive: true });
       const dest = join(dir, `pura-${tahun}.db`);
       backupVacuumInto(deps.db(), dest);
@@ -1437,7 +1482,7 @@ export function registerIpc(deps: IpcDeps): void {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const dir = join(dirname(deps.dbPath()), 'backups');
+      const dir = deps.lokasiData().backupsDir;
       return ok({ path: lastAutoBackup(dir) });
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
@@ -1456,7 +1501,11 @@ export function registerIpc(deps: IpcDeps): void {
       });
       if (canceled || filePaths.length === 0) return ok({ restored: false, path: '' });
       const src = filePaths[0]!;
-      const hasil = restoreDbAman(deps.db(), { dbPath: deps.dbPath(), backupPath: src });
+      const hasil = restoreDbAman(deps.db(), {
+        dbPath: deps.dbPath(),
+        backupPath: src,
+        dirBackup: deps.lokasiData().backupsDir,
+      });
       deps.setDb(hasil.db);
       if (!hasil.ok) return fail(hasil.error);
       try {

@@ -1,0 +1,138 @@
+// P2-8 — dokumentasi pengguna, pemeriksaan, dan portable.
+// Fokus: file ada, istilah kunci tersedia, dan contoh path di dokumen cocok
+// dengan helper `tentukanLokasiData` (bukan snapshot seluruh file).
+import { readFileSync } from 'node:fs';
+import { join, win32 } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { tentukanLokasiData } from '../src/main/lokasiData.js';
+
+const docsDir = fileURLToPath(new URL('../docs/', import.meta.url));
+const baca = (nama: string): string => readFileSync(join(docsDir, nama), 'utf-8');
+
+const PENGGUNA = baca('panduan-pengguna.md');
+const PEMERIKSAAN = baca('panduan-pemeriksaan.md');
+const PORTABLE = baca('panduan-portable.md');
+
+describe('P2-8 — panduan pengguna', () => {
+  it('ada, bertanggal, dan memuat istilah kunci operator', () => {
+    expect(PENGGUNA).toContain('2026-10-23');
+    for (const istilah of [
+      'Terima Uang',
+      'Bayar',
+      'Pindah Dana',
+      'Panjar',
+      'Piutang & Hutang',
+      'Jurnal Umum',
+      'Tutup buku',
+      'ganti laptop',
+      'PIN',
+      'kas minus',
+      'Periode sudah ditutup',
+      'Nomor bukti',
+      'Pratinjau Cetak',
+      'Simpan PDF',
+      'Troubleshooting',
+      'pura.db',
+      'attachments',
+      'backups',
+      'JU-',
+      'Neraca Saldo',
+      'restore',
+      'portable',
+    ]) {
+      expect(PENGGUNA, `istilah "${istilah}"`).toContain(istilah);
+    }
+  });
+});
+
+describe('P2-8 — panduan pemeriksaan akuntan', () => {
+  it('mencakup seluruh laporan dan glosarium debit/kredit', () => {
+    expect(PEMERIKSAAN).toContain('2026-10-23');
+    for (const istilah of [
+      'Jurnal Umum',
+      'Buku Besar',
+      'Neraca Saldo',
+      'Laba Rugi',
+      'Neraca',
+      'Arus Kas',
+      'Rekonsiliasi Bank',
+      'Anggaran',
+      'reversal',
+      'tutup buku',
+      'audit',
+      'Debit',
+      'Kredit',
+      'Aktiva',
+      'Kewajiban',
+      'Ekuitas',
+      'Pendapatan',
+      'Beban',
+      'Laba ditahan',
+      'selisih 0',
+    ]) {
+      expect(PEMERIKSAAN, `istilah "${istilah}"`).toContain(istilah);
+    }
+  });
+});
+
+describe('P2-8 — panduan portable', () => {
+  it('menjelaskan installer vs portable dan peringatan dua salinan', () => {
+    expect(PORTABLE).toContain('2026-10-23');
+    expect(PORTABLE).toContain('%APPDATA%\\Keuangan Pura Dalem Puri');
+    expect(PORTABLE).toContain('<folder exe>\\data\\pura.db');
+    expect(PORTABLE).toContain('attachments');
+    expect(PORTABLE).toContain('backups');
+    expect(PORTABLE).toMatch(/dua salinan portable dari folder berbeda/i);
+    expect(PORTABLE).toMatch(/jangan menyalin hanya file `?\.exe`?/i);
+  });
+});
+
+describe('P2-8 — konsistensi path dokumen dengan helper', () => {
+  const userDataWin = win32.join(
+    'C:',
+    'Users',
+    'Budi',
+    'AppData',
+    'Roaming',
+    'Keuangan Pura Dalem Puri',
+  );
+  const portableDirWin = win32.join('D:', 'Keuangan Pura Dalem Puri');
+
+  it('contoh installer memakai path yang dihasilkan tentukanLokasiData', () => {
+    const lokasi = tentukanLokasiData({ userDataDir: userDataWin });
+    expect(lokasi.mode).toBe('INSTALLED');
+    for (const path of [
+      lokasi.dataDir,
+      lokasi.dbPath,
+      lokasi.attachmentsDir,
+      lokasi.backupsDir,
+    ]) {
+      expect(PORTABLE, path).toContain(path);
+    }
+  });
+
+  it('contoh portable menaruh data/attachments/backups di folder exe', () => {
+    const lokasi = tentukanLokasiData({
+      userDataDir: userDataWin,
+      portableDir: portableDirWin,
+    });
+    expect(lokasi.mode).toBe('PORTABLE');
+    expect(lokasi.dbPath).toBe(
+      win32.join('D:', 'Keuangan Pura Dalem Puri', 'data', 'pura.db'),
+    );
+    for (const path of [
+      lokasi.dataDir,
+      lokasi.dbPath,
+      lokasi.attachmentsDir,
+      lokasi.backupsDir,
+    ]) {
+      expect(PORTABLE, path).toContain(path);
+    }
+    // Jangan sampai dokumen mengklaim data portable ada di AppData.
+    expect(PORTABLE).not.toContain(
+      win32.join('C:', 'Users', 'Budi', 'AppData', 'Roaming', 'Keuangan Pura Dalem Puri', 'data', 'pura.db') +
+        ' (portable)',
+    );
+  });
+});

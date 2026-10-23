@@ -98,6 +98,7 @@ dibutuhkan, tambahkan sebagai blok baru di model cetak.
   `onclick="window.print()"`. Semua aksi cetak berasal dari parent React.
 - CSP renderer perlu mengizinkan iframe `srcDoc` dan style dokumen cetak.
   Jangan memblokir `frame-src` untuk dokumen internal ini.
-- SOP operator (P2-8) cukup menjelaskan: pilih periode → **Pratinjau Cetak** →
-  periksa halaman → **Cetak** atau **Simpan PDF**. Tidak perlu mengatur
-  orientation manual; sistem sudah memilih portrait/landscape per laporan.
+- SOP operator (P2-8) dijelaskan di `docs/panduan-pengguna.md` §8: pilih
+  periode → **Pratinjau Cetak** → periksa halaman → **Cetak** atau **Simpan
+  PDF**. Tidak perlu mengatur orientation manual; sistem sudah memilih
+  portrait/landscape per laporan.

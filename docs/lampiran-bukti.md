@@ -7,17 +7,20 @@ ia hanya alat bantu pemeriksaan.
 ## Lokasi penyimpanan
 
 File lampiran disimpan sebagai file biasa di subfolder `attachments` di dalam
-folder data aplikasi (`userData`), bukan di dalam database.
+folder data aplikasi, bukan di dalam database.
 
-| Sistem | Perkiraan lokasi folder |
+| Sistem / paket | Lokasi folder lampiran |
 |---|---|
-| Windows | `%APPDATA%\Keuangan Pura Dalem Puri\attachments` |
-| macOS | `~/Library/Application Support/Keuangan Pura Dalem Puri/attachments` |
-| Linux | `~/.config/Keuangan Pura Dalem Puri/attachments` |
+| Windows installer | `%APPDATA%\Keuangan Pura Dalem Puri\attachments` |
+| Windows portable | `<folder exe>\attachments` |
+| macOS (dev) | `~/Library/Application Support/Keuangan Pura Dalem Puri/attachments` |
+| Linux (dev) | `~/.config/Keuangan Pura Dalem Puri/attachments` |
 
-Nama folder mengikuti nama aplikasi saat dipasang. Database ada di
-`<userData>\data\pura.db`. Di mode pengembangan, nama folder bisa berbeda
-(mengikuti nama project); gunakan menu/berkas aplikasi untuk memastikan.
+Database ada di `<userData>\data\pura.db` untuk installer, atau
+`<folder exe>\data\pura.db` untuk portable. Lokasi persis selalu bisa dilihat di
+**Pengaturan → Lokasi Data & Backup**; rincian ada di `docs/panduan-portable.md`.
+Di mode pengembangan, nama folder bisa berbeda (mengikuti nama project); gunakan
+menu tersebut untuk memastikan.
 
 Database hanya menyimpan **metadata**: nama asli, nama file simpan, jenis file,
 ukuran, dan waktu unggah. Database tidak menyimpan path absolut dan tidak
@@ -82,4 +85,5 @@ digital hanyalah salinan pendukung.
 - Urutan unggah aman: file disalin dulu ke folder `attachments` (tulis `.tmp`
   lalu `rename`), baru metadata ditulis. Bila metadata gagal, file yang sudah
   tersalin dihapus lagi supaya tidak ada file yatim.
-- Backup folder lampiran terpisah direncanakan masuk paket dokumentasi P2-8.
+- Backup folder lampiran terpisah dibahas di `docs/panduan-pengguna.md` dan
+  `docs/panduan-portable.md` (P2-8).

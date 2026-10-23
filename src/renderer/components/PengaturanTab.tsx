@@ -13,7 +13,7 @@ import {
   formatJsonAudit,
   formatWaktuAudit,
 } from '../../utils/auditDetail.js';
-import { api } from '../lib/api.js';
+import { api, type JenisFolderLokasiApi, type LokasiData } from '../lib/api.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
   Button,
@@ -93,6 +93,11 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
   const [memuatPembukuan, setMemuatPembukuan] = useState(true);
   const busyPembukuanRef = useRef(false);
 
+  // ---- Lokasi data & backup (P2-8) ----
+  const [lokasi, setLokasi] = useState<LokasiData | null>(null);
+  const [errLokasi, setErrLokasi] = useState<string | null>(null);
+  const [folderSibuk, setFolderSibuk] = useState<JenisFolderLokasiApi | null>(null);
+
   const [audit, setAudit] = useState<AuditLog[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditErr, setAuditErr] = useState<string | null>(null);
@@ -159,6 +164,35 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
       batal = true;
     };
   }, []);
+
+  // Lokasi data aktual (P2-8): Portable vs Installer tidak boleh ditebak UI.
+  useEffect(() => {
+    let batal = false;
+    void (async () => {
+      try {
+        const info = await api.infoLokasi();
+        if (!batal) setLokasi(info);
+      } catch (e) {
+        if (!batal) setErrLokasi(pesanError(e, PESAN_MUAT_GAGAL));
+      }
+    })();
+    return () => {
+      batal = true;
+    };
+  }, []);
+
+  async function bukaFolder(jenis: JenisFolderLokasiApi): Promise<void> {
+    if (folderSibuk) return;
+    setErrLokasi(null);
+    setFolderSibuk(jenis);
+    try {
+      await api.bukaFolder(jenis);
+    } catch (e) {
+      setErrLokasi(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      setFolderSibuk(null);
+    }
+  }
 
   // Bila jumlah baris menyusut (mis. filter berubah), jangan biarkan offset
   // melewati halaman terakhir.
@@ -379,6 +413,85 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
               <Button disabled={busyPembukuan} onClick={() => void simpanPembukuan()}>
                 {busyPembukuan ? 'Menyimpan…' : 'Simpan Pengaturan Pembukuan'}
               </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 text-lg font-bold">Lokasi Data &amp; Backup</h2>
+        <p className="mb-3 text-sm text-stone-600">
+          Lokasi di bawah adalah lokasi yang benar-benar dipakai aplikasi ini. Pada versi
+          <b> portable</b>, data ikut folder aplikasi (bukan AppData); pada versi
+          <b> installer</b>, data ada di folder aplikasi Windows.
+        </p>
+        <ErrorBox msg={errLokasi} />
+        {!lokasi && !errLokasi && (
+          <p className="text-sm text-stone-500" role="status">Memuat lokasi data…</p>
+        )}
+        {lokasi && (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px]">
+              Mode: <b>
+                {lokasi.mode === 'PORTABLE'
+                  ? 'Portable — data di folder aplikasi (exe)'
+                  : lokasi.mode === 'INSTALLED'
+                    ? 'Installer — data di folder aplikasi Windows'
+                    : 'Pengembangan (PURA_DB) — lokasi khusus'}
+              </b>
+            </div>
+
+            <div className="space-y-2 text-[15px]">
+              <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-2">
+                <div className="min-w-0">
+                  <p className="text-sm text-stone-500">Folder data</p>
+                  <p className="break-all font-medium">{lokasi.dataDir}</p>
+                </div>
+                <Button variant="ghost" disabled={folderSibuk !== null} onClick={() => void bukaFolder('data')}>
+                  {folderSibuk === 'data' ? 'Membuka…' : 'Buka Folder'}
+                </Button>
+              </div>
+              <div className="border-b pb-2">
+                <p className="text-sm text-stone-500">File database</p>
+                <p className="break-all font-medium">{lokasi.dbPath}</p>
+              </div>
+              <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-2">
+                <div className="min-w-0">
+                  <p className="text-sm text-stone-500">Folder lampiran bukti</p>
+                  <p className="break-all font-medium">{lokasi.attachmentsDir}</p>
+                </div>
+                <Button variant="ghost" disabled={folderSibuk !== null} onClick={() => void bukaFolder('attachments')}>
+                  {folderSibuk === 'attachments' ? 'Membuka…' : 'Buka Folder'}
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm text-stone-500">Folder backup</p>
+                  <p className="break-all font-medium">{lokasi.backupsDir}</p>
+                </div>
+                <Button variant="ghost" disabled={folderSibuk !== null} onClick={() => void bukaFolder('backups')}>
+                  {folderSibuk === 'backups' ? 'Membuka…' : 'Buka Folder'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+              <p className="font-semibold">Cara backup manual yang benar:</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-5">
+                <li>Di Dashboard, tekan <b>Backup Export .db</b> lalu simpan ke flashdisk/Drive.</li>
+                <li>Tekan <b>Buka Folder</b> di folder lampiran, lalu salin seluruh isinya ke media yang sama.</li>
+                <li>Simpan file .db dan folder lampiran dalam satu folder bertanggal, mis. <code>backup-2026-10-23</code>.</li>
+              </ol>
+              <p className="mt-2">
+                <b>Penting:</b> lampiran bukti <b>tidak ikut</b> di dalam file backup .db.
+                Tanpa menyalin folder lampiran, foto/PDF bukti tidak akan ikut saat ganti laptop.
+              </p>
+              {lokasi.mode === 'PORTABLE' && (
+                <p className="mt-2">
+                  Jangan menjalankan dua salinan portable dari folder berbeda — keduanya
+                  akan memakai data yang terpisah. Pilih satu folder tetap.
+                </p>
+              )}
             </div>
           </div>
         )}
