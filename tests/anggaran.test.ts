@@ -540,8 +540,8 @@ describe('P2-1 — export XLSX & print', () => {
     const doc = anggaranPrintDoc(HASIL, { tanggalCetak: '2026-10-23' });
     expect(doc.orientasi).toBe('portrait');
     expect(doc.judul).toContain('ANGGARAN');
-    expect(doc.subjudul).toContain('01-01-2026');
-    expect(doc.subjudul).toContain('31-12-2026');
+    expect(doc.subjudul).toContain('1 Jan 2026');
+    expect(doc.subjudul).toContain('31 Des 2026');
 
     const baris4005 = cariBarisCetak(doc, '4005');
     expect(baris4005).toBeTruthy();

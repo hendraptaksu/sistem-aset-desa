@@ -44,7 +44,7 @@ function barisKop(kop?: KopOrganisasi | null): string[] {
   return [nama, ...tambahan];
 }
 
-/** Teks periode "DD-MM-YYYY s/d DD-MM-YYYY" untuk subjudul kop. */
+/** Teks periode "DD Mmm YYYY s/d DD Mmm YYYY" untuk subjudul kop. */
 export function kopPeriode(mulai?: string, sampai?: string): string {
   const m = mulai ? formatTanggal(mulai) : '';
   const s = sampai ? formatTanggal(sampai) : '';
@@ -322,7 +322,7 @@ function fraksi(nominal: number, dasar: number): number {
   return dasar === 0 ? 0 : nominal / dasar;
 }
 
-/** Subjudul periode untuk laporan per cut-off: "PER 31-12-2026". */
+/** Subjudul periode untuk laporan per cut-off: "PER 31 Des 2026". */
 export function kopPeriodeCutoff(cutoff?: string): string {
   return cutoff ? `PER ${formatTanggal(cutoff)}` : 'SEMUA PERIODE';
 }

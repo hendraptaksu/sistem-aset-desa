@@ -469,7 +469,7 @@ describe('P1-10 — builder XLSX numerik', () => {
     const wb = await neracaSaldoToWorkbook(nsTahun);
     const ws = wb.worksheets[0]!;
     expect(String(ws.getRow(3).getCell(1).value)).toContain(
-      'TAHUN BUKU 01-01-2026 s/d 31-12-2026',
+      'TAHUN BUKU 1 Jan 2026 s/d 31 Des 2026',
     );
 
     const header = cariBaris(ws, 1, 'Kode');
@@ -638,30 +638,30 @@ describe('P1-10 — HTML print semua laporan', () => {
         mulai: '2026-01-01',
         sampai: '2026-12-31',
       }),
-      periode: 'PERIODE 01-01-2026 s/d 31-12-2026',
+      periode: 'PERIODE 1 Jan 2026 s/d 31 Des 2026',
     },
-    { nama: 'buku besar', html: bukuBesarToHtml(bb), periode: 'PERIODE 01-01-2026 s/d 31-12-2026' },
-    { nama: 'neraca saldo', html: neracaSaldoToHtml(ns), periode: 'PER 31-12-2026' },
+    { nama: 'buku besar', html: bukuBesarToHtml(bb), periode: 'PERIODE 1 Jan 2026 s/d 31 Des 2026' },
+    { nama: 'neraca saldo', html: neracaSaldoToHtml(ns), periode: 'PER 31 Des 2026' },
     {
       nama: 'neraca saldo tahun',
       html: neracaSaldoToHtml(nsTahun),
-      periode: 'TAHUN BUKU 01-01-2026 s/d 31-12-2026',
+      periode: 'TAHUN BUKU 1 Jan 2026 s/d 31 Des 2026',
     },
     {
       nama: 'laba rugi',
       html: labaRugiToHtml(lr),
-      periode: 'PERIODE 01-01-2026 s/d 31-12-2026',
+      periode: 'PERIODE 1 Jan 2026 s/d 31 Des 2026',
     },
-    { nama: 'neraca', html: neracaHasilToHtml(n), periode: 'PER 31-12-2026' },
+    { nama: 'neraca', html: neracaHasilToHtml(n), periode: 'PER 31 Des 2026' },
     {
       nama: 'arus kas',
       html: arusKasToHtml(ak),
-      periode: 'PERIODE 01-01-2026 s/d 31-12-2026',
+      periode: 'PERIODE 1 Jan 2026 s/d 31 Des 2026',
     },
     {
       nama: 'panjar',
       html: panjarToHtml(panjar, COA),
-      periode: 'PERIODE 01-04-2026 s/d 01-05-2026',
+      periode: 'PERIODE 1 Apr 2026 s/d 1 Mei 2026',
     },
   ];
 
@@ -704,22 +704,22 @@ describe('P1-10 — export Pembantu dari mesin v2', () => {
     const ws = wb.worksheets[0]!;
     expect(ws.getRow(1).getCell(1).value).toBe(KOP_ORG_NAMA);
     expect(String(ws.getRow(3).getCell(1).value)).toContain(
-      'PERIODE 01-01-2026 s/d 31-12-2026',
+      'PERIODE 1 Jan 2026 s/d 31 Des 2026',
     );
 
     const html = pembantuToHtml(p);
     expect(html).toContain(KOP_ORG_NAMA);
     expect(html).toContain('BUKU PEMBANTU — 1001 KAS');
-    expect(html).toContain('PERIODE 01-01-2026 s/d 31-12-2026');
+    expect(html).toContain('PERIODE 1 Jan 2026 s/d 31 Des 2026');
     expect(html).toContain('TOTAL');
   });
 
   it('periode kop fallback ke rentang data, lalu "SEMUA PERIODE"', () => {
     const tanpaFilter = { ...p, mulai: undefined, sampai: undefined };
     expect(kopPeriodeEfektif(tanpaFilter.mulai, tanpaFilter.sampai, tanpaFilter.rows)).toBe(
-      'PERIODE 15-01-2026 s/d 05-04-2026',
+      'PERIODE 15 Jan 2026 s/d 5 Apr 2026',
     );
-    expect(pembantuToHtml(tanpaFilter)).toContain('PERIODE 15-01-2026 s/d 05-04-2026');
+    expect(pembantuToHtml(tanpaFilter)).toContain('PERIODE 15 Jan 2026 s/d 5 Apr 2026');
     expect(kopPeriodeEfektif(undefined, undefined, [])).toBe('SEMUA PERIODE');
     expect(
       pembantuToHtml({ ...p, rows: [], mulai: undefined, sampai: undefined }),

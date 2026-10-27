@@ -59,7 +59,7 @@ export type PrintBlock =
 
 export type PrintDoc = {
   judul: string;
-  /** Periode/cut-off, mis. "PERIODE 01-01-2026 s/d 31-12-2026". */
+  /** Periode/cut-off, mis. "PERIODE 1 Jan 2026 s/d 31 Des 2026". */
   subjudul?: string;
   /** Default KOP_ORG_NAMA. */
   kop?: string;

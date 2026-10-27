@@ -484,7 +484,7 @@
     uji Tab di dashboard, form, dan sidebar.
   - **Dependency:** —
 
-- [ ] **UI-20 — Standarkan format tanggal** · P2 · M
+- [x] **UI-20 — Standarkan format tanggal** · P2 · M (2026-10-27: format "27 Okt 2026" dipusatkan di formatTanggal, dashboard/export/tabel konsisten + 603 test)
   - **Konteks:** Format campur: input `27/10/2026`, tabel `27-10-2026`,
     hero `1 Jan 2026 – 27 Oct 2026`.
   - **Langkah:**

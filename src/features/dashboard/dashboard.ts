@@ -8,6 +8,7 @@
 
 import { COA, LPD_KODES, type Coa } from '../../db/coa.js';
 import { rentangTahunBuku } from '../../core/pengaturan.js';
+import { formatTanggal } from '../../utils/format.js';
 import {
   labaRugi,
   namaAkun,
@@ -104,29 +105,6 @@ export type DashboardOpsi = {
   daftarAkun?: readonly Coa[];
 };
 
-const NAMA_BULAN = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'Mei',
-  'Jun',
-  'Jul',
-  'Agu',
-  'Sep',
-  'Okt',
-  'Nov',
-  'Des',
-] as const;
-
-/** Label pendek tanggal ISO, cth. '2026-01-01' → '1 Jan 2026'. */
-function labelTanggal(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  const bulan = NAMA_BULAN[Number(m[2]) - 1] ?? m[2];
-  return `${Number(m[3])} ${bulan} ${m[1]}`;
-}
-
 function bulanDalamTahun(iso: string): number {
   return Number(iso.slice(5, 7));
 }
@@ -155,7 +133,7 @@ export function rentangLabaBerjalan(
     sampai: cutoff,
     tahunBuku,
     awalTahunBuku: awal,
-    labelPeriode: `${labelTanggal(mulai)} – ${labelTanggal(cutoff)}`,
+    labelPeriode: `${formatTanggal(mulai)} – ${formatTanggal(cutoff)}`,
   };
 }
 

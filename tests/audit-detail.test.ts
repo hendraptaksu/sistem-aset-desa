@@ -317,7 +317,7 @@ describe('T11b komponen AuditDetail human-readable', () => {
     const html = renderToStaticMarkup(createElement(AuditDetail, { json }));
     expect(html).toContain('JU-2025-0001');
     expect(html).toContain('Pendapatan parkir');
-    expect(html).toContain('05-12-2025');
+    expect(html).toContain('5 Des 2025');
     expect(html).toContain('KAS');
     expect(html).toContain('PENDAPATAN PARKIR');
     expect(html).toContain('Debit');

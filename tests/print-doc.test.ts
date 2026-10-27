@@ -410,7 +410,7 @@ describe('P1-16 — paginator dokumen cetak', () => {
     const html = renderPrintHtml(doc, opsi);
     expect((html.match(/PURA DALEM PURI PELIATAN/g) ?? []).length).toBe(11);
     expect((html.match(/PERIODE 01-01-2026 s\/d 31-12-2026/g) ?? []).length).toBe(11);
-    expect((html.match(/Tanggal cetak: 23-10-2026/g) ?? []).length).toBe(11);
+    expect((html.match(/Tanggal cetak: 23 Okt 2026/g) ?? []).length).toBe(11);
     expect(html.match(/class="kop kop-lengkap"/g) ?? []).toHaveLength(1);
     expect(html.match(/class="kop kop-ringkas"/g) ?? []).toHaveLength(10);
   });
@@ -501,7 +501,7 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
   it('Neraca Saldo mode tahun: subjudul tahun buku + baris laba ditahan', () => {
     const doc = neracaSaldoPrintDoc(nsTahun, { tanggalCetak: '2026-10-27' });
     const tabel = tabelPertama(doc);
-    expect(doc.subjudul).toBe('TAHUN BUKU 01-01-2026 s/d 31-12-2026');
+    expect(doc.subjudul).toBe('TAHUN BUKU 1 Jan 2026 s/d 31 Des 2026');
     expect(tabel.baris).toHaveLength(nsTahun.rows.length);
 
     const labaDitahan = cariBarisCetak(doc, 'Laba ditahan sebelum periode')!;
