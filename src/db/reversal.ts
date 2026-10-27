@@ -10,7 +10,7 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { isAkunKas } from './coa.js';
-import { buatAuditLog } from '../core/ledger.js';
+import { buatAuditLog } from '../core/audit.js';
 import { rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';

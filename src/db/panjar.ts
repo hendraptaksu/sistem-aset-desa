@@ -15,7 +15,7 @@ import {
   type HasilPanjarClose,
   type ItemPanjarClose,
 } from '../core/forms.js';
-import { buatAuditLog } from '../core/ledger.js';
+import { buatAuditLog } from '../core/audit.js';
 import {
   tanggalKalenderValid,
   type HasilValidasiJurnal,

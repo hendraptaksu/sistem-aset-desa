@@ -133,8 +133,6 @@ export const BEBAN_KODES = COA.filter((c) => c.tipe === 'BEBAN').map((c) => c.ko
 
 /** Cari akun berdasarkan kode. */
 export const akun = (kode: string): Coa | undefined => COA.find((c) => c.kode === kode);
-/** Alias lama — dipertahankan selama kode single-entry belum seluruhnya dipindah. */
-export const coaByKode = (kode: string): Coa | undefined => akun(kode);
 
 /**
  * Apakah akun boleh dipakai sebagai baris jurnal baru.

@@ -23,7 +23,7 @@ import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
 import { tutupBuku } from '../src/db/tutup.js';
 import { autoBackupHarian } from '../src/features/export/export.js';
 import { aturIdle, resetPaksa, setupPin, sesi, ubahPin } from '../src/main/kunci.js';
-import { buatAuditLog, jsonAuditAman } from '../src/core/ledger.js';
+import { buatAuditLog, jsonAuditAman } from '../src/core/audit.js';
 import type { Aset, AuditLog } from '../src/core/types.js';
 
 function dbKosong(): Database.Database {

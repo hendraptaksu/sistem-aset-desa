@@ -24,7 +24,6 @@ import type {
   PihakSaldo,
   TutupBuku,
 } from '../../core/types.js';
-import type { Neraca } from '../../core/ledger.js';
 import type {
   ArusKasHasil,
   BukuBesarHasil,
@@ -472,7 +471,6 @@ export const api = {
   }) => call<TutupTersimpanData>('tutup:create', req),
   auditList: (f: AuditFilterApi = {}) => call<AuditLogPage>('audit:list', f),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
-  neraca: (cutoff: string) => call<Neraca>('neraca:get', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),
   // ---- Import jurnal massal dari Excel (P2-9) ----
   /** Unduh template .xlsx lewat save dialog; batal = `{saved:false}`. */

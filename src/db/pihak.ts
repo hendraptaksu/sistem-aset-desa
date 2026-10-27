@@ -17,7 +17,7 @@ import {
   type RekonsiliasiPihak,
   type SaldoPihak,
 } from '../core/pihak.js';
-import { buatAuditLog } from '../core/ledger.js';
+import { buatAuditLog } from '../core/audit.js';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
 import type {
   Jurnal,

@@ -5,7 +5,7 @@
 // dari jurnal lewat mesin laporan (P0-5).
 
 import type Database from 'better-sqlite3';
-import { buatAuditLog } from '../core/ledger.js';
+import { buatAuditLog } from '../core/audit.js';
 import {
   labaDitahan as labaDitahanJurnal,
   validasiTutupBuku,

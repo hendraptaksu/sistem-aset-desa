@@ -1,19 +1,5 @@
 // Kontrak data Agent A + Agent B. JANGAN diubah sepihak.
-// Nominal disimpan sebagai integer dalam satuan SEN (1 Rp = 100 sen). Salah satu masuk/keluar = 0.
-
-export type AkunKasKode =
-  | '1001' | '1010' | '1014' | '1015' | '1016' | '1017' | '1018'
-  | '1019' | '1020' | '1021' | '1028' | '1029' | '1030' | '1031' | '1032' | '1036';
-
-export type Transaksi = {
-  id: string;
-  tanggal: string; // YYYY-MM-DD
-  keterangan: string;
-  akun_kas: string; // kode KAS (lihat KAS_KODES di db/coa.ts — sumber kebenaran)
-  kategori: string; // PENDAPATAN | BEBAN | 1050 PIUTANG | 2050 HUTANG | 3000 MODAL
-  masuk: number;
-  keluar: number;
-};
+// Nominal disimpan sebagai integer dalam satuan SEN (1 Rp = 100 sen).
 
 export type Panjar = {
   id: string;

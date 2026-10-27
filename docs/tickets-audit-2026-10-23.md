@@ -762,7 +762,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** —
 
-- [ ] **AUD-29 — Hapus repository/ledger/laporan legacy + migrasikan test** · P2 · M
+- [x] **AUD-29 — Hapus repository/ledger/laporan legacy + migrasikan test** · P2 · M (2026-10-27: `core/ledger.ts` dihapus; helper dipindah ke `core/audit.ts`/`core/periode.ts`; `insertTransaksi`/`listTransaksi`/`insertPanjar`/`listPanjar`/`closePanjar` legacy di `repository.ts` dihapus; `features/reports/dataProvider.ts`, realisasi/surplus, mock, tipe `Transaksi`, dan export legacy (realisasi/surplus/neraca/BKU) dihapus; endpoint mati `neraca:get` + `api.neraca` dihapus; test legacy dikurangi/diarahkan, grep simbol legacy bersih; typecheck/test/build hijau, 548 test (48 file, −2 test legacy))
   - **Konteks:** `src/db/repository.ts` masih punya `insertTransaksi`,
     `listTransaksi`, `insertPanjar`, `closePanjar`; `core/ledger.ts` masih
     berisi mesin single-entry; `features/reports/dataProvider.ts`,

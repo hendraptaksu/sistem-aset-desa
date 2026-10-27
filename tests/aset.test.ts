@@ -3,10 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { validateAsetInput } from '../src/main/validation.js';
 import { openDb } from '../src/db/database.js';
 import { deleteAset, getAset, insertAset, listAset, updateAset } from '../src/db/repository.js';
-import { neraca } from '../src/core/ledger.js';
-import { KAS_KODES } from '../src/db/coa.js';
 import { asetToHtml, asetToWorkbook, KOP_ORG_NAMA, workbookToBuffer } from '../src/features/export/workbooks.js';
-import type { Aset, Transaksi } from '../src/core/types.js';
+import type { Aset } from '../src/core/types.js';
 
 const BASE = {
   kode: 'AST-001',
@@ -68,17 +66,6 @@ describe('repository aset', () => {
     expect(() => insertAset(db, asetRow({ id: 'a3', kode: 'AST-001' }))).toThrow();
     deleteAset(db, 'a2');
     expect(listAset(db)).toHaveLength(1);
-  });
-
-  it('isolasi: aset tidak mengubah Neraca (Aktiva=Pasiva tetap)', () => {
-    const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal', akun_kas: '1001', kategori: '3000', masuk: 1_000_000_000, keluar: 0 };
-    const sebelum = neraca([MODAL], [], [], '2025-12-31', KAS_KODES);
-    const db = openDb(':memory:');
-    insertAset(db, asetRow({ id: 'a9', kode: 'AST-009', nilai_sen: null }));
-    insertAset(db, asetRow({ id: 'a10', kode: 'AST-010', nilai_sen: 99_999_999_999 }));
-    const sesudah = neraca([MODAL], [], [], '2025-12-31', KAS_KODES);
-    expect(sesudah.aktiva).toBe(sebelum.aktiva);
-    expect(sesudah.balance).toBe(true);
   });
 });
 

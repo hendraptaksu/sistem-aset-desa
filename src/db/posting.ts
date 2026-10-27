@@ -4,7 +4,7 @@
 
 import type Database from 'better-sqlite3';
 import { KAS_KODES, isAkunKas } from './coa.js';
-import { buatAuditLog } from '../core/ledger.js';
+import { buatAuditLog } from '../core/audit.js';
 import { insertAuditLog, insertJurnal, listAkun, listTutupBuku } from './repository.js';
 import {
   validasiJurnal,

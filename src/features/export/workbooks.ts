@@ -20,8 +20,7 @@ import type {
   TotalRealisasiAnggaran,
 } from '../../core/anggaran.js';
 import type { Aset, Panjar, PanjarItem } from '../../core/types.js';
-import type { Neraca } from '../../core/ledger.js';
-import type { PembantuHasil, RealisasiHasil, SurplusHasil } from '../reports/types.js';
+import type { PembantuHasil } from '../reports/types.js';
 
 // ---- Kop organisasi (wajib di SEMUA hasil export) ----
 // Contoh dokumen resmi client:
@@ -163,119 +162,6 @@ export async function pembantuToWorkbook(
   selRp(akhir, 4, 0);
   selRp(akhir, 5, p.saldo);
   styleHeader(akhir);
-  ws.columns.forEach((c) => { c.width = 22; });
-  ws.getColumn(2).width = 42;
-  return wb;
-}
-
-/** Realisasi → workbook. Dua seksi + Net.
- * `rows` opsional: transaksi terfilter untuk fallback periode kop bila
- * filter tanggal kosong (agar subjudul periode selalu tampil). */
-export async function realisasiToWorkbook(
-  r: RealisasiHasil,
-  rows?: { tanggal: string }[],
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Realisasi');
-  tulisKopXlsx(ws, 'REALISASI ANGGARAN', kopPeriodeEfektif(r.mulai, r.sampai, rows), 3, kop);
-  const header = ws.addRow(['Kode', 'Uraian', 'Nominal']);
-  styleHeader(header);
-  ws.addRow(['PENDAPATAN', '', '']);
-  for (const b of r.pendapatan) ws.addRow([b.kode, b.nama, formatRp(b.nominal)]);
-  const tp = ws.addRow(['Total Pendapatan', '', formatRp(r.totalPendapatan)]);
-  styleHeader(tp);
-  ws.addRow(['BEBAN', '', '']);
-  for (const b of r.beban) ws.addRow([b.kode, b.nama, formatRp(b.nominal)]);
-  const tb = ws.addRow(['Total Beban', '', formatRp(r.totalBeban)]);
-  styleHeader(tb);
-  const net = ws.addRow(['NET (Pendapatan - Beban)', '', formatRp(r.net)]);
-  styleHeader(net);
-  ws.columns.forEach((c) => { c.width = 24; });
-  ws.getColumn(2).width = 34;
-  return wb;
-}
-
-/** Surplus → workbook. Sama + kolom % + judul Surplus/(Defisit).
- * `rows` opsional: transaksi terfilter untuk fallback periode kop. */
-export async function surplusToWorkbook(
-  s: SurplusHasil,
-  rows?: { tanggal: string }[],
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Surplus');
-  tulisKopXlsx(ws, 'SURPLUS / (DEFISIT)', kopPeriodeEfektif(s.mulai, s.sampai, rows), 4, kop);
-  const header = ws.addRow(['Kode', 'Uraian', 'Nominal', '%']);
-  styleHeader(header);
-  ws.addRow(['PENDAPATAN', '', '', '']);
-  for (const b of s.pendapatan)
-    ws.addRow([b.kode, b.nama, formatRp(b.nominal), formatPersen(b.persen)]);
-  const tp = ws.addRow(['Total Pendapatan', '', formatRp(s.totalPendapatan), formatPersen(100)]);
-  styleHeader(tp);
-  ws.addRow(['BEBAN', '', '', '']);
-  for (const b of s.beban) ws.addRow([b.kode, b.nama, formatRp(b.nominal), formatPersen(b.persen)]);
-  const tb = ws.addRow(['Total Beban', '', formatRp(s.totalBeban), formatPersen(100)]);
-  styleHeader(tb);
-  const sr = ws.addRow(['SURPLUS / (DEFISIT)', '', formatRp(s.surplus), '']);
-  styleHeader(sr);
-  ws.columns.forEach((c) => { c.width = 24; });
-  ws.getColumn(2).width = 34;
-  return wb;
-}
-
-/** Neraca → workbook (Aktiva + Pasiva, kop organisasi di atas). */
-export async function neracaToWorkbook(
-  n: Neraca,
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Neraca');
-  const status = n.balance ? 'BALANCE' : `SELISIH ${formatRp(n.selisih)}`;
-  tulisKopXlsx(ws, 'NERACA', `PER ${formatTanggal(n.cutoff)} — ${status}`, 2, kop);
-  const ha = ws.addRow(['Aktiva', 'Nominal']);
-  styleHeader(ha);
-  for (const [k, v] of Object.entries(n.aktivaRinci.kas)) ws.addRow([`Kas ${k}`, formatRp(v)]);
-  ws.addRow(['Piutang 1050', formatRp(n.aktivaRinci.piutang)]);
-  ws.addRow(['Panjar OPEN', formatRp(n.aktivaRinci.panjarOpen)]);
-  const ta = ws.addRow(['Total Aktiva', formatRp(n.aktiva)]);
-  styleHeader(ta);
-  const hp = ws.addRow(['Pasiva', 'Nominal']);
-  styleHeader(hp);
-  ws.addRow(['Hutang 2050', formatRp(n.hutang)]);
-  ws.addRow(['Modal awal 3000', formatRp(n.modalAwal)]);
-  ws.addRow(['Kumulatif 3001', formatRp(n.kumulatif)]);
-  ws.addRow(['Berjalan 3002 (Jan s/d cut-off)', formatRp(n.berjalan)]);
-  const tp = ws.addRow(['Total Pasiva', formatRp(n.pasiva)]);
-  styleHeader(tp);
-  ws.columns.forEach((c) => { c.width = 32; });
-  ws.getColumn(2).width = 24;
-  return wb;
-}
-
-/** Buku Besar / BKU → workbook generik (dipakai tab BKU / Buku Besar).
- * Kolom: Tanggal | Keterangan | Kode | Masuk | Keluar. Kop selalu di atas. */
-export async function bkuToWorkbook(
-  rows: { tanggal: string; keterangan: string; kode: string; masuk: number; keluar: number }[],
-  opts: { judul?: string; mulai?: string; sampai?: string } = {},
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Buku Besar');
-  tulisKopXlsx(ws, opts.judul ?? 'BUKU BESAR', kopPeriodeEfektif(opts.mulai, opts.sampai, rows), 5, kop);
-  const header = ws.addRow(['Tanggal', 'Keterangan', 'Kode', 'Masuk', 'Keluar']);
-  styleHeader(header);
-  let tm = 0;
-  let tk = 0;
-  for (const t of rows) {
-    tm += t.masuk;
-    tk += t.keluar;
-    ws.addRow([
-      formatTanggal(t.tanggal),
-      t.keterangan,
-      t.kode,
-      t.masuk === 0 ? '' : formatRp(t.masuk),
-      t.keluar === 0 ? '' : formatRp(t.keluar),
-    ]);
-  }
-  const tr = ws.addRow(['TOTAL', '', '', formatRp(tm), formatRp(tk)]);
-  styleHeader(tr);
   ws.columns.forEach((c) => { c.width = 22; });
   ws.getColumn(2).width = 42;
   return wb;
@@ -1177,65 +1063,6 @@ export function pembantuToHtml(p: PembantuHasil, kop?: KopOrganisasi): string {
 <tr><th colspan="4">SALDO AKHIR</th><th style="text-align:right">${formatRp(p.saldo)}</th></tr></tfoot></table>`;
 }
 
-export function realisasiToHtml(
-  r: RealisasiHasil,
-  rows?: { tanggal: string }[],
-  kop?: KopOrganisasi,
-): string {
-  const li = (kode: string, nama: string, n: number): string =>
-    `<tr><td>${kode}</td><td>${esc(nama)}</td><td style="text-align:right">${formatRp(n)}</td></tr>`;
-  return `${kopHtml('REALISASI ANGGARAN', kopPeriodeEfektif(r.mulai, r.sampai, rows), kop)}
-<table border="1" cellpadding="6" cellspacing="0" width="100%">
-<thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th></tr></thead><tbody>
-<tr><th colspan="3">PENDAPATAN</th></tr>${r.pendapatan.map((b) => li(b.kode, b.nama, b.nominal)).join('')}
-<tr><th colspan="2">Total Pendapatan</th><th style="text-align:right">${formatRp(r.totalPendapatan)}</th></tr>
-<tr><th colspan="3">BEBAN</th></tr>${r.beban.map((b) => li(b.kode, b.nama, b.nominal)).join('')}
-<tr><th colspan="2">Total Beban</th><th style="text-align:right">${formatRp(r.totalBeban)}</th></tr>
-<tr><th colspan="2">NET (Pendapatan - Beban)</th><th style="text-align:right">${formatRp(r.net)}</th></tr>
-</tbody></table>`;
-}
-
-export function surplusToHtml(
-  s: SurplusHasil,
-  rows?: { tanggal: string }[],
-  kop?: KopOrganisasi,
-): string {
-  const li = (kode: string, nama: string, n: number, p: number): string =>
-    `<tr><td>${kode}</td><td>${esc(nama)}</td><td style="text-align:right">${formatRp(n)}</td><td style="text-align:right">${formatPersen(p)}</td></tr>`;
-  return `${kopHtml('SURPLUS / (DEFISIT)', kopPeriodeEfektif(s.mulai, s.sampai, rows), kop)}
-<table border="1" cellpadding="6" cellspacing="0" width="100%">
-<thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th><th>%</th></tr></thead><tbody>
-<tr><th colspan="4">PENDAPATAN</th></tr>${s.pendapatan.map((b) => li(b.kode, b.nama, b.nominal, b.persen)).join('')}
-<tr><th colspan="2">Total Pendapatan</th><th style="text-align:right">${formatRp(s.totalPendapatan)}</th><th></th></tr>
-<tr><th colspan="4">BEBAN</th></tr>${s.beban.map((b) => li(b.kode, b.nama, b.nominal, b.persen)).join('')}
-<tr><th colspan="2">Total Beban</th><th style="text-align:right">${formatRp(s.totalBeban)}</th><th></th></tr>
-<tr><th colspan="2">SURPLUS / (DEFISIT)</th><th style="text-align:right">${formatRp(s.surplus)}</th><th></th></tr>
-</tbody></table>`;
-}
-
-/** Buku Besar / BKU → HTML generik (kolom Kode seperti dokumen resmi client).
- * Dipakai tab BKU / Buku Besar; kop selalu di atas. */
-export function bkuToHtml(
-  rows: { tanggal: string; keterangan: string; kode: string; masuk: number; keluar: number }[],
-  opts: { judul?: string; mulai?: string; sampai?: string } = {},
-  kop?: KopOrganisasi,
-): string {
-  const body = rows
-    .map(
-      (t) =>
-        `<tr><td>${formatTanggal(t.tanggal)}</td><td>${esc(t.keterangan)}</td><td>${esc(t.kode)}</td>` +
-        `<td style="text-align:right">${formatRp(t.masuk)}</td><td style="text-align:right">${formatRp(t.keluar)}</td></tr>`,
-    )
-    .join('');
-  const tm = rows.reduce((s, t) => s + t.masuk, 0);
-  const tk = rows.reduce((s, t) => s + t.keluar, 0);
-  return `${kopHtml(opts.judul ?? 'BUKU BESAR', kopPeriodeEfektif(opts.mulai, opts.sampai, rows), kop)}
-<table border="1" cellpadding="6" cellspacing="0" width="100%">
-<thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kode</th><th>Masuk</th><th>Keluar</th></tr></thead>
-<tbody>${body}</tbody>
-<tfoot><tr><th colspan="3">TOTAL</th><th style="text-align:right">${formatRp(tm)}</th><th style="text-align:right">${formatRp(tk)}</th></tr></tfoot></table>`;
-}
-
 /** Jurnal Umum satu bukti → HTML print (kop, tanggal, no. bukti, debit/kredit). */
 export function jurnalToHtml(
   jurnal: {
@@ -1567,31 +1394,6 @@ export function asetToHtml(rows: Aset[], kop?: KopOrganisasi): string {
 <thead><tr><th>Kode</th><th>Nama</th><th>Jenis</th><th>Luas (m²)</th><th>Lokasi</th><th>Status/Kondisi</th><th>Nilai</th></tr></thead>
 <tbody>${body}</tbody>
 <tfoot><tr><th colspan="6">Total yang sudah dinilai (${rows.filter((a) => a.nilai_sen !== null).length} aset)</th><th style="text-align:right">${formatRp(dinilai)}</th></tr></tfoot></table>`;
-}
-
-/** Neraca → HTML tabel bersih untuk print (Aktiva + Pasiva). */
-export function neracaToHtml(n: Neraca, kop?: KopOrganisasi): string {
-  const kasRows = Object.entries(n.aktivaRinci.kas)
-    .map(([k, v]) => `<tr><td>Kas ${esc(k)}</td><td style="text-align:right">${formatRp(v)}</td></tr>`)
-    .join('');
-  const status = n.balance ? 'BALANCE' : `SELISIH ${formatRp(n.selisih)}`;
-  return `${kopHtml('NERACA', `PER ${formatTanggal(n.cutoff)} — ${status}`, kop)}
-<h3>Aktiva — ${formatRp(n.aktiva)}</h3>
-<table border="1" cellpadding="6" cellspacing="0" width="100%">
-<tbody>${kasRows}
-<tr><td>Piutang 1050</td><td style="text-align:right">${formatRp(n.aktivaRinci.piutang)}</td></tr>
-<tr><td>Panjar OPEN</td><td style="text-align:right">${formatRp(n.aktivaRinci.panjarOpen)}</td></tr>
-<tr><th style="text-align:right">Total Aktiva</th><th style="text-align:right">${formatRp(n.aktiva)}</th></tr>
-</tbody></table>
-<h3>Pasiva — ${formatRp(n.pasiva)}</h3>
-<table border="1" cellpadding="6" cellspacing="0" width="100%">
-<tbody>
-<tr><td>Hutang 2050</td><td style="text-align:right">${formatRp(n.hutang)}</td></tr>
-<tr><td>Modal awal 3000</td><td style="text-align:right">${formatRp(n.modalAwal)}</td></tr>
-<tr><td>Kumulatif 3001</td><td style="text-align:right">${formatRp(n.kumulatif)}</td></tr>
-<tr><td>Berjalan 3002 (Jan s/d cut-off)</td><td style="text-align:right">${formatRp(n.berjalan)}</td></tr>
-<tr><th style="text-align:right">Total Pasiva</th><th style="text-align:right">${formatRp(n.pasiva)}</th></tr>
-</tbody></table>`;
 }
 
 /** Buka dokumen print bersih (hanya data) di window baru lalu auto-print.

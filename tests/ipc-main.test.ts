@@ -190,7 +190,6 @@ const CHANNEL_IPC = [
   'lock:setup',
   'lock:status',
   'lock:unlock',
-  'neraca:get',
   'panjar:close',
   'panjar:create',
   'panjar:items',
@@ -218,11 +217,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 73 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 72 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(73);
+    expect(env.handlers.size).toBe(72);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(73);
+    expect(CHANNEL_IPC).toHaveLength(72);
   });
 });
 

@@ -14,7 +14,7 @@ import {
   type CoaTipe,
   type PosisiNormal,
 } from '../db/coa.js';
-import { validasiSimpanLonggar } from './ledger.js';
+import { validasiSimpanLonggar } from './periode.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from './types.js';
 import { formatRp } from '../utils/format.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';

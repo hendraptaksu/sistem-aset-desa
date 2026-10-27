@@ -86,8 +86,6 @@ import { imporJurnalDariExcel, validasiImporDariExcel } from '../db/impor.js';
 import { KAS_KODES, COA } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
-  neraca as neracaJurnal,
-  saldoAkun,
   saldoSemuaKas as saldoSemuaKasJurnal,
 } from '../core/reports.js';
 import {
@@ -1447,44 +1445,6 @@ export function registerIpc(deps: IpcDeps): void {
       tanggal.input || undefined,
     );
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
-  });
-
-  daftarkan('neraca:get', (_e, cutoff: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      if (!tanggalKalenderValid(cutoff))
-        return fail(PESAN_TANGGAL_TIDAK_VALID);
-      const baris = listBarisJurnal(deps.db());
-      const n = neracaJurnal(baris, {
-        cutoff,
-        tutup: listTutupBuku(deps.db()),
-      });
-      // Bentuk kompatibel untuk tab Neraca lama (P1-9 akan memakai bentuk
-      // rinci per akun dari mesin laporan).
-      const kas: Record<string, number> = {};
-      for (const kode of KAS_KODES) kas[kode] = saldoAkun(baris, kode, cutoff);
-      const modalAwal = n.ekuitas.find((a) => a.kode === '3000')?.saldo ?? 0;
-      return ok({
-        cutoff,
-        aktiva: n.totalAset,
-        aktivaRinci: {
-          kas,
-          piutang: n.aset.find((a) => a.kode === '1050')?.saldo ?? 0,
-          panjarOpen: n.aset.find((a) => a.kode === '1040')?.saldo ?? 0,
-        },
-        hutang: n.totalKewajiban,
-        modalAwal,
-        // Semua ekuitas selain modal + laba tahun lampau (turunan jurnal).
-        kumulatif: n.totalEkuitasAkun - modalAwal + n.labaDitahan + n.labaBelumDitutup,
-        berjalan: n.labaBerjalan,
-        pasiva: n.totalPasiva,
-        selisih: n.selisih,
-        balance: n.balance,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
   });
 
   daftarkan('dashboard:get', (_e, cutoff: unknown) => {
