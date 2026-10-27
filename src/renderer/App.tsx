@@ -44,8 +44,10 @@ import type {
 } from './components/DashboardTab.js';
 import { LockScreen } from './components/LockScreen.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
+import { Button } from './components/ui.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
+import { useAksiSibuk } from './lib/aksiSibuk.js';
 
 type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
@@ -74,6 +76,7 @@ export function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
   const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
+  const { sibuk: mengunci, jalankan: jalankanKunci } = useAksiSibuk();
   // Drill-down Neraca Saldo → Buku Besar akun yang diklik (P1-8).
   const [akunBukuBesar, setAkunBukuBesar] = useState<string | undefined>();
   // Pintasan dashboard → form terpandu yang langsung dipilih (P1-14).
@@ -97,9 +100,38 @@ export function App() {
     }
   }, []);
 
+  // AUD-18: keputusan lock ada di main (idle/suspend). Renderer hanya polling
+  // status; saat main mengunci, layar PIN muncul tanpa menunggu aksi user.
+  // Polling tidak boleh menahan sesi: `lock:status` tidak dihitung aktivitas.
   useEffect(() => {
     void refreshLock();
+    const cekStatus = (): void => {
+      void api
+        .lockStatus()
+        .then(setLock)
+        .catch(() => {
+          // Gagal sesaat (mis. main sibuk restore) → pertahankan status terakhir.
+        });
+    };
+    const timer = setInterval(cekStatus, 30_000);
+    window.addEventListener('focus', cekStatus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', cekStatus);
+    };
   }, [refreshLock]);
+
+  const kunciSekarang = useCallback(
+    () =>
+      jalankanKunci(async () => {
+        try {
+          await api.lockLock();
+        } finally {
+          await refreshLock();
+        }
+      }),
+    [jalankanKunci, refreshLock],
+  );
 
   // Kop layar mengikuti nama entitas tersimpan (P1-13); gagal = pakai default.
   useEffect(() => {
@@ -118,7 +150,7 @@ export function App() {
     };
   }, [lock?.terbuka]);
 
-  // Auto-kunci saat idle: timer di-reset oleh aktivitas. Tanpa tombol kunci manual.
+  // Auto-kunci lokal untuk respons cepat; main tetap penjaga utama (AUD-18).
   useEffect(() => {
     if (!lock?.terbuka || !lock.sudahSetup) return;
     let timer: ReturnType<typeof setTimeout>;
@@ -193,6 +225,23 @@ export function App() {
         </nav>
       </aside>
       <main className="min-h-screen min-w-0 flex-1 overflow-y-auto">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-6 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-stone-700">Keuangan Pura Dalem Puri</p>
+            <p className="truncate text-xs text-stone-500">Sesi PIN terbuka</p>
+          </div>
+          <Button
+            variant="ghost"
+            className="flex shrink-0 items-center gap-2"
+            onClick={() => void kunciSekarang()}
+            disabled={mengunci}
+            title="Kunci aplikasi sekarang"
+            aria-label="Kunci aplikasi"
+          >
+            <Lock size={16} />
+            {mengunci ? 'Mengunci…' : 'Kunci'}
+          </Button>
+        </header>
         {tab === 'dashboard' ? (
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">

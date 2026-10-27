@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { registerIpc, type IpcDeps } from '../src/main/ipc.js';
-import { sesi } from '../src/main/kunci.js';
+import { kunciLagi, operasiPanjangAktif, sesi } from '../src/main/kunci.js';
 
 type Handler = (event: unknown, ...args: any[]) => unknown;
 
@@ -134,6 +134,8 @@ afterEach(() => {
   sesi.terbuka = false;
   sesi.gagal = 0;
   sesi.blokirSampai = 0;
+  sesi.terakhirAktivitas = 0;
+  sesi.operasiPanjang = 0;
 });
 
 const D = (akun_kode: string, debit: number) => ({ akun_kode, debit, kredit: 0 });
@@ -754,5 +756,44 @@ describe('P2-7 — error handling IPC', () => {
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+  });
+});
+
+describe('AUD-18 — auto-lock main & aktivitas sesi', () => {
+  it('lock:status (polling) tidak menyentuh aktivitas; IPC terjaga menyentuh', async () => {
+    const env = buatEnv();
+    expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
+
+    sesi.terakhirAktivitas = 1;
+    expect((await env.panggil('lock:status')).ok).toBe(true);
+    expect(sesi.terakhirAktivitas).toBe(1);
+
+    expect((await env.panggil('app:info-lokasi')).ok).toBe(true);
+    expect(sesi.terakhirAktivitas).toBeGreaterThan(1);
+  });
+
+  it('IPC yang ditolak saat terkunci tidak dihitung aktivitas; unlock menyentuh', async () => {
+    const env = buatEnv();
+    expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
+    kunciLagi();
+    sesi.terakhirAktivitas = 1;
+
+    const ditolak = await env.panggil('app:info-lokasi');
+    expect(ditolak.ok).toBe(false);
+    expect(ditolak.error).toMatch(/terkunci/i);
+    expect(sesi.terakhirAktivitas).toBe(1);
+
+    expect((await env.panggil('lock:unlock', '111111')).ok).toBe(true);
+    expect(sesi.terakhirAktivitas).toBeGreaterThan(1);
+  });
+
+  it('tahanan auto-kunci backup dilepas setelah operasi selesai', async () => {
+    const env = buatEnv();
+    expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
+    env.saveQueue.push({ canceled: false, filePath: join(env.dir, 'backup-aud18.db') });
+
+    const backup = await env.panggil('backup:export');
+    expect(backup.ok, backup.error).toBe(true);
+    expect(operasiPanjangAktif()).toBe(false);
   });
 });

@@ -513,7 +513,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/csp.test.ts tests/ipc-main.test.ts`.
   - **Dependency:** —
 
-- [ ] **AUD-18 — Auto-lock di main + lock saat suspend + tombol kunci** · P0 · M
+- [x] **AUD-18 — Auto-lock di main + lock saat suspend + tombol kunci** · P0 · M (2026-10-27: `terakhirAktivitas` di sesi disentuh saat `setupPin`/`bukaKunci`/`resetPaksa` berhasil dan setiap `perluBuka()` lolos; fungsi murni `harusKunci` + interval main 60 dtk (`unref`, dibersihkan saat quit) dan `powerMonitor` `suspend`/`lock-screen` memanggil `kunciLagi()`; backup/restore menahan auto-lock lewat `tahanAutoKunci` yang idempoten dan menyentuh aktivitas saat dilepas; renderer polling `lock:status` 30 dtk + listener `focus` (keduanya dibersihkan) dan tombol **Kunci** di header memanggil `api.lockLock()` lalu `refreshLock()`; typecheck/test/build hijau, 511 test total + 8 test; smoke Electron build: tombol Kunci → `terbuka:false` + layar PIN, emit `suspend`/`lock-screen` di main → sesi tertutup dan layar PIN muncul, interval main dengan waktu dimajukan +31 mnt mencatat `[auto-lock]` dan menampilkan layar PIN)
   - **Konteks:** Timer idle hanya ada di renderer. Jika renderer freeze,
     DevTools di-pause, atau app ditutup-lid, sesi main tetap terbuka. Tidak
     ada tombol kunci manual.

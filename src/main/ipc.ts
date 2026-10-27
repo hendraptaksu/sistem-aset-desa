@@ -157,9 +157,11 @@ import {
   bukaKunci,
   kunciLagi,
   resetPaksa,
+  sentuhAktivitas,
   sesi,
   setupPin,
   statusKunci,
+  tahanAutoKunci,
   ubahPin,
 } from './kunci.js';
 import { sudahSetupPin } from '../db/repository.js';
@@ -215,6 +217,31 @@ export function registerIpc(deps: IpcDeps): void {
   // AUD-17: setiap handler hanya boleh dipanggil frame renderer aplikasi.
   // Event tanpa senderFrame (frame hancur) atau dari iframe/halaman asing
   // ditolak sebelum listener menyentuh DB/dialog.
+  //
+  // AUD-18: backup/restore bisa memblokir main cukup lama. Selama operasi itu,
+  // auto-lock ditahan agar sesi tidak terkunci di tengah proses yang sah.
+  const CHANNEL_TAHAN_KUNCI = new Set([
+    'backup:auto',
+    'backup:export',
+    'backup:import',
+    'backup:lengkap',
+    'backup:restore-lengkap',
+  ]);
+
+  const jalankanHandler = (channel: string, jalankan: () => unknown): unknown => {
+    if (!CHANNEL_TAHAN_KUNCI.has(channel)) return jalankan();
+    const selesaiTahan = tahanAutoKunci();
+    try {
+      const hasil = jalankan();
+      if (hasil instanceof Promise) return hasil.finally(selesaiTahan);
+      selesaiTahan();
+      return hasil;
+    } catch (e) {
+      selesaiTahan();
+      throw e;
+    }
+  };
+
   const daftarkan = (
     channel: string,
     listener: (event: unknown, ...args: any[]) => unknown,
@@ -226,7 +253,7 @@ export function registerIpc(deps: IpcDeps): void {
       if (!pengirimDiizinkan(frame, deps.pengirim)) {
         return fail('Permintaan ditolak: pengirim bukan aplikasi ini.');
       }
-      return listener(event, ...args);
+      return jalankanHandler(channel, () => listener(event, ...args));
     });
   };
 
@@ -334,8 +361,16 @@ export function registerIpc(deps: IpcDeps): void {
   // Gembok data: selain channel lock:* & coa:list, tolak bila PIN sudah di-setup
   // tapi sesi belum dibuka. Mencegah bypass via devtools (ancaman anak/iseng).
   // lock:change & lock:idle-set justru WAJIB terbuka → ikut dijaga di bawah.
-  const perluBuka = (): string | null =>
-    sudahSetupPin(deps.db()) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
+  // AUD-18: setiap pemanggilan yang lolos gembok dihitung sebagai aktivitas
+  // nyata. lock:status (polling renderer) tidak lewat sini agar tidak menahan
+  // sesi tetap terbuka saat operator meninggalkan laptop.
+  const perluBuka = (): string | null => {
+    if (sudahSetupPin(deps.db()) && !sesi.terbuka) {
+      return 'Aplikasi terkunci. Buka dengan PIN dulu.';
+    }
+    sentuhAktivitas();
+    return null;
+  };
 
   // ---- Lokasi data & folder (P2-8) ----
   // Renderer hanya boleh meminta tiga nama folder tetap; TIDAK PERNAH path.

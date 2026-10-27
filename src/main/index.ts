@@ -1,13 +1,21 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron';
 import { config as loadEnv } from 'dotenv';
 import { basename, isAbsolute, join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
+import { IDLE_DEFAULT_MENIT } from '../core/pin.js';
 import { openDb } from '../db/database.js';
+import { getIdleMenit } from '../db/repository.js';
 import { seedDev } from '../db/seed-dev.js';
 import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
 import { mulaiBackupPeriodik } from './backupPeriodik.js';
+import {
+  INTERVAL_AUTO_KUNCI_MS,
+  kunciLagi,
+  perluKunciOtomatis,
+  sesi,
+} from './kunci.js';
 import { tentukanLokasiData, type LokasiData } from './lokasiData.js';
 import {
   aksiPemulihanDariRespons,
@@ -26,11 +34,63 @@ let db: Database.Database;
 let win: BrowserWindow | null = null;
 let lokasi: LokasiData | null = null;
 let hentikanBackupPeriodik: (() => void) | null = null;
+let hentikanAutoKunci: (() => void) | null = null;
 
 /** Hentikan interval backup (idempoten); dipanggil saat app quit. */
 function hentikanPenjadwalBackup(): void {
   hentikanBackupPeriodik?.();
   hentikanBackupPeriodik = null;
+}
+
+/**
+ * AUD-18: keputusan idle ditegakkan di main. Renderer bisa freeze/di-pause,
+ * tetapi interval ini tetap berjalan dan mengunci sesi bila melewati batas.
+ * Timer di-`unref()` dan dibersihkan saat quit agar tidak menahan proses.
+ */
+function mulaiAutoKunci(): () => void {
+  let dihentikan = false;
+  const timer = setInterval(() => {
+    if (dihentikan || !sesi.terbuka) return;
+    try {
+      const menit = getIdleMenit(db, IDLE_DEFAULT_MENIT);
+      if (!perluKunciOtomatis(Date.now(), menit)) return;
+      kunciLagi();
+      console.log('[auto-lock] sesi dikunci karena idle.');
+    } catch (e) {
+      console.warn('[auto-lock] gagal memeriksa idle:', String(e));
+    }
+  }, INTERVAL_AUTO_KUNCI_MS);
+  timer.unref?.();
+
+  return () => {
+    dihentikan = true;
+    clearInterval(timer);
+  };
+}
+
+function hentikanPenjadwalKunci(): void {
+  hentikanAutoKunci?.();
+  hentikanAutoKunci = null;
+}
+
+/** Suspend/lock-screen OS = sesi tidak boleh tetap terbuka saat laptop dibuka lagi. */
+function kunciSaatSistemTidur(): void {
+  kunciLagi();
+}
+
+function pasangPemicuKunciSistem(): void {
+  powerMonitor.on('suspend', kunciSaatSistemTidur);
+  powerMonitor.on('lock-screen', kunciSaatSistemTidur);
+}
+
+function lepasPemicuKunciSistem(): void {
+  powerMonitor.removeListener('suspend', kunciSaatSistemTidur);
+  powerMonitor.removeListener('lock-screen', kunciSaatSistemTidur);
+}
+
+function bersihkanPenjadwal(): void {
+  hentikanPenjadwalBackup();
+  hentikanPenjadwalKunci();
 }
 
 // Dev saja: baca .env di root repo agar PURA_DB bisa di-override.
@@ -273,6 +333,10 @@ function mulaiAplikasi(): void {
       onBackup: (p) => console.log(`[backup-auto] ${p}`),
       onError: (e) => console.warn('[backup-auto] gagal:', String(e)),
     });
+    // AUD-18: auto-lock ditegakkan main (idle, suspend, lock-screen).
+    hentikanPenjadwalKunci();
+    hentikanAutoKunci = mulaiAutoKunci();
+    pasangPemicuKunciSistem();
     // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
     // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
     if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
@@ -286,9 +350,12 @@ function mulaiAplikasi(): void {
     });
   });
 
-  // Bersihkan interval backup agar proses main bisa berhenti normal.
-  app.on('before-quit', hentikanPenjadwalBackup);
-  app.on('will-quit', hentikanPenjadwalBackup);
+  // Bersihkan interval backup + auto-lock agar proses main bisa berhenti normal.
+  app.on('before-quit', bersihkanPenjadwal);
+  app.on('will-quit', () => {
+    bersihkanPenjadwal();
+    lepasPemicuKunciSistem();
+  });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
