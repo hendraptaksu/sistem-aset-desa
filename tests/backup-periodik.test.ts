@@ -10,8 +10,12 @@ import { mulaiBackupPeriodik, sudahBackupUntukTanggal } from '../src/main/backup
 import { BannerBackupBasi } from '../src/renderer/components/DashboardTab.js';
 import {
   BATAS_BACKUP_BASI_HARI,
+  labelUsiaBackup,
+  namaFileBackup,
   pesanBackupBasi,
+  ringkasanBackup,
   tanggalDariPathBackup,
+  toneStatusBackup,
   usiaBackupHari,
 } from '../src/utils/backup.js';
 
@@ -58,6 +62,60 @@ describe('usiaBackupHari & pesan backup basi', () => {
     expect(basi).toContain('Backup terakhir 3 hari lalu — buat backup sekarang.');
     expect(renderToStaticMarkup(createElement(BannerBackupBasi, { usiaHari: 2 }))).toBe('');
     expect(renderToStaticMarkup(createElement(BannerBackupBasi, { usiaHari: null }))).toBe('');
+  });
+});
+
+describe('ringkasan backup dashboard (UI-16)', () => {
+  it('mengambil nama file dari path POSIX/Windows tanpa direktori', () => {
+    expect(namaFileBackup('/data/backups/auto-2026-10-23.db')).toBe('auto-2026-10-23.db');
+    expect(namaFileBackup('C:\\data\\backups\\auto-2026-10-20.db')).toBe(
+      'auto-2026-10-20.db',
+    );
+    expect(namaFileBackup('')).toBeNull();
+    expect(namaFileBackup(undefined)).toBeNull();
+  });
+
+  it('memberi label usia yang terbaca operator', () => {
+    expect(labelUsiaBackup(0)).toBe('hari ini');
+    expect(labelUsiaBackup(1)).toBe('1 hari lalu');
+    expect(labelUsiaBackup(2)).toBe('2 hari lalu');
+    expect(labelUsiaBackup(12)).toBe('12 hari lalu');
+    for (const kosong of [null, undefined, Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+      expect(labelUsiaBackup(kosong)).toBe('Tanggal tidak diketahui');
+    }
+  });
+
+  it('memilih tone badge: hijau segar, amber basi, batu tidak diketahui', () => {
+    expect(toneStatusBackup(0)).toBe('green');
+    expect(toneStatusBackup(BATAS_BACKUP_BASI_HARI)).toBe('green');
+    expect(toneStatusBackup(BATAS_BACKUP_BASI_HARI + 1)).toBe('amber');
+    for (const kosong of [null, undefined, Number.NaN, -1]) {
+      expect(toneStatusBackup(kosong)).toBe('stone');
+    }
+  });
+
+  it('menggabungkan path, tanggal, label, dan tone untuk kartu', () => {
+    expect(ringkasanBackup('/data/backups/auto-2026-10-23.db', '2026-10-27')).toEqual({
+      namaFile: 'auto-2026-10-23.db',
+      tanggal: '2026-10-23',
+      usiaHari: 4,
+      label: '4 hari lalu',
+      tone: 'amber',
+    });
+    expect(ringkasanBackup('/data/backups/auto-lama.db', '2026-10-27')).toEqual({
+      namaFile: 'auto-lama.db',
+      tanggal: null,
+      usiaHari: null,
+      label: 'Tanggal tidak diketahui',
+      tone: 'stone',
+    });
+    expect(ringkasanBackup('', '2026-10-27')).toEqual({
+      namaFile: null,
+      tanggal: null,
+      usiaHari: null,
+      label: 'Tanggal tidak diketahui',
+      tone: 'stone',
+    });
   });
 });
 

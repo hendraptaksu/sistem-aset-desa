@@ -412,7 +412,7 @@
     screenshot 3 ukuran.
   - **Dependency:** —
 
-- [ ] **UI-16 — Kartu backup: path, status, dan hierarki restore** · P1 · S
+- [x] **UI-16 — Kartu backup: path, status, dan hierarki restore** · P1 · S (2026-10-27: kartu backup menampilkan nama file satu baris + tanggal, status hari ini/N hari lalu dengan badge hijau/amber/stone, serta panel Backup dan Pulihkan berperingatan merah tanpa mengubah konfirmasi restore; 599 test + smoke)
   - **Konteks:** Path backup panjang memakai `break-all` sehingga terpotong
     per karakter. Empat tombol backup/restore bergaya sama; restore
     mengganti data tetapi tidak dibedakan.

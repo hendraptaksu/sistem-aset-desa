@@ -43,7 +43,9 @@ export function Button({
   children,
   variant = 'primary',
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'ghost' | 'danger' | 'danger-outline';
+}) {
   return (
     <button
       {...props}
@@ -52,6 +54,8 @@ export function Button({
         variant === 'primary' && 'bg-emerald-700 text-white hover:bg-emerald-800',
         variant === 'ghost' && 'border border-stone-300 bg-white hover:bg-stone-100',
         variant === 'danger' && 'bg-red-700 text-white hover:bg-red-800',
+        variant === 'danger-outline' &&
+          'border border-red-300 bg-white text-red-800 hover:bg-red-50',
         props.className,
       )}
     >
@@ -60,12 +64,21 @@ export function Button({
   );
 }
 
-export function Badge({ children, tone = 'stone' }: { children: ReactNode; tone?: 'stone' | 'green' | 'amber' | 'red' }) {
+export function Badge({
+  children,
+  tone = 'stone',
+}: {
+  children: ReactNode;
+  tone?: 'stone' | 'green' | 'amber' | 'red' | 'warning';
+}) {
   const tones: Record<string, string> = {
     stone: 'bg-stone-100 text-stone-700',
     green: 'bg-green-100 text-green-800',
     amber: 'bg-emerald-100 text-emerald-800',
     red: 'bg-red-100 text-red-800',
+    // UI-16: tone amber yang benar untuk status basi; tone `amber` lama
+    // menunggu perbaikan terpisah (UI-18) agar pemakaian lain tidak berubah.
+    warning: 'bg-amber-100 text-amber-800',
   };
   return <span className={clsx('rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;
 }
