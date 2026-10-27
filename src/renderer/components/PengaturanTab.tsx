@@ -12,11 +12,11 @@ import { formatNomorBukti } from '../../core/nomorBukti.js';
 import type { AuditLog } from '../../core/types.js';
 import {
   formatAksiAudit,
-  formatJsonAudit,
   formatWaktuAudit,
 } from '../../utils/auditDetail.js';
 import { tahunLokal } from '../../utils/tanggal.js';
 import { api, type JenisFolderLokasiApi, type LokasiData } from '../lib/api.js';
+import { AuditDetail } from './AuditDetail.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
   Button,
@@ -639,15 +639,11 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
           <Baris label="Alasan" value={detail.alasan || '-'} />
           <div>
             <p className="text-stone-500">Sebelum</p>
-            <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-stone-50 p-2 text-xs">
-              {formatJsonAudit(detail.data_lama_json)}
-            </pre>
+            <AuditDetail json={detail.data_lama_json} />
           </div>
           <div>
             <p className="text-stone-500">Sesudah</p>
-            <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-stone-50 p-2 text-xs">
-              {formatJsonAudit(detail.data_baru_json)}
-            </pre>
+            <AuditDetail json={detail.data_baru_json} />
           </div>
         </DetailModal>
       )}

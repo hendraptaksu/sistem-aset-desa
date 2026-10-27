@@ -726,7 +726,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm run build` + grep bersih.
   - **Dependency:** AUD-08.
 
-- [ ] **AUD-27 — Detail audit human-readable + label aksi baru** · P1 · S
+- [x] **AUD-27 — Detail audit human-readable + label aksi baru** · P1 · S (2026-10-27: `parseAuditDetail` mengenali `{jurnal,baris}` (tanggal/no bukti/keterangan + tabel akun/debit/kredit + total) dan `{panjar,items}` (penerima/jumlah/status/rincian + jurnal terkait), fallback `<pre>` JSON rapi untuk bentuk tak dikenal/rusak/null; komponen `AuditDetail` dipakai di modal detail `PengaturanTab`; `formatAksiAudit` melabeli pihak, piutang/hutang, anggaran, rekonsiliasi, impor, lampiran, setup/ganti/reset PIN, auto-kunci, pembukuan, backup lengkap/manual/otomatis, restore lengkap/PIN dipertahankan; typecheck/test/build hijau, 552 test (48 file, +11 test); smoke Electron build dengan profil+DB sementara: baris "Beri pinjaman (piutang)" membuka modal detail jurnal dengan tabel Akun/Debit/Kredit/Total, tanpa JSON mentah dan tanpa console error)
   - **Konteks:** `PengaturanTab` menampilkan `data_lama_json`/`data_baru_json`
     sebagai JSON mentah. `formatAksiAudit` belum mengenal aksi pihak,
     anggaran, rekonsiliasi, import, lampiran, setup PIN, dll.

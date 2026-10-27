@@ -334,7 +334,7 @@ export function DetailModal({
 }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-lg">
         <h3 className="text-lg font-bold">{title}</h3>
         <div className="mt-3 space-y-1.5 text-[15px]">{children}</div>
         <div className="mt-4 flex justify-end">
