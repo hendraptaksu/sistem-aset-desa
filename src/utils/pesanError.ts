@@ -34,6 +34,8 @@ const POLA_TEKNIS: readonly RegExp[] = [
   /undefined is not/i,
   /cannot read propert/i,
   /is not a function/i,
+  /\bis not defined\b/i,
+  /\bis not a constructor\b/i,
   /\b(TypeError|ReferenceError|RangeError|SyntaxError|EvalError|URIError)\b/,
   /\b(EACCES|ENOENT|EBUSY|EPERM|ENOSPC|EPIPE|ETIMEDOUT|ENOTFOUND|ECONN[A-Z]+|ERR_[A-Z_]+)\b/,
   /\b(error|failed|failure|invalid|unexpected|cannot|unable|timeout|network|denied|segfault|database|locked)\b/i,

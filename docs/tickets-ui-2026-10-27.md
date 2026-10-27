@@ -518,7 +518,7 @@
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** —
 
-- [ ] **UI-22 — Sanitasi error “X is not defined”** · P2 · S
+- [x] **UI-22 — Sanitasi error “X is not defined”** · P2 · S (2026-10-27: pola "is not defined" disanitasi ke fallback + 604 test)
   - **Konteks:** `pesanError` menyaring banyak pola teknis, tetapi belum
     menyaring `"X is not defined"`. Saat build transisi sempat muncul
     “COA is not defined” di layar operator. Bug sumbernya sudah hilang,
