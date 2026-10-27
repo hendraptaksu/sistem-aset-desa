@@ -15,6 +15,7 @@ import {
   type PengaturanPembukuan,
 } from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
+import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
 import type { CoaTipe, PosisiNormal } from './coa.js';
 import type {
   Aset,
@@ -615,9 +616,9 @@ export function catatAudit(db: Database.Database, input: InputAudit): AuditLog {
 /** Filter riwayat audit; `aksi` dicocokkan persis atau sebagai awalan. */
 export type AuditFilter = {
   aksi?: string;
-  /** Tanggal awal YYYY-MM-DD (inklusif). */
+  /** Tanggal lokal WITA awal `YYYY-MM-DD` (inklusif). */
   mulai?: string;
-  /** Tanggal akhir YYYY-MM-DD (inklusif). */
+  /** Tanggal lokal WITA akhir `YYYY-MM-DD` (inklusif). */
   sampai?: string;
   limit?: number;
   offset?: number;
@@ -633,13 +634,15 @@ function auditWhere(f: AuditFilter): { sql: string; params: unknown[] } {
     where.push("(aksi = ? OR aksi LIKE ? ESCAPE '\\')");
     params.push(aksi, `${escaped}%`);
   }
+  // `tanggal` tersimpan ISO UTC; batas filter dikonversi dari tanggal lokal
+  // agar audit pagi WITA tidak jatuh ke tanggal UTC hari sebelumnya.
   if (f.mulai) {
-    where.push('substr(tanggal, 1, 10) >= ?');
-    params.push(f.mulai);
+    where.push('tanggal >= ?');
+    params.push(awalHariLokalUtc(f.mulai));
   }
   if (f.sampai) {
-    where.push('substr(tanggal, 1, 10) <= ?');
-    params.push(f.sampai);
+    where.push('tanggal < ?');
+    params.push(akhirHariLokalUtc(f.sampai));
   }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }

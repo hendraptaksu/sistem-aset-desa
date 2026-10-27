@@ -71,8 +71,9 @@ describe('T11a format detail audit sebelum/sesudah', () => {
     expect(formatJsonAudit('"PIN diganti"')).toBe('PIN diganti');
   });
 
-  it('waktu ISO diformat ringkas, nilai aneh tetap aman', () => {
-    expect(formatWaktuAudit('2026-10-22T14:05:00.000Z')).toBe('2026-10-22 14:05');
+  it('waktu ISO diformat ringkas dalam WITA, nilai aneh tetap aman', () => {
+    expect(formatWaktuAudit('2026-10-22T14:05:00.000Z')).toBe('2026-10-22 22:05');
+    expect(formatWaktuAudit('2026-10-22T23:30:00Z')).toBe('2026-10-23 07:30');
     expect(formatWaktuAudit('bukan-waktu')).toBe('bukan-waktu');
   });
 });

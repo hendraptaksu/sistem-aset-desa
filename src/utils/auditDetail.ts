@@ -1,6 +1,8 @@
 // Parse aman data_lama_json audit_log untuk popup detail koreksi.
 // Dua bentuk yang ditulis main: Transaksi BKU & Panjar. Selain itu → mentah.
 
+import { formatWaktuLokal } from './tanggal.js';
+
 export type AuditDetailView =
   | {
       kind: 'transaksi';
@@ -96,8 +98,7 @@ export function ringkasAudit(json: string | null | undefined, maks = 90): string
 
 /** Waktu audit ISO → teks lokal ringkas (YYYY-MM-DD HH:mm), fallback mentah. */
 export function formatWaktuAudit(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(iso ?? ''));
-  return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : String(iso ?? '');
+  return formatWaktuLokal(String(iso ?? ''));
 }
 
 /** Label ramah untuk kolom Aksi audit_log (id teknis disembunyikan). */

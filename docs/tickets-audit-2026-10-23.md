@@ -196,7 +196,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
     tidak ada; `npm run typecheck && npm test && npm run build`.
   - **Dependency:** AUD-02.
 
-- [ ] **AUD-05 — Waktu audit tampil lokal + filter tanggal lokal** · P0 · M
+- [x] **AUD-05 — Waktu audit tampil lokal + filter tanggal lokal** · P0 · M (2026-10-27: `formatWaktuAudit` memakai `formatWaktuLokal`; `auditWhere` memakai batas UTC dari helper `awalHariLokalUtc`/`akhirHariLokalUtc` sehingga filter `YYYY-MM-DD` adalah hari WITA; audit `2026-10-22T23:30Z` tampil `2026-10-23 07:30`, masuk filter `2026-10-23`, tidak masuk `2026-10-22`; typecheck/test/build hijau, 448 test total + 6 test)
   - **Konteks:** `formatWaktuAudit()` hanya memotong string UTC, jadi audit
     pukul 06:30 WITA tampil 22:30 hari sebelumnya. Filter audit memakai
     `substr(tanggal, 1, 10)` sehingga mengelompokkan berdasarkan tanggal UTC.

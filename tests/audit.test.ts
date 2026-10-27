@@ -134,6 +134,43 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
     db.close();
   });
 
+  it('filter tanggal memakai hari lokal WITA, bukan tanggal UTC', () => {
+    const db = dbKosong();
+    try {
+      // 2026-10-22T23:30Z = 2026-10-23 07:30 WITA.
+      insertAuditLog(
+        db,
+        auditRow({ id: 'pagi', tanggal: '2026-10-22T23:30:00.000Z', aksi: 'CREATE j-pagi' }),
+      );
+      expect(
+        listAuditLog(db, { mulai: '2026-10-23', sampai: '2026-10-23' }).map((r) => r.id),
+      ).toEqual(['pagi']);
+      expect(listAuditLog(db, { mulai: '2026-10-22', sampai: '2026-10-22' })).toEqual([]);
+      expect(listAuditLog(db, { sampai: '2026-10-22' })).toEqual([]);
+      expect(listAuditLog(db, { mulai: '2026-10-23' }).map((r) => r.id)).toEqual(['pagi']);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('batas hari lokal: awal inklusif, akhir eksklusif', () => {
+    const db = dbKosong();
+    try {
+      const rows: AuditLog[] = [
+        auditRow({ id: 'b1', tanggal: '2026-10-22T15:59:59.999Z', aksi: 'CREATE j-1' }),
+        auditRow({ id: 'b2', tanggal: '2026-10-22T16:00:00.000Z', aksi: 'CREATE j-2' }),
+        auditRow({ id: 'b3', tanggal: '2026-10-23T15:59:59.999Z', aksi: 'CREATE j-3' }),
+        auditRow({ id: 'b4', tanggal: '2026-10-23T16:00:00.000Z', aksi: 'CREATE j-4' }),
+      ];
+      for (const r of rows) insertAuditLog(db, r);
+      expect(
+        listAuditLog(db, { mulai: '2026-10-23', sampai: '2026-10-23' }).map((r) => r.id),
+      ).toEqual(['b3', 'b2']);
+    } finally {
+      db.close();
+    }
+  });
+
   it('limit/offset aman + total dihitung dari filter (bukan dari halaman)', () => {
     const db = dbKosong();
     isi(db);

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ZONA_WAKTU_APP,
+  akhirHariLokalUtc,
+  awalHariLokalUtc,
   formatWaktuLokal,
   tahunLokal,
   tanggalLokal,
@@ -49,5 +51,27 @@ describe('formatWaktuLokal untuk audit', () => {
 
   it('input tidak valid dikembalikan apa adanya', () => {
     expect(formatWaktuLokal('bukan-waktu')).toBe('bukan-waktu');
+  });
+});
+
+describe('batas hari lokal → UTC untuk filter', () => {
+  it('awal hari inklusif dan batas akhir eksklusif (WITA)', () => {
+    expect(awalHariLokalUtc('2026-10-23')).toBe('2026-10-22T16:00:00.000Z');
+    expect(akhirHariLokalUtc('2026-10-23')).toBe('2026-10-23T16:00:00.000Z');
+  });
+
+  it('benar di sekitar pergantian tahun', () => {
+    expect(awalHariLokalUtc('2026-01-01')).toBe('2025-12-31T16:00:00.000Z');
+    expect(akhirHariLokalUtc('2026-12-31')).toBe('2026-12-31T16:00:00.000Z');
+  });
+
+  it('timeZone bisa dioverride untuk test', () => {
+    expect(awalHariLokalUtc('2026-10-23', 'UTC')).toBe('2026-10-23T00:00:00.000Z');
+    expect(akhirHariLokalUtc('2026-10-23', 'UTC')).toBe('2026-10-24T00:00:00.000Z');
+  });
+
+  it('tanggal kalender tidak valid ditolak', () => {
+    expect(() => awalHariLokalUtc('2026-02-31')).toThrow(RangeError);
+    expect(() => akhirHariLokalUtc('bukan-tanggal')).toThrow(RangeError);
   });
 });

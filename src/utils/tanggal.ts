@@ -82,3 +82,70 @@ export function formatWaktuLokal(iso: string, timeZone = ZONA_WAKTU_APP): string
   const bagian = bagianTanggal(formatterWaktu(timeZone), tanggal);
   return `${bagian.year}-${bagian.month}-${bagian.day} ${bagian.hour}:${bagian.minute}`;
 }
+
+const POLA_TANGGAL = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Pecah `YYYY-MM-DD` menjadi komponen kalender yang valid. */
+function komponenTanggal(tanggal: string): {
+  tahun: number;
+  bulan: number;
+  hari: number;
+} {
+  const m = POLA_TANGGAL.exec(String(tanggal ?? ''));
+  if (!m) throw new RangeError('Tanggal tidak valid.');
+  const tahun = Number(m[1]);
+  const bulan = Number(m[2]);
+  const hari = Number(m[3]);
+  const cek = new Date(Date.UTC(tahun, bulan - 1, hari));
+  if (
+    tahun < 1900 ||
+    tahun > 9999 ||
+    cek.getUTCFullYear() !== tahun ||
+    cek.getUTCMonth() !== bulan - 1 ||
+    cek.getUTCDate() !== hari
+  ) {
+    throw new RangeError('Tanggal tidak valid.');
+  }
+  return { tahun, bulan, hari };
+}
+
+/**
+ * Tengah malam lokal → instant UTC, tanpa bergantung zona waktu mesin.
+ * Offset dihitung dari `Intl` untuk zona aplikasi (WITA tidak punya DST).
+ */
+function tengahMalamLokalKeUtc(
+  tahun: number,
+  bulan: number,
+  hari: number,
+  timeZone: string,
+): Date {
+  const tebakan = Date.UTC(tahun, bulan - 1, hari);
+  const bagian = bagianTanggal(formatterWaktu(timeZone), new Date(tebakan));
+  const lokalSebagaiUtc = Date.UTC(
+    Number(bagian.year),
+    Number(bagian.month) - 1,
+    Number(bagian.day),
+    Number(bagian.hour),
+    Number(bagian.minute),
+  );
+  return new Date(tebakan - (lokalSebagaiUtc - tebakan));
+}
+
+/**
+ * Batas bawah (inklusif) satu tanggal lokal dalam ISO UTC.
+ * Contoh WITA: `2026-10-23` → `2026-10-22T16:00:00.000Z`.
+ */
+export function awalHariLokalUtc(tanggal: string, timeZone = ZONA_WAKTU_APP): string {
+  const { tahun, bulan, hari } = komponenTanggal(tanggal);
+  return tengahMalamLokalKeUtc(tahun, bulan, hari, timeZone).toISOString();
+}
+
+/**
+ * Batas atas eksklusif satu tanggal lokal dalam ISO UTC
+ * (setara 23:59:59.999 lokal). Contoh WITA: `2026-10-23` →
+ * `2026-10-23T16:00:00.000Z`.
+ */
+export function akhirHariLokalUtc(tanggal: string, timeZone = ZONA_WAKTU_APP): string {
+  const { tahun, bulan, hari } = komponenTanggal(tanggal);
+  return tengahMalamLokalKeUtc(tahun, bulan, hari + 1, timeZone).toISOString();
+}
