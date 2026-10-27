@@ -249,6 +249,21 @@ describe('P2-9 — parser multi-baris', () => {
     expect(alasanSemua(nonaktif)).toMatch(/1001 sudah tidak aktif/i);
   });
 
+  it('menolak akun legacy 3001/3002 di pratinjau impor', async () => {
+    for (const kode of ['3001', '3002']) {
+      const hasil = await parse(
+        grup(`G-LEGACY-${kode}`, '2026-03-01', 'Akun legacy', [
+          D('1001', 10_000),
+          K(kode, 10_000),
+        ]),
+      );
+      expect(hasil.ringkasan.grupValid).toBe(0);
+      expect(alasanSemua(hasil)).toContain(kode);
+      expect(alasanSemua(hasil)).toMatch(/legacy/i);
+      expect(alasanSemua(hasil)).toMatch(/tidak boleh diposting/i);
+    }
+  });
+
   it('menolak baris dengan debit+kredit terisi dan baris kosong', async () => {
     const duaSisi = await parse(
       grup('G-DUA-SISI', '2026-03-02', 'Dua sisi', [

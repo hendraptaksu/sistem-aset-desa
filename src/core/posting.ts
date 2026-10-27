@@ -6,7 +6,14 @@
 // - Error = jurnal tidak boleh disimpan.
 // - Peringatan = boleh disimpan, tetapi operator wajib konfirmasi (mis. kas minus).
 
-import { POSISI_NORMAL, isAkunKas, type CoaTipe, type PosisiNormal } from '../db/coa.js';
+import {
+  PESAN_AKUN_LEGACY,
+  POSISI_NORMAL,
+  akunBolehDiposting,
+  isAkunKas,
+  type CoaTipe,
+  type PosisiNormal,
+} from '../db/coa.js';
 import { validasiSimpanLonggar } from './ledger.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from './types.js';
 import { formatRp } from '../utils/format.js';
@@ -89,7 +96,8 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  *
  * Urutan aturan:
  * 1. Tanggal kalender nyata, keterangan, minimal 2 baris.
- * 2. Akun ada, aktif, tipe/posisi normal konsisten, nominal sen valid.
+ * 2. Akun ada, aktif, bukan akun legacy 3001/3002, tipe/posisi normal
+ *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
  *    PIUTANG 1050; HUTANG 2050).
  * 4. Total debit = total kredit dan > 0.
@@ -126,6 +134,8 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
     if (!kode) errors.push(`Baris ${no}: akun belum dipilih.`);
     else if (!akunBaris) errors.push(`Baris ${no}: akun ${kode} tidak dikenal.`);
     else if (!akunBaris.aktif) errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} sudah tidak aktif.`);
+    else if (!akunBolehDiposting(kode, akunBaris.aktif))
+      errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} ${PESAN_AKUN_LEGACY}`);
 
     if (akunBaris) {
       if (!TIPE_AKUN.includes(akunBaris.tipe))

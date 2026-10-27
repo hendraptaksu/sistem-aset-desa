@@ -33,6 +33,17 @@ export const AKUN_PIUTANG = '1050';
 export const AKUN_HUTANG = '2050';
 export const AKUN_MODAL = '3000';
 
+/**
+ * Akun ekuitas legacy yang tetap ada di COA untuk membaca saldo/laporan lama,
+ * tetapi tidak boleh dipakai sebagai baris jurnal baru. Nilainya turunan
+ * (kumulatif dari tutup buku & surplus periode), bukan hasil posting manual.
+ */
+export const AKUN_LEGACY_TIDAK_DIPOSTING: ReadonlySet<string> = new Set(['3001', '3002']);
+
+/** Pesan seragam untuk penolakan akun legacy di UI/posting/import. */
+export const PESAN_AKUN_LEGACY =
+  'adalah akun legacy 3001/3002 (saldo turunan) dan tidak boleh diposting; akun ini hanya untuk laporan.';
+
 /** Dompet kas/bank (AKTIVA yang boleh dipakai sebagai akun kas). BUKAN 1040/1050. */
 const KODE_KAS = new Set([
   '1001',
@@ -124,6 +135,22 @@ export const BEBAN_KODES = COA.filter((c) => c.tipe === 'BEBAN').map((c) => c.ko
 export const akun = (kode: string): Coa | undefined => COA.find((c) => c.kode === kode);
 /** Alias lama — dipertahankan selama kode single-entry belum seluruhnya dipindah. */
 export const coaByKode = (kode: string): Coa | undefined => akun(kode);
+
+/**
+ * Apakah akun boleh dipakai sebagai baris jurnal baru.
+ *
+ * - `3001`/`3002` selalu ditolak: akun legacy, saldonya turunan.
+ * - Akun nonaktif ditolak. COA statis tidak menyimpan status; pemanggil yang
+ *   punya status dari master DB harus meneruskannya lewat `aktif`.
+ * - Akun tetap ada di COA & laporan agar saldo lama bisa diperiksa.
+ */
+export function akunBolehDiposting(kode: string, aktif = true): boolean {
+  const kodeBersih = String(kode ?? '').trim();
+  if (!kodeBersih || !aktif) return false;
+  const a = akun(kodeBersih);
+  if (!a) return false;
+  return !AKUN_LEGACY_TIDAK_DIPOSTING.has(a.kode);
+}
 
 export const isAkunKas = (kode: string): boolean => KAS_KODES.includes(kode);
 export const isPendapatan = (kode: string): boolean => akun(kode)?.tipe === 'PENDAPATAN';

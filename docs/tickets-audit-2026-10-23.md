@@ -624,7 +624,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run build`.
   - **Dependency:** AUD-21a.
 
-- [ ] **AUD-22 — 3001/3002 tidak boleh diposting** · P1 · S
+- [x] **AUD-22 — 3001/3002 tidak boleh diposting** · P1 · S (2026-10-27: helper `akunBolehDiposting(kode, aktif?)` di `src/db/coa.ts` menolak 3001/3002 + akun nonaktif; `validasiJurnal`, `insertJurnal`, dan validator impor menolak dengan pesan legacy yang jelas; autocomplete Jurnal Umum & BKU hanya menampilkan akun yang boleh diposting, sedangkan laporan/saldo lama tetap menampilkan 3001/3002; 3000 tetap boleh; docs COA diperbarui; typecheck/test/build hijau, 532 test total + 3 test)
   - **Konteks:** `3001`/`3002` adalah akun ekuitas legacy yang dulu dihitung
     otomatis. Di v2, Jurnal Umum/import masih bisa memposting ke sana dan
     membingungkan derivasi laba.

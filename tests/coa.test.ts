@@ -8,14 +8,17 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   AKUN_HUTANG,
+  AKUN_LEGACY_TIDAK_DIPOSTING,
   AKUN_MODAL,
   AKUN_PANJAR,
   AKUN_PIUTANG,
   COA,
   KAS_KODES,
   LPD_KODES,
+  PESAN_AKUN_LEGACY,
   POSISI_NORMAL,
   akun,
+  akunBolehDiposting,
   isAkunKas,
   isAktiva,
   isBeban,
@@ -141,6 +144,26 @@ describe('COA P0-1', () => {
     expect(isEkuitas('3000')).toBe(true);
     expect(isPendapatan('9999')).toBe(false);
     expect(isBeban('PANJAR')).toBe(false);
+  });
+
+  it('menolak posting ke akun legacy 3001/3002 & akun nonaktif, tetapi 3000 tetap boleh', () => {
+    expect(AKUN_LEGACY_TIDAK_DIPOSTING).toEqual(new Set(['3001', '3002']));
+    expect(PESAN_AKUN_LEGACY).toMatch(/3001\/3002/);
+    expect(PESAN_AKUN_LEGACY).toMatch(/tidak boleh diposting/i);
+
+    // Akun legacy tetap ada di COA untuk membaca saldo/laporan lama.
+    expect(akun('3001')).toMatchObject({ kode: '3001', tipe: 'EKUITAS' });
+    expect(akun('3002')).toMatchObject({ kode: '3002', tipe: 'EKUITAS' });
+
+    expect(akunBolehDiposting('3000')).toBe(true);
+    expect(akunBolehDiposting('1001')).toBe(true);
+    expect(akunBolehDiposting('4005')).toBe(true);
+    expect(akunBolehDiposting('3001')).toBe(false);
+    expect(akunBolehDiposting('3002')).toBe(false);
+    expect(akunBolehDiposting('9999')).toBe(false);
+    expect(akunBolehDiposting('')).toBe(false);
+    // Status aktif dari master DB diteruskan pemanggil.
+    expect(akunBolehDiposting('4005', false)).toBe(false);
   });
 
   it('menyimpan daftar akun ke tabel akun saat openDb (upsert)', () => {

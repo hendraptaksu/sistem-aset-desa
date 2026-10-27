@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
+import { akunBolehDiposting } from '../../db/coa.js';
 import {
   TEMPLATE_JURNAL,
   buatJurnalUmumForm,
@@ -75,6 +76,16 @@ export function JurnalUmumEditor({
     const a = coa.find((x) => x.kode === kode);
     return a ? `${a.kode} — ${a.nama}` : kode;
   };
+
+  /**
+   * Pilihan autocomplete hanya akun yang boleh diposting. Label & tampilan
+   * tetap memakai `coa` lengkap agar akun legacy pada jurnal lama masih bisa
+   * dibaca (mis. saat duplikat).
+   */
+  const coaPosting = useMemo(
+    () => coa.filter((a) => akunBolehDiposting(a.kode)),
+    [coa],
+  );
 
   const [tanggal, setTanggal] = useState(awal?.tanggal ?? tanggalLokal());
   const [keterangan, setKeterangan] = useState(awal?.keterangan ?? '');
@@ -193,7 +204,7 @@ export function JurnalUmumEditor({
   }
 
   function ubahAkunTeks(index: number, teks: string): void {
-    const ditemukan = cariAkunDariTeks(coa, teks);
+    const ditemukan = cariAkunDariTeks(coaPosting, teks);
     ubahBaris(index, {
       akun_teks: teks,
       akun_kode: ditemukan ? ditemukan.kode : '',
@@ -213,7 +224,7 @@ export function JurnalUmumEditor({
     });
     const r = rows[index];
     if (!r) return;
-    const ditemukan = cariAkunDariTeks(coa, r.akun_teks);
+    const ditemukan = cariAkunDariTeks(coaPosting, r.akun_teks);
     if (ditemukan) {
       ubahBaris(index, {
         akun_kode: ditemukan.kode,
@@ -442,7 +453,7 @@ export function JurnalUmumEditor({
           </div>
 
           <datalist id={DAFTAR_AKUN_ID}>
-            {coa.map((a) => (
+            {coaPosting.map((a) => (
               <option key={a.kode} value={`${a.kode} — ${a.nama}`}>
                 {a.tipe}
               </option>
@@ -490,7 +501,8 @@ export function JurnalUmumEditor({
                         />
                         {akunSalah && (
                           <span className="mt-1 block text-xs text-red-700">
-                            Akun tidak dikenal. Pilih dari daftar akun.
+                            Akun tidak dikenal atau tidak boleh diposting
+                            (akun legacy/nonaktif). Pilih dari daftar akun.
                           </span>
                         )}
                       </td>

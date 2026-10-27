@@ -230,6 +230,14 @@ Sumber kebenaran ada di kode: `src/db/coa.ts` (disalin dari `KODE AKUN.csv` doku
 </details>
 
 > **Penting**: PRD lama (§2) memakai kode yang berbeda (mis. `1000 Kas Tunai`). Yang berlaku adalah `KODE AKUN.csv` + `src/db/coa.ts`. Tidak ada kode `1000`; kas tunai = `1001`. Jangan pernah mengandalkan rentang kode (`4xxx`/`5xxx`) — selalu pakai kolom `tipe`.
+>
+> **Akun legacy 3001/3002:** `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN`
+> tetap ditampilkan di COA, Buku Besar, Neraca, dan laporan lain agar saldo lama
+> bisa diperiksa. Keduanya **tidak boleh dipilih untuk posting baru**: helper
+> `akunBolehDiposting()` di `src/db/coa.ts` menolaknya, `validasiJurnal()` dan
+> `insertJurnal()` menolak sebagai pertahanan terakhir, dan pilihan akun di form
+> posting (Jurnal Umum, impor Excel) menyaringnya. `3000 MODAL` tetap boleh
+> diposting (mis. setoran modal/saldo awal). Akun nonaktif juga ditolak.
 
 ### 4.2 `transaksi` — Buku Kas Umum (inti ledger)
 
@@ -446,7 +454,7 @@ docs/          dokumen ini
 1. **Satuan sen, bukan rupiah.** Semua kolom nominal (`masuk`, `keluar`, `jumlah`, `nominal`, `laba`, `nilai_sen`) integer sen. Bagi 100 untuk menampilkan; `parseRupiahToSen()` untuk input.
 2. **`transaksi.kategori` bukan selalu COA.** Nilai `'PANJAR'` adalah kategori sistem untuk mutasi panjar. Laporan menamainya "Mutasi Panjar" dan mengecualikannya dari Pendapatan/Beban.
 3. **Piutang/hutang punya arah terbalik terhadap kas.** Piutang naik saat `keluar` (pinjamkan), hutang bertambah saat `masuk` (terima utang).
-4. **3001/3002 tidak diinput.** Kumulatif dihitung dari `tutup_buku`; berjalan dari surplus periode. Form BKU memblokir keduanya, dan seluruh `tipe KAS` juga tidak boleh jadi kategori.
+4. **3001/3002 tidak diinput.** Kumulatif dihitung dari `tutup_buku`; berjalan dari surplus periode. Semua jalur posting (Jurnal Umum, form terpandu, impor Excel) menolak keduanya lewat `akunBolehDiposting()` + `validasiJurnal()` + `insertJurnal()`. Form BKU lama juga memblokir keduanya, dan seluruh `tipe KAS` tidak boleh jadi kategori. Akun tetap tampil di laporan/saldo lama.
 5. **Kunci tutup buku bersifat "longgar".** Data lama masih bisa diedit/hapus, tapi wajib alasan ≥ 5 karakter yang dicatat ke `audit_log` — bukan dilarang total.
 6. **Aset ≠ keuangan.** Nilai inventaris aset tidak memengaruhi Neraca sama sekali (ada test isolasi khusus).
 7. **COA di-upsert setiap start.** Jika `transaksi` masih kosong, kode COA yang tidak ada di seed dihapus; jika sudah ada transaksi, baris asing dibiarkan agar tidak ada referensi yatim.

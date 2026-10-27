@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AKUN_PANJAR, isAkunKas } from '../../db/coa.js';
+import { AKUN_PANJAR, akunBolehDiposting, isAkunKas } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Transaksi } from '../../core/types.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
@@ -42,7 +42,13 @@ export function BkuTab() {
 
   const kasList = useMemo(() => coa.filter((c) => isAkunKas(c.kode)), [coa]);
   const katList = useMemo(
-    () => coa.filter((c) => !isAkunKas(c.kode) && c.kode !== AKUN_PANJAR && c.kode !== '3001' && c.kode !== '3002'),
+    () =>
+      coa.filter(
+        (c) =>
+          !isAkunKas(c.kode) &&
+          c.kode !== AKUN_PANJAR &&
+          akunBolehDiposting(c.kode),
+      ),
     [coa],
   );
   const namaKode = useMemo(() => new Map(coa.map((c) => [c.kode, c.nama])), [coa]);

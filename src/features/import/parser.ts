@@ -16,7 +16,7 @@
 // menjadi SEN agar sama dengan seluruh mesin akuntansi aplikasi.
 
 import ExcelJS from 'exceljs';
-import { COA } from '../../db/coa.js';
+import { COA, PESAN_AKUN_LEGACY, akunBolehDiposting } from '../../db/coa.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../../core/types.js';
 import { formatRp } from '../../utils/format.js';
@@ -574,6 +574,8 @@ function validasiAkun(
   const akun = akunValid.get(kode);
   if (!akun) return `Akun ${kode} tidak ada di daftar akun (COA).`;
   if (akun.aktif === false) return `Akun ${kode} sudah tidak aktif.`;
+  if (!akunBolehDiposting(kode))
+    return `Akun ${kode} ${PESAN_AKUN_LEGACY}`;
   return null;
 }
 

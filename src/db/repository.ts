@@ -16,7 +16,7 @@ import {
 } from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
-import type { CoaTipe, PosisiNormal } from './coa.js';
+import { PESAN_AKUN_LEGACY, akunBolehDiposting, type CoaTipe, type PosisiNormal } from './coa.js';
 import type {
   Aset,
   AuditLog,
@@ -166,6 +166,8 @@ export function insertJurnal(
       throw new Error(`Baris ${i + 1}: akun ${akunKode || '(kosong)'} tidak dikenal.`);
     if (Number(akunDb.aktif) !== 1)
       throw new Error(`Baris ${i + 1}: akun ${akunKode} sudah tidak aktif.`);
+    if (!akunBolehDiposting(akunKode, Number(akunDb.aktif) === 1))
+      throw new Error(`Baris ${i + 1}: akun ${akunKode} ${PESAN_AKUN_LEGACY}`);
     if (!Number.isInteger(b.debit) || b.debit < 0)
       throw new Error(`Baris ${i + 1}: debit harus bilangan bulat ≥ 0.`);
     if (!Number.isInteger(b.kredit) || b.kredit < 0)

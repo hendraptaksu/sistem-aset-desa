@@ -361,6 +361,10 @@ describe('P1-7 — smoke UI Jurnal Umum', () => {
     expect(html).toContain('Template jurnal');
     expect(html).toContain('daftar-akun-jurnal-umum');
     expect(html).toContain('1001 — KAS');
+    expect(html).toContain('3000 — MODAL');
+    // Akun legacy tetap ada di COA/laporan, tetapi tidak menjadi pilihan posting.
+    expect(html).not.toContain('3001 —');
+    expect(html).not.toContain('3002 —');
     expect(html).toContain('Belum seimbang');
 
     const tombolSimpan = html

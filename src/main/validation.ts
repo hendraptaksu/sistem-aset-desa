@@ -1,6 +1,6 @@
 // Validasi input murni (tanpa Electron/DB) — di-test di tests/ipc-validation.test.ts.
 
-import { AKUN_PANJAR, coaByKode, isAkunKas, isBeban } from '../db/coa.js';
+import { AKUN_PANJAR, akunBolehDiposting, coaByKode, isAkunKas, isBeban } from '../db/coa.js';
 import {
   JENIS_JURNAL,
   tanggalKalenderValid,
@@ -36,7 +36,7 @@ export function kategoriBolehDipilih(kode: string): boolean {
   if (!c) return false;
   if (isAkunKas(kode)) return false;
   if (kode === AKUN_PANJAR) return false; // panjar punya alur sendiri
-  if (kode === '3001' || kode === '3002') return false; // dihitung otomatis
+  if (!akunBolehDiposting(kode)) return false; // 3001/3002 legacy: dihitung otomatis
   return true;
 }
 

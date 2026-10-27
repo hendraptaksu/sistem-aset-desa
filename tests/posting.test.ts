@@ -164,6 +164,37 @@ describe('P0-4 — satu pintu posting jurnal', () => {
       db.close();
     }
   });
+
+  it('menolak akun legacy 3001/3002 di semua pintu, tetapi 3000 tetap boleh', () => {
+    const { db } = freshDb();
+    try {
+      for (const kode of ['3001', '3002']) {
+        const input = { header: header(), baris: pasangan('1001', kode) };
+
+        const validasi = validasiJurnalDb(db, input);
+        expect(validasi.boleh).toBe(false);
+        expect(validasi.errors.join(' ')).toContain(kode);
+        expect(validasi.errors.join(' ')).toMatch(/legacy/i);
+        expect(validasi.errors.join(' ')).toMatch(/tidak boleh diposting/i);
+
+        expect(postingJurnal(db, input).tersimpan).toBe(false);
+        expect(() => insertJurnal(db, input.header, input.baris)).toThrow(
+          /tidak boleh diposting/,
+        );
+      }
+      expect(jumlahJurnal(db)).toBe(0);
+
+      // 3000 MODAL tetap sah untuk setoran modal/saldo awal.
+      const modal = postingJurnal(db, {
+        header: header({ keterangan: 'Setoran modal', jenis: 'SALDO_AWAL' }),
+        baris: pasangan('1001', '3000'),
+      });
+      expect(modal.tersimpan).toBe(true);
+      expect(jumlahJurnal(db)).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('P0-4 — peringatan kas minus', () => {

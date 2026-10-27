@@ -85,6 +85,9 @@ Akun yang paling sering diperiksa:
 - `1050 PIUTANG LAIN-LAIN` dan `2050 HUTANG LAIN-LAIN` — cocokkan dengan saldo
   per pihak di menu **Piutang & Hutang**.
 - `3000 MODAL` — hanya berubah karena setoran/penarikan modal atau Saldo Awal.
+- `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun legacy yang hanya
+  dibaca dari laporan; keduanya tidak bisa dipilih/diposting lewat Jurnal Umum
+  atau impor. Nilainya dihitung dari tutup buku dan surplus periode.
 
 Bila saldo tidak wajar, klik baris jurnal untuk melihat detail, lalu koreksi
 lewat mekanisme di bagian 9.
