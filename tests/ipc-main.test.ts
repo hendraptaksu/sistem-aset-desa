@@ -212,19 +212,17 @@ const CHANNEL_IPC = [
   'saldo-awal:posting',
   'saldo-awal:status',
   'saldo:list',
-  'transaksi:create',
-  'transaksi:list',
   'tutup:create',
   'tutup:list',
   'tutup:preview',
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 75 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 73 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(75);
+    expect(env.handlers.size).toBe(73);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(75);
+    expect(CHANNEL_IPC).toHaveLength(73);
   });
 });
 

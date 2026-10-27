@@ -17,13 +17,11 @@ import {
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
   insertAset,
-  insertTransaksi,
   listAkun,
   listAset,
   listAuditLogPage,
   listJurnalLengkap,
   listJurnalLengkapPage,
-  listTransaksi,
   listTutupBuku,
   saranNomorBukti,
   simpanPengaturanPembukuan,
@@ -113,7 +111,7 @@ import {
   stampBackupLokal,
 } from '../features/export/backupLengkap.js';
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
-import type { Aset, Transaksi } from '../core/types.js';
+import type { Aset } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
 import { rentangTahunBuku } from '../core/pengaturan.js';
@@ -149,9 +147,7 @@ import {
   validasiRentangLaporan,
   validasiTanggalOpsional,
   validateAsetInput,
-  validateTransaksiInput,
   type AsetInput,
-  type TransaksiInput,
 } from './validation.js';
 import {
   aturIdle,
@@ -1149,35 +1145,6 @@ export function registerIpc(deps: IpcDeps): void {
       });
     } catch (e) {
       return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
-    const k = perluBuka();
-    if (k) return fail(k);
-    const bentuk = validasiRentangLaporan(f);
-    if (!bentuk.ok) return fail(bentuk.error);
-    return ok(listTransaksi(deps.db(), bentuk.input));
-  });
-
-  daftarkan('transaksi:create', (_e, input: TransaksiInput, alasan?: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const errs = validateTransaksiInput(input);
-      if (errs.length) return fail(pesanValidasi(errs));
-      const lockedErr = guardPeriodeTerkunci(deps.db(), input.tanggal, alasan);
-      if (lockedErr) return fail(lockedErr, true);
-      const row: Transaksi = { id: uid('t'), ...input };
-      const simpan = deps.db().transaction(() => {
-        insertTransaksi(deps.db(), row);
-        if (alasan)
-          catatAudit(deps.db(), { aksi: `CREATE ${row.id}`, alasan, baru: row });
-      });
-      simpan();
-      return ok({ id: row.id });
-    } catch (e) {
-      return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
   });
 

@@ -26,7 +26,6 @@ import {
   validasiRentangLaporan,
   validasiTanggalOpsional,
   validatePanjarItems,
-  validateTransaksiInput,
 } from '../src/main/validation.js';
 import {
   PESAN_SIMPAN_GAGAL,
@@ -385,17 +384,6 @@ describe('P1-12 — tanggal kalender seragam', () => {
       });
       expect(saldo.ok, tanggal).toBe(false);
       if (!saldo.ok) expect(saldo.error).toBe(PESAN_TANGGAL_TIDAK_VALID);
-
-      expect(
-        validateTransaksiInput({
-          tanggal,
-          keterangan: 'Uji',
-          akun_kas: '1001',
-          kategori: '4001',
-          masuk: 100_000,
-          keluar: 0,
-        }),
-      ).toContain(PESAN_TANGGAL_TIDAK_VALID);
     }
   });
 
@@ -482,32 +470,10 @@ describe('P1-12 — pesan teknis tidak bocor', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Validasi single-entry lama — tetap berlaku sampai tab BKU pindah ke jurnal.
+// Validasi legacy panjar — bentuk item masih dipakai sebagai jaring pengaman.
 // ---------------------------------------------------------------------------
 
-const BASE = {
-  tanggal: '2025-03-12',
-  keterangan: 'Parkir',
-  akun_kas: '1015',
-  kategori: '4001',
-  masuk: 100_000,
-  keluar: 0,
-};
-
-describe('validasi single-entry lama', () => {
-  it('input valid lolos dan tanggal kalender tetap dijaga', () => {
-    expect(validateTransaksiInput(BASE)).toEqual([]);
-    expect(validateTransaksiInput({ ...BASE, tanggal: '2025-02-31' }).length).toBeGreaterThan(0);
-    expect(validateTransaksiInput({ ...BASE, tanggal: '12-03-2025' }).length).toBeGreaterThan(0);
-    expect(validateTransaksiInput({ ...BASE, keterangan: '  ' }).length).toBeGreaterThan(0);
-  });
-
-  it('menolak nominal 0, dua sisi terisi, dan kategori sistem', () => {
-    expect(validateTransaksiInput({ ...BASE, masuk: 0 }).length).toBeGreaterThan(0);
-    expect(validateTransaksiInput({ ...BASE, masuk: 5, keluar: 5 }).length).toBeGreaterThan(0);
-    expect(validateTransaksiInput({ ...BASE, kategori: 'PANJAR' }).length).toBeGreaterThan(0);
-  });
-
+describe('validasi legacy panjar', () => {
   it('validatePanjarItems menolak rincian kosong/baga salah/nominal 0', () => {
     expect(validatePanjarItems([]).length).toBeGreaterThan(0);
     expect(validatePanjarItems([{ kategori_baga: '4001', nominal: 100 }]).length).toBeGreaterThan(0);

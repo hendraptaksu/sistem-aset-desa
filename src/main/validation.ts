@@ -1,6 +1,6 @@
 // Validasi input murni (tanpa Electron/DB) — di-test di tests/ipc-validation.test.ts.
 
-import { AKUN_PANJAR, akunBolehDiposting, coaByKode, isAkunKas, isBeban } from '../db/coa.js';
+import { isBeban } from '../db/coa.js';
 import {
   JENIS_JURNAL,
   tanggalKalenderValid,
@@ -20,38 +20,6 @@ import type {
 } from '../core/types.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
 import { tahunLokal } from '../utils/tanggal.js';
-
-export type TransaksiInput = {
-  tanggal: string;
-  keterangan: string;
-  akun_kas: string;
-  kategori: string;
-  masuk: number;
-  keluar: number;
-};
-
-/** Kategori yang boleh dipilih user di form BKU (PANJAR sistem dikecualikan). */
-export function kategoriBolehDipilih(kode: string): boolean {
-  const c = coaByKode(kode);
-  if (!c) return false;
-  if (isAkunKas(kode)) return false;
-  if (kode === AKUN_PANJAR) return false; // panjar punya alur sendiri
-  if (!akunBolehDiposting(kode)) return false; // 3001/3002 legacy: dihitung otomatis
-  return true;
-}
-
-export function validateTransaksiInput(t: TransaksiInput): string[] {
-  const err: string[] = [];
-  if (!tanggalKalenderValid(t.tanggal)) err.push(PESAN_TANGGAL_TIDAK_VALID);
-  if (!t.keterangan.trim()) err.push('Keterangan wajib diisi.');
-  if (!isAkunKas(t.akun_kas)) err.push('Akun Kas tidak dikenal.');
-  if (!kategoriBolehDipilih(t.kategori)) err.push('Kategori tidak valid.');
-  if (!Number.isInteger(t.masuk) || t.masuk < 0) err.push('Uang masuk harus bilangan bulat ≥ 0.');
-  if (!Number.isInteger(t.keluar) || t.keluar < 0) err.push('Uang keluar harus bilangan bulat ≥ 0.');
-  if (t.masuk + t.keluar <= 0) err.push('Nominal harus lebih dari 0.');
-  if (t.masuk > 0 && t.keluar > 0) err.push('Isi salah satu: masuk ATAU keluar.');
-  return err;
-}
 
 export type PanjarItemInput = { kategori_baga: string; nominal: number };
 

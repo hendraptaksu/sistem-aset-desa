@@ -747,7 +747,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
 
 ## Fase 2 — Kebersihan, dokumentasi, rilis
 
-- [ ] **AUD-28 — Hapus jalur single-entry di renderer/API/IPC** · P2 · M
+- [x] **AUD-28 — Hapus jalur single-entry di renderer/API/IPC** · P2 · M (2026-10-27: `BkuTab.tsx` dihapus; `transaksiList`/`transaksiCreate` dan tipe `Transaksi` yang hanya dipakai di sana dihapus dari `api.ts`; handler IPC `transaksi:list/create` beserta import mati dihapus dari `ipc.ts`; validator `validateTransaksiInput`/`kategoriBolehDipilih` yang menjadi mati dihapus dari `validation.ts`; daftar channel IPC 75 → 73; grep `transaksi:list|transaksi:create|BkuTab` di `src`/`tests` kosong; typecheck/build hijau, 550 test (48 file, −2 test single-entry))
   - **Konteks:** `BkuTab.tsx` tidak dipasang di `App`, tetapi masih memanggil
     `api.transaksiList`/`transaksiCreate`. IPC `transaksi:list/create` masih
     terdaftar dan menulis ke tabel `transaksi` yang sudah di-drop.

@@ -22,7 +22,6 @@ import type {
   PanjarItem,
   Pihak,
   PihakSaldo,
-  Transaksi,
   TutupBuku,
 } from '../../core/types.js';
 import type { Neraca } from '../../core/ledger.js';
@@ -414,15 +413,6 @@ export const api = {
       saldoSebelum?: SaldoPihak;
       saldoSesudah?: SaldoPihak;
     }>('pihak:posting', req, opsi),
-  transaksiList: (f: { mulai?: string; sampai?: string } = {}) => call<Transaksi[]>('transaksi:list', f),
-  transaksiCreate: (input: {
-    tanggal: string;
-    keterangan: string;
-    akun_kas: string;
-    kategori: string;
-    masuk: number;
-    keluar: number;
-  }, alasan?: string) => call<{ id: string }>('transaksi:create', input, alasan),
   panjarList: (status?: 'OPEN' | 'CLOSED') => call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
   panjarCreate: (
