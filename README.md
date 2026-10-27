@@ -170,6 +170,8 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/arah-akuntansi.md` — keputusan arah double-entry.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.
+- `docs/audit-ui-2026-10-27.md` — audit UI/UX + bukti pengukuran.
+- `docs/tickets-ui-2026-10-27.md` — ticket perbaikan UI untuk AI agent.
 - `docs/tickets-audit-2026-10-23.md` — daftar pekerjaan hardening.
 - `docs/erd-v1-arsip.md` — **arsip** ERD v1.2.0 (single-entry), bukan acuan aktif.
 
