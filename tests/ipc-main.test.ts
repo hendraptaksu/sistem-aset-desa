@@ -139,6 +139,7 @@ const CHANNEL_IPC = [
   'backup:export',
   'backup:import',
   'backup:lengkap',
+  'backup:restore-lengkap',
   'backup:status',
   'coa:list',
   'dashboard:get',
@@ -203,11 +204,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 74 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 75 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(74);
+    expect(env.handlers.size).toBe(75);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(74);
+    expect(CHANNEL_IPC).toHaveLength(75);
   });
 });
 
@@ -347,6 +348,112 @@ describe('AUD-11 — IPC backup lengkap (DB + lampiran)', () => {
     const batal = await env.panggil('backup:lengkap');
     expect(batal.ok, batal.error).toBe(true);
     expect(batal.data).toEqual({ saved: false, path: '', jumlahLampiran: 0 });
+  });
+});
+
+describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
+  it('memulihkan DB & lampiran, mencatat audit, dan mengunci sesi lagi', async () => {
+    const env = buatEnv();
+    expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
+
+    const postingLama = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-aud12-lama',
+        tanggal: '2026-10-23',
+        keterangan: 'Jurnal sebelum backup lengkap',
+      },
+      baris: [D('1001', 80_000), K('4005', 80_000)],
+    });
+    expect(postingLama.ok, postingLama.error).toBe(true);
+
+    const attachments = join(env.dir, 'attachments');
+    mkdirSync(attachments, { recursive: true });
+    writeFileSync(join(attachments, 'foto.jpg'), 'isi-foto');
+    writeFileSync(join(attachments, 'bukti.pdf'), 'isi-pdf');
+
+    const induk = join(env.dir, 'tujuan-restore');
+    mkdirSync(induk, { recursive: true });
+    env.openQueue.push({ canceled: false, filePaths: [induk] });
+    const backup = await env.panggil('backup:lengkap');
+    expect(backup.ok, backup.error).toBe(true);
+    expect(backup.data.saved).toBe(true);
+
+    // Data aktif berubah setelah backup: jurnal tambahan + lampiran berbeda.
+    const postingBaru = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-aud12-baru',
+        tanggal: '2026-10-23',
+        keterangan: 'Jurnal setelah backup lengkap',
+      },
+      baris: [D('1001', 20_000), K('4005', 20_000)],
+    });
+    expect(postingBaru.ok, postingBaru.error).toBe(true);
+    writeFileSync(join(attachments, 'foto.jpg'), 'setelah-backup');
+    writeFileSync(join(attachments, 'baru.jpg'), 'lampiran-ekstra');
+
+    const dbSebelumRestore = env.db();
+    env.openQueue.push({ canceled: false, filePaths: [backup.data.path] });
+    const hasil = await env.panggil('backup:restore-lengkap');
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hasil.data).toMatchObject({
+      restored: true,
+      path: join(env.dir, 'data', 'pura.db'),
+      preRestorePath: join(
+        env.dir,
+        'data',
+        'backups',
+        'pre-restore-2026-10-23-1600.db',
+      ),
+      preRestoreAttachmentsPath: join(
+        env.dir,
+        'attachments-pre-restore-2026-10-23-1600',
+      ),
+      jumlahLampiran: 2,
+    });
+    expect(env.setDbCalls).toHaveLength(1);
+    expect(env.setDbCalls[0]).toBe(env.db());
+    expect(env.db()).not.toBe(dbSebelumRestore);
+
+    // Lampiran aktif kembali ke isi backup; lampiran lama tersimpan di cadangan.
+    expect(readFileSync(join(attachments, 'foto.jpg'), 'utf-8')).toBe('isi-foto');
+    expect(readFileSync(join(attachments, 'bukti.pdf'), 'utf-8')).toBe('isi-pdf');
+    expect(existsSync(join(attachments, 'baru.jpg'))).toBe(false);
+    expect(existsSync(hasil.data.preRestoreAttachmentsPath)).toBe(true);
+    expect(
+      readFileSync(join(hasil.data.preRestoreAttachmentsPath, 'foto.jpg'), 'utf-8'),
+    ).toBe('setelah-backup');
+    expect(
+      readFileSync(join(hasil.data.preRestoreAttachmentsPath, 'baru.jpg'), 'utf-8'),
+    ).toBe('lampiran-ekstra');
+    expect(existsSync(hasil.data.preRestorePath)).toBe(true);
+
+    // AUD-14: sesi terkunci lagi setelah restore; PIN aktif tetap berlaku.
+    expect(sesi.terbuka).toBe(false);
+    const terkunci = await env.panggil('audit:list', { aksi: 'RESTORE-LENGKAP' });
+    expect(terkunci.ok).toBe(false);
+    expect(terkunci.error).toMatch(/terkunci/i);
+    expect((await env.panggil('lock:unlock', '111111')).ok).toBe(true);
+
+    const daftarJurnal = await env.panggil('jurnal:list', {});
+    expect(daftarJurnal.ok, daftarJurnal.error).toBe(true);
+    expect(
+      daftarJurnal.data.map((j: { id: string }) => j.id),
+    ).toEqual(['j-aud12-lama']);
+
+    const audit = await env.panggil('audit:list', { aksi: 'RESTORE-LENGKAP' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.rows[0]).toMatchObject({ aksi: 'RESTORE-LENGKAP' });
+    expect(JSON.parse(audit.data.rows[0].data_baru_json)).toMatchObject({
+      sumber: backup.data.path,
+      pre_restore_db: hasil.data.preRestorePath,
+      pre_restore_attachments: hasil.data.preRestoreAttachmentsPath,
+      jumlahLampiran: 2,
+    });
+
+    // Dialog batal = bukan error dan tidak mengubah apa pun.
+    const batal = await env.panggil('backup:restore-lengkap');
+    expect(batal.ok, batal.error).toBe(true);
+    expect(batal.data).toEqual({ restored: false, path: '', jumlahLampiran: 0 });
   });
 });
 

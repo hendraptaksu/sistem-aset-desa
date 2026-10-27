@@ -379,7 +379,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run typecheck && npm run build`.
   - **Dependency:** AUD-15.
 
-- [ ] **AUD-12 — Restore backup lengkap (DB + lampiran)** · P0 · M
+- [x] **AUD-12 — Restore backup lengkap (DB + lampiran)** · P0 · M (2026-10-27: modul main-only `restoreLengkap` memvalidasi `manifest.json`/`pura.db`/folder `attachments` + `validasiKandidatRestore`, mencadangkan DB aktif ke `pre-restore-<stamp>.db` via VACUUM INTO, me-rename folder lampiran lama ke `attachments-pre-restore-<stamp>/`, menukar DB (PIN aktif tetap dipertahankan, AUD-14), lalu menyalin lampiran backup + memverifikasi daftar file terhadap manifest; bila gagal, DB dan lampiran lama dikembalikan. IPC `backup:restore-lengkap` + audit `RESTORE-LENGKAP` (`sumber`, `pre_restore_db`, `pre_restore_attachments`) serta tombol “Restore Lengkap (DB + lampiran)” + modal konfirmasi di Dashboard; typecheck/test/build hijau, 482 test total + 5 test; smoke UI build renderer (mock IPC): tombol membuka modal, konfirmasi menampilkan “Restore lengkap OK (2 lampiran)” dan data dimuat ulang)
   - **Konteks:** Restore saat ini hanya DB. Setelah AUD-11, restore harus
     bisa memulihkan folder lengkap.
   - **Langkah:**

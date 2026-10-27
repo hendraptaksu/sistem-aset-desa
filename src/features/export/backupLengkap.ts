@@ -73,7 +73,7 @@ export function stampBackupLokal(now: Date = new Date()): string {
 }
 
 /** Salin isi folder secara rekursif; folder tujuan selalu dibuat. */
-function salinIsiFolder(sumber: string, tujuan: string): void {
+export function salinIsiFolder(sumber: string, tujuan: string): void {
   mkdirSync(tujuan, { recursive: true });
   for (const entri of readdirSync(sumber, { withFileTypes: true })) {
     const asal = join(sumber, entri.name);
@@ -84,7 +84,7 @@ function salinIsiFolder(sumber: string, tujuan: string): void {
 }
 
 /** Daftar file di bawah folder, relatif dan memakai separator `/`. */
-function daftarFileRelatif(root: string, folder: string): string[] {
+export function daftarFileRelatif(root: string, folder: string): string[] {
   const hasil: string[] = [];
   const jelajah = (dir: string): void => {
     for (const entri of readdirSync(dir, { withFileTypes: true })) {

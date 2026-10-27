@@ -36,9 +36,10 @@ export function DashboardTab({
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [jenisSibuk, setJenisSibuk] = useState<
-    null | 'muat' | 'backup' | 'backup-lengkap' | 'restore'
+    null | 'muat' | 'backup' | 'backup-lengkap' | 'restore' | 'restore-lengkap'
   >(null);
   const [konfirmasiRestore, setKonfirmasiRestore] = useState(false);
+  const [konfirmasiRestoreLengkap, setKonfirmasiRestoreLengkap] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
 
   /** Muat data tanpa guard; pemanggil yang mengatur status sibuk. */
@@ -116,6 +117,30 @@ export function DashboardTab({
         if (r.restored) {
           setInfo(
             `Restore OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
+          );
+          await muatData(cutoff);
+        }
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setJenisSibuk(null);
+      }
+    });
+  }
+
+  async function restoreLengkap(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      setJenisSibuk('restore-lengkap');
+      setKonfirmasiRestoreLengkap(false);
+      try {
+        const r = await api.backupRestoreLengkap();
+        if (r.restored) {
+          setInfo(
+            `Restore lengkap OK (${r.jumlahLampiran} lampiran). Cadangan data lama: ${
+              r.preRestorePath ?? '-'
+            }; lampiran lama: ${r.preRestoreAttachmentsPath ?? '-'}. Data dimuat ulang…`,
           );
           await muatData(cutoff);
         }
@@ -437,6 +462,15 @@ export function DashboardTab({
           <Button variant="ghost" disabled={sibuk} onClick={() => setKonfirmasiRestore(true)}>
             {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
           </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() => setKonfirmasiRestoreLengkap(true)}
+          >
+            {jenisSibuk === 'restore-lengkap'
+              ? 'Memulihkan lengkap…'
+              : 'Restore Lengkap (DB + lampiran)'}
+          </Button>
         </div>
         {jenisSibuk && (
           <p className="mt-2 text-sm font-semibold text-emerald-800" role="status">
@@ -446,7 +480,9 @@ export function DashboardTab({
                 ? 'Sedang menyalin database dan lampiran…'
                 : jenisSibuk === 'restore'
                   ? 'Sedang memulihkan data…'
-                  : 'Sedang memuat data…'}
+                  : jenisSibuk === 'restore-lengkap'
+                    ? 'Sedang memulihkan database dan lampiran…'
+                    : 'Sedang memuat data…'}
           </p>
         )}
         <p className="mt-2 text-sm text-stone-600">
@@ -456,7 +492,8 @@ export function DashboardTab({
         </p>
         <p className="mt-1 text-sm text-stone-600">
           Restore Import .db memulihkan database saja; lampiran tetap di folder
-          aplikasi.
+          aplikasi. Restore Lengkap memulihkan database <b>dan</b> lampiran dari
+          folder hasil Backup Lengkap; data lama disimpan sebagai cadangan lebih dulu.
         </p>
       </Card>
 
@@ -480,6 +517,30 @@ export function DashboardTab({
           sibuk={sibuk}
           onBatal={() => setKonfirmasiRestore(false)}
           onKonfirmasi={() => void restore()}
+        />
+      )}
+
+      {konfirmasiRestoreLengkap && (
+        <KonfirmasiModal
+          judul="Pulihkan database dan lampiran?"
+          deskripsi={
+            <>
+              <p>
+                Database <b>dan seluruh lampiran</b> yang sekarang aktif akan diganti
+                dengan isi folder backup lengkap yang Anda pilih.
+              </p>
+              <p className="text-sm text-stone-600">
+                Sistem mencadangkan database dan folder lampiran saat ini lebih dulu.
+                Setelah restore selesai, layar dimuat ulang dan aplikasi terkunci
+                kembali. Pastikan folder berisi <code>manifest.json</code>,{' '}
+                <code>pura.db</code>, dan folder <code>attachments</code>.
+              </p>
+            </>
+          }
+          labelYa="Pilih folder & pulihkan"
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiRestoreLengkap(false)}
+          onKonfirmasi={() => void restoreLengkap()}
         />
       )}
     </div>

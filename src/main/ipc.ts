@@ -112,6 +112,7 @@ import {
   buatBackupLengkap,
   stampBackupLokal,
 } from '../features/export/backupLengkap.js';
+import { restoreLengkap } from '../features/export/restoreLengkap.js';
 import type { Aset, Transaksi } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
@@ -1771,6 +1772,60 @@ export function registerIpc(deps: IpcDeps): void {
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
       kunciLagi();
       return ok({ restored: true, path: deps.dbPath(), preRestorePath: hasil.preRestorePath });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_RESTORE));
+    }
+  });
+
+  // AUD-12: restore satu folder backup lengkap (DB + lampiran + manifest).
+  // Cadangan DB & folder lampiran lama dibuat sebelum ada yang ditimpa;
+  // restoreLengkap mengembalikan keduanya bila salah satu tahap gagal.
+  deps.handle('backup:restore-lengkap', async () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const { canceled, filePaths } = await deps.dialog.showOpenDialog({
+        properties: ['openDirectory'],
+        title: 'Pilih folder backup lengkap (berisi manifest.json)',
+      });
+      if (canceled || !filePaths?.[0])
+        return ok({ restored: false, path: '', jumlahLampiran: 0 });
+
+      const sumber = filePaths[0]!;
+      const hasil = restoreLengkap({
+        db: deps.db(),
+        dbPath: deps.dbPath(),
+        attachmentsDir: deps.lampiranDir(),
+        backupDir: sumber,
+        dirBackup: deps.lokasiData().backupsDir,
+        stamp: stampBackupLokal(sekarang()),
+      });
+      deps.setDb(hasil.db);
+      if (!hasil.ok) return fail(hasil.error);
+
+      try {
+        catatAudit(deps.db(), {
+          aksi: 'RESTORE-LENGKAP',
+          alasan: `Restore lengkap dari ${basename(sumber)}`,
+          baru: {
+            sumber,
+            pre_restore_db: hasil.preRestorePath,
+            pre_restore_attachments: hasil.preRestoreAttachmentsPath,
+            jumlahLampiran: hasil.jumlahLampiran,
+          },
+        });
+      } catch (e) {
+        console.warn('[restore-lengkap] gagal menulis audit:', String(e));
+      }
+      // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
+      kunciLagi();
+      return ok({
+        restored: true,
+        path: deps.dbPath(),
+        preRestorePath: hasil.preRestorePath,
+        preRestoreAttachmentsPath: hasil.preRestoreAttachmentsPath,
+        jumlahLampiran: hasil.jumlahLampiran,
+      });
     } catch (e) {
       return fail(pesanError(e, GAGAL_RESTORE));
     }

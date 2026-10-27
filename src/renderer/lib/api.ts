@@ -499,6 +499,15 @@ export const api = {
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupStatus: () => call<{ path: string }>('backup:status'),
   backupImport: () => call<{ restored: boolean; path: string; preRestorePath?: string }>('backup:import'),
+  /** Restore lengkap: DB + lampiran + manifest dari satu folder backup. */
+  backupRestoreLengkap: () =>
+    call<{
+      restored: boolean;
+      path: string;
+      preRestorePath?: string;
+      preRestoreAttachmentsPath?: string;
+      jumlahLampiran: number;
+    }>('backup:restore-lengkap'),
 };
 
 export function isPerluAlasan(e: unknown): boolean {

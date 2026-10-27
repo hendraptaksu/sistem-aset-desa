@@ -238,6 +238,12 @@ export type OpsiRestoreDb = {
   dirBackup?: string;
   /** Stamp nama `pre-restore-<stamp>.db`; default waktu sekarang. */
   stamp?: string;
+  /**
+   * Path cadangan DB yang sudah dibuat pemanggil sebelum fungsi ini dipanggil
+   * (mis. restore lengkap yang mencadangkan DB lebih dulu). Bila diisi, fungsi
+   * ini TIDAK membuat cadangan baru dan memakai path tersebut untuk rollback.
+   */
+  preRestorePath?: string;
 };
 
 export type HasilRestoreDb =
@@ -271,7 +277,9 @@ function tulisPinAktif(db: Database.Database, pin: PinAktif): void {
 /**
  * Restore aman (P0-8):
  * 1. validasi kandidat lebih dulu (file sampah ditolak tanpa menyentuh DB aktif);
- * 2. backup DB aktif ke `backups/pre-restore-<stamp>.db` via VACUUM INTO;
+ * 2. backup DB aktif ke `backups/pre-restore-<stamp>.db` via VACUUM INTO
+ *    (bila pemanggil sudah membuat cadangan lewat `preRestorePath`, path itu
+ *    yang dipakai);
  * 3. tutup koneksi, buang `-wal`/`-shm`, copy ke `.tmp`, rename (atomik);
  * 4. buka ulang + jalankan migrasi versi;
  * 5. tulis kembali PIN DB aktif (AUD-14) dalam transaksi agar PIN backup lama
@@ -289,9 +297,12 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
   const pinAktif = bacaPinAktif(db);
   const stamp = opsi.stamp ?? new Date().toISOString().replace(/[:.]/g, '-');
   const dirBackup = opsi.dirBackup ?? join(dirname(opsi.dbPath), 'backups');
-  const preRestorePath = join(dirBackup, `pre-restore-${stamp}.db`);
+  const preRestorePath =
+    opsi.preRestorePath ?? join(dirBackup, `pre-restore-${stamp}.db`);
   try {
-    backupVacuumInto(db, preRestorePath);
+    // Pemanggil yang sudah mencadangkan DB (restore lengkap) tidak perlu
+    // VACUUM kedua; path yang sama dipakai untuk rollback.
+    if (!opsi.preRestorePath) backupVacuumInto(db, preRestorePath);
   } catch (e) {
     return {
       ok: false,
