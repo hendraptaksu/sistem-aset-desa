@@ -510,7 +510,9 @@ describe('P1-6 — validasi bentuk input IPC & UI', () => {
   });
 
   it('layar Transaksi menampilkan tombol wizard dan status awal', () => {
-    const html = renderToStaticMarkup(createElement(TransaksiTab));
+    const html = renderToStaticMarkup(
+      createElement(TransaksiTab, { onBukaTab: () => {} }),
+    );
     expect(html).toContain('Saldo Awal Pembukuan');
     expect(html).toContain('Wizard Saldo Awal');
     expect(html).toContain('Memeriksa status jurnal');

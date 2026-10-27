@@ -143,7 +143,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
       return beban.length > 0 ? [{ label: 'Beban', akun: beban }] : [];
     },
     akunLawanAwal: akunLawanAwalBayar,
-    infoTambahan: 'Anggaran: belum diatur (fitur anggaran menyusul).',
+    infoTambahan: 'Pagu anggaran diatur di menu Anggaran.',
   },
   PINDAH: {
     mode: 'PINDAH',

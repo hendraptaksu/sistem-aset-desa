@@ -222,15 +222,20 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
 });
 
 describe('P1-1 — layar Transaksi', () => {
-  it('merender header ramah, kartu Terima Uang aktif, dan slot segera hadir', () => {
+  it('merender header ramah, kartu Terima Uang aktif, dan pintasan menu lain', () => {
     // Smoke render tanpa Electron: efek IPC tidak berjalan di server render,
     // jadi yang diperiksa adalah struktur layar awal.
-    const html = renderToStaticMarkup(createElement(TransaksiTab));
+    const html = renderToStaticMarkup(
+      createElement(TransaksiTab, { onBukaTab: () => {} }),
+    );
 
     expect(html).toContain('Catat Transaksi Harian');
     expect(html).toContain('Terima Uang');
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
-    expect(html).toContain('Segera hadir');
+    expect(html).not.toContain('Segera hadir');
+    expect(html).not.toContain('Jenis lain menyusul');
+    expect(html).toContain('Buka Buku Panjar');
+    expect(html).toContain('Buka Piutang &amp; Hutang');
     for (const label of ['Bayar', 'Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
       expect(html).toContain(label);
     }
@@ -374,19 +379,35 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
 });
 
 describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
-  it('menampilkan kartu Bayar siap dipakai tanpa mengaktifkan slot lain', () => {
+  it('menampilkan kartu Bayar siap dipakai dan pintasan Panjar/Piutang', () => {
     // Smoke SSR: default tetap Terima Uang, tetapi kartu Bayar sudah aktif.
-    const html = renderToStaticMarkup(createElement(TransaksiTab));
+    const html = renderToStaticMarkup(
+      createElement(TransaksiTab, { onBukaTab: () => {} }),
+    );
 
     expect(html).toContain('Catat Transaksi Harian');
-    const kartuBayar = html.split('<button').find((s) => s.includes('>Bayar</span>'));
+    const kartuBayar = html
+      .split('<button')
+      .find((s) => s.includes('>Bayar</span>'))
+      ?.split('</button>')[0];
     expect(kartuBayar).toBeDefined();
     expect(kartuBayar).not.toContain('disabled');
     expect(kartuBayar).toContain('Siap dipakai');
     expect(html).toContain('Sedang dipakai');
-    // Hanya dua jenis yang belum siap (Panjar & Piutang/Hutang) yang
-    // berstatus "Segera hadir"; Pindah Dana sudah aktif sejak P1-3.
-    expect((html.match(/Segera hadir/g) ?? []).length).toBe(2);
+    // Panjar & Piutang/Hutang kini menjadi pintasan tab, bukan slot disabled.
+    for (const [label, tujuan] of [
+      ['Panjar', 'Buka Buku Panjar'],
+      ['Piutang/Hutang', 'Buka Piutang &amp; Hutang'],
+    ] as const) {
+      const kartu = html
+        .split('<button')
+        .find((s) => s.includes(`>${label}</span>`))
+        ?.split('</button>')[0];
+      expect(kartu).toBeDefined();
+      expect(kartu ?? '').not.toContain('disabled');
+      expect(kartu).toContain(tujuan);
+    }
+    expect(html).not.toContain('Segera hadir');
     for (const label of ['Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
       expect(html).toContain(label);
     }
@@ -409,7 +430,8 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).toContain('Keterangan');
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
     expect(html).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
-    expect(html).toContain('Anggaran: belum diatur');
+    expect(html).toContain('Pagu anggaran diatur di menu Anggaran');
+    expect(html).not.toContain('menyusul');
     expect(html).toContain('Untuk panjar gunakan menu Buku Panjar');
     expect(html).toContain('untuk piutang/hutang gunakan menu Piutang &amp; Hutang');
     // Hanya akun BEBAN yang menjadi lawan; panjar/piutang/hutang punya menu sendiri.
@@ -601,16 +623,19 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
 });
 
 describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
-  it('mengaktifkan kartu Pindah Dana dan menyisakan Panjar/Piutang sebagai segera hadir', () => {
-    const html = renderToStaticMarkup(createElement(TransaksiTab));
+  it('mengaktifkan kartu Pindah Dana dan menyediakan pintasan Panjar/Piutang', () => {
+    const html = renderToStaticMarkup(
+      createElement(TransaksiTab, { onBukaTab: () => {} }),
+    );
 
     const kartuPindah = html
       .split('<button')
-      .find((s) => s.includes('>Pindah Dana</span>'));
+      .find((s) => s.includes('>Pindah Dana</span>'))
+      ?.split('</button>')[0];
     expect(kartuPindah).toBeDefined();
     expect(kartuPindah).not.toContain('disabled');
     expect(kartuPindah).toContain('Siap dipakai');
-    expect((html.match(/Segera hadir/g) ?? []).length).toBe(2);
+    expect(html).not.toContain('Segera hadir');
     for (const label of ['Panjar', 'Piutang/Hutang']) {
       expect(html).toContain(label);
     }

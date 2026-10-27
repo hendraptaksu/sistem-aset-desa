@@ -254,7 +254,9 @@ export function App() {
           </>
         ) : (
           <div className="px-6 py-6">
-            {tab === 'transaksi' && <TransaksiTab jenisAwal={jenisTransaksiAwal} />}
+            {tab === 'transaksi' && (
+              <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={setTab} />
+            )}
             {tab === 'jurnal' && <JurnalTab />}
             {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
             {tab === 'neraca-saldo' && (

@@ -706,7 +706,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/pembantu-jurnal.test.ts tests/export-laporan.test.ts`.
   - **Dependency:** — (selesaikan WIP ini dulu sebelum ticket lain).
 
-- [ ] **AUD-26 — Hilangkan copy UI yang sudah basi** · P1 · S
+- [x] **AUD-26 — Hilangkan copy UI yang sudah basi** · P1 · S (2026-10-27: kartu Panjar/Piutang/Hutang di `TransaksiTab` tidak lagi disabled “Segera hadir”, melainkan tombol navigasi ke tab **Buku Panjar**/**Piutang & Hutang** lewat prop `onBukaTab` dari `App`; teks “Jenis lain menyusul” diganti arahan menu yang benar; info anggaran di form Bayar menjadi “Pagu anggaran diatur di menu Anggaran.”; grep `Segera hadir|menyusul|belum diatur|fitur .* menyusul` di `src/renderer` kosong; typecheck/test/build hijau, 541 test (48 file); smoke Electron build dengan profil+DB sementara: kedua kartu membuka tab tujuan, copy baru tampil, tanpa console error)
   - **Konteks:** `TransaksiTab` masih menampilkan Panjar/Piutang sebagai
     “Segera hadir” dan “Jenis lain menyusul”; `TransaksiForm` bilang anggaran
     “belum diatur (fitur anggaran menyusul)”. Semua fitur itu sudah ada.

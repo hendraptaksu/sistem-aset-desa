@@ -15,51 +15,52 @@ import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
+/** Tab lain yang bisa dibuka dari pintasan kartu jenis transaksi. */
+type TabTujuanTransaksi = 'panjar' | 'pihak';
+
 type KartuJenis = {
   id: JenisFormTransaksi | 'PANJAR' | 'PIUTANG';
   label: string;
   keterangan: string;
   Icon: LucideIcon;
-  siap: boolean;
+  /** Bila diisi, kartu membuka tab lain, bukan memilih form terpandu. */
+  tujuan?: TabTujuanTransaksi;
 };
 
-// Slot jenis transaksi dibuat konsisten sejak awal; P1-4..P1-5 akan mengisi
-// tombol yang sekarang masih "segera hadir".
+// Tiga jenis punya form terpandu; Panjar & Piutang/Hutang dicatat di menunya
+// sendiri dan kartunya menjadi pintasan ke tab tersebut.
 const KARTU_JENIS: KartuJenis[] = [
   {
     id: 'TERIMA',
     label: 'Terima Uang',
     keterangan: 'Uang masuk ke kas / bank',
     Icon: ArrowDownLeft,
-    siap: true,
   },
   {
     id: 'BAYAR',
     label: 'Bayar',
     keterangan: 'Belanja atau pembayaran',
     Icon: ArrowUpRight,
-    siap: true,
   },
   {
     id: 'PINDAH',
     label: 'Pindah Dana',
     keterangan: 'Antar kas / bank',
     Icon: ArrowLeftRight,
-    siap: true,
   },
   {
     id: 'PANJAR',
     label: 'Panjar',
     keterangan: 'Uang muka kegiatan',
     Icon: HandCoins,
-    siap: false,
+    tujuan: 'panjar',
   },
   {
     id: 'PIUTANG',
     label: 'Piutang/Hutang',
     keterangan: 'Pinjam, utang, pelunasan',
     Icon: Users,
-    siap: false,
+    tujuan: 'pihak',
   },
 ];
 
@@ -68,9 +69,11 @@ const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
 
 export function TransaksiTab({
   jenisAwal,
+  onBukaTab,
 }: {
   jenisAwal?: JenisFormTransaksi;
-} = {}) {
+  onBukaTab: (tab: TabTujuanTransaksi) => void;
+}) {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [memuat, setMemuat] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -184,8 +187,9 @@ export function TransaksiTab({
       <Card>
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
         <p className="mt-1 text-sm text-stone-600">
-          Untuk sekarang, <b>Terima Uang</b>, <b>Bayar</b>, dan <b>Pindah Dana</b>{' '}
-          sudah bisa dipakai. Jenis lain menyusul.
+          Pilih <b>Terima Uang</b>, <b>Bayar</b>, atau <b>Pindah Dana</b> untuk mencatat
+          lewat form terpandu. <b>Panjar</b> dan <b>Piutang/Hutang</b> dibuka dari
+          kartu menunya masing-masing.
         </p>
         {err && (
           <div className="mt-3">
@@ -193,27 +197,27 @@ export function TransaksiTab({
           </div>
         )}
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {KARTU_JENIS.map(({ id, label, keterangan, Icon, siap }) => {
-            const aktif = jenis === id;
-            const tersedia = siap && bisaDipilih(id);
+          {KARTU_JENIS.map(({ id, label, keterangan, Icon, tujuan }) => {
+            const aktif = !tujuan && jenis === id;
+            const tersedia = !tujuan && bisaDipilih(id);
             return (
               <button
                 key={id}
                 type="button"
-                disabled={!tersedia}
-                aria-pressed={aktif}
+                aria-pressed={tersedia ? aktif : undefined}
                 onClick={() => {
-                  if (bisaDipilih(id)) setJenis(id);
+                  if (tujuan) {
+                    onBukaTab(tujuan);
+                  } else if (bisaDipilih(id)) {
+                    setJenis(id);
+                  }
                 }}
                 className={clsx(
                   'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
                   aktif &&
                     'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm',
                   !aktif &&
-                    tersedia &&
                     'border-stone-200 bg-white text-stone-700 hover:border-emerald-300 hover:bg-emerald-50/40',
-                  !tersedia &&
-                    'cursor-not-allowed border-stone-200 bg-stone-50 text-stone-400',
                 )}
               >
                 <span
@@ -221,9 +225,7 @@ export function TransaksiTab({
                     'rounded-lg p-2',
                     aktif
                       ? 'bg-emerald-700 text-white'
-                      : tersedia
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-stone-200 text-stone-500',
+                      : 'bg-emerald-100 text-emerald-800',
                   )}
                 >
                   <Icon size={22} />
@@ -234,14 +236,16 @@ export function TransaksiTab({
                   <span
                     className={clsx(
                       'mt-1 block text-xs font-semibold',
-                      aktif
-                        ? 'text-emerald-700'
-                        : tersedia
-                          ? 'text-emerald-800'
-                          : 'text-stone-400',
+                      aktif ? 'text-emerald-700' : 'text-emerald-800',
                     )}
                   >
-                    {!tersedia ? 'Segera hadir' : aktif ? 'Sedang dipakai' : 'Siap dipakai'}
+                    {aktif
+                      ? 'Sedang dipakai'
+                      : tujuan === 'panjar'
+                        ? 'Buka Buku Panjar'
+                        : tujuan === 'pihak'
+                          ? 'Buka Piutang & Hutang'
+                          : 'Siap dipakai'}
                   </span>
                 </span>
               </button>
