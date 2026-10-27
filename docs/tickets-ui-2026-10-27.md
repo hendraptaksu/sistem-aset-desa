@@ -152,7 +152,7 @@
     manual resize.
   - **Dependency:** —
 
-- [ ] **UI-03 — Grid kartu dashboard adaptif** · P0 · S
+- [x] **UI-03 — Grid kartu dashboard adaptif** · P0 · S (2026-10-27: grid kartu 1 kolom di 800, 2 kolom di 1024/1280; 0 overflow dokumen/kartu dan semua nominal utuh + 595 test)
   - **Konteks:** Kartu ringkasan memakai `md:grid-cols-2` yang dihitung dari
     viewport, bukan lebar konten. Dengan sidebar 240 px, pada 800 px kartu
     tetap dua kolom dan nominal `Rp 657.500.000,00` keluar kartu/bertabrakan.

@@ -230,8 +230,10 @@ export function DashboardTab({
         <>
           <BannerBackupBasi usiaHari={usiaBackup} />
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <Card>
+          {/* UI-03: jumlah kolom mengikuti lebar konten (bukan viewport) agar
+              nominal tidak dipaksa muat di kartu sempit saat sidebar terbuka. */}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(350px,1fr))] gap-3">
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
@@ -264,7 +266,7 @@ export function DashboardTab({
               </details>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Laba / Rugi Tahun Berjalan</h3>
@@ -288,19 +290,19 @@ export function DashboardTab({
                   ? 'Beban lebih besar dari pendapatan pada periode ini.'
                   : 'Pendapatan dikurangi beban pada periode ini.'}
               </p>
-              <dl className="mt-3 grid grid-cols-2 gap-2 text-[15px]">
-                <div>
+              <dl className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2 text-[15px]">
+                <div className="min-w-0">
                   <dt className="text-sm text-stone-500">Total pendapatan</dt>
                   <dd className="font-semibold">{formatRp(data.labaRugiBerjalan.totalPendapatan)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="text-sm text-stone-500">Total beban</dt>
                   <dd className="font-semibold">{formatRp(data.labaRugiBerjalan.totalBeban)}</dd>
                 </div>
               </dl>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Status Neraca Saldo</h3>
@@ -331,7 +333,7 @@ export function DashboardTab({
               </p>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Periode Buku</h3>
@@ -374,7 +376,7 @@ export function DashboardTab({
               </div>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Jurnal Terakhir</h3>
@@ -411,7 +413,7 @@ export function DashboardTab({
               </div>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Backup Terakhir</h3>
