@@ -102,7 +102,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
 - [ ] **AUD-01 — Amankan repo publik, nomor rekening, dan kode darurat** · P0 · MANUAL/OWNER
   - **Konteks:** Repo GitHub `hendraptaksu/sistem-aset-desa` terdeteksi public.
     `KODE AKUN.csv` dan `src/db/coa.ts` memuat nomor rekening bank/LPD nyata.
-    `src/main/kunci.ts`, `docs/erd-dan-arsitektur.md`, dan `.env.example` memuat
+    `src/main/kunci.ts`, `docs/erd-v1-arsip.md`, dan `.env.example` memuat
     kode darurat default. Database/backup tidak ter-track (bagus), dan `.env`
     diabaikan (bagus).
   - **Langkah (manual, bukan AI agent):**
@@ -797,9 +797,9 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/aset.test.ts tests/export-laporan.test.ts`.
   - **Dependency:** AUD-29.
 
-- [ ] **AUD-31 — Docs, versi, README** · P2 · S
+- [x] **AUD-31 — Docs, versi, README** · P2 · S (2026-10-27: `package.json` + header panduan aktif menjadi 2.0.0; README baru memuat ringkasan, arsitektur, perintah, lokasi data, Backup Lengkap vs `.db`, status POC/pra-produksi, dan PIN bukan enkripsi; ERD v1 diarsipkan ke `docs/erd-v1-arsip.md` + referensi diperbarui; `.env.example` menyebut 240 jurnal dan kode darurat default hanya dev/test sampai AUD-19; panduan pengguna/pemeriksaan/portable disesuaikan AUD-06/07/08/20/21; dokumen aktif bebas “1.2.0/240 transaksi/erd lama”; typecheck/build hijau, 554 test (47 file, +5 test dokumentasi))
   - **Konteks:** `package.json` masih `1.2.0`; docs masih menyebut 1.2.0;
-    `docs/erd-dan-arsitektur.md` adalah snapshot single-entry; tidak ada
+    `docs/erd-v1-arsip.md` adalah snapshot single-entry; tidak ada
     README; `.env.example` masih menyebut “240 transaksi dummy”.
   - **Langkah:**
     1. Naikkan versi ke `2.0.0` (atau versi rilis yang disepakati) dan samakan
@@ -807,7 +807,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
     2. Buat `README.md`: ringkasan, arsitektur satu halaman, perintah
        (`dev`, `test`, `typecheck`, `build`, `dist:win`), lokasi data,
        peringatan backup lampiran, dan status POC/produksi.
-    3. Arsipkan `erd-dan-arsitektur.md` (rename `erd-v1-arsip.md` atau beri
+    3. Arsipkan ERD v1 (rename menjadi `docs/erd-v1-arsip.md` atau beri
        header arsip yang jelas); jangan biarkan jadi acuan aktif.
     4. Update `.env.example` (240 jurnal, bukan transaksi; kode darurat baru).
     5. Update `docs/panduan-pengguna.md`/`panduan-pemeriksaan.md` untuk

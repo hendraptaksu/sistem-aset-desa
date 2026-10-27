@@ -1,9 +1,10 @@
-> ⚠️ **Update 2026-10-04 — arah berubah.** Dokumen ini adalah snapshot **v1.2.0 (single-entry)**.
-> Pengembangan selanjutnya mengikuti `docs/arah-akuntansi.md`: model `transaksi` digantikan
-> `jurnal` + `jurnal_baris` (double-entry), dan PRD tidak lagi dipakai. Gunakan dokumen ini
-> hanya untuk memahami kode lama sebelum overhaul.
+> ⚠️ **ARSIP — BUKAN ACUAN AKTIF.** Dokumen ini adalah snapshot **v1.2.0 (single-entry)**
+> sebelum overhaul double-entry. Arsitektur, tabel, dan alur di sini sudah **tidak berlaku**.
+> Acuan aktif: `README.md`, `docs/arah-akuntansi.md`, dan kode di `src/`.
+> Model `transaksi` sudah digantikan `jurnal` + `jurnal_baris`; PRD tidak lagi dipakai.
+> Dokumen ini hanya berguna untuk memahami kode lama sebelum overhaul.
 
-# ERD & Panduan Sistem — Keuangan Pura Dalem Puri
+# Arsip ERD & Panduan Sistem v1.2.0 (single-entry) — Keuangan Pura Dalem Puri
 
 > Dokumen pembelajaran untuk memahami struktur data dan cara kerja aplikasi.
 > Disusun dari pembacaan kode di `src/` (v1.2.0), `PRD.md`, `PROGRESS.md`, dan `KODE AKUN.csv`.

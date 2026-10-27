@@ -10,7 +10,7 @@
 >
 > Acuan arah: `docs/arah-akuntansi.md`. **PRD tidak dipakai lagi.**
 > Baseline kode: v1.2.0 (single-entry). Baseline verifikasi: `npx tsc --noEmit` bersih, 72/72 test hijau.
-> Dokumen pendamping: `docs/erd-dan-arsitektur.md` (snapshot v1.2.0, bukan source of truth).
+> Dokumen pendamping: `docs/erd-v1-arsip.md` (snapshot v1.2.0, bukan source of truth).
 >
 > **Feedback WhatsApp v1.2.0** (edit typo, layout print, pindah kas LPD → kas bendahara, lawan hutang)
 > sudah dipetakan: P0-6, P1-3, P1-5, P1-10, P1-16 — peta lengkap di `docs/arah-akuntansi.md` §12.

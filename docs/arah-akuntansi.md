@@ -60,7 +60,7 @@ Inilah yang membuat akuntan percaya: setiap angka di laporan bisa ditelusuri ke 
 
 ## 4. Yang berubah
 
-| Sekarang (v1.2.0) | Arah baru |
+| Sebelum overhaul (v1.2.0) | Arah baru |
 |---|---|
 | `transaksi` (masuk/keluar + kategori) | `jurnal` + `jurnal_baris` (debit/kredit per akun) |
 | Kategori = campuran akun kas & akun lawan | Semua sisi adalah **akun COA** ber-tipe |

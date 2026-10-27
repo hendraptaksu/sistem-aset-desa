@@ -1,7 +1,7 @@
 # Panduan Pemeriksaan — Keuangan Pura Dalem Puri
 
-**Versi aplikasi:** 1.2.0  
-**Tanggal dokumen:** 2026-10-23  
+**Versi aplikasi:** 2.0.0  
+**Tanggal dokumen:** 2026-10-27  
 **Untuk:** akuntan pendamping/pemeriksa
 
 Panduan ini untuk memeriksa pembukuan yang diinput operator. Prinsip utamanya:
@@ -51,6 +51,10 @@ transaksi aslinya.
   - panjar → `1040` di debit saat serah; beban/sisa kas di debit dan `1040` di
     kredit saat pertanggungjawaban;
   - piutang/hutang → `1050`/`2050` sesuai arah, bukan akun beban.
+  - form terpandu **Bayar** hanya menawarkan akun **BEBAN**; pembayaran panjar,
+    pemberian piutang, atau pembayaran hutang harus lewat menu **Buku Panjar**
+    atau **Piutang & Hutang**. Jurnal Umum tetap boleh memakai `1040`/`1050`/
+    `2050` untuk koreksi akuntan.
 - **Lampiran bukti** ada untuk transaksi material (foto kuitansi/PDF). Lampiran
   tidak mengubah angka; hanya bukti pendukung.
 
@@ -96,7 +100,16 @@ lewat mekanisme di bagian 9.
 
 ## 4. Neraca Saldo
 
-Buka **Neraca Saldo** dan pilih cut-off.
+Buka **Neraca Saldo**, pilih cut-off, lalu pilih mode:
+
+- **Tahun berjalan** (default) — trial balance tahun buku: saldo AKTIVA/
+  KEWAJIBAN/EKUITAS kumulatif sampai cut-off, sedangkan PENDAPATAN/BEBAN hanya
+  mutasi tahun tersebut. Laba tahun sebelumnya muncul pada baris sintetis
+  **Laba ditahan sebelum periode** (kredit bila laba, debit bila defisit).
+  Baris ini bukan akun COA dan tidak bisa diposting.
+- **Kumulatif sejak awal** — seluruh riwayat PENDAPATAN/BEBAN sejak awal,
+  perilaku lama. Gunakan bila perlu memeriksa akumulasi total, bukan laba tahun
+  berjalan.
 
 **Aturan mutlak:** total debit = total kredit; **selisih harus 0**. Bila ada
 selisih, jangan tutup buku dan jangan membuat laporan resmi. Cari jurnal yang
@@ -221,12 +234,16 @@ Langkah baku:
 1. Buka **Jurnal Umum**, cari jurnal yang salah.
 2. Tekan **Koreksi**, isi **alasan** (wajib, minimal 5 karakter).
 3. Periksa **pratinjau jurnal balik**: debit/kredit ditukar, tanggal bisa diatur,
-   nomor bukti baru.
-4. Simpan. Jurnal asli tetap ada; jurnal balik menetralkan saldonya.
-5. Bila perlu, gunakan **Koreksi & isi ulang** — form terbuka dengan data lama
+   nomor bukti baru. Default tanggal balik adalah **tanggal jurnal asli** agar
+   koreksi tetap di periode yang sama.
+4. Bila tanggal balik atau tanggal pengganti diubah sampai berbeda tahun,
+   aplikasi menampilkan peringatan kuning. Periksa dampaknya ke Laba Rugi
+   tahunan sebelum menyimpan.
+5. Simpan. Jurnal asli tetap ada; jurnal balik menetralkan saldonya.
+6. Bila perlu, gunakan **Koreksi & isi ulang** — form terbuka dengan data lama
    sebagai awalan. Sistem membuat jurnal balik + jurnal pengganti dalam satu
    alur.
-6. Periksa kembali Buku Besar, Neraca Saldo, dan laporan terkait.
+7. Periksa kembali Buku Besar, Neraca Saldo, dan laporan terkait.
 
 Aturan penting:
 
@@ -271,6 +288,11 @@ Buka **Pengaturan → Riwayat Audit**.
 Gunakan audit untuk menjawab: siapa/apa yang berubah, kapan, dan dengan alasan
 apa. Audit tidak boleh dihapus dari UI.
 
+**Catatan keamanan:** PIN adalah kunci akses aplikasi, **bukan enkripsi**.
+Siapa pun yang memegang `pura.db` atau file backup dapat membaca isinya dengan
+alat SQLite biasa. Audit di dalam aplikasi juga tidak melindungi file dari
+penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
+
 ---
 
 ## 13. Glosarium
@@ -299,11 +321,13 @@ apa. Audit tidak boleh dihapus dari UI.
       lawan akun yang wajar.
 - [ ] Bukti/lampiran tersedia untuk transaksi material.
 - [ ] Buku Besar: saldo awal/berjalan/akhir konsisten.
-- [ ] Neraca Saldo: **selisih 0**.
+- [ ] Neraca Saldo: **selisih 0**; mode tahun berjalan/kumulatif sesuai tujuan
+      pemeriksaan dan baris laba ditahan sudah dipahami.
 - [ ] Laba Rugi cocok dengan Buku Besar pendapatan/beban.
 - [ ] Neraca: aset = kewajiban + ekuitas.
 - [ ] Arus Kas cocok dengan mutasi kas/bank.
 - [ ] Rekonsiliasi Bank sudah ditandai selesai atau selisihnya dijelaskan.
 - [ ] Anggaran: realisasi dan sisa sudah diperiksa.
 - [ ] Audit: koreksi dan tutup buku punya alasan.
-- [ ] Backup `.db` **dan** folder `attachments` sudah dibuat.
+- [ ] Backup Lengkap (DB + lampiran) sudah dibuat, atau backup `.db` **dan**
+      folder `attachments` disalin terpisah.

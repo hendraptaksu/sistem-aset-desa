@@ -1,22 +1,78 @@
 // P2-8 — dokumentasi pengguna, pemeriksaan, dan portable.
+// AUD-31 — versi, README, arsip ERD, dan istilah baru.
 // Fokus: file ada, istilah kunci tersedia, dan contoh path di dokumen cocok
 // dengan helper `tentukanLokasiData` (bukan snapshot seluruh file).
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { tentukanLokasiData } from '../src/main/lokasiData.js';
 
 const docsDir = fileURLToPath(new URL('../docs/', import.meta.url));
+const rootDir = fileURLToPath(new URL('../', import.meta.url));
 const baca = (nama: string): string => readFileSync(join(docsDir, nama), 'utf-8');
+const bacaRoot = (nama: string): string => readFileSync(join(rootDir, nama), 'utf-8');
 
 const PENGGUNA = baca('panduan-pengguna.md');
 const PEMERIKSAAN = baca('panduan-pemeriksaan.md');
 const PORTABLE = baca('panduan-portable.md');
+const README = bacaRoot('README.md');
+const PAKET = JSON.parse(bacaRoot('package.json')) as { version: string };
+
+describe('AUD-31 — versi, README, dan arsip ERD', () => {
+  it('versi package dan header panduan aktif konsisten', () => {
+    expect(PAKET.version).toBe('2.0.0');
+    expect(README).toContain('**Versi:** 2.0.0');
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, PORTABLE]) {
+      expect(dokumen).toContain('**Versi aplikasi:** 2.0.0');
+    }
+  });
+
+  it('README memuat ringkasan, arsitektur, perintah, data, backup, dan status', () => {
+    for (const istilah of [
+      'Ringkasan',
+      'Arsitektur satu halaman',
+      'npm run dev',
+      'npm test',
+      'npm run typecheck',
+      'npm run build',
+      'npm run dist:win',
+      'pura.db',
+      'attachments',
+      'backups',
+      'Backup Lengkap',
+      'POC',
+      'produksi',
+    ]) {
+      expect(README, `README memuat "${istilah}"`).toContain(istilah);
+    }
+  });
+
+  it('README dan panduan menjelaskan PIN bukan enkripsi', () => {
+    for (const dokumen of [README, PENGGUNA, PEMERIKSAAN, PORTABLE]) {
+      expect(dokumen).toMatch(/PIN[^\n]*bukan enkripsi|bukan enkripsi/i);
+      expect(dokumen).toContain('pura.db');
+    }
+  });
+
+  it('ERD v1 diarsipkan dan tidak menjadi acuan aktif', () => {
+    expect(existsSync(join(docsDir, 'erd-dan-arsitektur.md'))).toBe(false);
+    const arsip = baca('erd-v1-arsip.md');
+    expect(arsip).toMatch(/BUKAN ACUAN AKTIF/i);
+    expect(arsip).toContain('single-entry');
+  });
+
+  it('.env.example menyebut 240 jurnal dan status kode darurat dev/test', () => {
+    const env = bacaRoot('.env.example');
+    expect(env).toContain('240 jurnal');
+    expect(env).not.toContain('240 transaksi');
+    expect(env).toContain('AUD-19');
+  });
+});
 
 describe('P2-8 — panduan pengguna', () => {
   it('ada, bertanggal, dan memuat istilah kunci operator', () => {
-    expect(PENGGUNA).toContain('2026-10-23');
+    expect(PENGGUNA).toContain('2026-10-27');
     for (const istilah of [
       'Terima Uang',
       'Bayar',
@@ -38,6 +94,12 @@ describe('P2-8 — panduan pengguna', () => {
       'backups',
       'JU-',
       'Neraca Saldo',
+      'Tahun berjalan',
+      'Kumulatif sejak awal',
+      'Laba ditahan sebelum periode',
+      'Backup Lengkap',
+      'Restore Lengkap',
+      'bukan enkripsi',
       'restore',
       'portable',
     ]) {
@@ -48,11 +110,14 @@ describe('P2-8 — panduan pengguna', () => {
 
 describe('P2-8 — panduan pemeriksaan akuntan', () => {
   it('mencakup seluruh laporan dan glosarium debit/kredit', () => {
-    expect(PEMERIKSAAN).toContain('2026-10-23');
+    expect(PEMERIKSAAN).toContain('2026-10-27');
     for (const istilah of [
       'Jurnal Umum',
       'Buku Besar',
       'Neraca Saldo',
+      'Tahun berjalan',
+      'Kumulatif sejak awal',
+      'Laba ditahan sebelum periode',
       'Laba Rugi',
       'Neraca',
       'Arus Kas',
@@ -61,6 +126,7 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
       'reversal',
       'tutup buku',
       'audit',
+      'bukan enkripsi',
       'Debit',
       'Kredit',
       'Aktiva',
@@ -78,7 +144,7 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
 
 describe('P2-8 — panduan portable', () => {
   it('menjelaskan installer vs portable dan peringatan dua salinan', () => {
-    expect(PORTABLE).toContain('2026-10-23');
+    expect(PORTABLE).toContain('2026-10-27');
     expect(PORTABLE).toContain('%APPDATA%\\Keuangan Pura Dalem Puri');
     expect(PORTABLE).toContain('<folder exe>\\data\\pura.db');
     expect(PORTABLE).toContain('attachments');

@@ -1,7 +1,7 @@
 # Panduan Lokasi Data & Paket Portable
 
-**Versi aplikasi:** 1.2.0  
-**Tanggal dokumen:** 2026-10-23  
+**Versi aplikasi:** 2.0.0  
+**Tanggal dokumen:** 2026-10-27  
 **Untuk:** operator, akuntan pendamping, dan pengembang
 
 Dokumen ini menjelaskan **lokasi persis** database, lampiran, dan backup untuk
@@ -16,6 +16,11 @@ Aturan umum:
 - Backup otomatis/manual internal ada di folder **`backups`**.
 - Nama folder aplikasi mengikuti `productName` di `package.json`, yaitu
   **Keuangan Pura Dalem Puri**.
+
+> **PIN bukan enkripsi.** PIN hanya mengunci aplikasi, bukan file `pura.db`.
+> Siapa pun yang memegang file database atau backup dapat membacanya dengan
+> alat SQLite biasa. Simpan laptop dan media backup di tempat aman, dan gunakan
+> enkripsi disk bila tersedia.
 
 ---
 
@@ -67,7 +72,7 @@ sehingga seluruh data ikut pindah bila foldernya disalin:
 - Backup: `D:\Keuangan Pura Dalem Puri\backups`
 
 Nama file portable mengikuti `artifactName` di `package.json`, misalnya
-`Keuangan Pura Dalem Puri-1.2.0-portable.exe`.
+`Keuangan Pura Dalem Puri-2.0.0-portable.exe`.
 
 ### Hal penting tentang portable
 
@@ -104,17 +109,17 @@ seluruh transaksi tertulis ke `pura.db`.
 
 ### 3.2 Installer → laptop baru
 
-1. Di laptop lama: **Dashboard → Backup Export .db**, simpan ke flashdisk.
-2. Salin juga folder `attachments` dari
-   `%APPDATA%\Keuangan Pura Dalem Puri\attachments`.
-3. Di laptop baru: pasang aplikasi installer, buat PIN, lalu
-   **Dashboard → Restore Import .db** dan pilih file backup tadi.
-4. Tutup aplikasi. Salin isi folder `attachments` lama ke
-   `%APPDATA%\Keuangan Pura Dalem Puri\attachments` di laptop baru.
-5. Buka aplikasi, periksa jurnal dan lampiran.
+1. Di laptop lama: **Dashboard → Backup Lengkap (DB + lampiran)**, simpan
+   foldernya ke flashdisk.
+2. Di laptop baru: pasang aplikasi installer, buat PIN, lalu
+   **Dashboard → Restore Lengkap** dan pilih folder backup tadi.
+3. Buka aplikasi, periksa jurnal dan lampiran.
 
-`Restore` hanya memulihkan `pura.db`. Folder `attachments` harus disalin
-terpisah; tanpa itu metadata lampiran akan menunjuk file yang tidak ada.
+Bila memakai **Backup Export .db**: simpan file `.db`, salin juga folder
+`attachments` dari `%APPDATA%\Keuangan Pura Dalem Puri\attachments`, lalu di
+laptop baru gunakan **Restore Import .db** dan salin folder lampiran secara
+terpisah ke lokasi yang sama. Tanpa itu metadata lampiran akan menunjuk file
+yang tidak ada.
 
 ### 3.3 Installer → portable (atau sebaliknya)
 
@@ -141,7 +146,10 @@ terpisah; tanpa itu metadata lampiran akan menunjuk file yang tidak ada.
 - Backup otomatis harian menyimpan maksimal 7 file `auto-YYYY-MM-DD.db` di folder
   `backups`.
 - Backup manual lewat **Dashboard → Backup Export .db** memakai `VACUUM INTO`,
-  aman dilakukan saat aplikasi terbuka.
+  aman dilakukan saat aplikasi terbuka. Backup ini hanya berisi database.
+- **Backup Lengkap** di Dashboard menghasilkan satu folder berisi `pura.db`,
+  folder `attachments`, dan `manifest.json`; gunakan **Restore Lengkap** untuk
+  memulihkan keduanya sekaligus.
 - Simpan `.db` dan folder `attachments` dalam satu folder bertanggal, misalnya
   `backup-2026-10-23`.
 - Jangan mengandalkan hanya folder `backups`: folder itu ada di laptop yang sama.
