@@ -197,7 +197,7 @@
     uji keyboard + screenshot.
   - **Dependency:** — (setelah WIP Daftar Akun di-commit)
 
-- [ ] **UI-05 — Pin Pengaturan, simpan status lipat, scroll shadow** · P0 · S
+- [x] **UI-05 — Pin Pengaturan, simpan status lipat, scroll shadow** · P0 · S (2026-10-27: Pengaturan tetap di footer luar nav scroll, status lipat tersimpan di `localStorage` dengan default lipat <1200 px tanpa menimpa pilihan manual, dan gradien scroll muncul/hilang sesuai posisi; 595 test + smoke hijau)
   - **Konteks:** Pengaturan (PIN/backup) adalah tujuan penting, tetapi
     berada di urutan terakhir dan bisa tersembunyi. Status lipat sidebar
     tidak bertahan setelah restart.

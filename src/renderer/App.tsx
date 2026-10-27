@@ -129,13 +129,38 @@ const BUKA_AWAL: Record<GrupId, boolean> = {
   data: GRUP_MENU[2].defaultTerbuka,
 };
 
+// UI-05: status lipat sidebar disimpan per profil. Nilai hanya ditulis saat
+// pengguna menekan tombol lipat, sehingga default otomatis tidak menimpa
+// pilihan manual pada kunjungan berikutnya.
+const KUNCI_LIPAT_SIDEBAR = 'pura.sidebar.collapsed';
+const LEBAR_OTOMATIS_LIPAT = 1200;
+
+function bacaStatusLipatAwal(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const tersimpan = window.localStorage.getItem(KUNCI_LIPAT_SIDEBAR);
+    if (tersimpan === 'true') return true;
+    if (tersimpan === 'false') return false;
+  } catch {
+    // localStorage bisa diblokir; abaikan dan pakai default berdasarkan lebar.
+  }
+  return window.innerWidth < LEBAR_OTOMATIS_LIPAT;
+}
+
 export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   // UI-01: main adalah satu-satunya area scroll; posisi direset setelah tab
   // berganti (bukan saat modal/detail dibuka-tutup atau tab yang sama diklik).
   const mainRef = useRef<HTMLElement | null>(null);
   const tabRef = useRef<TabId>('dashboard');
-  const [collapsed, setCollapsed] = useState(false);
+  // UI-05: baca status tersimpan/default lebar sekali saat mount. Jangan
+  // menimpa pilihan manual saat resize; pengguna yang mengubah lebar tidak
+  // boleh memaksa ulang status lipat.
+  const [collapsed, setCollapsed] = useState(bacaStatusLipatAwal);
+  // UI-05: isyarat masih ada item di bawah area nav yang terlihat.
+  const navRef = useRef<HTMLElement | null>(null);
+  const navIsiRef = useRef<HTMLDivElement | null>(null);
+  const [adaMenuDiBawah, setAdaMenuDiBawah] = useState(false);
   // UI-04: status buka/tutup kelompok menu + ref item untuk menjaga tab aktif
   // tetap terlihat saat kelompok dibuka atau sidebar dilipat.
   const [bukaGrup, setBukaGrup] = useState<Record<GrupId, boolean>>(BUKA_AWAL);
@@ -197,6 +222,51 @@ export function App() {
     if (akanTerbuka && GRUP_DARI_TAB[tab] === id) perluGulirAktif.current = true;
     setBukaGrup((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // UI-05: tulis pilihan manual ke localStorage saat tombol lipat ditekan.
+  // Nilai default (termasuk lipat otomatis karena lebar < 1200 px) tidak
+  // pernah ditulis agar pilihan pengguna tidak tertimpa pada kunjungan lain.
+  const toggleLipat = () => {
+    const berikutnya = !collapsed;
+    setCollapsed(berikutnya);
+    try {
+      window.localStorage.setItem(KUNCI_LIPAT_SIDEBAR, String(berikutnya));
+    } catch {
+      // Persistensi bersifat opsional; sidebar tetap berfungsi tanpa storage.
+    }
+  };
+
+  const periksaGulirNav = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    setAdaMenuDiBawah(nav.scrollHeight - nav.scrollTop - nav.clientHeight > 1);
+  }, []);
+
+  // UI-05: gradien hanya muncul bila masih ada item di bawah viewport nav.
+  // Scroll listener menangani gulir pengguna; ResizeObserver menangani
+  // perubahan tinggi window, buka/tutup kelompok, dan lipat sidebar.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    periksaGulirNav();
+    nav.addEventListener('scroll', periksaGulirNav, { passive: true });
+    const pengamat =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(periksaGulirNav);
+    if (pengamat) {
+      pengamat.observe(nav);
+      if (navIsiRef.current) pengamat.observe(navIsiRef.current);
+    }
+    return () => {
+      nav.removeEventListener('scroll', periksaGulirNav);
+      pengamat?.disconnect();
+    };
+    // Nav baru ter-mount setelah layar PIN terbuka; ikutkan status lock agar
+    // listener/observer dipasang saat nav benar-benar ada.
+  }, [periksaGulirNav, lock?.sudahSetup, lock?.terbuka]);
+
+  useEffect(() => {
+    periksaGulirNav();
+  }, [bukaGrup, collapsed, periksaGulirNav]);
 
   const bukaDariDashboard = useCallback(
     (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => {
@@ -363,7 +433,7 @@ export function App() {
           {!collapsed && <span className="px-1 text-sm font-bold tracking-wide text-emerald-100">MENU</span>}
           <button
             type="button"
-            onClick={() => setCollapsed((c) => !c)}
+            onClick={toggleLipat}
             aria-expanded={!collapsed}
             aria-label={collapsed ? 'Buka menu' : 'Lipat menu'}
             title={collapsed ? 'Buka menu' : 'Lipat menu'}
@@ -372,58 +442,74 @@ export function App() {
             {collapsed ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />}
           </button>
         </div>
-        <nav
-          aria-label="Menu utama"
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
-        >
-          {GRUP_MENU.map((grup, index) => (
-            <Fragment key={grup.id}>
-              <div>
-                {!collapsed && (
-                  <button
-                    type="button"
-                    onClick={() => toggleGrup(grup.id)}
-                    aria-expanded={bukaGrup[grup.id]}
-                    aria-controls={`menu-grup-${grup.id}`}
-                    title={bukaGrup[grup.id] ? `Sembunyikan ${grup.label}` : `Tampilkan ${grup.label}`}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white"
-                  >
-                    <span>{grup.label}</span>
-                    <ChevronDown
-                      size={14}
-                      aria-hidden="true"
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <nav
+            ref={navRef}
+            aria-label="Menu utama"
+            className="min-h-0 flex-1 overflow-y-auto p-3"
+          >
+            <div ref={navIsiRef} className="flex flex-col gap-1">
+              {GRUP_MENU.map((grup, index) => (
+                <Fragment key={grup.id}>
+                  <div>
+                    {!collapsed && (
+                      <button
+                        type="button"
+                        onClick={() => toggleGrup(grup.id)}
+                        aria-expanded={bukaGrup[grup.id]}
+                        aria-controls={`menu-grup-${grup.id}`}
+                        title={bukaGrup[grup.id] ? `Sembunyikan ${grup.label}` : `Tampilkan ${grup.label}`}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white"
+                      >
+                        <span>{grup.label}</span>
+                        <ChevronDown
+                          size={14}
+                          aria-hidden="true"
+                          className={clsx(
+                            'shrink-0 transition-transform',
+                            !bukaGrup[grup.id] && '-rotate-90',
+                          )}
+                        />
+                      </button>
+                    )}
+                    <div
+                      id={`menu-grup-${grup.id}`}
+                      role="group"
+                      aria-label={grup.label}
                       className={clsx(
-                        'shrink-0 transition-transform',
-                        !bukaGrup[grup.id] && '-rotate-90',
+                        'flex-col gap-1',
+                        collapsed || bukaGrup[grup.id] ? 'flex' : 'hidden',
+                        !collapsed && 'mt-1',
                       )}
+                    >
+                      {grup.item.map((id) => renderItem(id))}
+                    </div>
+                  </div>
+                  {collapsed && index < GRUP_MENU.length - 1 && (
+                    <div
+                      role="separator"
+                      aria-orientation="horizontal"
+                      className="my-1 border-t border-white/15"
                     />
-                  </button>
-                )}
-                <div
-                  id={`menu-grup-${grup.id}`}
-                  role="group"
-                  aria-label={grup.label}
-                  className={clsx(
-                    'flex-col gap-1',
-                    collapsed || bukaGrup[grup.id] ? 'flex' : 'hidden',
-                    !collapsed && 'mt-1',
                   )}
-                >
-                  {grup.item.map((id) => renderItem(id))}
-                </div>
-              </div>
-              {collapsed && index < GRUP_MENU.length - 1 && (
-                <div
-                  role="separator"
-                  aria-orientation="horizontal"
-                  className="my-1 border-t border-white/15"
-                />
-              )}
-            </Fragment>
-          ))}
-        </nav>
-        {/* UI-04: Pengaturan dipin di luar nav yang scroll agar selalu terlihat. */}
-        <div className="border-t border-white/10 p-3">{renderItem('pengaturan')}</div>
+                </Fragment>
+              ))}
+            </div>
+          </nav>
+          {/* UI-05: isyarat scroll; pointer-events-none agar item di bawahnya
+              tetap bisa diklik dan tidak menambah scrollbar kedua. */}
+          <div
+            aria-hidden="true"
+            data-testid="sidebar-scroll-shadow"
+            className={clsx(
+              'pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-emerald-950 via-emerald-950/70 to-transparent transition-opacity',
+              adaMenuDiBawah ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+        </div>
+        {/* UI-04/UI-05: Pengaturan dipin di luar nav yang scroll agar selalu
+            terlihat; footer tidak boleh ikut menyusut. */}
+        <div className="shrink-0 border-t border-white/10 p-3">{renderItem('pengaturan')}</div>
       </aside>
       <main
         ref={mainRef}
