@@ -43,6 +43,7 @@ import type {
   DashboardTabTujuan,
 } from './components/DashboardTab.js';
 import { LockScreen } from './components/LockScreen.js';
+import { KodeDaruratModal } from './components/KodeDaruratModal.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
 import { Button } from './components/ui.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
@@ -75,6 +76,8 @@ export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
+  // AUD-19: plaintext kode darurat hanya hidup di state ini sampai modal ditutup.
+  const [kodeDaruratBaru, setKodeDaruratBaru] = useState<string | null>(null);
   const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
   const { sibuk: mengunci, jalankan: jalankanKunci } = useAksiSibuk();
   // Drill-down Neraca Saldo → Buku Besar akun yang diklik (P1-8).
@@ -96,9 +99,35 @@ export function App() {
       setLock(await api.lockStatus());
     } catch {
       // IPC belum siap (dev tanpa preload) → anggap terbuka agar UI tetap bisa dipakai.
-      setLock({ sudahSetup: false, terbuka: true, idleMenit: 30, gagal: 0, blokirDetik: 0 });
+      setLock({
+        sudahSetup: false,
+        terbuka: true,
+        idleMenit: 30,
+        gagal: 0,
+        blokirDetik: 0,
+        kodeDaruratDiatur: false,
+      });
     }
   }, []);
+
+  /** Sukses setup/unlock/reset: optimistis buka UI, lalu sinkronkan status main. */
+  const tanganiTerbuka = useCallback(
+    (kodeDarurat?: string) => {
+      if (kodeDarurat) setKodeDaruratBaru(kodeDarurat);
+      setLock((l) =>
+        l
+          ? {
+              ...l,
+              sudahSetup: true,
+              terbuka: true,
+              kodeDaruratDiatur: kodeDarurat ? true : l.kodeDaruratDiatur,
+            }
+          : l,
+      );
+      void refreshLock();
+    },
+    [refreshLock],
+  );
 
   // AUD-18: keputusan lock ada di main (idle/suspend). Renderer hanya polling
   // status; saat main mengunci, layar PIN muncul tanpa menunggu aksi user.
@@ -176,11 +205,11 @@ export function App() {
     return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;
   }
   if (lock.sudahSetup && !lock.terbuka) {
-    return <LockScreen sudahSetup={lock.sudahSetup} onTerbuka={() => void refreshLock()} />;
+    return <LockScreen sudahSetup={lock.sudahSetup} onTerbuka={tanganiTerbuka} />;
   }
   // Belum setup PIN → wajib buat dulu (gembok depan aktif sejak awal).
   if (!lock.sudahSetup) {
-    return <LockScreen sudahSetup={false} onTerbuka={() => void refreshLock()} />;
+    return <LockScreen sudahSetup={false} onTerbuka={tanganiTerbuka} />;
   }
 
   return (
@@ -288,12 +317,19 @@ export function App() {
             {tab === 'pengaturan' && (
               <PengaturanTab
                 idleAwal={lock.idleMenit}
+                kodeDaruratDiatur={lock.kodeDaruratDiatur}
                 onIdleBerubah={(m) => setLock((l) => (l ? { ...l, idleMenit: m } : l))}
               />
             )}
           </div>
         )}
       </main>
+      {kodeDaruratBaru && (
+        <KodeDaruratModal
+          kode={kodeDaruratBaru}
+          onTutup={() => setKodeDaruratBaru(null)}
+        />
+      )}
     </div>
   );
 }

@@ -533,7 +533,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run typecheck && npm run build`.
   - **Dependency:** AUD-02.
 
-- [ ] **AUD-19 — Kode darurat per-install (hash, tampil sekali)** · P1 · M
+- [x] **AUD-19 — Kode darurat per-install (hash, tampil sekali)** · P1 · M (2026-10-27: `reset_salt`/`reset_hash` scrypt; kode 4×4 acak tanpa 0/O/1/I/L dibuat saat setup, plaintext hanya di memori/`lock:setup` satu kali, DB hanya hash+salt; modal “Simpan kode darurat ini” + rotate di Pengaturan dengan konfirmasi dan tampil sekali; `resetPaksa` verifikasi hash, instalasi lama tanpa hash ditolak “Kode darurat belum diatur… arahkan ke Pengaturan”; restore mempertahankan hash kode aktif; `PURA_RESET_CODE`/`KODE_DARURAT_DEFAULT` dihapus dari source/.env/docs/arsip ERD; 584 test, typecheck/build hijau, smoke Electron setup→modal→kunci→reset dengan kode berhasil; AUD-01 tetap manual owner)
   - **Konteks:** Kode darurat default ada di source dan docs; repo public.
     Siapa pun yang mengekstrak app bisa mereset PIN lalu membaca DB plaintext.
   - **Langkah:**

@@ -6,7 +6,14 @@ import { PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 type Mode = 'buka' | 'setup' | 'reset';
 
-export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onTerbuka: () => void }) {
+export function LockScreen({
+  sudahSetup,
+  onTerbuka,
+}: {
+  sudahSetup: boolean;
+  /** Setup mengirim kode darurat plaintext sekali agar App bisa menampilkan modal. */
+  onTerbuka: (kodeDarurat?: string) => void;
+}) {
   const [mode, setMode] = useState<Mode>(sudahSetup ? 'buka' : 'setup');
   const [pin, setPin] = useState('');
   const [baru, setBaru] = useState('');
@@ -52,6 +59,27 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
       setGagal((g) => g + 1);
     } finally {
       sedangBuka.current = false;
+      setSibuk(false);
+    }
+  }
+
+  /** Setup PIN membuat kode darurat per-install; teruskan plaintext sekali ke App. */
+  async function simpanPinBaru() {
+    if (kirimRef.current) return;
+    if (baru !== konfirmasi) {
+      setErr('Ulangi PIN tidak sama.');
+      return;
+    }
+    kirimRef.current = true;
+    setErr(null);
+    setSibuk(true);
+    try {
+      const hasil = await api.lockSetup(baru);
+      onTerbuka(hasil.kodeDarurat ?? undefined);
+    } catch (e) {
+      setErr(pesanError(e, PESAN_PROSES_GAGAL));
+    } finally {
+      kirimRef.current = false;
       setSibuk(false);
     }
   }
@@ -153,13 +181,7 @@ export function LockScreen({ sudahSetup, onTerbuka }: { sudahSetup: boolean; onT
             <Button
               className="w-full"
               disabled={sibuk || baru.length !== 6 || konfirmasi !== baru}
-              onClick={() => {
-                if (baru !== konfirmasi) {
-                  setErr('Ulangi PIN tidak sama.');
-                  return;
-                }
-                void kirim(() => api.lockSetup(baru));
-              }}
+              onClick={() => void simpanPinBaru()}
             >
               {sibuk ? 'Menyimpan…' : 'Simpan PIN'}
             </Button>

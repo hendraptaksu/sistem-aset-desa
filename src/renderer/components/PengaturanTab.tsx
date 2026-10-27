@@ -17,6 +17,7 @@ import {
 import { tahunLokal } from '../../utils/tanggal.js';
 import { api, type JenisFolderLokasiApi, type LokasiData } from '../lib/api.js';
 import { AuditDetail } from './AuditDetail.js';
+import { KodeDaruratModal } from './KodeDaruratModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
   Button,
@@ -24,6 +25,7 @@ import {
   DetailModal,
   ErrorBox,
   Field,
+  KonfirmasiModal,
   Select,
   TextArea,
   TextInput,
@@ -88,7 +90,15 @@ function Baris({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; onIdleBerubah: (m: number) => void }) {
+export function PengaturanTab({
+  idleAwal,
+  kodeDaruratDiatur,
+  onIdleBerubah,
+}: {
+  idleAwal: number;
+  kodeDaruratDiatur: boolean;
+  onIdleBerubah: (m: number) => void;
+}) {
   const [lama, setLama] = useState('');
   const [baru, setBaru] = useState('');
   const [ulang, setUlang] = useState('');
@@ -97,6 +107,17 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
   const [okPin, setOkPin] = useState<string | null>(null);
   const [busyPin, setBusyPin] = useState(false);
   const busyPinRef = useRef(false);
+
+  // ---- Kode darurat per-install (AUD-19) ----
+  const [kodeDiatur, setKodeDiatur] = useState(kodeDaruratDiatur);
+  const [kodeBaru, setKodeBaru] = useState<string | null>(null);
+  const [konfirmasiKode, setKonfirmasiKode] = useState(false);
+  const [errKode, setErrKode] = useState<string | null>(null);
+  const [okKode, setOkKode] = useState<string | null>(null);
+  const [busyKode, setBusyKode] = useState(false);
+  const busyKodeRef = useRef(false);
+
+  useEffect(() => setKodeDiatur(kodeDaruratDiatur), [kodeDaruratDiatur]);
   const [errIdle, setErrIdle] = useState<string | null>(null);
   const [okIdle, setOkIdle] = useState<string | null>(null);
   const [busyIdle, setBusyIdle] = useState(false);
@@ -250,6 +271,27 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
     }
   }
 
+  async function buatKodeDaruratBaru() {
+    if (busyKodeRef.current) return;
+    setErrKode(null);
+    setOkKode(null);
+    busyKodeRef.current = true;
+    setBusyKode(true);
+    try {
+      const r = await api.lockResetKode();
+      setKonfirmasiKode(false);
+      setKodeBaru(r.kodeDarurat);
+      setKodeDiatur(true);
+      setOkKode('Kode darurat baru dibuat. Kode lama tidak berlaku lagi.');
+      void muatAudit();
+    } catch (e) {
+      setErrKode(pesanError(e));
+    } finally {
+      busyKodeRef.current = false;
+      setBusyKode(false);
+    }
+  }
+
   async function simpanIdle() {
     if (busyIdleRef.current) return;
     setErrIdle(null);
@@ -335,6 +377,40 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
               {busyPin ? 'Menyimpan…' : 'Ganti PIN'}
             </Button>
           </div>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 text-lg font-bold">Kode Darurat</h2>
+        <p className="mb-3 text-sm text-stone-600">
+          Kode darurat dipakai bila PIN lupa. Kode hanya ditampilkan <b>sekali</b> saat
+          dibuat, lalu yang tersimpan hanya hash — tidak ada salinan di database.
+          Setelah diganti, kode lama langsung tidak berlaku.
+        </p>
+        <ErrorBox msg={errKode} />
+        {okKode && (
+          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+            {okKode}
+          </div>
+        )}
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px]">
+          Status:{' '}
+          <b>
+            {kodeDiatur
+              ? 'kode darurat sudah diatur untuk instalasi ini'
+              : 'kode darurat belum diatur (instalasi lama)'}
+          </b>
+        </div>
+        {!kodeDiatur && (
+          <p className="mt-2 text-sm text-amber-800">
+            Instalasi lama belum punya kode darurat. Atur sekarang sebelum PIN lupa —
+            kode default lama sudah tidak berlaku.
+          </p>
+        )}
+        <div className="mt-3">
+          <Button disabled={busyKode} onClick={() => setKonfirmasiKode(true)}>
+            {kodeDiatur ? 'Ganti kode darurat' : 'Atur kode darurat'}
+          </Button>
         </div>
       </Card>
 
@@ -646,6 +722,30 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
             <AuditDetail json={detail.data_baru_json} />
           </div>
         </DetailModal>
+      )}
+
+      {konfirmasiKode && (
+        <KonfirmasiModal
+          judul="Buat kode darurat baru?"
+          deskripsi={
+            <p>
+              Kode darurat lama akan langsung <b>tidak berlaku</b>. Kode baru hanya
+              ditampilkan sekali setelah dibuat — siapkan kertas untuk mencatatnya.
+            </p>
+          }
+          labelYa="Ya, buat kode baru"
+          sibuk={busyKode}
+          onBatal={() => setKonfirmasiKode(false)}
+          onKonfirmasi={() => void buatKodeDaruratBaru()}
+        />
+      )}
+
+      {kodeBaru && (
+        <KodeDaruratModal
+          kode={kodeBaru}
+          judul="Simpan kode darurat baru ini"
+          onTutup={() => setKodeBaru(null)}
+        />
       )}
     </div>
   );

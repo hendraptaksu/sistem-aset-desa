@@ -644,6 +644,8 @@ export function guardPeriodeTerkunci(
 // --- Kunci aplikasi (PIN 6 digit, single-laptop). Key-value di tabel pengaturan. ---
 export const KUNCI_PIN_SALT = 'pin_salt';
 export const KUNCI_PIN_HASH = 'pin_hash';
+export const KUNCI_RESET_SALT = 'reset_salt';
+export const KUNCI_RESET_HASH = 'reset_hash';
 export const KUNCI_IDLE_MENIT = 'idle_menit';
 
 export function getPengaturan(db: Database.Database, kunci: string): string | null {
@@ -660,8 +662,17 @@ export function setPengaturan(db: Database.Database, kunci: string, nilai: strin
   );
 }
 
+export function hapusPengaturan(db: Database.Database, kunci: string): void {
+  db.prepare('DELETE FROM pengaturan WHERE kunci = ?').run(kunci);
+}
+
 export function sudahSetupPin(db: Database.Database): boolean {
   return getPengaturan(db, KUNCI_PIN_SALT) !== null && getPengaturan(db, KUNCI_PIN_HASH) !== null;
+}
+
+/** Instalasi lama (sebelum AUD-19) belum punya pasangan reset_salt/reset_hash. */
+export function kodeDaruratDiatur(db: Database.Database): boolean {
+  return getPengaturan(db, KUNCI_RESET_SALT) !== null && getPengaturan(db, KUNCI_RESET_HASH) !== null;
 }
 
 export function getIdleMenit(db: Database.Database, fallback = 30): number {

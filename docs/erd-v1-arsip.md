@@ -400,7 +400,11 @@ Semua handler mengembalikan `{ ok: true, data }` atau `{ ok: false, error, perlu
 - Sesi hanya di memori; **selalu terkunci saat aplikasi dibuka**.
 - Salah 5× → blokir 60 detik.
 - Auto-lock idle 5–120 menit (default 30), timer reset oleh aktivitas mouse/keyboard/scroll.
-- Lupa PIN dapat direset dengan **kode darurat**. Default di kode: `PURI-DARURAT-1945` (`src/main/kunci.ts`) — bisa dioverride via env `PURA_RESET_CODE` saat dev. **Ganti sebelum distribusi ke bendahara.**
+- Lupa PIN dapat direset dengan **kode darurat**. Kode darurat statis lama
+  (**sudah dihapus dan tidak berlaku**) diganti mekanisme per-install sejak
+  AUD-19: kode acak dibuat saat setup PIN, hanya hash+salt scrypt yang disimpan,
+  dan plaintext hanya tampil sekali. Tidak ada kode default/global atau env
+  override lagi; kode dapat diganti di Pengaturan.
 
 ---
 

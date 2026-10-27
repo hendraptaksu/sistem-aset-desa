@@ -1,17 +1,28 @@
 // Fitur Kunci Aplikasi: PIN 6 digit + idle configurable + reset kode darurat.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { getIdleMenit, setPengaturan, getPengaturan, sudahSetupPin } from '../src/db/repository.js';
+import {
+  getIdleMenit,
+  KUNCI_RESET_HASH,
+  KUNCI_RESET_SALT,
+  setPengaturan,
+  getPengaturan,
+  kodeDaruratDiatur,
+  sudahSetupPin,
+} from '../src/db/repository.js';
 import { IDLE_DEFAULT_MENIT, validasiIdleMenit, validasiPin } from '../src/core/pin.js';
 import {
+  ambilKodeDaruratSekali,
   aturIdle,
   bukaKunci,
+  buatKodeDarurat,
   buatSalt,
+  gantiKodeDarurat,
   harusKunci,
   hashPin,
   INTERVAL_AUTO_KUNCI_MS,
-  kodeDarurat,
   kunciLagi,
+  normalkanKodeDarurat,
   operasiPanjangAktif,
   perluKunciOtomatis,
   resetPaksa,
@@ -34,7 +45,8 @@ beforeEach(() => {
   sesi.blokirSampai = 0;
   sesi.terakhirAktivitas = 0;
   sesi.operasiPanjang = 0;
-  delete process.env.PURA_RESET_CODE;
+  // Buang kode sekali-pakai yang mungkin tertinggal dari test sebelumnya.
+  ambilKodeDaruratSekali();
 });
 
 describe('validasi PIN & idle', () => {
@@ -113,19 +125,105 @@ describe('alur kunci end-to-end', () => {
     expect(statusKunci(db).blokirDetik).toBeGreaterThan(0);
     db.close();
   });
-  it('reset kode darurat: salah ditolak, benar membuka + ganti PIN', () => {
-    process.env.PURA_RESET_CODE = 'RESET-UNIT-001';
-    expect(kodeDarurat()).toBe('RESET-UNIT-001');
+  it('reset kode darurat per-install: salah ditolak, benar membuka + ganti PIN', () => {
     const db = dbBaru();
-    setupPin(db, '123456');
+    expect(setupPin(db, '123456')).toBeNull();
+    const kode = ambilKodeDaruratSekali();
+    expect(kode).toMatch(/^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/);
     kunciLagi();
     expect(resetPaksa(db, 'SALAH', '777777')).not.toBeNull();
     expect(statusKunci(db).terbuka).toBe(false);
-    expect(resetPaksa(db, 'RESET-UNIT-001', '77')).not.toBeNull();
-    expect(resetPaksa(db, 'RESET-UNIT-001', '777777')).toBeNull();
+    expect(resetPaksa(db, kode!.toLowerCase(), '77')).not.toBeNull();
+    expect(resetPaksa(db, ` ${kode!.toLowerCase()} `, '777777')).toBeNull();
     expect(statusKunci(db).terbuka).toBe(true);
     kunciLagi();
     expect(bukaKunci(db, '777777')).toBeNull();
+    db.close();
+  });
+});
+
+describe('AUD-19 — kode darurat per-install (hash, tampil sekali)', () => {
+  it('membuat kode acak sekali saat setup dan hanya menyimpan hash+salt', () => {
+    const db = dbBaru();
+    expect(setupPin(db, '123456')).toBeNull();
+    const kode = ambilKodeDaruratSekali();
+    expect(kode).not.toBeNull();
+    expect(kodeDaruratDiatur(db)).toBe(true);
+    expect(statusKunci(db).kodeDaruratDiatur).toBe(true);
+    expect(ambilKodeDaruratSekali()).toBeNull();
+
+    const salt = getPengaturan(db, KUNCI_RESET_SALT)!;
+    const hash = getPengaturan(db, KUNCI_RESET_HASH)!;
+    expect(salt).toMatch(/^[0-9a-f]{32}$/);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(verifikasiHash(normalkanKodeDarurat(kode!), salt, hash)).toBe(true);
+    expect(verifikasiHash(normalkanKodeDarurat('SALAH'), salt, hash)).toBe(false);
+
+    // Plaintext tidak boleh ada di nilai pengaturan maupun audit.
+    const nilai = db
+      .prepare('SELECT kunci, nilai FROM pengaturan')
+      .all() as { kunci: string; nilai: string }[];
+    const audit = db
+      .prepare('SELECT aksi, alasan, data_lama_json, data_baru_json FROM audit_log')
+      .all() as Record<string, string>[];
+    const semuaTeks = [
+      ...nilai.map((r) => `${r.kunci}=${r.nilai}`),
+      ...audit.map((r) => Object.values(r).join(' ')),
+    ].join('\n');
+    for (const rahasia of [kode!, normalkanKodeDarurat(kode!)]) {
+      expect(semuaTeks).not.toContain(rahasia);
+    }
+    db.close();
+  });
+
+  it('kode acak yang dibuat berbeda dan mudah dibaca', () => {
+    const a = buatKodeDarurat();
+    const b = buatKodeDarurat();
+    expect(a).not.toBe(b);
+    for (const kode of [a, b]) {
+      expect(kode).toMatch(/^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/);
+      expect(kode).not.toMatch(/[01OIL]/);
+    }
+  });
+
+  it('rotate: kode lama langsung gagal, kode baru berhasil', () => {
+    const db = dbBaru();
+    expect(setupPin(db, '123456')).toBeNull();
+    const lama = ambilKodeDaruratSekali()!;
+    const baru = gantiKodeDarurat(db);
+    expect(baru).toMatch(/^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/);
+    expect(baru).not.toBe(lama);
+    expect(statusKunci(db).kodeDaruratDiatur).toBe(true);
+
+    kunciLagi();
+    expect(resetPaksa(db, lama, '777777')).toMatch(/kode darurat salah/i);
+    expect(statusKunci(db).terbuka).toBe(false);
+    expect(resetPaksa(db, baru, '777777')).toBeNull();
+    expect(statusKunci(db).terbuka).toBe(true);
+    kunciLagi();
+    expect(bukaKunci(db, '777777')).toBeNull();
+    db.close();
+  });
+
+  it('instalasi lama tanpa reset_hash ditolak dengan pesan jelas, tanpa default lama', () => {
+    const db = dbBaru();
+    expect(setupPin(db, '123456')).toBeNull();
+    ambilKodeDaruratSekali();
+    // Simulasikan DB lama: PIN ada, kode darurat belum pernah dibuat.
+    db.prepare('DELETE FROM pengaturan WHERE kunci IN (?, ?)').run(
+      KUNCI_RESET_SALT,
+      KUNCI_RESET_HASH,
+    );
+    expect(kodeDaruratDiatur(db)).toBe(false);
+    expect(statusKunci(db).kodeDaruratDiatur).toBe(false);
+    kunciLagi();
+
+    for (const kode of ['KODE-LAMA-TIDAK-BERLAKU', 'PURA-CONTOH-LAMA', '']) {
+      const err = resetPaksa(db, kode, '777777');
+      expect(err).toMatch(/kode darurat belum diatur/i);
+      expect(err).toMatch(/pengaturan/i);
+    }
+    expect(statusKunci(db).terbuka).toBe(false);
     db.close();
   });
 });

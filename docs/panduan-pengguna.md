@@ -21,8 +21,10 @@ jurnal, jadi tidak ada saldo atau laba yang “disimpan mati”.
 2. Masukkan **PIN 6 digit**. Aplikasi selalu terkunci saat dibuka.
 3. Bila PIN salah 5 kali, aplikasi menunggu 60 detik. Tunggu, jangan menutup
    paksa lewat Task Manager.
-4. Bila lupa PIN, gunakan **kode darurat** yang disimpan di dokumen fisik
-   terpisah (bukan di folder laptop). Setelah masuk, buat PIN baru.
+4. Bila lupa PIN, gunakan **kode darurat** yang tampil sekali saat PIN pertama
+   dibuat dan sudah dicatat di dokumen fisik terpisah (bukan di folder laptop).
+   Setelah masuk, buat PIN baru. Bila kode belum pernah diatur (instalasi lama),
+   aplikasi menolak reset dan meminta mengaturnya lewat Pengaturan.
 
 **Auto-kunci:** aplikasi mengunci sendiri setelah tidak dipakai (bawaan 30 menit,
 bisa diubah di **Pengaturan → Auto-kunci saat idle**). Ini bukan error.
@@ -313,10 +315,16 @@ hanya menyalin file `.exe`.
 
 - PIN terdiri dari **6 digit**. Ganti di **Pengaturan → Kunci Aplikasi (PIN)**.
 - PIN lama wajib benar saat mengganti PIN.
+- **Kode darurat** dibuat acak per-install saat PIN pertama dibuat dan tampil
+  **sekali** dalam modal “Simpan kode darurat ini”. Catat di kertas/dokumen
+  fisik, simpan terpisah dari laptop, dan jangan kirim lewat chat. Database hanya
+  menyimpan hash+salt — kode tidak bisa dibaca ulang dari aplikasi.
+- Ganti kode darurat di **Pengaturan → Kode Darurat** (butuh PIN terbuka). Kode
+  baru tampil sekali; kode lama langsung tidak berlaku. Instalasi lama yang
+  belum punya kode akan diminta mengaturnya di sana.
 - Auto-kunci diatur di **Pengaturan → Auto-kunci saat idle** (batas yang
   diizinkan ditampilkan di layar).
 - Aplikasi selalu terkunci saat dibuka ulang. Ini disengaja.
-- Jangan membagikan PIN lewat chat. Kode darurat disimpan terpisah dari laptop.
 
 > **Penting — PIN bukan enkripsi.** PIN hanya kunci akses aplikasi; isi
 > `pura.db` tidak dienkripsi. Siapa pun yang memegang file `pura.db` atau

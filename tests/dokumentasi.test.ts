@@ -62,11 +62,12 @@ describe('AUD-31 — versi, README, dan arsip ERD', () => {
     expect(arsip).toContain('single-entry');
   });
 
-  it('.env.example menyebut 240 jurnal dan status kode darurat dev/test', () => {
+  it('.env.example menyebut 240 jurnal dan tidak memuat kode darurat global', () => {
     const env = bacaRoot('.env.example');
     expect(env).toContain('240 jurnal');
     expect(env).not.toContain('240 transaksi');
-    expect(env).toContain('AUD-19');
+    expect(env).not.toContain('PURA_RESET_CODE');
+    expect(env).toMatch(/kode darurat[^\n]*(per-install|tampil sekali)/i);
   });
 });
 

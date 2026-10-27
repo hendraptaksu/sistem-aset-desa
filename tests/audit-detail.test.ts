@@ -279,6 +279,9 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('PENGATURAN-RESET-PIN')).toBe(
       'Reset PIN (kode darurat)',
     );
+    expect(formatAksiAudit('PENGATURAN-KODE-DARURAT')).toBe(
+      'Atur/ganti kode darurat',
+    );
     expect(formatAksiAudit('PENGATURAN-PEMBUKUAN')).toBe(
       'Ubah pengaturan pembukuan',
     );
@@ -286,6 +289,9 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('RESTORE-LENGKAP')).toBe('Restore lengkap');
     expect(formatAksiAudit('RESTORE-PIN-DIPERTAHANKAN')).toBe(
       'Restore database (PIN dipertahankan)',
+    );
+    expect(formatAksiAudit('RESTORE-KODE-DARURAT-DIPERTAHANKAN')).toBe(
+      'Restore database (kode darurat dipertahankan)',
     );
   });
 

@@ -187,6 +187,7 @@ const CHANNEL_IPC = [
   'lock:idle-set',
   'lock:lock',
   'lock:reset',
+  'lock:reset-code',
   'lock:setup',
   'lock:status',
   'lock:unlock',
@@ -219,9 +220,9 @@ const CHANNEL_IPC = [
 describe('P2-7 — registrasi handler IPC', () => {
   it('mendaftarkan seluruh 72 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(72);
+    expect(env.handlers.size).toBe(73);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(72);
+    expect(CHANNEL_IPC).toHaveLength(73);
   });
 });
 
@@ -827,6 +828,62 @@ describe('P2-7 — error handling IPC', () => {
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+  });
+});
+
+describe('AUD-19 — kode darurat per-install lewat IPC', () => {
+  const POLA_KODE = /^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/;
+
+  it('setup mengembalikan kode sekali, rotate, lalu reset memakai hash baru', async () => {
+    const env = buatEnv();
+    const setup = await env.panggil('lock:setup', '111111');
+    expect(setup.ok, setup.error).toBe(true);
+    const kode = setup.data.kodeDarurat as string;
+    expect(kode).toMatch(POLA_KODE);
+
+    // Plaintext tidak disimpan di DB; respons setup berikut tidak membocorkan kode.
+    const nilai = env
+      .db()
+      .prepare('SELECT nilai FROM pengaturan')
+      .all() as { nilai: string }[];
+    const semuaNilai = nilai.map((n) => n.nilai).join('\n');
+    expect(semuaNilai).not.toContain(kode);
+    expect(semuaNilai).not.toContain(kode.replace(/-/g, ''));
+    const kedua = await env.panggil('lock:setup', '222222');
+    expect(kedua.ok).toBe(false);
+    expect(kedua.data).toBeUndefined();
+
+    const rotate = await env.panggil('lock:reset-code');
+    expect(rotate.ok, rotate.error).toBe(true);
+    const kodeBaru = rotate.data.kodeDarurat as string;
+    expect(kodeBaru).toMatch(POLA_KODE);
+    expect(kodeBaru).not.toBe(kode);
+
+    kunciLagi();
+    const lama = await env.panggil('lock:reset', kode, '222222');
+    expect(lama.ok).toBe(false);
+    expect(lama.error).toMatch(/kode darurat salah/i);
+
+    const baru = await env.panggil('lock:reset', kodeBaru, '222222');
+    expect(baru.ok, baru.error).toBe(true);
+    kunciLagi();
+    expect((await env.panggil('lock:unlock', '222222')).ok).toBe(true);
+  });
+
+  it('rotate ditolak saat terkunci dan instalasi lama tanpa hash ditolak jelas', async () => {
+    const env = buatEnv();
+    expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
+    kunciLagi();
+    const terkunci = await env.panggil('lock:reset-code');
+    expect(terkunci.ok).toBe(false);
+    expect(terkunci.error).toMatch(/terkunci/i);
+
+    // Simulasikan DB lama: belum ada reset_salt/reset_hash.
+    env.db().prepare("DELETE FROM pengaturan WHERE kunci IN ('reset_salt', 'reset_hash')").run();
+    const reset = await env.panggil('lock:reset', 'KODE-LAMA-TIDAK-BERLAKU', '222222');
+    expect(reset.ok).toBe(false);
+    expect(reset.error).toMatch(/kode darurat belum diatur/i);
+    expect(reset.error).toMatch(/pengaturan/i);
   });
 });
 

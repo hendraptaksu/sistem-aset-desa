@@ -18,8 +18,11 @@ import { openDb, SCHEMA_VERSION } from '../../db/database.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
+  KUNCI_RESET_HASH,
+  KUNCI_RESET_SALT,
   catatAudit,
   getPengaturan,
+  hapusPengaturan,
   setPengaturan,
 } from '../../db/repository.js';
 import { pesanError } from '../../utils/pesanError.js';
@@ -243,26 +246,55 @@ export type HasilRestoreDb =
   | { ok: true; db: Database.Database; preRestorePath: string }
   | { ok: false; error: string; db: Database.Database };
 
-/** Pasangan salt/hash PIN milik DB aktif; tidak pernah memuat PIN plaintext. */
-type PinAktif = { salt: string; hash: string };
+/** Pasangan salt/hash milik DB aktif; tidak pernah memuat PIN/kode plaintext. */
+type PasanganHash = { salt: string; hash: string };
 
-function bacaPinAktif(db: Database.Database): PinAktif | null {
-  const salt = getPengaturan(db, KUNCI_PIN_SALT);
-  const hash = getPengaturan(db, KUNCI_PIN_HASH);
-  // Hanya pakai pasangan lengkap; data PIN parsial/rusak tidak disalin.
+function bacaPasangan(
+  db: Database.Database,
+  kunciSalt: string,
+  kunciHash: string,
+): PasanganHash | null {
+  const salt = getPengaturan(db, kunciSalt);
+  const hash = getPengaturan(db, kunciHash);
+  // Hanya pakai pasangan lengkap; data parsial/rusak tidak disalin.
   return salt && hash ? { salt, hash } : null;
 }
 
-/** Tulis PIN aktif ke DB hasil restore dalam satu transaksi + audit tanpa rahasia. */
-function tulisPinAktif(db: Database.Database, pin: PinAktif): void {
+/**
+ * Tulis PIN + kode darurat milik instalasi aktif ke DB hasil restore.
+ *
+ * AUD-19: hash kode darurat ikut dipertahankan agar restore DB tidak diam-diam
+ * mengganti kode darurat instalasi ini dengan kode dari backup. Bila instalasi
+ * aktif belum punya kode (data lama), pasangan reset dari backup dihapus supaya
+ * kode asing tidak menjadi berlaku.
+ */
+function tulisKunciAktif(
+  db: Database.Database,
+  pin: PasanganHash | null,
+  reset: PasanganHash | null,
+): void {
   const tx = db.transaction(() => {
-    setPengaturan(db, KUNCI_PIN_SALT, pin.salt);
-    setPengaturan(db, KUNCI_PIN_HASH, pin.hash);
-    catatAudit(db, {
-      aksi: 'RESTORE-PIN-DIPERTAHANKAN',
-      alasan: 'PIN aktif dipertahankan setelah restore',
-      baru: { pin: 'PIN dipertahankan' },
-    });
+    if (pin) {
+      setPengaturan(db, KUNCI_PIN_SALT, pin.salt);
+      setPengaturan(db, KUNCI_PIN_HASH, pin.hash);
+      catatAudit(db, {
+        aksi: 'RESTORE-PIN-DIPERTAHANKAN',
+        alasan: 'PIN aktif dipertahankan setelah restore',
+        baru: { pin: 'PIN dipertahankan' },
+      });
+    }
+    if (reset) {
+      setPengaturan(db, KUNCI_RESET_SALT, reset.salt);
+      setPengaturan(db, KUNCI_RESET_HASH, reset.hash);
+      catatAudit(db, {
+        aksi: 'RESTORE-KODE-DARURAT-DIPERTAHANKAN',
+        alasan: 'Kode darurat aktif dipertahankan setelah restore',
+        baru: { kodeDarurat: 'Kode darurat dipertahankan' },
+      });
+    } else {
+      hapusPengaturan(db, KUNCI_RESET_SALT);
+      hapusPengaturan(db, KUNCI_RESET_HASH);
+    }
   });
   tx();
 }
@@ -275,8 +307,8 @@ function tulisPinAktif(db: Database.Database, pin: PinAktif): void {
  *    yang dipakai);
  * 3. tutup koneksi, buang `-wal`/`-shm`, copy ke `.tmp`, rename (atomik);
  * 4. buka ulang + jalankan migrasi versi;
- * 5. tulis kembali PIN DB aktif (AUD-14) dalam transaksi agar PIN backup lama
- *    tidak mengunci user.
+ * 5. tulis kembali PIN + hash kode darurat DB aktif (AUD-14/AUD-19) dalam
+ *    transaksi agar kunci backup lama tidak mengganti kunci instalasi ini.
  *
  * Bila langkah mana pun gagal setelah DB ditutup, file lama dipulihkan dari
  * backup pra-restore dan koneksi dibuka kembali. Pemanggil WAJIB memakai
@@ -286,8 +318,9 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
   const validasi = validasiKandidatRestore(opsi.backupPath);
   if (!validasi.valid) return { ok: false, error: validasi.error, db };
 
-  // AUD-14: baca PIN sebelum koneksi aktif ditutup; backup boleh tidak punya PIN.
-  const pinAktif = bacaPinAktif(db);
+  // AUD-14/AUD-19: baca kunci instalasi aktif sebelum koneksi ditutup.
+  const pinAktif = bacaPasangan(db, KUNCI_PIN_SALT, KUNCI_PIN_HASH);
+  const resetAktif = bacaPasangan(db, KUNCI_RESET_SALT, KUNCI_RESET_HASH);
   const stamp = opsi.stamp ?? new Date().toISOString().replace(/[:.]/g, '-');
   const dirBackup = opsi.dirBackup ?? join(dirname(opsi.dbPath), 'backups');
   const preRestorePath =
@@ -316,7 +349,9 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
     // rename menimpa file yang sudah dihapus; aman di POSIX & Windows.
     renameSync(tmp, opsi.dbPath);
     dbBaru = openDb(opsi.dbPath);
-    if (pinAktif) tulisPinAktif(dbBaru, pinAktif);
+    // Selalu jalankan: bila instalasi aktif belum punya kode darurat, pasangan
+    // reset dari backup harus dibuang agar kode asing tidak menjadi berlaku.
+    tulisKunciAktif(dbBaru, pinAktif, resetAktif);
     return { ok: true, db: dbBaru, preRestorePath };
   } catch {
     try {

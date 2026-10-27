@@ -22,7 +22,14 @@ import { postingJurnal, postingSaldoAwal } from '../src/db/posting.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
 import { tutupBuku } from '../src/db/tutup.js';
 import { autoBackupHarian } from '../src/features/export/export.js';
-import { aturIdle, resetPaksa, setupPin, sesi, ubahPin } from '../src/main/kunci.js';
+import {
+  ambilKodeDaruratSekali,
+  aturIdle,
+  resetPaksa,
+  setupPin,
+  sesi,
+  ubahPin,
+} from '../src/main/kunci.js';
 import { buatAuditLog, jsonAuditAman } from '../src/core/audit.js';
 import type { Aset, AuditLog } from '../src/core/types.js';
 
@@ -418,15 +425,16 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
     try {
       sesi.terbuka = false;
       expect(setupPin(db, '123456')).toBeNull();
+      const kode = ambilKodeDaruratSekali()!;
       expect(ubahPin(db, '123456', '654321')).toBeNull();
       expect(aturIdle(db, 45)).toBeNull();
-      process.env.PURA_RESET_CODE = 'KODE-UJI-AUDIT';
-      expect(resetPaksa(db, 'KODE-UJI-AUDIT', '777777')).toBeNull();
+      expect(resetPaksa(db, kode, '777777')).toBeNull();
 
       const rows = listAuditLog(db).filter((a) => a.aksi.startsWith('PENGATURAN'));
       expect(rows.map((a) => a.aksi)).toEqual(
         expect.arrayContaining([
           'PENGATURAN-SETUP-PIN',
+          'PENGATURAN-KODE-DARURAT',
           'PENGATURAN-PIN',
           'PENGATURAN-IDLE',
           'PENGATURAN-RESET-PIN',
@@ -437,11 +445,20 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
       expect(JSON.parse(idle.data_baru_json)).toEqual({ idleMenit: 45 });
 
       const teksAudit = rows.map((a) => `${a.data_lama_json}${a.data_baru_json}`).join(' ');
-      for (const rahasia of ['123456', '654321', '777777', 'pin_hash', 'pin_salt']) {
+      for (const rahasia of [
+        '123456',
+        '654321',
+        '777777',
+        'pin_hash',
+        'pin_salt',
+        'reset_hash',
+        'reset_salt',
+        kode,
+        kode.replace(/-/g, ''),
+      ]) {
         expect(teksAudit).not.toContain(rahasia);
       }
     } finally {
-      delete process.env.PURA_RESET_CODE;
       db.close();
     }
   });

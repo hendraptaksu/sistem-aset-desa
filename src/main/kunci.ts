@@ -1,9 +1,10 @@
 // Kunci aplikasi (main process saja — butuh node:crypto).
 // Model: single laptop, PIN 6 digit. Hash scrypt + salt per-DB, sesi di memori
 // (selalu terkunci saat app dibuka). Brute-force dibatasi: 5x salah → blokir 60 dtk.
-// Reset lupa PIN pakai KODE DARURAT statis (ancaman = anak/iseng, bukan pencuri file).
+// Reset lupa PIN memakai kode darurat per-install (scrypt + salt). Kode hanya
+// ditampilkan sekali saat dibuat; database tidak pernah menyimpan plaintext.
 
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import {
   IDLE_DEFAULT_MENIT,
@@ -16,19 +17,55 @@ import {
   KUNCI_IDLE_MENIT,
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
+  KUNCI_RESET_HASH,
+  KUNCI_RESET_SALT,
   catatAudit,
   getIdleMenit,
   getPengaturan,
+  kodeDaruratDiatur,
   setPengaturan,
   sudahSetupPin,
 } from '../db/repository.js';
 
-// GANTI sebelum distribusi ke bendahara + simpan di dokumen fisik terpisah.
-// Bisa di-override tanpa ubah kode via env PURA_RESET_CODE (dev) — production
-// yang di-pack tetap memakai nilai ini.
-export const KODE_DARURAT_DEFAULT = 'PURI-DARURAT-1945';
-export function kodeDarurat(): string {
-  return process.env.PURA_RESET_CODE ?? KODE_DARURAT_DEFAULT;
+// --- Kode darurat per-install ---
+
+/** Alfabet tanpa 0/O/1/I/L agar kode mudah dibaca dari kertas. */
+const ALFABET_KODE_DARURAT = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const PANJANG_GRUP = 4;
+const JUMLAH_GRUP = 4;
+
+/** Kode 4 grup × 4 karakter, mis. `7K3M-P9QX-...` — acak kriptografis. */
+export function buatKodeDarurat(): string {
+  const grup: string[] = [];
+  for (let g = 0; g < JUMLAH_GRUP; g += 1) {
+    let isi = '';
+    for (let i = 0; i < PANJANG_GRUP; i += 1) {
+      isi += ALFABET_KODE_DARURAT[randomInt(ALFABET_KODE_DARURAT.length)];
+    }
+    grup.push(isi);
+  }
+  return grup.join('-');
+}
+
+/** Bentuk kanonik untuk hashing/verifikasi: huruf besar, tanpa spasi/tanda hubung. */
+export function normalkanKodeDarurat(kode: string): string {
+  return String(kode ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * Kode baru yang belum sempat ditampilkan ke UI. Hanya di memori proses dan
+ * diambil sekali; tidak pernah dibaca ulang dari database.
+ */
+let kodeDaruratSekali: string | null = null;
+
+/** Ambil kode yang baru dibuat (sekali saja). Panggilan berikutnya `null`. */
+export function ambilKodeDaruratSekali(): string | null {
+  const kode = kodeDaruratSekali;
+  kodeDaruratSekali = null;
+  return kode;
 }
 
 // --- Hash ---
@@ -120,6 +157,7 @@ export function statusKunci(db: Database.Database): {
   idleMenit: number;
   gagal: number;
   blokirDetik: number;
+  kodeDaruratDiatur: boolean;
 } {
   return {
     sudahSetup: sudahSetupPin(db),
@@ -127,6 +165,7 @@ export function statusKunci(db: Database.Database): {
     idleMenit: getIdleMenit(db, IDLE_DEFAULT_MENIT),
     gagal: sesi.gagal,
     blokirDetik: sisaBlokirDetik(),
+    kodeDaruratDiatur: kodeDaruratDiatur(db),
   };
 }
 
@@ -151,7 +190,14 @@ function simpanPin(db: Database.Database, pin: string): void {
   setPengaturan(db, KUNCI_PIN_HASH, hashPin(pin, salt));
 }
 
-/** Audit PIN tidak pernah menyimpan PIN/salt/hash — cukup penanda tindakan. */
+/** Simpan hash kode darurat; plaintext hanya hidup di memori sampai ditampilkan. */
+function simpanKodeDarurat(db: Database.Database, kode: string): void {
+  const salt = buatSalt();
+  setPengaturan(db, KUNCI_RESET_SALT, salt);
+  setPengaturan(db, KUNCI_RESET_HASH, hashPin(normalkanKodeDarurat(kode), salt));
+}
+
+/** Audit PIN/kode tidak pernah menyimpan PIN, kode, salt, atau hash. */
 function catatAuditPin(
   db: Database.Database,
   aksi: string,
@@ -165,20 +211,61 @@ function catatAuditPin(
   });
 }
 
+function catatAuditKodeDarurat(
+  db: Database.Database,
+  aksi: string,
+  alasan: string,
+  label = 'Kode darurat dibuat',
+): void {
+  catatAudit(db, {
+    aksi,
+    alasan,
+    baru: { kodeDarurat: label },
+  });
+}
+
 export function setupPin(db: Database.Database, pin: string): string | null {
   if (sudahSetupPin(db)) return 'PIN sudah ada. Pakai menu Ganti PIN di Pengaturan.';
   const v = validasiPin(pin);
   if (v) return v;
+  kodeDaruratSekali = null;
+  const kode = buatKodeDarurat();
   const tx = db.transaction(() => {
     simpanPin(db, pin);
+    simpanKodeDarurat(db, kode);
     catatAuditPin(db, 'PENGATURAN-SETUP-PIN', 'PIN dibuat', 'PIN dibuat');
+    catatAuditKodeDarurat(
+      db,
+      'PENGATURAN-KODE-DARURAT',
+      'Kode darurat dibuat saat setup PIN',
+    );
   });
   tx();
+  kodeDaruratSekali = kode;
   sesi.terbuka = true;
   sesi.gagal = 0;
   sesi.blokirSampai = 0;
   sentuhAktivitas();
   return null;
+}
+
+/**
+ * Buat/ganti kode darurat. Hash baru langsung berlaku dan kode lama tidak bisa
+ * dipakai lagi. Mengembalikan plaintext HANYA untuk ditampilkan sekali oleh UI.
+ */
+export function gantiKodeDarurat(db: Database.Database): string {
+  const kode = buatKodeDarurat();
+  const tx = db.transaction(() => {
+    simpanKodeDarurat(db, kode);
+    catatAuditKodeDarurat(
+      db,
+      'PENGATURAN-KODE-DARURAT',
+      'Kode darurat diganti dari Pengaturan',
+      'Kode darurat diganti',
+    );
+  });
+  tx();
+  return kode;
 }
 
 export function bukaKunci(db: Database.Database, pin: string): string | null {
@@ -234,7 +321,14 @@ export function aturIdle(db: Database.Database, menit: number): string | null {
 }
 
 export function resetPaksa(db: Database.Database, kode: string, pinBaru: string): string | null {
-  if (kode.trim() !== kodeDarurat()) return 'Kode darurat salah.';
+  const salt = getPengaturan(db, KUNCI_RESET_SALT);
+  const hash = getPengaturan(db, KUNCI_RESET_HASH);
+  if (!salt || !hash) {
+    return 'Kode darurat belum diatur untuk instalasi ini. Buka Pengaturan (dengan PIN terbuka), lalu pilih Atur kode darurat.';
+  }
+  if (!verifikasiHash(normalkanKodeDarurat(kode), salt, hash)) {
+    return 'Kode darurat salah.';
+  }
   const v = validasiPin(pinBaru);
   if (v) return v;
   const tx = db.transaction(() => {

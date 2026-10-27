@@ -148,8 +148,10 @@ import {
   type AsetInput,
 } from './validation.js';
 import {
+  ambilKodeDaruratSekali,
   aturIdle,
   bukaKunci,
+  gantiKodeDarurat,
   kunciLagi,
   resetPaksa,
   sentuhAktivitas,
@@ -332,7 +334,9 @@ export function registerIpc(deps: IpcDeps): void {
   daftarkan('lock:status', () => ok(statusKunci(deps.db())));
   daftarkan('lock:setup', (_e, pin: string) => {
     const err = setupPin(deps.db(), String(pin ?? ''));
-    return err ? fail(err) : ok({ terbuka: true });
+    if (err) return fail(err);
+    // AUD-19: plaintext hanya ada di memori dan hanya ikut respons ini sekali.
+    return ok({ terbuka: true, kodeDarurat: ambilKodeDaruratSekali() });
   });
   daftarkan('lock:unlock', (_e, pin: string) => {
     const err = bukaKunci(deps.db(), String(pin ?? ''));
@@ -353,6 +357,11 @@ export function registerIpc(deps: IpcDeps): void {
     if (k) return fail(k);
     const err = aturIdle(deps.db(), Number(menit));
     return err ? fail(err) : ok({ idleMenit: Number(menit) });
+  });
+  daftarkan('lock:reset-code', () => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    return ok({ kodeDarurat: gantiKodeDarurat(deps.db()) });
   });
   daftarkan('lock:reset', (_e, kode: string, pinBaru: string) => {
     const err = resetPaksa(deps.db(), String(kode ?? ''), String(pinBaru ?? ''));

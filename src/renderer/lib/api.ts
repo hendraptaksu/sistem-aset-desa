@@ -267,15 +267,20 @@ export type LockStatus = {
   idleMenit: number;
   gagal: number;
   blokirDetik: number;
+  kodeDaruratDiatur: boolean;
 };
 
 export const api = {
   lockStatus: () => call<LockStatus>('lock:status'),
-  lockSetup: (pin: string) => call<{ terbuka: boolean }>('lock:setup', pin),
+  /** Respons setup memuat kode darurat plaintext sekali (tidak pernah dibaca dari DB). */
+  lockSetup: (pin: string) =>
+    call<{ terbuka: boolean; kodeDarurat?: string | null }>('lock:setup', pin),
   lockUnlock: (pin: string) => call<{ terbuka: boolean }>('lock:unlock', pin),
   lockLock: () => call<{ terkunci: boolean }>('lock:lock'),
   lockChange: (lama: string, baru: string) => call<{ diubah: boolean }>('lock:change', lama, baru),
   lockIdleSet: (menit: number) => call<{ idleMenit: number }>('lock:idle-set', menit),
+  /** Rotasi kode darurat; plaintext hanya dikembalikan sekali untuk modal. */
+  lockResetKode: () => call<{ kodeDarurat: string }>('lock:reset-code'),
   lockReset: (kode: string, pinBaru: string) =>
     call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
   /** Pengaturan pembukuan (P1-13); hanya bisa dibaca saat PIN terbuka. */

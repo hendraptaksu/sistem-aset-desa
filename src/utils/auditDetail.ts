@@ -265,6 +265,7 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('LAMPIRAN-HAPUS')) return 'Hapus lampiran';
   if (a.startsWith('PENGATURAN-SETUP-PIN')) return 'Buat PIN';
   if (a.startsWith('PENGATURAN-RESET-PIN')) return 'Reset PIN (kode darurat)';
+  if (a.startsWith('PENGATURAN-KODE-DARURAT')) return 'Atur/ganti kode darurat';
   if (a.startsWith('PENGATURAN-PIN')) return 'Ganti PIN';
   if (a.startsWith('PENGATURAN-IDLE')) return 'Ubah auto-kunci';
   if (a.startsWith('PENGATURAN-PEMBUKUAN')) return 'Ubah pengaturan pembukuan';
@@ -273,6 +274,9 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('BACKUP-EXPORT')) return 'Backup manual';
   if (a.startsWith('BACKUP-AUTO')) return 'Backup otomatis';
   if (a.startsWith('BACKUP')) return 'Backup database';
+  if (a.startsWith('RESTORE-KODE-DARURAT-DIPERTAHANKAN')) {
+    return 'Restore database (kode darurat dipertahankan)';
+  }
   if (a.startsWith('RESTORE-PIN-DIPERTAHANKAN')) {
     return 'Restore database (PIN dipertahankan)';
   }

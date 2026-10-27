@@ -12,9 +12,9 @@ angka turunan yang disimpan mati.
 
 > **Status: POC / pra-produksi.** Aplikasi sudah dipakai untuk pengujian dan
 > hardening, tetapi **belum dinyatakan production-ready**. Jangan jadikan satu-
-> satunya salinan catatan keuangan nyata. Sebelum produksi, selesaikan minimal
-> AUD-19 (kode darurat per-install), uji backup/restore di mesin target, dan
-> amankan file data di level sistem operasi. Lihat
+> satunya salinan catatan keuangan nyata. Sebelum produksi, selesaikan AUD-01
+> (repo/akun/kode instalasi nyata — manual pemilik), uji backup/restore di mesin
+> target, dan amankan file data di level sistem operasi. Lihat
 > `docs/tickets-audit-2026-10-23.md`.
 
 > **PIN bukan enkripsi.** PIN 6 digit adalah kunci akses aplikasi (hash scrypt +
@@ -147,9 +147,12 @@ Rincian ada di `docs/panduan-portable.md`.
 
 - **PIN = kunci akses, bukan enkripsi.** Hash PIN disimpan di database; isi
   database tetap teks/SQLite biasa. PIN tidak melindungi file yang dicuri.
-- **Kode darurat default hanya untuk dev/test.** Build yang dipakai di instalasi
-  nyata belum boleh memakai kode default; mekanisme kode per-install (hash,
-  tampil sekali) masih menunggu AUD-19.
+- **Kode darurat dibuat per-install.** Saat setup PIN pertama, aplikasi membuat
+  kode acak 4 grup, menyimpan hash+salt scrypt, dan menampilkan kode itu **sekali**
+  untuk dicatat di dokumen fisik. Tidak ada kode default/global atau override
+  env. Kode dapat diganti di **Pengaturan → Kode Darurat**; kode lama langsung
+  tidak berlaku. Instalasi lama tanpa hash ditolak dengan pesan untuk mengatur
+  kode terlebih dahulu.
 - Satu instalasi = satu laptop, satu PIN, tanpa multi-user.
 - Aplikasi tidak mengirim data ke internet. Pembaruan aplikasi dilakukan manual.
 

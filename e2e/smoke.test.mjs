@@ -93,10 +93,38 @@ test(
       await page.getByLabel('Ulangi PIN').fill('123456');
       await page.getByRole('button', { name: 'Simpan PIN' }).click();
 
+      // AUD-19: kode darurat per-install tampil sekali dan wajib dicatat.
+      await page
+        .getByRole('heading', { name: 'Simpan kode darurat ini' })
+        .waitFor({ timeout: 15_000 });
+      const kodeDarurat = (await page.getByTestId('kode-darurat').textContent())?.trim() ?? '';
+      assert.match(
+        kodeDarurat,
+        /^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/,
+      );
+      await page.screenshot({
+        path: join(artifacts, '02-kode-darurat.png'),
+        fullPage: true,
+      });
+      await page.getByRole('button', { name: 'Saya sudah mencatat' }).click();
+
       await page.getByText('Dashboard Akuntan').waitFor({ timeout: 15_000 });
       await page.getByText('Seimbang').first().waitFor({ timeout: 15_000 });
       await page.screenshot({
-        path: join(artifacts, '02-dashboard.png'),
+        path: join(artifacts, '03-dashboard.png'),
+        fullPage: true,
+      });
+
+      // Smoke reset: kunci → Lupa PIN → kode darurat per-install → PIN baru.
+      await page.getByRole('button', { name: 'Kunci aplikasi' }).click();
+      await page.getByRole('button', { name: 'Lupa PIN?' }).click();
+      await page.getByLabel('Kode darurat').fill(kodeDarurat);
+      await page.getByLabel('PIN baru 6 digit').fill('654321');
+      await page.getByLabel('Ulangi PIN baru').fill('654321');
+      await page.getByRole('button', { name: 'Reset PIN' }).click();
+      await page.getByText('Dashboard Akuntan').waitFor({ timeout: 15_000 });
+      await page.screenshot({
+        path: join(artifacts, '04-setelah-reset.png'),
         fullPage: true,
       });
 

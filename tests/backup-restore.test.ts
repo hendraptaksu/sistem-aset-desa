@@ -18,6 +18,8 @@ import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
+  KUNCI_RESET_HASH,
+  KUNCI_RESET_SALT,
   getPengaturan,
   insertJurnal,
   listAuditLog,
@@ -39,7 +41,13 @@ import {
   restoreLengkap,
   validasiBackupLengkap,
 } from '../src/features/export/restoreLengkap.js';
-import { bukaKunci, kunciLagi, sesi, setupPin } from '../src/main/kunci.js';
+import {
+  ambilKodeDaruratSekali,
+  bukaKunci,
+  kunciLagi,
+  sesi,
+  setupPin,
+} from '../src/main/kunci.js';
 
 // AUD-15: kontrol test untuk menggagalkan rename tmp -> dest. AUD-12:
 // `gagalSalinLampiran` menggagalkan copy lampiran di tengah restore. Semua
@@ -573,6 +581,8 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
       expect(setupPin(aktif, '111111')).toBeNull();
       const saltAktif = getPengaturan(aktif, KUNCI_PIN_SALT);
       const hashAktif = getPengaturan(aktif, KUNCI_PIN_HASH);
+      const resetSaltAktif = getPengaturan(aktif, KUNCI_RESET_SALT);
+      const resetHashAktif = getPengaturan(aktif, KUNCI_RESET_HASH);
       insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
 
       sumber = openDb(sumberPath);
@@ -594,10 +604,12 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
       expect(hasil.ok).toBe(true);
       if (!hasil.ok) throw new Error(hasil.error);
 
-      // Data memang berganti, tetapi PIN aktif dipertahankan persis.
+      // Data memang berganti, tetapi PIN + kode darurat aktif dipertahankan persis.
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['baru']);
       expect(getPengaturan(aktif, KUNCI_PIN_SALT)).toBe(saltAktif);
       expect(getPengaturan(aktif, KUNCI_PIN_HASH)).toBe(hashAktif);
+      expect(getPengaturan(aktif, KUNCI_RESET_SALT)).toBe(resetSaltAktif);
+      expect(getPengaturan(aktif, KUNCI_RESET_HASH)).toBe(resetHashAktif);
 
       expect(bukaKunci(aktif, '111111')).toBeNull();
       kunciLagi();
@@ -611,6 +623,15 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
       // Audit tidak boleh memuat salt/hash (apalagi PIN plaintext).
       expect(JSON.stringify(audit[0])).not.toContain(hashAktif!);
       expect(JSON.stringify(audit[0])).not.toContain(saltAktif!);
+
+      const auditReset = listAuditLog(aktif).filter(
+        (a) => a.aksi === 'RESTORE-KODE-DARURAT-DIPERTAHANKAN',
+      );
+      expect(auditReset).toHaveLength(1);
+      expect(JSON.parse(auditReset[0]!.data_baru_json)).toEqual({
+        kodeDarurat: 'Kode darurat dipertahankan',
+      });
+      expect(JSON.stringify(auditReset[0])).not.toContain(resetHashAktif!);
     } finally {
       sumber?.close();
       aktif?.close();
@@ -652,6 +673,52 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
       expect(sudahSetupPin(aktif)).toBe(true);
       expect(getPengaturan(aktif, KUNCI_PIN_SALT)).toBe(saltAktif);
       expect(getPengaturan(aktif, KUNCI_PIN_HASH)).toBe(hashAktif);
+      expect(bukaKunci(aktif, '111111')).toBeNull();
+    } finally {
+      sumber?.close();
+      aktif?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('instalasi aktif lama tanpa kode darurat tidak mewarisi hash dari backup', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud19-restore-'));
+    let aktif: Database.Database | null = null;
+    let sumber: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      const sumberPath = join(dir, 'sumber.db');
+      aktif = openDb(aktifPath);
+      expect(setupPin(aktif, '111111')).toBeNull();
+      ambilKodeDaruratSekali();
+      // Simulasikan instalasi lama: PIN ada, kode darurat belum diatur.
+      aktif.prepare('DELETE FROM pengaturan WHERE kunci IN (?, ?)').run(
+        KUNCI_RESET_SALT,
+        KUNCI_RESET_HASH,
+      );
+
+      sumber = openDb(sumberPath);
+      expect(setupPin(sumber, '222222')).toBeNull();
+      ambilKodeDaruratSekali();
+      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      const kandidat = join(dir, 'kandidat.db');
+      backupVacuumInto(sumber, kandidat);
+      sumber.close();
+      sumber = null;
+
+      kunciLagi();
+      const hasil = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidat,
+        dirBackup: join(dir, 'backups'),
+        stamp: 'aud19-restore',
+      });
+      aktif = hasil.db;
+      expect(hasil.ok).toBe(true);
+      if (!hasil.ok) throw new Error(hasil.error);
+
+      expect(getPengaturan(aktif, KUNCI_RESET_SALT)).toBeNull();
+      expect(getPengaturan(aktif, KUNCI_RESET_HASH)).toBeNull();
       expect(bukaKunci(aktif, '111111')).toBeNull();
     } finally {
       sumber?.close();
