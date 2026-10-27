@@ -560,7 +560,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
 
 ## Fase 1 — Konsistensi akuntansi
 
-- [ ] **AUD-20 — Kunci `awalTahunBuku` ke Januari sampai fiskal didukung** · P1 · S
+- [x] **AUD-20 — Kunci `awalTahunBuku` ke Januari sampai fiskal didukung** · P1 · S (2026-10-27: `validasiPengaturan` hanya menerima Januari/1 dengan pesan “Tahun buku fiskal belum didukung”; field Pengaturan dikunci “Januari (tahun kalender)” tanpa pilihan 1–12, peringatan amber untuk data lama (mis. bulan 7) meminta simpan ulang tanpa mengubah DB otomatis; panduan pemeriksaan §5 diperbarui; typecheck/test/build hijau, 515 test total + 4 test; smoke in-memory DB lama 7 → peringatan, simpan 7 ditolak & DB tetap 7, simpan 1 diterima)
   - **Konteks:** Setting menerima bulan 1–12, tetapi `neraca()` dan
     `tutupBuku()` memakai tahun kalender; Dashboard/Anggaran memakai setting.
     Ini menghasilkan angka yang saling bertentangan.

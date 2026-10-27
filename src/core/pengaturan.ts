@@ -14,7 +14,10 @@ export type PengaturanPembukuan = {
   kopTambahan: string;
   /** Tanggal mulai pembukuan YYYY-MM-DD; kosong = belum diisi. */
   tanggalMulaiPembukuan: string;
-  /** Bulan awal tahun buku (1–12). */
+  /**
+   * Bulan awal tahun buku. Sampai tahun buku fiskal didukung penuh, nilai
+   * yang sah hanya Januari (1) — lihat AUD-20.
+   */
   awalTahunBuku: number;
   /** Prefix nomor bukti, 1–8 huruf kapital/angka. */
   prefixNomorBukti: string;
@@ -40,6 +43,33 @@ export const DEFAULT_PENGATURAN: PengaturanPembukuan = {
 export const MAKS_NAMA_ENTITAS = 120;
 export const MAKS_KOP_TAMBAHAN = 160;
 export const MAKS_BARIS_KOP = 2;
+
+/** Satu-satunya awal tahun buku yang didukung sampai fiskal penuh (AUD-20). */
+export const AWAL_TAHUN_BUKU_DIDUKUNG = 1;
+
+export const PESAN_AWAL_TAHUN_BUKU_FISKAL =
+  'Tahun buku fiskal belum didukung. Awal tahun buku harus Januari (bulan 1, tahun kalender).';
+
+/**
+ * Peringatan untuk data lama yang masih menyimpan awal tahun buku selain
+ * Januari (mis. 7). Tidak pernah mengubah data; UI meminta pengguna menyimpan
+ * ulang ke Januari secara sadar.
+ */
+export function peringatanAwalTahunBukuLama(
+  awalTahunBuku: number,
+): string | null {
+  if (awalTahunBuku === AWAL_TAHUN_BUKU_DIDUKUNG) return null;
+  const nilai =
+    Number.isInteger(awalTahunBuku) && awalTahunBuku >= 1 && awalTahunBuku <= 12
+      ? `bulan ${awalTahunBuku}`
+      : `nilai ${String(awalTahunBuku)}`;
+  return (
+    `Data lama masih memakai awal tahun buku ${nilai}. Tahun buku fiskal belum ` +
+    'didukung dan semua laporan memakai Januari–Desember. Periksa Pengaturan, ' +
+    'lalu tekan Simpan Pengaturan Pembukuan untuk mengubahnya ke Januari ' +
+    '(tahun kalender). Data tersimpan tidak diubah otomatis.'
+  );
+}
 
 function objek(nilai: unknown): nilai is Record<string, unknown> {
   return typeof nilai === 'object' && nilai !== null && !Array.isArray(nilai);
@@ -159,12 +189,8 @@ export function validasiPengaturan(input: unknown): string[] {
     );
   }
 
-  if (
-    !Number.isInteger(p.awalTahunBuku) ||
-    p.awalTahunBuku < 1 ||
-    p.awalTahunBuku > 12
-  ) {
-    errors.push('Awal tahun buku harus bulan 1–12.');
+  if (p.awalTahunBuku !== AWAL_TAHUN_BUKU_DIDUKUNG) {
+    errors.push(PESAN_AWAL_TAHUN_BUKU_FISKAL);
   }
 
   if (!/^[A-Z0-9]{1,8}$/.test(p.prefixNomorBukti)) {

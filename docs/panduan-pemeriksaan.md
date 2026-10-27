@@ -114,8 +114,9 @@ Yang diperiksa:
 
 ## 5. Laba Rugi
 
-Buka **Laba Rugi**, pilih periode (mengikuti tahun buku yang diatur di
-**Pengaturan**).
+Buka **Laba Rugi**, pilih periode. Awal tahun buku dikunci ke **Januari (tahun
+kalender)**; tahun buku fiskal (mis. mulai Juli) **belum didukung**. Karena itu
+semua laporan memakai rentang Januari–Desember, bukan tahun fiskal.
 
 - **Pendapatan** = total kredit akun pendapatan (posisi normal kredit).
 - **Beban** = total debit akun beban (posisi normal debit).
@@ -124,6 +125,11 @@ Buka **Laba Rugi**, pilih periode (mengikuti tahun buku yang diatur di
 - Cocokkan total pendapatan/beban dengan Buku Besar akun terkait.
 - Bila ada pendapatan/beban yang seharusnya masuk tahun lain, periksa tanggal
   jurnal — bukan mengubah angka laporan.
+- Bila **Pengaturan** menampilkan peringatan bahwa data lama masih memakai awal
+  tahun buku selain Januari (mis. bulan 7), jangan mengubah data secara manual.
+  Buka Pengaturan, pastikan field **Awal tahun buku** menunjukkan
+  “Januari (tahun kalender)”, lalu tekan **Simpan Pengaturan Pembukuan**.
+  Aplikasi tidak mengubah setting lama secara otomatis.
 
 Catatan: laporan ini **tidak** memakai angka tersimpan. Koreksi jurnal setelah
 periode berjalan langsung mengubah Laba Rugi saat dibuka ulang.
