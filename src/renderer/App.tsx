@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import {
   ArrowLeftRight,
@@ -77,6 +77,10 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
 
 export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
+  // UI-01: main adalah satu-satunya area scroll; posisi direset setelah tab
+  // berganti (bukan saat modal/detail dibuka-tutup atau tab yang sama diklik).
+  const mainRef = useRef<HTMLElement | null>(null);
+  const tabRef = useRef<TabId>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
   // AUD-19: plaintext kode darurat hanya hidup di state ini sampai modal ditutup.
@@ -89,12 +93,23 @@ export function App() {
   const [jenisTransaksiAwal, setJenisTransaksiAwal] =
     useState<DashboardFormTransaksi>('TERIMA');
 
+  const pindahTab = useCallback((id: TabId) => {
+    if (tabRef.current === id) return;
+    tabRef.current = id;
+    setTab(id);
+    // Setelah commit React, gulir area konten kembali ke atas. rAF dipakai agar
+    // tidak memaksa window.scrollTo dan tidak berkedip saat render tab baru.
+    requestAnimationFrame(() => {
+      if (mainRef.current) mainRef.current.scrollTop = 0;
+    });
+  }, []);
+
   const bukaDariDashboard = useCallback(
     (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => {
       if (form) setJenisTransaksiAwal(form);
-      setTab(tab);
+      pindahTab(tab);
     },
-    [],
+    [pindahTab],
   );
 
   const refreshLock = useCallback(async () => {
@@ -190,19 +205,23 @@ export function App() {
       clearTimeout(timer);
       timer = setTimeout(() => {
         void api.lockLock().finally(() => {
-          setTab('dashboard');
+          pindahTab('dashboard');
           void refreshLock();
         });
       }, lock.idleMenit * 60_000);
     };
-    const acara = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'] as const;
+    const acara = ['mousemove', 'keydown', 'mousedown', 'touchstart'] as const;
     mulai();
     for (const a of acara) window.addEventListener(a, mulai, { passive: true });
+    // Sejak UI-01 konten digulir di dalam `main`; scroll tidak bubble ke window,
+    // jadi tangkap di fase capture agar menggulir tetap dihitung sebagai aktivitas.
+    window.addEventListener('scroll', mulai, { passive: true, capture: true });
     return () => {
       clearTimeout(timer);
       for (const a of acara) window.removeEventListener(a, mulai);
+      window.removeEventListener('scroll', mulai, true);
     };
-  }, [lock?.terbuka, lock?.sudahSetup, lock?.idleMenit, refreshLock]);
+  }, [lock?.terbuka, lock?.sudahSetup, lock?.idleMenit, refreshLock, pindahTab]);
 
   if (!lock) {
     return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;
@@ -216,10 +235,10 @@ export function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-stone-50 text-stone-900">
+    <div className="flex h-screen overflow-hidden bg-stone-50 text-stone-900">
       <aside
         className={clsx(
-          'sticky top-0 flex h-screen shrink-0 flex-col bg-emerald-950 text-white transition-all',
+          'flex h-screen shrink-0 flex-col bg-emerald-950 text-white transition-all',
           collapsed ? 'w-16' : 'w-60',
         )}
       >
@@ -240,7 +259,7 @@ export function App() {
           {TABS.map(({ id, label, Icon }) => (
             <button
               key={id}
-              onClick={() => setTab(id)}
+              onClick={() => pindahTab(id)}
               title={collapsed ? label : undefined}
               aria-label={label}
               aria-current={tab === id ? 'page' : undefined}
@@ -256,8 +275,12 @@ export function App() {
           ))}
         </nav>
       </aside>
-      <main className="min-h-screen min-w-0 flex-1 overflow-y-auto">
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-6 py-3">
+      <main
+        ref={mainRef}
+        data-testid="app-scroll"
+        className="min-w-0 flex-1 overflow-y-auto"
+      >
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-6 py-3 shadow-sm">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-stone-700">Keuangan Pura Dalem Puri</p>
             <p className="truncate text-xs text-stone-500">Sesi PIN terbuka</p>
@@ -287,7 +310,7 @@ export function App() {
         ) : (
           <div className="px-6 py-6">
             {tab === 'transaksi' && (
-              <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={setTab} />
+              <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={pindahTab} />
             )}
             {tab === 'akun' && <AkunTab />}
             {tab === 'jurnal' && <JurnalTab />}
@@ -296,7 +319,7 @@ export function App() {
               <NeracaSaldoTab
                 onBukaBukuBesar={(kode) => {
                   setAkunBukuBesar(kode);
-                  setTab('buku-besar');
+                  pindahTab('buku-besar');
                 }}
               />
             )}
@@ -312,7 +335,7 @@ export function App() {
               <NeracaTab
                 onBukaBukuBesar={(kode) => {
                   setAkunBukuBesar(kode);
-                  setTab('buku-besar');
+                  pindahTab('buku-besar');
                 }}
               />
             )}

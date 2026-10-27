@@ -105,7 +105,7 @@
   - **Verifikasi:** buka `docs/audit-ui-2026-10-27.md`.
   - **Dependency:** —
 
-- [ ] **UI-01 — Shell scroll: header sticky + reset posisi antar tab** · P0 · M
+- [x] **UI-01 — Shell scroll: header sticky + reset posisi antar tab** · P0 · M (2026-10-27: shell setinggi layar, main satu-satunya area scroll, header sticky tetap di top 0 dan tab baru mulai dari scroll 0 + 592 test)
   - **Konteks:** `main` memakai `min-h-screen overflow-y-auto`, tetapi halaman
     sebenarnya digulir oleh dokumen. Header `sticky top-0` berada di dalam
     `main` sehingga ikut hilang (terukur `top = -650` saat scroll 650).
