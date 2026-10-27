@@ -20,6 +20,8 @@ import {
   labaTahun,
   neraca,
   neracaSaldo,
+  neracaSaldoPeriode,
+  NAMA_LABA_DITAHAN_SEBELUM_PERIODE,
   saldoAkun,
   saldoSemuaKas,
   totalKas,
@@ -237,6 +239,122 @@ describe('P0-5 — Neraca Saldo', () => {
     expect(berisi.rows.some((r) => r.kode === '1040')).toBe(false);
     expect(berisi.totalDebit).toBe(semua.totalDebit);
     expect(berisi.totalKredit).toBe(semua.totalKredit);
+  });
+});
+
+describe('AUD-21a — Neraca Saldo per tahun buku', () => {
+  const P = { mulai: '2026-01-01', sampai: '2026-12-31' } as const;
+
+  it('2026 hanya memuat P&L 2026; laba 2025 masuk baris laba ditahan', () => {
+    const ns = neracaSaldoPeriode(BARIS, P);
+
+    // P&L 2026 saja: pendapatan 700rb; beban 1jt (800rb + 200rb).
+    expect(ns.rows.find((r) => r.kode === '4005')?.saldo).toBe(RP(700_000));
+    expect(ns.rows.find((r) => r.kode === '5003')?.saldo).toBe(RP(800_000));
+    expect(ns.rows.find((r) => r.kode === '5010')?.saldo).toBe(RP(200_000));
+    // Beban 2025 (5004 2jt) tidak boleh muncul lagi.
+    expect(ns.rows.find((r) => r.kode === '5004')?.saldo).toBe(0);
+    expect(ns.totalPendapatan).toBe(RP(700_000));
+    expect(ns.totalBeban).toBe(RP(1_000_000));
+    expect(ns.labaPeriode).toBe(RP(-300_000));
+
+    // Laba 2025 defisit 1,5jt → baris sintetis di sisi debit.
+    expect(ns.labaDitahanSebelumPeriode).toBe(RP(-1_500_000));
+    const sintetis = ns.rows.find((r) => r.sintetis);
+    expect(sintetis).toMatchObject({
+      kode: '',
+      nama: NAMA_LABA_DITAHAN_SEBELUM_PERIODE,
+      tipe: 'EKUITAS',
+      posisi_normal: 'KREDIT',
+      saldo: RP(-1_500_000),
+      debit: RP(1_500_000),
+      kredit: 0,
+    });
+
+    // Manual: aset 12,5jt + beban 1jt + defisit ditahan 1,5jt = 15jt.
+    // Kredit: kewajiban 4,3jt + modal 10jt + pendapatan 700rb = 15jt.
+    expect(ns.totalDebit).toBe(RP(15_000_000));
+    expect(ns.totalKredit).toBe(RP(15_000_000));
+    expect(ns.selisih).toBe(0);
+    expect(ns.seimbang).toBe(true);
+  });
+
+  it('saldo akun neraca cocok dengan neraca() dan laba ditahan/berjalan', () => {
+    const ns = neracaSaldoPeriode(BARIS, P);
+    const n = neraca(BARIS, { cutoff: '2026-12-31', tutup: [{ tahun: 2025 }] });
+    const saldoNeraca = (kode: string): number | undefined => {
+      const saldo = [...n.aset, ...n.kewajiban, ...n.ekuitas].find((r) => r.kode === kode)?.saldo;
+      // neraca() lama bisa menghasilkan -0 untuk akun kredit normal tanpa mutasi.
+      return saldo === 0 ? 0 : saldo;
+    };
+
+    for (const r of ns.rows) {
+      if (r.sintetis || r.tipe === 'PENDAPATAN' || r.tipe === 'BEBAN') continue;
+      expect(r.saldo, `akun ${r.kode}`).toBe(saldoNeraca(r.kode));
+    }
+    expect(ns.rows.find((r) => r.kode === '1001')?.saldo).toBe(RP(3_500_000));
+    expect(ns.rows.find((r) => r.kode === '1029')?.saldo).toBe(RP(4_000_000));
+    expect(ns.rows.find((r) => r.kode === '2050')?.saldo).toBe(RP(4_300_000));
+    expect(ns.rows.find((r) => r.kode === '3000')?.saldo).toBe(RP(10_000_000));
+
+    expect(ns.labaDitahanSebelumPeriode).toBe(n.labaDitahan);
+    expect(ns.labaPeriode).toBe(n.labaBerjalan);
+    expect(n.totalEkuitasAkun + ns.labaDitahanSebelumPeriode + ns.labaPeriode).toBe(
+      n.totalEkuitas,
+    );
+  });
+
+  it('2025: seluruh P&L 2025 masuk periode, tanpa baris laba ditahan', () => {
+    const ns = neracaSaldoPeriode(BARIS, { mulai: '2025-01-01', sampai: '2025-12-31' });
+    expect(ns.labaDitahanSebelumPeriode).toBe(0);
+    expect(ns.rows.some((r) => r.sintetis)).toBe(false);
+    expect(ns.rows.find((r) => r.kode === '4005')?.saldo).toBe(RP(5_000_000));
+    expect(ns.rows.find((r) => r.kode === '5004')?.saldo).toBe(RP(2_000_000));
+    expect(ns.rows.find((r) => r.kode === '5003')?.saldo).toBe(RP(4_500_000));
+    expect(ns.labaPeriode).toBe(RP(-1_500_000));
+
+    // Manual: aset 10,5jt + beban 6,5jt = 17jt;
+    // kewajiban 2jt + modal 10jt + pendapatan 5jt = 17jt.
+    expect(ns.totalDebit).toBe(RP(17_000_000));
+    expect(ns.totalKredit).toBe(RP(17_000_000));
+    expect(ns.seimbang).toBe(true);
+
+    const n = neraca(BARIS, { cutoff: '2025-12-31', tutup: [] });
+    expect(ns.rows.find((r) => r.kode === '1001')?.saldo).toBe(n.aset[0]?.saldo);
+    expect(ns.rows.find((r) => r.kode === '2050')?.saldo).toBe(n.kewajiban[0]?.saldo);
+    expect(ns.rows.find((r) => r.kode === '3000')?.saldo).toBe(n.ekuitas[0]?.saldo);
+    expect(ns.labaPeriode).toBe(n.labaBerjalan);
+  });
+
+  it('hanyaAdaSaldo menjaga total; data kosong aman dan tanpa baris sintetis', () => {
+    const penuh = neracaSaldoPeriode(BARIS, P);
+    const berisi = neracaSaldoPeriode(BARIS, { ...P, hanyaAdaSaldo: true });
+    expect(berisi.rows.length).toBeLessThan(penuh.rows.length);
+    expect(berisi.rows.some((r) => r.kode === '1040')).toBe(false);
+    expect(berisi.rows.some((r) => r.sintetis)).toBe(true);
+    expect(berisi.totalDebit).toBe(penuh.totalDebit);
+    expect(berisi.totalKredit).toBe(penuh.totalKredit);
+
+    const kosong = neracaSaldoPeriode([], P);
+    expect(kosong.totalDebit).toBe(0);
+    expect(kosong.totalKredit).toBe(0);
+    expect(kosong.selisih).toBe(0);
+    expect(kosong.seimbang).toBe(true);
+    expect(kosong.labaDitahanSebelumPeriode).toBe(0);
+    expect(kosong.labaPeriode).toBe(0);
+    expect(kosong.rows.some((r) => r.sintetis)).toBe(false);
+  });
+
+  it('menolak rentang terbalik dan akun di luar COA', () => {
+    expect(() =>
+      neracaSaldoPeriode([], { mulai: '2026-12-31', sampai: '2026-01-01' }),
+    ).toThrow(/Rentang periode tidak valid/);
+    expect(() =>
+      neracaSaldoPeriode(
+        [{ tanggal: '2026-01-01', akun_kode: '9999', debit: 100, kredit: 0 }],
+        P,
+      ),
+    ).toThrow(/Akun 9999 pada jurnal tidak dikenal/);
   });
 });
 

@@ -577,7 +577,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/pengaturan.test.ts tests/dashboard.test.ts`.
   - **Dependency:** —
 
-- [ ] **AUD-21a — Core Neraca Saldo per tahun buku** · P1 · M
+- [x] **AUD-21a — Core Neraca Saldo per tahun buku** · P1 · M (2026-10-27: `neracaSaldoPeriode` murni di `src/core/reports.ts` — akun AKTIVA/KEWAJIBAN/EKUITAS kumulatif s/d `sampai`, PENDAPATAN/BEBAN hanya mutasi `mulai..sampai`, baris sintetis “Laba ditahan sebelum periode” dari laba bersih sebelum `mulai` (debit bila defisit), total debit = kredit + `selisih`/`seimbang`; `neracaSaldo` lama tidak diubah; 5 test 2025/2026 + rekonsiliasi saldo akun dengan Neraca; typecheck/test/build hijau, 520 test total + 5 test)
   - **Konteks:** `neracaSaldo` hanya punya cutoff dan memasukkan seluruh akun
     P&L sejak awal. Setelah tutup buku 2025, Neraca Saldo 2026 masih memuat
     pendapatan/beban 2025. Total tetap seimbang, tetapi bukan trial balance

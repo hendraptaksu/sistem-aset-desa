@@ -307,6 +307,174 @@ export function neracaSaldo(
 }
 
 // ---------------------------------------------------------------------------
+// Neraca Saldo per tahun buku
+// ---------------------------------------------------------------------------
+
+export const NAMA_LABA_DITAHAN_SEBELUM_PERIODE = 'Laba ditahan sebelum periode';
+
+export type NeracaSaldoPeriodeOpsi = {
+  /** Awal periode inklusif (YYYY-MM-DD), biasanya 1 Januari. */
+  mulai: string;
+  /** Akhir periode inklusif (YYYY-MM-DD). */
+  sampai: string;
+  /** true = hanya akun yang saldonya tidak nol (default semua akun COA). */
+  hanyaAdaSaldo?: boolean;
+  /** Master COA; default COA bawaan. */
+  daftarAkun?: readonly Coa[];
+};
+
+/** Baris Neraca Saldo periode; `sintetis` menandai laba ditahan non-akun COA. */
+export type NeracaSaldoPeriodeBaris = NeracaSaldoBaris & {
+  /** true = baris sintetis "Laba ditahan sebelum periode", bukan akun COA. */
+  sintetis: boolean;
+};
+
+export type NeracaSaldoPeriodeHasil = {
+  mulai: string;
+  sampai: string;
+  rows: NeracaSaldoPeriodeBaris[];
+  totalDebit: number;
+  totalKredit: number;
+  /** totalDebit − totalKredit; wajib 0 untuk jurnal yang seimbang. */
+  selisih: number;
+  seimbang: boolean;
+  /**
+   * Laba bersih sebelum `mulai` yang menjadi baris sintetis
+   * "Laba ditahan sebelum periode". Positif = laba (kredit), negatif = defisit
+   * (debit). Nol bila tidak ada P&L sebelum periode.
+   */
+  labaDitahanSebelumPeriode: number;
+  /** Laba bersih PENDAPATAN − BEBAN dalam `mulai..sampai`. Negatif = defisit. */
+  labaPeriode: number;
+  /** Total pendapatan hanya dalam `mulai..sampai`. */
+  totalPendapatan: number;
+  /** Total beban hanya dalam `mulai..sampai`. */
+  totalBeban: number;
+};
+
+/**
+ * Neraca Saldo untuk satu tahun buku/periode.
+ *
+ * - AKTIVA/KEWAJIBAN/EKUITAS: saldo kumulatif s/d `sampai`.
+ * - PENDAPATAN/BEBAN: hanya mutasi `mulai..sampai`, sehingga laba tahun lalu
+ *   tidak muncul lagi sebagai pendapatan/beban tahun berjalan.
+ * - Laba bersih sebelum `mulai` ditaruh di satu baris sintetis
+ *   "Laba ditahan sebelum periode" (kredit bila laba, debit bila defisit),
+ *   agar total debit = total kredit tanpa mengubah baris jurnal.
+ *
+ * Asumsi: belum ada jurnal penutup manual ke akun ekuitas 3000/3001/3002.
+ * Bila nanti tutup buku memposting laba ke akun ekuitas tersebut, laba yang
+ * sudah dipindah harus dikeluarkan dari baris sintetis agar tidak dobel.
+ * Fungsi ini murni: tidak membaca/menulis angka tersimpan.
+ */
+export function neracaSaldoPeriode(
+  baris: readonly BarisJurnalSumber[],
+  opsi: NeracaSaldoPeriodeOpsi,
+): NeracaSaldoPeriodeHasil {
+  const { mulai, sampai, hanyaAdaSaldo = false, daftarAkun = COA } = opsi;
+  if (!mulai || !sampai) {
+    throw new Error('Neraca Saldo periode membutuhkan tanggal mulai dan sampai.');
+  }
+  if (mulai > sampai) {
+    throw new Error(`Rentang periode tidak valid: ${mulai} > ${sampai}.`);
+  }
+
+  const peta = petaAkun(daftarAkun);
+  // Akun asing tidak boleh diabaikan diam-diam: total bisa tampak seimbang
+  // padahal ada saldo yang tidak masuk laporan (sama seperti neraca()).
+  for (const b of baris) {
+    if (b.tanggal > sampai) continue;
+    if (!peta.has(b.akun_kode)) {
+      throw new Error(`Akun ${b.akun_kode} pada jurnal tidak dikenal di COA.`);
+    }
+  }
+
+  const debit = new Map<string, number>();
+  const kredit = new Map<string, number>();
+  const adaMutasi = new Set<string>();
+  for (const b of baris) {
+    if (b.tanggal > sampai) continue;
+    const a = peta.get(b.akun_kode)!;
+    // Akun P&L hanya periode berjalan; saldo P&L lama sudah diwakili baris
+    // sintetis laba ditahan. Akun neraca tetap kumulatif.
+    if ((a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN') && b.tanggal < mulai) continue;
+    debit.set(b.akun_kode, (debit.get(b.akun_kode) ?? 0) + b.debit);
+    kredit.set(b.akun_kode, (kredit.get(b.akun_kode) ?? 0) + b.kredit);
+    adaMutasi.add(b.akun_kode);
+  }
+
+  const rows: NeracaSaldoPeriodeBaris[] = [];
+  let totalPendapatan = 0;
+  let totalBeban = 0;
+  for (const a of [...daftarAkun].sort((x, y) => x.kode.localeCompare(y.kode))) {
+    const d = debit.get(a.kode) ?? 0;
+    const k = kredit.get(a.kode) ?? 0;
+    const mentah = d - k;
+    // Saldo normal = mentah untuk akun normal debit, dibalik untuk normal kredit.
+    // Normalisasi -0 → 0 agar hasil aman dibandingkan/diserialisasi UI.
+    const saldo = mentah === 0 ? 0 : a.posisi_normal === 'DEBIT' ? mentah : -mentah;
+    if (a.tipe === 'PENDAPATAN') totalPendapatan += saldo;
+    else if (a.tipe === 'BEBAN') totalBeban += saldo;
+    if (hanyaAdaSaldo && saldo === 0) continue;
+    rows.push({
+      kode: a.kode,
+      nama: a.nama,
+      tipe: a.tipe,
+      posisi_normal: a.posisi_normal,
+      saldo,
+      debit: mentah > 0 ? mentah : 0,
+      kredit: mentah < 0 ? -mentah : 0,
+      adaMutasi: adaMutasi.has(a.kode),
+      sintetis: false,
+    });
+  }
+
+  const labaDitahanSebelumPeriode = labaRugi(
+    baris,
+    { sampai: hariSebelum(mulai) },
+    daftarAkun,
+  ).laba;
+  if (labaDitahanSebelumPeriode !== 0) {
+    const laba = labaDitahanSebelumPeriode;
+    const sintetis: NeracaSaldoPeriodeBaris = {
+      kode: '',
+      nama: NAMA_LABA_DITAHAN_SEBELUM_PERIODE,
+      tipe: 'EKUITAS',
+      posisi_normal: 'KREDIT',
+      saldo: laba,
+      debit: laba < 0 ? -laba : 0,
+      kredit: laba > 0 ? laba : 0,
+      adaMutasi: true,
+      sintetis: true,
+    };
+    // Tempatkan di bagian ekuitas, tepat sebelum akun PENDAPATAN/BEBAN pertama.
+    // Bila semua baris P&L tersaring (hanyaAdaSaldo), taruh di akhir.
+    const indexPnl = rows.findIndex(
+      (r) => r.tipe === 'PENDAPATAN' || r.tipe === 'BEBAN',
+    );
+    if (indexPnl === -1) rows.push(sintetis);
+    else rows.splice(indexPnl, 0, sintetis);
+  }
+
+  const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
+  const totalKredit = rows.reduce((s, r) => s + r.kredit, 0);
+  const selisih = totalDebit - totalKredit;
+  return {
+    mulai,
+    sampai,
+    rows,
+    totalDebit,
+    totalKredit,
+    selisih,
+    seimbang: selisih === 0,
+    labaDitahanSebelumPeriode,
+    labaPeriode: totalPendapatan - totalBeban,
+    totalPendapatan,
+    totalBeban,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Laba Rugi
 // ---------------------------------------------------------------------------
 
