@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AKUN_HUTANG, AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
+import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
 import {
   buatJurnalBayar,
   buatJurnalPindahDana,
@@ -82,14 +82,13 @@ type KonfigurasiPindah = KonfigurasiDasar & {
 type KonfigurasiForm = KonfigurasiKasLawan | KonfigurasiPindah;
 
 
-/** Pilihan awal akun lawan Bayar: 5010/5000 (beban), lalu hutang. */
+/** Pilihan awal akun lawan Bayar: 5010/5000, lalu beban pertama. */
 function akunLawanAwalBayar(coa: Coa[]): string {
   const beban = coa.filter((a) => a.tipe === 'BEBAN');
   return (
     beban.find((a) => a.kode === '5010')?.kode ??
     beban.find((a) => a.kode === '5000')?.kode ??
     beban[0]?.kode ??
-    coa.find((a) => a.kode === AKUN_HUTANG)?.kode ??
     ''
   );
 }
@@ -127,11 +126,11 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     mode: 'KAS_LAWAN',
     judul: 'Bayar / Beban',
     deskripsi:
-      'Catat uang yang keluar dari kas atau bank untuk belanja, biaya, atau melunasi hutang. Sistem menyusun jurnalnya otomatis.',
+      'Catat uang yang keluar dari kas atau bank untuk belanja atau biaya. Sistem menyusun jurnalnya otomatis.',
     labelKas: 'Uang keluar dari',
     labelLawan: 'Untuk pembayaran',
     hintLawan:
-      'Pilih akun beban untuk belanja/biaya, atau 2050 HUTANG untuk melunasi hutang.',
+      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk piutang/hutang gunakan menu Piutang & Hutang.',
     placeholderKeterangan: 'cth: Bayar listrik bulan Oktober',
     keteranganPratinjau: 'Transaksi harian',
     labelTombol: 'Simpan Transaksi',
@@ -141,17 +140,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     buat: buatJurnalBayar,
     grupLawan: (coa) => {
       const beban = coa.filter((a) => a.tipe === 'BEBAN');
-      const hutang = coa.filter((a) => a.tipe === 'KEWAJIBAN');
-      // Akun non-kas lain yang relevan (panjar/piutang). Kas dilarang di sini.
-      const asetLain = coa.filter(
-        (a) => a.tipe === 'AKTIVA' && !isAkunKas(a.kode),
-      );
-      const grup: GrupAkun[] = [];
-      if (beban.length > 0) grup.push({ label: 'Beban', akun: beban });
-      if (hutang.length > 0) grup.push({ label: 'Hutang', akun: hutang });
-      if (asetLain.length > 0)
-        grup.push({ label: 'Aset lain (panjar/piutang)', akun: asetLain });
-      return grup;
+      return beban.length > 0 ? [{ label: 'Beban', akun: beban }] : [];
     },
     akunLawanAwal: akunLawanAwalBayar,
     infoTambahan: 'Anggaran: belum diatur (fitur anggaran menyusul).',

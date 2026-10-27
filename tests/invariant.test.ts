@@ -233,7 +233,9 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
           input = buatJurnalBayar({
             ...dasar,
             akunKas: pick(rnd, ['1001', '1029']),
-            akunLawan: rnd() < 0.2 ? '2050' : pick(rnd, beban),
+            // Form Bayar terpandu hanya menerima akun BEBAN; 2050 lewat menu
+            // Piutang & Hutang dan diuji di tests/pihak.test.ts.
+            akunLawan: pick(rnd, beban),
           });
         } else if (operasi === 2) {
           const dari = pick(rnd, ['1001', '1029']);

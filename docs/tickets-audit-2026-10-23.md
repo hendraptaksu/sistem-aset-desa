@@ -267,7 +267,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm test`.
   - **Dependency:** —
 
-- [ ] **AUD-08 — Hapus 1040/1050/2050 dari form Bayar terpandu** · P0 · S
+- [x] **AUD-08 — Hapus 1040/1050/2050 dari form Bayar terpandu** · P0 · S (2026-10-27: form Bayar hanya menampilkan grup akun BEBAN dan menampilkan arahan Buku Panjar/Piutang & Hutang; `buatJurnalBayar` menolak 1040/1050/2050 (juga non-BEBAN) dengan pesan jelas tanpa mengubah Jurnal Umum; panduan 2.2/2.5 diperbarui; typecheck/test/build hijau, 455 test total (+2 test baru, 1 test lama diganti))
   - **Konteks:** Form Bayar menawarkan “Aset lain (panjar/piutang)” dan semua
     kewajiban. Akibatnya user bisa memposting 1040 tanpa dokumen panjar, atau
     1050/2050 tanpa pihak. Ini bertentangan dengan dokumen yang mengatakan

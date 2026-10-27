@@ -55,14 +55,19 @@ dan sejenisnya.
 
 ### 2.2 Bayar / Beban
 
-Dipakai untuk belanja, biaya listrik/telepon, upakara, perbaikan, dan pembayaran
-hutang.
+Dipakai untuk belanja, biaya listrik/telepon, upakara, dan perbaikan. Form ini
+hanya menawarkan **akun beban** sebagai akun lawan.
 
 1. Buka **Transaksi** → **Bayar**.
-2. Isi tanggal, **Kas/Bank sumber**, **akun lawan** (akun beban, atau `2050
-   HUTANG LAIN-LAIN` bila melunasi hutang), nominal, dan keterangan.
-3. Periksa pratinjau: beban/hutang di debit, kas di kredit.
+2. Isi tanggal, **Kas/Bank sumber**, **akun lawan** (akun beban), nominal, dan
+   keterangan.
+3. Periksa pratinjau: beban di debit, kas di kredit.
 4. Simpan.
+
+**Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`, `1050 PIUTANG`,
+maupun `2050 HUTANG`. Untuk panjar gunakan menu **Buku Panjar**; untuk
+piutang/hutang gunakan menu **Piutang & Hutang**. Jurnal Umum tetap boleh
+memakai akun tersebut untuk koreksi oleh akuntan pendamping.
 
 ### 2.3 Pindah Dana
 
@@ -97,7 +102,9 @@ Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
 
 ### 2.5 Piutang & Hutang
 
-Buka menu **Piutang & Hutang**. Pilih alur yang paling dekat dengan kejadian:
+Buka menu **Piutang & Hutang**. Form Bayar terpandu sengaja tidak menawarkan
+akun `1050`/`2050` agar setiap transaksi piutang/hutang memiliki pihak yang
+jelas. Gunakan menu ini untuk semua alur berikut:
 
 | Kejadian | Jurnal yang dibuat sistem |
 |---|---|

@@ -1,5 +1,5 @@
 // P1-1/P1-2/P1-3: kontrak builder form terpandu yang dipakai layar Transaksi.
-// Fokus: akun kas/pendapatan/modal (Terima), akun beban/hutang (Bayar),
+// Fokus: akun kas/pendapatan/modal (Terima), akun beban (Bayar),
 // perpindahan antar dompet kas/bank (Pindah Dana), nominal SEN, pratinjau
 // seimbang, serta bentuk input IPC yang tidak boleh dipercaya mentah-mentah.
 
@@ -278,27 +278,39 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
     expect(validasi.boleh).toBe(true);
   });
 
-  it('mendukung pelunasan hutang 2050: D hutang / K kas', () => {
+  it('menolak lawan panjar 1040, piutang 1050, dan hutang 2050 di form Bayar', () => {
+    // Akun-akun ini punya alur/dokumen sendiri; form Bayar terpandu tidak boleh
+    // membuat jurnal tanpa dokumen panjar atau tanpa pihak.
+    for (const akun of ['1040', '1050', '2050']) {
+      expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
+        /tidak bisa dipakai di form Bayar terpandu/,
+      );
+      expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
+        /Buku Panjar.*Piutang & Hutang/,
+      );
+    }
+  });
+
+  it('tetap menerima akun beban lain, mis. 5000 BIAYA KESEKRETARIATAN', () => {
     const input = buatJurnalBayar(
       dasarBayar({
-        akunKas: '1029',
-        akunLawan: '2050',
+        akunLawan: '5000',
         nominal: RP(1_250_000),
-        keterangan: 'Pelunasan hutang perbaikan gedung',
+        keterangan: 'Beli alat tulis',
       }),
     );
 
     expect(input.header.jenis).toBe('BAYAR');
     expect(input.baris).toEqual([
-      { akun_kode: '2050', debit: RP(1_250_000), kredit: 0 },
-      { akun_kode: '1029', debit: 0, kredit: RP(1_250_000) },
+      { akun_kode: '5000', debit: RP(1_250_000), kredit: 0 },
+      { akun_kode: '1001', debit: 0, kredit: RP(1_250_000) },
     ]);
     expect(total(input)).toEqual({
       debit: RP(1_250_000),
       kredit: RP(1_250_000),
     });
     expect(
-      validasiJurnal(input, konteks({ saldoKas: { '1029': RP(2_000_000) } })).boleh,
+      validasiJurnal(input, konteks({ saldoKas: { '1001': RP(2_000_000) } })).boleh,
     ).toBe(true);
   });
 
@@ -397,8 +409,16 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).toContain('Keterangan');
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
     expect(html).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
-    expect(html).toContain('2050 — HUTANG LAIN-LAIN');
     expect(html).toContain('Anggaran: belum diatur');
+    expect(html).toContain('Untuk panjar gunakan menu Buku Panjar');
+    expect(html).toContain('untuk piutang/hutang gunakan menu Piutang &amp; Hutang');
+    // Hanya akun BEBAN yang menjadi lawan; panjar/piutang/hutang punya menu sendiri.
+    expect(html).toContain('<optgroup label="Beban">');
+    expect(html).not.toContain('<optgroup label="Hutang">');
+    expect(html).not.toContain('Aset lain (panjar/piutang)');
+    expect(html).not.toContain('1040 — UANG PANJAR');
+    expect(html).not.toContain('1050 — PIUTANG LAIN LAIN');
+    expect(html).not.toContain('2050 — HUTANG LAIN-LAIN');
     // Pendapatan & ekuitas tidak boleh menjadi lawan pembayaran.
     expect(html).not.toContain('PENDAPATAN PARKIR');
     expect(html).not.toContain('3000 — MODAL');

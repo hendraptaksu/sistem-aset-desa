@@ -46,7 +46,7 @@ export type FormTerimaUang = DasarFormJurnal & {
 export type FormBayar = DasarFormJurnal & {
   /** Kas/bank sumber pembayaran. */
   akunKas: string;
-  /** Akun beban/hutang/akun lain yang dibayar (bukan akun kas). */
+  /** Akun BEBAN yang dibayar. Panjar/piutang/hutang punya menu sendiri. */
   akunLawan: string;
 };
 
@@ -169,7 +169,9 @@ export function buatJurnalTerimaUang(form: FormTerimaUang): JurnalInput {
 
 /**
  * Bayar/beban: **D akun lawan / K akun kas**.
- * Lawan boleh akun beban, hutang (2050), piutang (1050), atau akun non-kas lain.
+ * Form terpandu ini hanya menerima akun BEBAN. Panjar (1040), piutang (1050),
+ * dan hutang (2050) wajib lewat menu khusus agar dokumen/pihaknya tercatat.
+ * Jurnal Umum tetap boleh memakai akun-akun tersebut lewat jalur akuntan.
  */
 export function buatJurnalBayar(form: FormBayar): JurnalInput {
   const nominal = wajibNominal(form.nominal);
@@ -178,6 +180,19 @@ export function buatJurnalBayar(form: FormBayar): JurnalInput {
   if (isAkunKas(lawanData.kode))
     throw new Error(
       'Akun lawan Bayar bukan akun kas/bank. Untuk memindahkan uang antar kas, gunakan Pindah Dana.',
+    );
+  if (
+    lawanData.kode === AKUN_PANJAR ||
+    lawanData.kode === AKUN_PIUTANG ||
+    lawanData.kode === AKUN_HUTANG
+  )
+    throw new Error(
+      `Akun lawan Bayar ${lawanData.kode} — ${lawanData.nama} tidak bisa dipakai di form Bayar terpandu. ` +
+        'Untuk panjar gunakan menu Buku Panjar; untuk piutang/hutang gunakan menu Piutang & Hutang.',
+    );
+  if (lawanData.tipe !== 'BEBAN')
+    throw new Error(
+      `Akun lawan Bayar harus akun BEBAN; ${lawanData.kode} — ${lawanData.nama} bukan akun beban.`,
     );
   return susun(form, 'BAYAR', [debit(lawanData.kode, nominal), kredit(kas, nominal)]);
 }
