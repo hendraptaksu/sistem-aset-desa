@@ -27,8 +27,8 @@ function SelAkun({ kode, keterangan }: { kode: string; keterangan?: string }) {
   return (
     <td className="py-1.5 pr-3 align-top">
       <span className="font-medium">{kode || '-'}</span>
-      {nama && <span className="block text-xs text-stone-500">{nama}</span>}
-      {keterangan && <span className="block text-xs text-stone-500">{keterangan}</span>}
+      {nama && <span className="block text-helper text-stone-500">{nama}</span>}
+      {keterangan && <span className="block text-helper text-stone-500">{keterangan}</span>}
     </td>
   );
 }

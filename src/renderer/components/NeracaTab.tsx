@@ -99,10 +99,10 @@ export function NeracaTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+            <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
               Neraca per {cutoff ? formatTanggal(cutoff) : '—'}{' '}
               {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-            </h2>
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Neraca menunjukkan aset, kewajiban, dan ekuitas pada satu tanggal.
               Laba ditahan dan laba berjalan dihitung ulang dari jurnal — tidak ada
@@ -113,7 +113,7 @@ export function NeracaTab({
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Cut-off (sampai tanggal)">
+          <Field label="Per tanggal">
             <TextInput
               type="date"
               value={cutoff}
@@ -150,7 +150,7 @@ export function NeracaTab({
         </div>
         {!cutoff && (
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-            Isi tanggal cut-off terlebih dahulu.
+            Isi tanggal laporan terlebih dahulu.
           </p>
         )}
         {memuat && !data && <p className="mt-3 text-stone-500">Memuat Neraca…</p>}
@@ -265,7 +265,7 @@ export function NeracaTab({
                   <tr className="border-b">
                     <td className="py-2 pr-3 font-semibold">—</td>
                     <td className="py-2 pr-3">
-                      Laba berjalan (1 Januari s/d cut-off)
+                      Laba berjalan (1 Januari s/d tanggal laporan)
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">
                       {formatRp(data.labaBerjalan)}

@@ -44,7 +44,7 @@ function barisKop(kop?: KopOrganisasi | null): string[] {
   return [nama, ...tambahan];
 }
 
-/** Teks periode "DD-MM-YYYY s/d DD-MM-YYYY" untuk subjudul kop. */
+/** Teks periode "DD Mmm YYYY s/d DD Mmm YYYY" untuk subjudul kop. */
 export function kopPeriode(mulai?: string, sampai?: string): string {
   const m = mulai ? formatTanggal(mulai) : '';
   const s = sampai ? formatTanggal(sampai) : '';
@@ -135,7 +135,7 @@ export async function pembantuToWorkbook(
   p: PembantuHasil,
   kop?: KopOrganisasi,
 ): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook(`Pembantu ${p.kode}`);
+  const { wb, ws } = baseWorkbook(`Buku Pembantu ${p.kode}`);
   tulisKopXlsx(ws, `BUKU PEMBANTU — ${p.kode} ${p.nama}`, kopPeriodeEfektif(p.mulai, p.sampai, p.rows), 5, kop);
   const header = ws.addRow(['Tanggal', 'Keterangan', 'Masuk', 'Keluar', 'Saldo']);
   styleHeader(header);
@@ -322,7 +322,7 @@ function fraksi(nominal: number, dasar: number): number {
   return dasar === 0 ? 0 : nominal / dasar;
 }
 
-/** Subjudul periode untuk laporan per cut-off: "PER 31-12-2026". */
+/** Subjudul periode untuk laporan per cut-off: "PER 31 Des 2026". */
 export function kopPeriodeCutoff(cutoff?: string): string {
   return cutoff ? `PER ${formatTanggal(cutoff)}` : 'SEMUA PERIODE';
 }
@@ -757,7 +757,7 @@ export async function neracaHasilToWorkbook(
   selRp(labaDitahan, 3, n.labaDitahan);
   const labaBelum = ws.addRow(['—', 'Laba tahun lampau belum ditutup', null]);
   selRp(labaBelum, 3, n.labaBelumDitutup);
-  const labaBerjalan = ws.addRow(['—', 'Laba berjalan (1 Januari s/d cut-off)', null]);
+  const labaBerjalan = ws.addRow(['—', 'Laba berjalan (1 Januari s/d tanggal laporan)', null]);
   selRp(labaBerjalan, 3, n.labaBerjalan);
   const totalEkuitas = ws.addRow(['', 'Total Ekuitas', null]);
   selRp(totalEkuitas, 3, n.totalEkuitas);
@@ -1264,7 +1264,7 @@ ${kewajiban.map(barisAkun).join('')}
 ${ekuitas.map(barisAkun).join('')}
 <tr><td>—</td><td>Laba ditahan (tahun sudah tutup)</td><td style="text-align:right">${formatRp(n.labaDitahan)}</td></tr>
 <tr><td>—</td><td>Laba tahun lampau belum ditutup</td><td style="text-align:right">${formatRp(n.labaBelumDitutup)}</td></tr>
-<tr><td>—</td><td>Laba berjalan (1 Januari s/d cut-off)</td><td style="text-align:right">${formatRp(n.labaBerjalan)}</td></tr>
+<tr><td>—</td><td>Laba berjalan (1 Januari s/d tanggal laporan)</td><td style="text-align:right">${formatRp(n.labaBerjalan)}</td></tr>
 <tr><th colspan="2" style="text-align:right">Total Ekuitas</th><th style="text-align:right">${formatRp(n.totalEkuitas)}</th></tr>
 <tr><th colspan="2" style="text-align:right">TOTAL PASIVA</th><th style="text-align:right">${formatRp(n.totalPasiva)}</th></tr>
 <tr><th colspan="2">STATUS</th><th style="text-align:right">${statusText} · ${formatRp(n.selisih)}</th></tr>

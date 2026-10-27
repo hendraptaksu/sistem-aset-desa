@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
 import { buatJurnalSaldoAwal, type FormSaldoAwal } from '../../core/forms.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
@@ -13,6 +13,7 @@ import {
   ErrorBox,
   Field,
   LockModal,
+  Modal,
   Select,
   TextInput,
 } from './ui.js';
@@ -196,31 +197,16 @@ export function SaldoAwalWizard({
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="my-4 w-full max-w-3xl rounded-xl bg-white p-5 shadow-lg">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold">Wizard Saldo Awal</h2>
-            <p className="mt-1 max-w-2xl text-[15px] text-stone-600">
-              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, piutang,
-              hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal,
-              jadi Anda tidak perlu menghitung debit/kredit.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Tutup wizard saldo awal"
-            disabled={busy}
-            onClick={onClose}
-            className="rounded-lg p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="mt-3">
-          <ErrorBox msg={err} />
-        </div>
+    <Modal
+      judul="Wizard Saldo Awal"
+      deskripsi="Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, piutang, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit."
+      onTutup={onClose}
+      sibuk={busy}
+      lebar="3xl"
+    >
+      <div className="mt-1">
+        <ErrorBox msg={err} />
+      </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Tanggal mulai pembukuan (tanggal jangkar)">
@@ -312,7 +298,7 @@ export function SaldoAwalWizard({
                       )
                     }
                   />
-                  <span className="mt-1 block text-xs text-stone-500">Saldo (Rp)</span>
+                  <span className="mt-1 block text-helper text-stone-500">Saldo (Rp)</span>
                 </div>
                 <Button
                   variant="ghost"
@@ -346,13 +332,13 @@ export function SaldoAwalWizard({
             <>
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg border border-emerald-200 bg-white p-2">
-                  <div className="text-xs font-semibold text-stone-500">
+                  <div className="text-helper font-semibold text-stone-500">
                     Total aktiva (debit)
                   </div>
                   <div className="font-bold">{formatRp(hasil.data.totalAktiva)}</div>
                 </div>
                 <div className="rounded-lg border border-emerald-200 bg-white p-2">
-                  <div className="text-xs font-semibold text-stone-500">
+                  <div className="text-helper font-semibold text-stone-500">
                     Total kewajiban (kredit)
                   </div>
                   <div className="font-bold">
@@ -360,7 +346,7 @@ export function SaldoAwalWizard({
                   </div>
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-white p-2">
-                  <div className="text-xs font-semibold text-stone-500">
+                  <div className="text-helper font-semibold text-stone-500">
                     Selisih ke 3000 MODAL
                   </div>
                   <div className="font-bold">
@@ -467,7 +453,6 @@ export function SaldoAwalWizard({
             }}
           />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

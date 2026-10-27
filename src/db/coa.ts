@@ -17,6 +17,8 @@ export type Coa = {
   nama: string;
   tipe: CoaTipe;
   posisi_normal: PosisiNormal;
+  /** Status dari master DB; akun statis tidak membawa field ini. */
+  aktif?: boolean;
 };
 
 /** AKTIVA & BEBAN bersaldo normal DEBIT; KEWAJIBAN, EKUITAS & PENDAPATAN KREDIT. */
@@ -141,13 +143,21 @@ export const akun = (kode: string): Coa | undefined => COA.find((c) => c.kode ==
  * - Akun nonaktif ditolak. COA statis tidak menyimpan status; pemanggil yang
  *   punya status dari master DB harus meneruskannya lewat `aktif`.
  * - Akun tetap ada di COA & laporan agar saldo lama bisa diperiksa.
+ *
+ * `opsi.dikenal` dipakai pemanggil yang sudah memastikan kode ada di master
+ * DB (termasuk akun tambahan buatan operator). Tanpa opsi itu, fungsi tetap
+ * hanya mengenali COA statis agar test lama dan pemanggil lama aman.
  */
-export function akunBolehDiposting(kode: string, aktif = true): boolean {
+export function akunBolehDiposting(
+  kode: string,
+  aktif = true,
+  opsi: { dikenal?: boolean } = {},
+): boolean {
   const kodeBersih = String(kode ?? '').trim();
   if (!kodeBersih || !aktif) return false;
-  const a = akun(kodeBersih);
-  if (!a) return false;
-  return !AKUN_LEGACY_TIDAK_DIPOSTING.has(a.kode);
+  if (AKUN_LEGACY_TIDAK_DIPOSTING.has(kodeBersih)) return false;
+  if (opsi.dikenal === true) return true;
+  return Boolean(akun(kodeBersih));
 }
 
 export const isAkunKas = (kode: string): boolean => KAS_KODES.includes(kode);

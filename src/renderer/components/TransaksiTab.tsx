@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import { api, type StatusSaldoAwal } from '../lib/api.js';
-import { Badge, Button, Card, ErrorBox } from './ui.js';
+import { Badge, Button, Card, ErrorBox, RING_FOKUS } from './ui.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -196,7 +196,7 @@ export function TransaksiTab({
             <ErrorBox msg={err} />
           </div>
         )}
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           {KARTU_JENIS.map(({ id, label, keterangan, Icon, tujuan }) => {
             const aktif = !tujuan && jenis === id;
             const tersedia = !tujuan && bisaDipilih(id);
@@ -214,6 +214,7 @@ export function TransaksiTab({
                 }}
                 className={clsx(
                   'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                  RING_FOKUS,
                   aktif &&
                     'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm',
                   !aktif &&
@@ -231,11 +232,11 @@ export function TransaksiTab({
                   <Icon size={22} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-bold">{label}</span>
-                  <span className="block text-xs">{keterangan}</span>
+                  <span className="block break-words font-bold xl:break-normal">{label}</span>
+                  <span className="block text-helper">{keterangan}</span>
                   <span
                     className={clsx(
-                      'mt-1 block text-xs font-semibold',
+                      'mt-1 block text-helper font-semibold',
                       aktif ? 'text-emerald-700' : 'text-emerald-800',
                     )}
                   >

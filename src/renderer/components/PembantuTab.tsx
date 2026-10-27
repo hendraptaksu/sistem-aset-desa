@@ -141,7 +141,7 @@ export function PembantuTab() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument(`Pembantu ${kode}`, pembantuToHtml(hasil), { autoPrint: false });
+      const html = wrapPrintDocument(`Buku Pembantu ${kode}`, pembantuToHtml(hasil), { autoPrint: false });
       const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: `pembantu-${kode}.pdf` });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
@@ -155,7 +155,7 @@ export function PembantuTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="mb-3 text-lg font-bold">Buku Pembantu — {hasil.kode} {hasil.nama}</h2>
+        <h1 className="mb-3 text-lg font-bold">Buku Pembantu — {hasil.kode} {hasil.nama}</h1>
         <ErrorBox msg={err} />
         {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -174,7 +174,7 @@ export function PembantuTab() {
           </Field>
           <div className="flex items-end gap-2">
             <Button disabled={memuat || sibuk || !kode} onClick={muat}>
-              {memuat ? 'Memuat…' : 'Muat'}
+              {memuat ? 'Menampilkan…' : 'Tampilkan'}
             </Button>
           </div>
         </div>
@@ -191,7 +191,7 @@ export function PembantuTab() {
             disabled={memuat || sibuk || !kode}
             onClick={() =>
               setPratinjau({
-                judul: `Pembantu ${kode}`,
+                judul: `Buku Pembantu ${kode}`,
                 body: pembantuToHtml(hasil),
               })
             }

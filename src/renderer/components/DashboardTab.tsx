@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
-import { pesanBackupBasi, tanggalDariPathBackup, usiaBackupHari } from '../../utils/backup.js';
+import { pesanBackupBasi, ringkasanBackup } from '../../utils/backup.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
@@ -62,10 +62,7 @@ export function DashboardTab({
 
   // Data backup bisa tidak tersedia/berformat asing; helper mengembalikan null
   // sehingga dashboard tidak crash dan banner hanya muncul saat benar-benar basi.
-  const usiaBackup = usiaBackupHari(
-    tanggalDariPathBackup(data?.backupTerakhir),
-    tanggalLokal(),
-  );
+  const ringkasan = ringkasanBackup(data?.backupTerakhir, tanggalLokal());
 
   /** Muat data tanpa guard; pemanggil yang mengatur status sibuk. */
   async function muatData(c: string): Promise<void> {
@@ -74,7 +71,7 @@ export function DashboardTab({
 
   async function muat(c = cutoff): Promise<void> {
     if (!c) {
-      setErr('Tanggal cut-off wajib diisi.');
+      setErr('Tanggal laporan wajib diisi.');
       return;
     }
     await jalankan(async () => {
@@ -191,12 +188,12 @@ export function DashboardTab({
               )}
             </h2>
             <p className="mt-1 text-sm text-stone-600">
-              Semua angka dihitung ulang dari jurnal sampai tanggal cut-off. Tidak ada
+              Semua angka dihitung ulang dari jurnal sampai tanggal laporan. Tidak ada
               saldo atau laba yang disimpan.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="Cut-off">
+            <Field label="Per tanggal">
               <TextInput
                 type="date"
                 value={cutoff}
@@ -204,7 +201,7 @@ export function DashboardTab({
               />
             </Field>
             <Button disabled={sibuk} onClick={() => void muat()}>
-              {jenisSibuk === 'muat' ? 'Memuat…' : 'Muat'}
+              {jenisSibuk === 'muat' ? 'Menampilkan…' : 'Tampilkan'}
             </Button>
           </div>
         </div>
@@ -228,14 +225,48 @@ export function DashboardTab({
 
       {data && (
         <>
-          <BannerBackupBasi usiaHari={usiaBackup} />
+          <BannerBackupBasi usiaHari={ringkasan.usiaHari} />
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <Card>
+          {/* UI-14: aksi harian didahulukan agar terlihat di viewport pertama. */}
+          <Card>
+            <h3 className="text-base font-bold">Catat Transaksi / Pintasan</h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Pilih alur yang paling dekat dengan kejadian. Sistem menyusun jurnal
+              debit–kredit otomatis.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'TERIMA')}>
+                Terima Uang
+              </Button>
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'BAYAR')}>
+                Bayar
+              </Button>
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'PINDAH')}>
+                Pindah Dana
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
+                Panjar
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
+                Piutang &amp; Hutang
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
+                Tutup Buku
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
+                Jurnal Umum
+              </Button>
+            </div>
+          </Card>
+
+          {/* UI-03: jumlah kolom mengikuti lebar konten (bukan viewport) agar
+              nominal tidak dipaksa muat di kartu sempit saat sidebar terbuka. */}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(350px,1fr))] gap-3">
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
-                  <p className="text-sm text-stone-600">Semua dompet kas/bank per cut-off</p>
+                  <p className="text-sm text-stone-600">Semua dompet kas/bank per tanggal laporan</p>
                 </div>
                 <Badge tone="green">Total</Badge>
               </div>
@@ -243,7 +274,7 @@ export function DashboardTab({
                 {formatRp(data.kasBank.total)}
               </p>
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-emerald-800">
+                <summary className="min-h-8 cursor-pointer py-1 text-sm font-semibold text-emerald-800">
                   Rincian per akun ({data.kasBank.rincian.length})
                 </summary>
                 <table className="mt-2 w-full text-left text-[15px]">
@@ -264,7 +295,7 @@ export function DashboardTab({
               </details>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Laba / Rugi Tahun Berjalan</h3>
@@ -288,19 +319,19 @@ export function DashboardTab({
                   ? 'Beban lebih besar dari pendapatan pada periode ini.'
                   : 'Pendapatan dikurangi beban pada periode ini.'}
               </p>
-              <dl className="mt-3 grid grid-cols-2 gap-2 text-[15px]">
-                <div>
+              <dl className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2 text-[15px]">
+                <div className="min-w-0">
                   <dt className="text-sm text-stone-500">Total pendapatan</dt>
                   <dd className="font-semibold">{formatRp(data.labaRugiBerjalan.totalPendapatan)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="text-sm text-stone-500">Total beban</dt>
                   <dd className="font-semibold">{formatRp(data.labaRugiBerjalan.totalBeban)}</dd>
                 </div>
               </dl>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Status Neraca Saldo</h3>
@@ -331,7 +362,7 @@ export function DashboardTab({
               </p>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Periode Buku</h3>
@@ -374,11 +405,11 @@ export function DashboardTab({
               </div>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Jurnal Terakhir</h3>
-                  <p className="text-sm text-stone-600">Jurnal terbaru s/d cut-off</p>
+                  <p className="text-sm text-stone-600">Jurnal terbaru s/d tanggal laporan</p>
                 </div>
                 {data.jurnalTerakhir && <Badge>{data.jurnalTerakhir.jenis}</Badge>}
               </div>
@@ -398,7 +429,7 @@ export function DashboardTab({
                   </p>
                 </div>
               ) : (
-                <p className="mt-3 text-stone-500">Belum ada jurnal s/d cut-off.</p>
+                <p className="mt-3 text-stone-500">Belum ada jurnal s/d tanggal laporan.</p>
               )}
               <div className="mt-3">
                 <Button
@@ -411,96 +442,135 @@ export function DashboardTab({
               </div>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Backup Terakhir</h3>
                   <p className="text-sm text-stone-600">Cadangan otomatis harian</p>
                 </div>
-                <Badge tone={data.backupTerakhir ? 'green' : 'stone'}>
-                  {data.backupTerakhir ? 'Ada' : 'Belum ada'}
+                <Badge tone={ringkasan.tone}>
+                  {!data.backupTerakhir
+                    ? 'Belum ada'
+                    : ringkasan.tone === 'green'
+                      ? 'Segar'
+                      : ringkasan.tone === 'amber'
+                        ? 'Basi'
+                        : 'Tidak diketahui'}
                 </Badge>
               </div>
               {data.backupTerakhir ? (
-                <>
-                  <p className="mt-3 break-all font-semibold text-stone-800">
-                    {data.backupTerakhir.split(/[\\/]/).pop()}
+                <div className="mt-3 min-w-0">
+                  <p
+                    className="min-w-0 truncate font-semibold text-stone-800"
+                    title={data.backupTerakhir}
+                    data-testid="nama-file-backup"
+                  >
+                    {ringkasan.namaFile ?? '(nama file tidak diketahui)'}
                   </p>
-                  <p className="mt-1 break-all text-sm text-stone-500">
-                    {data.backupTerakhir}
+                  <p className="mt-1 text-sm text-stone-600" data-testid="status-backup">
+                    Backup terakhir: {ringkasan.label}
+                    {ringkasan.tanggal && <> · tanggal {formatTanggal(ringkasan.tanggal)}</>}
                   </p>
-                </>
+                  <p className="mt-1 text-helper text-stone-500">
+                    Arahkan kursor ke nama file untuk melihat path lengkap.
+                  </p>
+                </div>
               ) : (
-                <p className="mt-3 text-stone-500">
-                  Belum ada backup otomatis. Gunakan tombol Backup di bawah.
+                <p className="mt-3 text-stone-500" data-testid="status-backup">
+                  Backup terakhir: belum ada. Gunakan tombol Backup di bawah.
                 </p>
               )}
             </Card>
           </div>
-
-          <Card>
-            <h3 className="text-base font-bold">Catat Transaksi / Pintasan</h3>
-            <p className="mt-1 text-sm text-stone-600">
-              Pilih alur yang paling dekat dengan kejadian. Sistem menyusun jurnal
-              debit–kredit otomatis.
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'TERIMA')}>
-                Terima Uang
-              </Button>
-              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'BAYAR')}>
-                Bayar
-              </Button>
-              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'PINDAH')}>
-                Pindah Dana
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
-                Panjar
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
-                Piutang &amp; Hutang
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
-                Tutup Buku
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
-                Jurnal Umum
-              </Button>
-            </div>
-          </Card>
         </>
       )}
 
       <Card>
-        <h3 className="mb-2 font-bold">Backup / Restore</h3>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
-            {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db'}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={sibuk}
-            onClick={() => void backupLengkap()}
+        <h3 className="text-base font-bold">Backup / Restore</h3>
+        <p className="mt-1 text-sm text-stone-600">
+          Backup menyalin data tanpa mengubah data aktif. Pulihkan mengganti data
+          yang sedang dipakai.
+        </p>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <section
+            aria-labelledby="judul-backup"
+            className="min-w-0 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4"
           >
-            {jenisSibuk === 'backup-lengkap'
-              ? 'Membuat backup lengkap…'
-              : 'Backup Lengkap (DB + lampiran)'}
-          </Button>
-          <Button variant="ghost" disabled={sibuk} onClick={() => setKonfirmasiRestore(true)}>
-            {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={sibuk}
-            onClick={() => setKonfirmasiRestoreLengkap(true)}
+            <h4 id="judul-backup" className="font-bold text-emerald-950">
+              Backup
+            </h4>
+            <p className="mt-1 text-sm text-stone-600">
+              Menyimpan salinan aman; data aktif tidak berubah.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
+                {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db'}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={sibuk}
+                onClick={() => void backupLengkap()}
+              >
+                {jenisSibuk === 'backup-lengkap'
+                  ? 'Membuat backup lengkap…'
+                  : 'Backup Lengkap (DB + lampiran)'}
+              </Button>
+            </div>
+            <p className="mt-3 text-sm text-stone-600">
+              Backup lengkap menyimpan satu folder berisi <code>pura.db</code>, semua
+              lampiran bukti, dan <code>manifest.json</code> — pakai ini untuk arsip
+              atau pindah laptop. Backup Export .db hanya berisi database.
+            </p>
+          </section>
+
+          <section
+            aria-labelledby="judul-pulihkan"
+            className="min-w-0 rounded-lg border border-red-300 bg-red-50 p-4"
           >
-            {jenisSibuk === 'restore-lengkap'
-              ? 'Memulihkan lengkap…'
-              : 'Restore Lengkap (DB + lampiran)'}
-          </Button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 id="judul-pulihkan" className="font-bold text-red-900">
+                Pulihkan
+              </h4>
+              <Badge tone="red">Menimpa data aktif</Badge>
+            </div>
+            <p className="mt-1 text-sm font-semibold text-red-900">
+              Pilih hanya file atau folder backup yang Anda percaya.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="danger-outline"
+                disabled={sibuk}
+                onClick={() => setKonfirmasiRestore(true)}
+              >
+                {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
+              </Button>
+              <Button
+                variant="danger-outline"
+                disabled={sibuk}
+                onClick={() => setKonfirmasiRestoreLengkap(true)}
+              >
+                {jenisSibuk === 'restore-lengkap'
+                  ? 'Memulihkan lengkap…'
+                  : 'Restore Lengkap (DB + lampiran)'}
+              </Button>
+            </div>
+            <p className="mt-3 text-sm text-stone-700">
+              Restore Import .db memulihkan database saja; lampiran tetap di folder
+              aplikasi. Restore Lengkap memulihkan database <b>dan</b> lampiran dari
+              folder hasil Backup Lengkap; data lama disimpan sebagai cadangan lebih
+              dulu.
+            </p>
+          </section>
         </div>
         {jenisSibuk && (
-          <p className="mt-2 text-sm font-semibold text-emerald-800" role="status">
+          <p
+            className={`mt-3 text-sm font-semibold ${
+              jenisSibuk === 'restore' || jenisSibuk === 'restore-lengkap'
+                ? 'text-red-800'
+                : 'text-emerald-800'
+            }`}
+            role="status"
+          >
             {jenisSibuk === 'backup'
               ? 'Sedang membuat backup…'
               : jenisSibuk === 'backup-lengkap'
@@ -512,16 +582,6 @@ export function DashboardTab({
                     : 'Sedang memuat data…'}
           </p>
         )}
-        <p className="mt-2 text-sm text-stone-600">
-          Backup lengkap menyimpan satu folder berisi <code>pura.db</code>, semua
-          lampiran bukti, dan <code>manifest.json</code> — pakai ini untuk arsip
-          atau pindah laptop. Backup Export .db hanya berisi database.
-        </p>
-        <p className="mt-1 text-sm text-stone-600">
-          Restore Import .db memulihkan database saja; lampiran tetap di folder
-          aplikasi. Restore Lengkap memulihkan database <b>dan</b> lampiran dari
-          folder hasil Backup Lengkap; data lama disimpan sebagai cadangan lebih dulu.
-        </p>
       </Card>
 
       {konfirmasiRestore && (

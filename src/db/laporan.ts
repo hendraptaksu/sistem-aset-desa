@@ -3,9 +3,9 @@
 // SQLite; seluruh perhitungan tetap di `src/core/reports.ts`.
 
 import type Database from 'better-sqlite3';
-import { COA } from './coa.js';
 import {
   getJurnalDetail,
+  listAkun,
   listJurnalLengkap,
   listTutupBuku,
   type JurnalLengkap,
@@ -152,7 +152,8 @@ export function laporanBukuBesar(
   akunKode: string,
   filter: FilterBukuBesarDb = {},
 ): BukuBesarHasil {
-  const akun = COA.find((a) => a.kode === akunKode);
+  const daftarAkun = listAkun(db);
+  const akun = daftarAkun.find((a) => a.kode === akunKode);
   if (!akun) throw new Error(`Akun ${akunKode} tidak dikenal di COA.`);
   return bukuBesar(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
@@ -180,15 +181,16 @@ export function laporanNeracaSaldo(
 ): NeracaSaldoModeHasil {
   const sampai = cutoff?.trim() || undefined;
   const baris = listBarisJurnal(db, sampai ? { sampai } : {});
+  const daftarAkun = listAkun(db);
 
   if (mode === 'kumulatif') {
-    return { ...neracaSaldo(baris, sampai), mode: 'kumulatif' };
+    return { ...neracaSaldo(baris, sampai, daftarAkun), mode: 'kumulatif' };
   }
 
   const akhir = sampai ?? tanggalLokal();
   const mulai = `${akhir.slice(0, 4)}-01-01`;
   return {
-    ...neracaSaldoPeriode(baris, { mulai, sampai: akhir }),
+    ...neracaSaldoPeriode(baris, { mulai, sampai: akhir, daftarAkun }),
     mode: 'tahun',
   };
 }
@@ -203,7 +205,7 @@ export function laporanJurnalAkun(
   akunKode: string,
   filter: FilterBukuBesarDb = {},
 ): JurnalLengkap[] {
-  if (!COA.some((a) => a.kode === akunKode))
+  if (!listAkun(db).some((a) => a.kode === akunKode))
     throw new Error(`Akun ${akunKode} tidak dikenal di COA.`);
   return listJurnalLengkap(db, {
     akun_kode: akunKode,
@@ -250,6 +252,7 @@ export function laporanLabaRugi(
   return labaRugi(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     filter,
+    listAkun(db),
   );
 }
 
@@ -262,10 +265,14 @@ export function laporanNeraca(
   db: Database.Database,
   cutoff: string,
 ): NeracaHasil {
-  return neraca(listBarisJurnal(db, { sampai: cutoff }), {
-    cutoff,
-    tutup: listTutupBuku(db),
-  });
+  return neraca(
+    listBarisJurnal(db, { sampai: cutoff }),
+    {
+      cutoff,
+      tutup: listTutupBuku(db),
+    },
+    listAkun(db),
+  );
 }
 
 /**
@@ -279,5 +286,6 @@ export function laporanArusKas(
   return arusKas(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     filter,
+    listAkun(db),
   );
 }

@@ -16,11 +16,31 @@ export function formatPersen(persen: number): string {
 
 const ISO_TGL = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** '2026-01-05' → '05-01-2026'. Input tak cocok dikembalikan apa adanya. */
+const NAMA_BULAN = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mei',
+  'Jun',
+  'Jul',
+  'Agu',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Des',
+] as const;
+
+/** '2026-01-05' → '5 Jan 2026'. Input tak cocok/di luar rentang dikembalikan apa adanya. */
 export function formatTanggal(iso: string): string {
   const m = ISO_TGL.exec(iso);
   if (!m) return iso;
-  return `${m[3]}-${m[2]}-${m[1]}`;
+  const tahun = m[1]!;
+  const bulan = Number(m[2]);
+  const hari = Number(m[3]);
+  const namaBulan = NAMA_BULAN[bulan - 1];
+  if (!namaBulan || hari < 1 || hari > 31) return iso;
+  return `${hari} ${namaBulan} ${tahun}`;
 }
 
 /**

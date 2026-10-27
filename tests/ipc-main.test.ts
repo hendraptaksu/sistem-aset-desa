@@ -142,6 +142,10 @@ const D = (akun_kode: string, debit: number) => ({ akun_kode, debit, kredit: 0 }
 const K = (akun_kode: string, kredit: number) => ({ akun_kode, debit: 0, kredit });
 
 const CHANNEL_IPC = [
+  'akun:hapus',
+  'akun:set-aktif',
+  'akun:tambah',
+  'akun:ubah',
   'anggaran:list',
   'anggaran:simpan',
   'app:buka-folder',
@@ -218,11 +222,75 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 72 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 77 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(73);
+    expect(env.handlers.size).toBe(77);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(73);
+    expect(CHANNEL_IPC).toHaveLength(77);
+  });
+});
+
+describe('Daftar Akun — tambah akun lewat IPC', () => {
+  it('menambah akun BEBAN/PENDAPATAN dan menolak kode ganda', async () => {
+    const env = buatEnv();
+
+    const tambah = await env.panggil('akun:tambah', {
+      kode: '5011',
+      nama: 'PENGELUARAN ARTOS',
+      tipe: 'BEBAN',
+    });
+    expect(tambah.ok, tambah.error).toBe(true);
+    expect(tambah.data).toMatchObject({
+      kode: '5011',
+      nama: 'PENGELUARAN ARTOS',
+      tipe: 'BEBAN',
+      posisi_normal: 'DEBIT',
+    });
+
+    const daftar = await env.panggil('coa:list');
+    expect(daftar.ok, daftar.error).toBe(true);
+    expect(daftar.data.some((a: { kode: string }) => a.kode === '5011')).toBe(true);
+
+    const ulang = await env.panggil('akun:tambah', {
+      kode: '5011',
+      nama: 'ARTOS LAIN',
+      tipe: 'BEBAN',
+    });
+    expect(ulang.ok).toBe(false);
+    expect(ulang.error).toMatch(/sudah dipakai/i);
+
+    const ubah = await env.panggil('akun:ubah', {
+      kode: '5011',
+      nama: 'PENGELUARAN ARTOS BARU',
+    });
+    expect(ubah.ok, ubah.error).toBe(true);
+    expect(ubah.data.nama).toBe('PENGELUARAN ARTOS BARU');
+
+    const nonaktif = await env.panggil('akun:set-aktif', '5011', false);
+    expect(nonaktif.ok, nonaktif.error).toBe(true);
+    expect(nonaktif.data.aktif).toBe(false);
+
+    const daftarNonaktif = await env.panggil('coa:list');
+    expect(
+      daftarNonaktif.data.find((a: { kode: string }) => a.kode === '5011')
+        ?.aktif,
+    ).toBe(false);
+
+    const aktif = await env.panggil('akun:set-aktif', '5011', true);
+    expect(aktif.ok, aktif.error).toBe(true);
+    expect(aktif.data.aktif).toBe(true);
+
+    const hapus = await env.panggil('akun:hapus', '5011');
+    expect(hapus.ok, hapus.error).toBe(true);
+    const daftarHapus = await env.panggil('coa:list');
+    expect(daftarHapus.data.some((a: { kode: string }) => a.kode === '5011')).toBe(false);
+
+    const ubahBawaan = await env.panggil('akun:ubah', {
+      kode: '5010',
+      nama: 'UBAH AKUN BAWAAN',
+    });
+    expect(ubahBawaan.ok).toBe(false);
+    expect(ubahBawaan.error).toMatch(/bawaan/i);
   });
 });
 

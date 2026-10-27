@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { Button, Card, ErrorBox, Field, PinInput, TextInput } from './ui.js';
+import { Button, Card, ErrorBox, Field, PinInput, RING_FOKUS, TextInput } from './ui.js';
 import { PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 type Mode = 'buka' | 'setup' | 'reset';
@@ -203,12 +203,12 @@ export function LockScreen({
           )}
           <div className="flex justify-center gap-4 pt-1 text-sm">
             {mode === 'buka' && (
-              <button type="button" className="text-emerald-700 underline" onClick={() => pindah('reset')}>
+              <button type="button" className={`rounded text-emerald-700 underline ${RING_FOKUS}`} onClick={() => pindah('reset')}>
                 Lupa PIN?
               </button>
             )}
             {mode !== 'buka' && sudahSetup && (
-              <button type="button" className="text-emerald-700 underline" onClick={() => pindah('buka')}>
+              <button type="button" className={`rounded text-emerald-700 underline ${RING_FOKUS}`} onClick={() => pindah('buka')}>
                 Kembali
               </button>
             )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import { akunBolehDiposting } from '../../db/coa.js';
 import {
@@ -22,6 +22,7 @@ import {
   Field,
   KonfirmasiModal,
   LockModal,
+  Modal,
   Select,
   TextInput,
 } from './ui.js';
@@ -83,7 +84,7 @@ export function JurnalUmumEditor({
    * dibaca (mis. saat duplikat).
    */
   const coaPosting = useMemo(
-    () => coa.filter((a) => akunBolehDiposting(a.kode)),
+    () => coa.filter((a) => akunBolehDiposting(a.kode, a.aktif !== false, { dikenal: true })),
     [coa],
   );
 
@@ -182,20 +183,6 @@ export function JurnalUmumEditor({
     }
     onBatal();
   }
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || busyRef.current || lockOpen || pesanKonfirmasi)
-        return;
-      if (adaIsian) {
-        setKonfirmasiTutup(true);
-        return;
-      }
-      onBatal();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [adaIsian, lockOpen, pesanKonfirmasi, onBatal]);
 
   function ubahBaris(index: number, patch: Partial<BarisEditor>): void {
     setRows((prev) =>
@@ -342,39 +329,18 @@ export function JurnalUmumEditor({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-20 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="judul-jurnal-umum"
+    <Modal
+      judul={awal?.id ? 'Duplikat Jurnal' : 'Jurnal Baru'}
+      deskripsi="Mode akuntan: isi beberapa baris debit dan kredit. Sistem hanya menyimpan bila minimal 2 baris sah dan total debit = total kredit."
+      onTutup={mintaTutup}
+      sibuk={busy}
+      maxWidth="64rem"
     >
-      <div className="my-4 w-full max-w-5xl rounded-xl bg-white p-5 shadow-lg">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 id="judul-jurnal-umum" className="text-xl font-bold">
-              {awal?.id ? 'Duplikat Jurnal' : 'Jurnal Baru'}
-            </h2>
-            <p className="mt-1 max-w-2xl text-[15px] text-stone-600">
-              Mode akuntan: isi beberapa baris debit dan kredit. Sistem hanya
-              menyimpan bila minimal 2 baris sah dan total debit = total kredit.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Tutup editor jurnal"
-            disabled={busy}
-            onClick={mintaTutup}
-            className="rounded-lg p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
+      <div className="-mt-1">
+        <ErrorBox msg={err} />
+      </div>
 
-        <div className="mt-3">
-          <ErrorBox msg={err} />
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <Field label="Tanggal">
             <TextInput
               type="date"
@@ -412,7 +378,7 @@ export function JurnalUmumEditor({
                 ))}
               </Select>
             </Field>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-1 text-helper text-stone-500">
               Template mengisi ulang baris dengan nominal 0; isi nominal sesuai
               bukti.
             </p>
@@ -500,7 +466,7 @@ export function JurnalUmumEditor({
                           onBlur={() => blurAkun(i)}
                         />
                         {akunSalah && (
-                          <span className="mt-1 block text-xs text-red-700">
+                          <span className="mt-1 block text-helper text-red-700">
                             Akun tidak dikenal atau tidak boleh diposting
                             (akun legacy/nonaktif). Pilih dari daftar akun.
                           </span>
@@ -652,11 +618,12 @@ export function JurnalUmumEditor({
             onBatal={() => setKonfirmasiTutup(false)}
             onKonfirmasi={() => {
               setKonfirmasiTutup(false);
-              onBatal();
+              // Tutup konfirmasi lebih dulu agar tumpukan modal mengembalikan
+              // fokus ke tombol editor, lalu editor mengembalikannya ke pemicu.
+              window.setTimeout(onBatal, 0);
             }}
           />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -189,6 +189,34 @@ baris. Batas aman: file maksimal **10 MB** dan maksimal **5.000 baris** data.
 Jurnal yang sudah diimpor tetap permanen; koreksi dilakukan lewat jurnal balik,
 bukan edit/hapus.
 
+### 2.9 Daftar Akun (tambah/ubah/nonaktifkan akun)
+
+Menu **Daftar Akun** menampilkan seluruh COA yang dipakai aplikasi. Di sini
+operator dapat mengelola akun **Beban** atau **Pendapatan** baru tanpa menunggu
+update aplikasi:
+
+1. Buka **Daftar Akun**.
+2. Isi **Kode akun** 4 digit yang belum dipakai (Beban `5xxx`, Pendapatan
+   `4xxx`), **Nama akun**, dan **Jenis akun**.
+3. Tekan **Tambah Akun**. Akun langsung muncul di form **Transaksi**,
+   **Jurnal Umum**, laporan, dan template **Import Excel**.
+4. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
+
+Untuk akun tambahan yang sudah ada:
+
+- **Ubah** — memperbaiki nama akun. Kode dan jenis akun tetap agar histori
+  jurnal tidak berubah. Perubahan nama tercatat di audit.
+- **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal,
+  anggaran, dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**.
+- **Hapus** — hanya berhasil bila akun belum pernah dipakai di jurnal,
+  anggaran, atau panjar. Bila sudah dipakai, sistem menolak dan menyarankan
+  **Nonaktifkan** agar histori tidak hilang.
+
+Contoh: `5011 PENGELUARAN ARTOS` (Beban) atau
+`4043 PENDAPATAN WEWEDALAN` (Pendapatan). Akun bawaan tidak bisa diubah,
+dinonaktifkan, atau dihapus dari layar ini; akun kas/bank baru juga belum bisa
+ditambahkan lewat layar ini karena perlu penanda kas khusus.
+
 ---
 
 ## 3. Rutinitas mingguan dan bulanan

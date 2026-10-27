@@ -24,6 +24,7 @@ import type { JurnalPihakTampil, Pihak, PihakSaldo } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
   Button,
@@ -33,6 +34,7 @@ import {
   Field,
   KonfirmasiModal,
   LockModal,
+  RING_FOKUS,
   Select,
   TextInput,
 } from './ui.js';
@@ -359,9 +361,30 @@ export function PihakTab() {
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
 
+  // UI-08: tiga form (transaksi, tambah pihak, ubah pihak) berbagi satu guard.
+  // Status kotor per form mencegah simpan sukses satu form menghapus peringatan
+  // untuk form lain yang masih berisi.
+  const { setDirty } = useTabGuard();
+  const [transaksiDirty, setTransaksiDirty] = useState(false);
+  const [tambahPihakDirty, setTambahPihakDirty] = useState(false);
+  const [editPihakDirty, setEditPihakDirty] = useState(false);
+
+  useEffect(() => {
+    setDirty(transaksiDirty || tambahPihakDirty || editPihakDirty);
+  }, [transaksiDirty, tambahPihakDirty, editPihakDirty, setDirty]);
+
+  // Tab di-unmount saat pindah; jangan biarkan status kotor bocor ke tab lain.
+  useEffect(() => () => setDirty(false), [setDirty]);
+
   const infoAlur = ALUR_INFO[alur];
-  const kasList = useMemo(() => coa.filter((a) => isAkunKas(a.kode)), [coa]);
-  const bebanList = useMemo(() => coa.filter((a) => a.tipe === 'BEBAN'), [coa]);
+  const kasList = useMemo(
+    () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
+    [coa],
+  );
+  const bebanList = useMemo(
+    () => coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false),
+    [coa],
+  );
   const namaAkun = useMemo(
     () => new Map(coa.map((a) => [a.kode, `${a.kode} — ${a.nama}`])),
     [coa],
@@ -396,12 +419,23 @@ export function PihakTab() {
 
   useEffect(() => {
     if (coa.length === 0) return;
-    const kasPertama = coa.find((a) => isAkunKas(a.kode))?.kode;
-    if (kasPertama) setAkunKas((sebelum) => sebelum || kasPertama);
-    const bebanWewangunan = coa.find((a) => a.kode === '5003' && a.tipe === 'BEBAN');
-    const bebanPertama = bebanWewangunan ?? coa.find((a) => a.tipe === 'BEBAN');
-    if (bebanPertama) setAkunBeban((sebelum) => sebelum || bebanPertama.kode);
-  }, [coa]);
+    const kasPertama = coa.find(
+      (a) => isAkunKas(a.kode) && a.aktif !== false,
+    )?.kode;
+    if (kasPertama)
+      setAkunKas((sebelum) =>
+        kasList.some((a) => a.kode === sebelum) ? sebelum : kasPertama,
+      );
+    const bebanWewangunan = coa.find(
+      (a) => a.kode === '5003' && a.tipe === 'BEBAN' && a.aktif !== false,
+    );
+    const bebanPertama =
+      bebanWewangunan ?? coa.find((a) => a.tipe === 'BEBAN' && a.aktif !== false);
+    if (bebanPertama)
+      setAkunBeban((sebelum) =>
+        bebanList.some((a) => a.kode === sebelum) ? sebelum : bebanPertama.kode,
+      );
+  }, [coa, kasList, bebanList]);
 
   const saldoTerpilih = saldo.find((s) => s.id === pihakId);
   const saldoRelevan =
@@ -430,6 +464,7 @@ export function PihakTab() {
       pihakId,
       nominal,
       keterangan: keterangan.trim() || infoAlur.placeholder,
+      daftarAkun: coa,
       ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
     };
     try {
@@ -448,7 +483,7 @@ export function PihakTab() {
     } catch (e) {
       return { hasil: null, error: pesanError(e) };
     }
-  }, [akunBeban, akunKas, alur, infoAlur.placeholder, keterangan, noBukti, nominal, pihakId, tanggal]);
+  }, [akunBeban, akunKas, alur, coa, infoAlur.placeholder, keterangan, noBukti, nominal, pihakId, tanggal]);
 
   const formSah =
     tanggalKalenderValid(tanggal) &&
@@ -484,6 +519,7 @@ export function PihakTab() {
       pihakId,
       nominal,
       keterangan: keterangan.trim(),
+      daftarAkun: coa,
       ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
       ...(alasan ? { alasan } : {}),
     };
@@ -544,6 +580,7 @@ export function PihakTab() {
       setKeterangan('');
       setNoBukti('');
       setSetujuLebih(false);
+      setTransaksiDirty(false);
       await muat();
       setInfoForm(
         `${infoAlur.judul} senilai ${formatRp(nominal)} untuk ` +
@@ -582,6 +619,7 @@ export function PihakTab() {
       });
       setNamaBaru('');
       setCatatanBaru('');
+      setTambahPihakDirty(false);
       await muat();
       setPihakId(r.id);
       setInfo(`Pihak "${r.pihak.nama}" ditambahkan.`);
@@ -597,6 +635,8 @@ export function PihakTab() {
     setEditId(p.id);
     setEditNama(p.nama);
     setEditCatatan(p.catatan);
+    // Prefill terprogram: belum ada perubahan yang perlu diperingatkan.
+    setEditPihakDirty(false);
     setErr(null);
     setInfo(null);
   }
@@ -613,6 +653,7 @@ export function PihakTab() {
         catatan: editCatatan.trim(),
       });
       setEditId('');
+      setEditPihakDirty(false);
       await muat();
       setInfo(`Pihak "${r.pihak.nama}" diperbarui.`);
     } catch (e) {
@@ -721,7 +762,10 @@ export function PihakTab() {
               value={namaBaru}
               disabled={busyMaster}
               placeholder="cth: Banjar / LPD / Toko Bangunan"
-              onChange={(e) => setNamaBaru(e.target.value)}
+              onChange={(e) => {
+                setNamaBaru(e.target.value);
+                setTambahPihakDirty(true);
+              }}
             />
           </Field>
           <Field label="Catatan (opsional)">
@@ -729,7 +773,10 @@ export function PihakTab() {
               value={catatanBaru}
               disabled={busyMaster}
               placeholder="cth: kontak / alamat / keperluan"
-              onChange={(e) => setCatatanBaru(e.target.value)}
+              onChange={(e) => {
+                setCatatanBaru(e.target.value);
+                setTambahPihakDirty(true);
+              }}
             />
           </Field>
           <Button disabled={busyMaster || !namaBaru.trim()} onClick={() => void tambahPihak()}>
@@ -759,13 +806,17 @@ export function PihakTab() {
                         <TextInput
                           value={editNama}
                           disabled={busyMaster}
-                          onChange={(e) => setEditNama(e.target.value)}
+                          onChange={(e) => {
+                            setEditNama(e.target.value);
+                            setEditPihakDirty(true);
+                          }}
                         />
                       ) : (
                         <button
                           type="button"
                           onClick={() => void bukaRiwayat(p.id)}
-                          className="text-left font-semibold text-emerald-800 underline-offset-2 hover:underline"
+                          aria-label={`Lihat riwayat jurnal ${p.nama}`}
+                          className={`inline-flex min-h-8 items-center rounded py-1 text-left font-semibold text-emerald-800 underline-offset-2 hover:underline ${RING_FOKUS}`}
                           title="Lihat riwayat jurnal pihak ini"
                         >
                           {p.nama}
@@ -777,7 +828,10 @@ export function PihakTab() {
                         <TextInput
                           value={editCatatan}
                           disabled={busyMaster}
-                          onChange={(e) => setEditCatatan(e.target.value)}
+                          onChange={(e) => {
+                            setEditCatatan(e.target.value);
+                            setEditPihakDirty(true);
+                          }}
                         />
                       ) : (
                         <span className="text-stone-600">{p.catatan || '—'}</span>
@@ -802,7 +856,10 @@ export function PihakTab() {
                             <Button
                               variant="ghost"
                               disabled={busyMaster}
-                              onClick={() => setEditId('')}
+                              onClick={() => {
+                                setEditId('');
+                                setEditPihakDirty(false);
+                              }}
                             >
                               Batal
                             </Button>
@@ -866,7 +923,7 @@ export function PihakTab() {
             </div>
             <div className="rounded-lg border bg-stone-50 px-3 py-2">
               Total mutasi <b className="block">{formatRp(totalDebitRiwayat)}</b>
-              <span className="text-xs text-stone-500">debit {formatRp(totalKreditRiwayat)} kredit</span>
+              <span className="text-helper text-stone-500">debit {formatRp(totalKreditRiwayat)} kredit</span>
             </div>
           </div>
           {busyRiwayat ? (
@@ -926,6 +983,7 @@ export function PihakTab() {
                 onClick={() => pilihAlur(id)}
                 className={clsx(
                   'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                  RING_FOKUS,
                   aktif
                     ? 'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm'
                     : 'border-stone-200 bg-white text-stone-700 hover:border-emerald-300 hover:bg-emerald-50/40',
@@ -941,7 +999,7 @@ export function PihakTab() {
                 </span>
                 <span className="min-w-0">
                   <span className="block font-bold">{info.judul}</span>
-                  <span className="block text-xs">{info.ringkas}</span>
+                  <span className="block text-helper">{info.ringkas}</span>
                 </span>
               </button>
             );
@@ -951,7 +1009,7 @@ export function PihakTab() {
         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
           <h3 className="font-bold">{infoAlur.judul}</h3>
           <p className="mt-1 max-w-3xl text-sm text-stone-700">{infoAlur.deskripsi}</p>
-          <p className="mt-1 text-xs font-semibold text-emerald-800">
+          <p className="mt-1 text-helper font-semibold text-emerald-800">
             {alur === 'BELI_KREDIT'
               ? 'D Beban / K Hutang (2050) — bukan D Modal. Modal hanya berubah lewat setoran/penarikan modal atau Saldo Awal.'
               : 'Piutang/hutang selalu punya pihak. Jurnal otomatis seimbang dan bisa diperiksa di Jurnal Umum.'}
@@ -973,7 +1031,10 @@ export function PihakTab() {
               type="date"
               value={tanggal}
               disabled={busy}
-              onChange={(e) => setTanggal(e.target.value)}
+              onChange={(e) => {
+                setTanggal(e.target.value);
+                setTransaksiDirty(true);
+              }}
             />
           </Field>
 
@@ -986,6 +1047,7 @@ export function PihakTab() {
                 setSetujuLebih(false);
                 setPesanKonfirmasi(null);
                 setErrForm(null);
+                setTransaksiDirty(true);
               }}
             >
               <option value="">— Pilih pihak —</option>
@@ -1000,7 +1062,7 @@ export function PihakTab() {
               })}
             </Select>
             {pihak.length === 0 && (
-              <span className="mt-1 block text-xs text-red-700">
+              <span className="mt-1 block text-helper text-red-700">
                 Belum ada pihak. Tambahkan dulu di daftar pihak di atas.
               </span>
             )}
@@ -1011,7 +1073,10 @@ export function PihakTab() {
               <Select
                 value={akunKas}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunKas(e.target.value)}
+                onChange={(e) => {
+                  setAkunKas(e.target.value);
+                  setTransaksiDirty(true);
+                }}
               >
                 <option value="">— Pilih kas / bank —</option>
                 {kasList.map((a) => (
@@ -1026,7 +1091,10 @@ export function PihakTab() {
               <Select
                 value={akunBeban}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunBeban(e.target.value)}
+                onChange={(e) => {
+                  setAkunBeban(e.target.value);
+                  setTransaksiDirty(true);
+                }}
               >
                 <option value="">— Pilih akun beban —</option>
                 {bebanList.map((a) => (
@@ -1035,7 +1103,7 @@ export function PihakTab() {
                   </option>
                 ))}
               </Select>
-              <span className="mt-1 block text-xs text-stone-500">
+              <span className="mt-1 block text-helper text-stone-500">
                 Contoh perbaikan gedung: 5003 BAGA WEWANGUNAN. Tidak ada uang kas yang
                 keluar sekarang; hutang bertambah.
               </span>
@@ -1043,7 +1111,14 @@ export function PihakTab() {
           )}
 
           <Field label={infoAlur.labelNominal}>
-            <CurrencyInput value={nominal} onChange={(n) => { setNominal(n); setSetujuLebih(false); }} />
+            <CurrencyInput
+              value={nominal}
+              onChange={(n) => {
+                setNominal(n);
+                setSetujuLebih(false);
+                setTransaksiDirty(true);
+              }}
+            />
           </Field>
 
           <Field label="Keterangan">
@@ -1051,7 +1126,10 @@ export function PihakTab() {
               value={keterangan}
               disabled={busy}
               placeholder={infoAlur.placeholder}
-              onChange={(e) => setKeterangan(e.target.value)}
+              onChange={(e) => {
+                setKeterangan(e.target.value);
+                setTransaksiDirty(true);
+              }}
             />
           </Field>
 
@@ -1061,7 +1139,10 @@ export function PihakTab() {
                 value={noBukti}
                 disabled={busy}
                 placeholder="cth: JU-2026-0001 — boleh dikosongkan"
-                onChange={(e) => setNoBukti(e.target.value)}
+                onChange={(e) => {
+                  setNoBukti(e.target.value);
+                  setTransaksiDirty(true);
+                }}
               />
             </Field>
             <SaranNomorBukti tanggal={tanggal} />
@@ -1073,7 +1154,7 @@ export function PihakTab() {
             <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
               Saldo pihak saat ini:{' '}
               <b>{formatRp(saldoRelevan)}</b>{' '}
-              <span className="text-xs text-stone-500">
+              <span className="text-helper text-stone-500">
                 ({alur === 'BERI_PINJAMAN' || alur === 'TERIMA_PELUNASAN' ? 'piutang 1050' : 'hutang 2050'})
               </span>
             </div>
@@ -1104,7 +1185,10 @@ export function PihakTab() {
                 className="mt-1"
                 checked={setujuLebih}
                 disabled={busy}
-                onChange={(e) => setSetujuLebih(e.target.checked)}
+                onChange={(e) => {
+                  setSetujuLebih(e.target.checked);
+                  setTransaksiDirty(true);
+                }}
               />
               <span>
                 Saya sudah memeriksa dan tetap ingin menyimpan transaksi ini.

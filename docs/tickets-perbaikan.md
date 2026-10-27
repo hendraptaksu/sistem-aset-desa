@@ -377,6 +377,13 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
   - **DoD:** test parser + pembuatan jurnal; tolak file tidak seimbang.
   - **Dependency:** P0-2
 
+- [x] **P2-10 — Daftar Akun & kelola akun (Beban/Pendapatan)** (2026-10-27: tab Daftar Akun + IPC `akun:tambah`/`akun:ubah`/`akun:set-aktif`/`akun:hapus` + master `akun` DB dipakai `coa:list`, form, laporan, dan template impor + audit `AKUN-*`; test akun & IPC hijau)
+  - **Langkah:** operator dapat menambah, mengubah nama, menonaktifkan/mengaktifkan, dan menghapus akun
+    Beban (`5xxx`) / Pendapatan (`4xxx`) yang belum dipakai; akun langsung tersedia di seluruh layar.
+  - **DoD:** akun tambahan bisa dipakai posting dan muncul di laporan; kode/nama ganda ditolak; hapus
+    permanen ditolak bila akun sudah dipakai (gunakan nonaktif).
+  - **Dependency:** P0-1
+
 ### Dibatalkan oleh keputusan pemilik (2026-10-04) — jangan dikerjakan
 
 - [x] **P2-3 — Aset tetap & penyusutan.** Dibatalkan (K3: terlalu rumit/membingungkan). Modul Inventaris
@@ -407,3 +414,5 @@ P0-8 dan P0-9 tidak bergantung pada yang lain dan boleh dikerjakan lebih dulu.
 - 2026-10-04 (revisi 3): feedback WhatsApp v1.2.0 dipetakan. P0-6 dapat alur "Koreksi & isi ulang";
   P1-3 jadi form "Pindah Dana" (contoh LPD → kas bendahara); P1-5 dapat alur beli/perbaikan kredit
   (D beban / K hutang, modal tidak tersentuh); P1-16 baru (template cetak resmi & pratinjau).
+- 2026-10-27: P2-10 Daftar Akun — tambah/ubah nama/nonaktifkan/hapus akun Beban/Pendapatan
+  dari aplikasi, dengan audit `AKUN-*`; akun tambahan langsung dipakai form, laporan, dan impor.

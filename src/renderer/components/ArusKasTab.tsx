@@ -115,7 +115,7 @@ export function ArusKasTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Arus Kas</h2>
+            <h1 className="text-lg font-bold">Arus Kas</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Arus Kas menampilkan uang yang masuk dan keluar dari semua dompet
               kas/bank pada satu periode. Pindah dana antar dompet tidak dihitung
@@ -152,7 +152,7 @@ export function ArusKasTab() {
             </Button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-stone-500">
+        <p className="mt-2 text-helper text-stone-500">
           Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik baris mutasi
           untuk melihat jurnal asal dan nomor buktinya.
         </p>
@@ -208,7 +208,7 @@ export function ArusKasTab() {
                 <div className="text-lg font-bold text-emerald-900">
                   {formatRp(data.saldoAkhir)}
                 </div>
-                <div className="mt-1 text-xs text-emerald-800">
+                <div className="mt-1 text-helper text-emerald-800">
                   saldo awal + kenaikan
                 </div>
               </div>
@@ -231,7 +231,7 @@ export function ArusKasTab() {
                         {formatRp(k.neto)}
                       </Badge>
                     </div>
-                    <div className="mt-1 text-xs text-stone-500">{keterangan}</div>
+                    <div className="mt-1 text-helper text-stone-500">{keterangan}</div>
                     <div className="mt-2 text-sm text-stone-600">
                       Masuk {formatRp(k.masuk)} · Keluar {formatRp(k.keluar)}
                     </div>
@@ -239,7 +239,7 @@ export function ArusKasTab() {
                 );
               })}
             </div>
-            <p className="mt-2 text-xs text-stone-500">
+            <p className="mt-2 text-helper text-stone-500">
               Transfer antar dompet ditampilkan terpisah dan tidak menambah total
               masuk/keluar, supaya uang yang sama tidak dihitung dua kali.
             </p>

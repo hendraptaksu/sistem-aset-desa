@@ -23,6 +23,7 @@ import {
 } from '../../features/export/printDoc.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
   Button,
@@ -31,6 +32,7 @@ import {
   ErrorBox,
   Field,
   KonfirmasiModal,
+  Modal,
   Select,
   TextInput,
 } from './ui.js';
@@ -148,6 +150,10 @@ export function JurnalTab({
     };
   }, []);
 
+  // UI-11: rentang "dari" > "sampai" tidak boleh dikirim ke API. Bandingkan
+  // string ISO (YYYY-MM-DD) agar urutannya sama dengan urutan tanggal.
+  const rentangTidakValid = Boolean(fMulai && fSampai && fMulai > fSampai);
+
   // Debounce kata kunci; filter tanggal/jenis langsung memicu muat.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -159,6 +165,16 @@ export function JurnalTab({
 
   useEffect(() => {
     let aktif = true;
+    if (rentangTidakValid) {
+      // Kosongkan hasil agar total/paginasi/export tidak memakai data lama.
+      setDaftar([]);
+      setTotal(0);
+      setErr(null);
+      setMemuat(false);
+      return () => {
+        aktif = false;
+      };
+    }
     setMemuat(true);
     api
       .jurnalCari({
@@ -185,7 +201,7 @@ export function JurnalTab({
     return () => {
       aktif = false;
     };
-  }, [cariServer, fMulai, fSampai, fJenis, page, versi]);
+  }, [cariServer, fMulai, fSampai, fJenis, page, versi, rentangTidakValid]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const pageRows = daftar;
@@ -213,6 +229,8 @@ export function JurnalTab({
 
   /** Export/print memuat SEMUA hasil filter (bukan hanya halaman aktif). */
   async function muatSemuaJurnal(): Promise<JurnalLengkap[]> {
+    // Jaring pengaman: tombol export sudah nonaktif saat rentang tidak valid.
+    if (rentangTidakValid) return [];
     const ukuran = 200;
     const semua: JurnalLengkap[] = [];
     let offset = 0;
@@ -230,7 +248,7 @@ export function JurnalTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Jurnal Umum</h2>
+            <h1 className="text-lg font-bold">Jurnal Umum</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Semua transaksi tercatat sebagai jurnal debit–kredit. Kalau ada yang salah,
               jangan dihapus: pakai tombol <b>Koreksi</b>. Jurnal asli tetap disimpan untuk
@@ -262,49 +280,79 @@ export function JurnalTab({
             {info}
           </div>
         )}
-        <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <TextInput
-            placeholder="Cari no. bukti / keterangan / akun / nominal…"
-            value={cari}
-            onChange={(e) => setCari(e.target.value)}
-          />
-          <TextInput
-            type="date"
-            value={fMulai}
-            onChange={(e) => {
-              setFMulai(e.target.value);
-              resetHalaman();
-            }}
-          />
-          <TextInput
-            type="date"
-            value={fSampai}
-            onChange={(e) => {
-              setFSampai(e.target.value);
-              resetHalaman();
-            }}
-          />
-          <Select
-            value={fJenis}
-            onChange={(e) => {
-              setFJenis(e.target.value);
-              resetHalaman();
-            }}
-          >
-            <option value="">Semua jenis</option>
-            {JENIS_JURNAL.map((j) => (
-              <option key={j} value={j}>
-                {LABEL_JENIS[j] ?? j}
-              </option>
-            ))}
-          </Select>
+        {/* UI-11: 2×2 di layar sempit, 5 kolom di >=1280 dengan search 2 kolom. */}
+        <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="xl:col-span-2">
+            <Field label="Cari">
+              <TextInput
+                placeholder="No. bukti, keterangan, akun, nominal…"
+                value={cari}
+                onChange={(e) => setCari(e.target.value)}
+              />
+            </Field>
+          </div>
+          <Field label="Dari tanggal">
+            <TextInput
+              type="date"
+              value={fMulai}
+              aria-invalid={rentangTidakValid || undefined}
+              aria-describedby={
+                rentangTidakValid ? 'jurnal-rentang-tanggal-error' : undefined
+              }
+              onChange={(e) => {
+                setFMulai(e.target.value);
+                resetHalaman();
+              }}
+            />
+          </Field>
+          <Field label="Sampai tanggal">
+            <TextInput
+              type="date"
+              value={fSampai}
+              aria-invalid={rentangTidakValid || undefined}
+              aria-describedby={
+                rentangTidakValid ? 'jurnal-rentang-tanggal-error' : undefined
+              }
+              onChange={(e) => {
+                setFSampai(e.target.value);
+                resetHalaman();
+              }}
+            />
+          </Field>
+          <Field label="Jenis">
+            <Select
+              value={fJenis}
+              onChange={(e) => {
+                setFJenis(e.target.value);
+                resetHalaman();
+              }}
+            >
+              <option value="">Semua jenis</option>
+              {JENIS_JURNAL.map((j) => (
+                <option key={j} value={j}>
+                  {LABEL_JENIS[j] ?? j}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
+
+        {rentangTidakValid && (
+          <p
+            id="jurnal-rentang-tanggal-error"
+            role="alert"
+            className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            Tanggal “Dari” tidak boleh setelah “Sampai”. Perbaiki rentang tanggal
+            untuk menampilkan jurnal.
+          </p>
+        )}
 
         <div className="mb-3">
           <ExportActions
             namaDasar={namaDasarJurnal}
             judul="Jurnal Umum"
-            disabled={total === 0 || memuat}
+            disabled={total === 0 || memuat || rentangTidakValid}
             buatWorkbook={async (kop) =>
               jurnalToWorkbook(await muatSemuaJurnal(), coa, {
                 ...opsiPeriodeJurnal,
@@ -336,6 +384,10 @@ export function JurnalTab({
             <tbody>
               {pageRows.map((j) => {
                 const terkunci = Boolean(j.reversal_of) || Boolean(j.reversal_id);
+                // UI-12: nomor bukti dipakai sebagai konteks aksi baris. Jurnal lama
+                // bisa tanpa no. bukti; tanggal + potongan id menjaga nama tetap unik.
+                const nomorBuktiAksesibel =
+                  j.no_bukti?.trim() || `${formatTanggal(j.tanggal)} ${j.id.slice(0, 12)}`;
                 return (
                   <tr key={j.id} className="border-b align-top last:border-0">
                     <td className="whitespace-nowrap py-2 pr-3">{formatTanggal(j.tanggal)}</td>
@@ -357,11 +409,16 @@ export function JurnalTab({
                     </td>
                     <td className="py-2 text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => setDetail(j)}>
+                        <Button
+                          variant="ghost"
+                          aria-label={`Lihat jurnal ${nomorBuktiAksesibel}`}
+                          onClick={() => setDetail(j)}
+                        >
                           Lihat
                         </Button>
                         <Button
                           variant="ghost"
+                          aria-label={`Koreksi jurnal ${nomorBuktiAksesibel}`}
                           disabled={terkunci}
                           title={
                             terkunci
@@ -386,9 +443,11 @@ export function JurnalTab({
                   <td colSpan={7} className="py-4 text-center text-stone-500">
                     {memuat
                       ? 'Memuat jurnal…'
-                      : adaFilter
-                        ? 'Tidak ada jurnal yang cocok dengan filter.'
-                        : 'Belum ada jurnal.'}
+                      : rentangTidakValid
+                        ? 'Perbaiki rentang tanggal untuk menampilkan jurnal.'
+                        : adaFilter
+                          ? 'Tidak ada jurnal yang cocok dengan filter.'
+                          : 'Belum ada jurnal.'}
                   </td>
                 </tr>
               )}
@@ -429,7 +488,13 @@ export function JurnalTab({
           coa={coa}
           onClose={() => setDetail(null)}
           onDuplikat={bukaDuplikat}
-          onPrint={(jurnal) => bukaPratinjau(jurnalDetailPrintDoc(jurnal, coa))}
+          onPrint={(jurnal) => {
+            // Pratinjau cetak belum memakai Modal bersama (UI-10) dan masih
+            // z-30, jadi tutup detail dulu agar pratinjau tidak tertutup
+            // modal detail yang kini minimal z-40.
+            setDetail(null);
+            bukaPratinjau(jurnalDetailPrintDoc(jurnal, coa));
+          }}
         />
       )}
 
@@ -499,6 +564,12 @@ function KoreksiModal({
   );
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState('');
 
+  // UI-08: Koreksi adalah modal di dalam tab Jurnal. Isian yang belum disimpan
+  // harus memicu guard saat pindah tab; status dibersihkan saat modal ditutup
+  // agar Batal/Escape/klik latar tidak memunculkan dialog guard ganda.
+  const { setDirty } = useTabGuard();
+  useEffect(() => () => setDirty(false), [setDirty]);
+
   // Form isi ulang: terisi data lama supaya operator tinggal membetulkan typo.
   const [tanggal, setTanggal] = useState(jurnal.tanggal);
   const [keterangan, setKeterangan] = useState(jurnal.keterangan);
@@ -535,6 +606,7 @@ function KoreksiModal({
 
   function ubahBaris(index: number, patch: Partial<BarisForm>) {
     setBaris((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setDirty(true);
   }
 
   function tambahBaris() {
@@ -542,10 +614,19 @@ function KoreksiModal({
       ...rows,
       { akun_kode: coa[0]?.kode ?? '', sisi: 'DEBIT', nominal: 0, keterangan: '' },
     ]);
+    setDirty(true);
   }
 
   function hapusBaris(index: number) {
-    setBaris((rows) => (rows.length <= 2 ? rows : rows.filter((_, i) => i !== index)));
+    if (baris.length <= 2) return;
+    setBaris((rows) => rows.filter((_, i) => i !== index));
+    setDirty(true);
+  }
+
+  /** Batal yang disengaja: bersihkan guard sebelum modal di-unmount. */
+  function batal(): void {
+    setDirty(false);
+    onBatal();
   }
 
   async function kirimBalik(konfirmasi = false) {
@@ -560,6 +641,7 @@ function KoreksiModal({
         tanggal: tanggalBalik,
         konfirmasiPeringatan: konfirmasi,
       });
+      setDirty(false);
       onSelesai(
         `Jurnal balik untuk ${jurnal.no_bukti || jurnal.id} tersimpan. Jurnal asli tetap ada.`,
       );
@@ -606,6 +688,7 @@ function KoreksiModal({
         },
         { tanggal: tanggalBalik, konfirmasiPeringatan: konfirmasi },
       );
+      setDirty(false);
       onSelesai(
         `Koreksi tersimpan: jurnal balik ${hasil.reversal.id} + jurnal pengganti ${hasil.jurnalBaru.id}. Jurnal asli tetap ada.`,
       );
@@ -623,19 +706,24 @@ function KoreksiModal({
   }
 
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-5 shadow-lg">
-        <h3 className="text-lg font-bold">Koreksi Jurnal</h3>
-        <p className="mt-1 text-[15px] text-stone-600">
-          Jurnal asli <b>tidak dihapus</b>. Sistem membuat jurnal balik (debit dan kredit
-          ditukar), lalu Anda bisa mengisi ulang data yang benar. Semua koreksi tercatat di
-          riwayat audit.
-        </p>
-        <p className="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-          Jurnal balik mengikuti tanggal asli. Jika periode terkunci, isi alasan minimal{' '}
-          {ALASAN_REVERSAL_MIN} karakter.
-        </p>
-        <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
+    <Modal
+      judul="Koreksi Jurnal"
+      deskripsi={
+        <span className="text-[15px]">
+          Jurnal asli <b>tidak dihapus</b>. Sistem membuat jurnal balik (debit dan
+          kredit ditukar), lalu Anda bisa mengisi ulang data yang benar. Semua
+          koreksi tercatat di riwayat audit.
+        </span>
+      }
+      onTutup={batal}
+      sibuk={busy}
+      lebar="3xl"
+    >
+      <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+        Jurnal balik mengikuti tanggal asli. Jika periode terkunci, isi alasan minimal{' '}
+        {ALASAN_REVERSAL_MIN} karakter.
+      </p>
+      <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
           <p className="font-semibold">{jurnal.keterangan}</p>
           <p className="text-sm text-stone-600">
             {formatTanggal(jurnal.tanggal)} · {jurnal.no_bukti || 'tanpa nomor bukti'} ·{' '}
@@ -665,14 +753,20 @@ function KoreksiModal({
                   autoFocus
                   value={alasan}
                   placeholder="cth: salah ketik nominal, seharusnya Rp 80.000"
-                  onChange={(e) => setAlasan(e.target.value)}
+                  onChange={(e) => {
+                    setAlasan(e.target.value);
+                    setDirty(true);
+                  }}
                 />
               </Field>
               <Field label="Tanggal jurnal balik">
                 <TextInput
                   type="date"
                   value={tanggalBalik}
-                  onChange={(e) => setTanggalBalik(e.target.value)}
+                  onChange={(e) => {
+                    setTanggalBalik(e.target.value);
+                    setDirty(true);
+                  }}
                 />
               </Field>
             </div>
@@ -714,7 +808,7 @@ function KoreksiModal({
             )}
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button variant="ghost" disabled={busy} onClick={onBatal}>
+              <Button variant="ghost" disabled={busy} onClick={batal}>
                 Batal
               </Button>
               <Button
@@ -739,21 +833,37 @@ function KoreksiModal({
           <>
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
               <Field label="Tanggal jurnal pengganti">
-                <TextInput type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
+                <TextInput
+                  type="date"
+                  value={tanggal}
+                  onChange={(e) => {
+                    setTanggal(e.target.value);
+                    setDirty(true);
+                  }}
+                />
               </Field>
               <Field label="Keterangan">
-                <TextInput value={keterangan} onChange={(e) => setKeterangan(e.target.value)} />
+                <TextInput
+                  value={keterangan}
+                  onChange={(e) => {
+                    setKeterangan(e.target.value);
+                    setDirty(true);
+                  }}
+                />
               </Field>
               <Field label="No. bukti baru (opsional)">
                 <TextInput
                   value={noBukti}
                   placeholder="kosongkan untuk nomor otomatis"
-                  onChange={(e) => setNoBukti(e.target.value)}
+                  onChange={(e) => {
+                    setNoBukti(e.target.value);
+                    setDirty(true);
+                  }}
                 />
               </Field>
             </div>
             <SaranNomorBukti tanggal={tanggal} />
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-1 text-helper text-stone-500">
               Nomor bukti lama tetap menempel di jurnal asli. Nomor baru otomatis
               memakai urutan berikutnya dan tidak boleh sama.
             </p>
@@ -859,7 +969,7 @@ function KoreksiModal({
               <Button variant="ghost" disabled={busy} onClick={() => setLangkah('alasan')}>
                 Kembali
               </Button>
-              <Button variant="ghost" disabled={busy} onClick={onBatal}>
+              <Button variant="ghost" disabled={busy} onClick={batal}>
                 Batal
               </Button>
               <Button
@@ -912,7 +1022,6 @@ function KoreksiModal({
             }}
           />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -15,12 +15,26 @@ describe('formatRp sen → 2 desimal', () => {
   });
 });
 
-describe('formatTanggal ISO → DD-MM-YYYY', () => {
+describe('formatTanggal ISO → "27 Okt 2026"', () => {
   it('konversi benar', () => {
-    expect(formatTanggal('2026-01-05')).toBe('05-01-2026');
+    expect(formatTanggal('2026-01-05')).toBe('5 Jan 2026');
+    expect(formatTanggal('2026-10-27')).toBe('27 Okt 2026');
+  });
+  it('semua bulan memakai nama Indonesia 3 huruf', () => {
+    const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    bulan.forEach((nama, indeks) => {
+      const iso = `2026-${String(indeks + 1).padStart(2, '0')}-01`;
+      expect(formatTanggal(iso)).toBe(`1 ${nama} 2026`);
+    });
+  });
+  it('hari tanpa leading zero', () => {
+    expect(formatTanggal('2026-12-09')).toBe('9 Des 2026');
+    expect(formatTanggal('2026-06-30')).toBe('30 Jun 2026');
   });
   it('input invalid dikembalikan apa adanya', () => {
-    expect(formatTanggal('asal')).toBe('asal');
+    for (const invalid of ['asal', '', '2026-1-5', '2026-13-01', '2026-00-10', '2026-01-00']) {
+      expect(formatTanggal(invalid)).toBe(invalid);
+    }
   });
 });
 

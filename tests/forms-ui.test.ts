@@ -607,7 +607,7 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
     expect(html).not.toContain('disabled=""');
   });
 
-  it('menampilkan status sibuk dan menonaktifkan kedua tombol', () => {
+  it('menampilkan status sibuk dan menonaktifkan tombol aksi serta X', () => {
     const html = renderToStaticMarkup(
       createElement(KonfirmasiModal, {
         judul: 'Tutup buku?',
@@ -618,7 +618,8 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
       }),
     );
     expect(html).toContain('Memproses…');
-    expect((html.match(/disabled=""/g) ?? []).length).toBe(2);
+    // X di header + Batal + tombol aksi tidak boleh aktif saat memproses.
+    expect((html.match(/disabled=""/g) ?? []).length).toBe(3);
   });
 });
 

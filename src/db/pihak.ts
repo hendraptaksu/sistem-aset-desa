@@ -29,7 +29,7 @@ import type {
 import { formatRp } from '../utils/format.js';
 import { listBarisJurnal } from './laporan.js';
 import { postingJurnal, validasiJurnalDb } from './posting.js';
-import { getJurnal, insertAuditLog, listJurnalBaris } from './repository.js';
+import { getJurnal, insertAuditLog, listAkun, listJurnalBaris } from './repository.js';
 
 export type PihakInput = {
   nama: string;
@@ -320,7 +320,7 @@ export function postingPihak(
 
   let klasifikasi: ReturnType<typeof klasifikasiAlurPihak>;
   try {
-    klasifikasi = klasifikasiAlurPihak(input.input);
+    klasifikasi = klasifikasiAlurPihak(input.input, listAkun(db));
   } catch (e) {
     return gagal(e instanceof Error ? e.message : String(e));
   }

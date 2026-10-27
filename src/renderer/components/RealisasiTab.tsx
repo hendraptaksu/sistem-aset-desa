@@ -162,7 +162,7 @@ function InputPaguAkun({
       <span className="text-[15px]">{akun.nama}</span>
       <CurrencyInput value={nilai} onChange={onChange} disabled={disabled} />
       {!akun.aktif && (
-        <span className="col-span-3 text-xs text-red-700">
+        <span className="col-span-3 text-helper text-red-700">
           Akun tidak aktif — pagu lama tetap ditampilkan, tetapi tidak bisa diubah.
         </span>
       )}
@@ -282,7 +282,7 @@ export function RealisasiTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Anggaran & Realisasi</h2>
+            <h1 className="text-lg font-bold">Anggaran & Realisasi</h1>
             <p className="mt-1 text-[15px] text-stone-600">
               Pagu disimpan per tahun. Realisasi, sisa, dan persen selalu dihitung
               ulang dari jurnal — bukan angka yang disimpan.

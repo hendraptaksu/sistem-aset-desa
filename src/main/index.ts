@@ -1,4 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  powerMonitor,
+  screen,
+  shell,
+} from 'electron';
 import { config as loadEnv } from 'dotenv';
 import { basename, isAbsolute, join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
@@ -29,6 +37,7 @@ import {
   TOMBOL_KELUAR,
   type AksiPemulihanDb,
 } from './pemulihanDb.js';
+import { opsiUkuranJendela } from './ukuranJendela.js';
 import { urlDiizinkan } from './windowSecurity.js';
 
 let db: Database.Database;
@@ -271,8 +280,9 @@ function createWindow(): void {
   const rendererFile = join(__dirname, '../renderer/index.html');
 
   win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    // UI-02: default 1240×760 di-clamp ke work area layar aktif agar muat di
+    // 1366×768 (Windows memotong taskbar); minimum 1024×680 menjaga layout.
+    ...opsiUkuranJendela(screen.getPrimaryDisplay().workAreaSize),
     title: 'Keuangan Pura Dalem Puri',
     webPreferences: {
       preload: preloadPath(),

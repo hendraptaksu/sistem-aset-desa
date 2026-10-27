@@ -557,7 +557,7 @@ export function neracaPrintDoc(
       [null, null, n.labaBelumDitutup],
     ),
     baris(
-      ['—', 'Laba berjalan (1 Januari s/d cut-off)', formatRp(n.labaBerjalan)],
+      ['—', 'Laba berjalan (1 Januari s/d tanggal laporan)', formatRp(n.labaBerjalan)],
       [null, null, n.labaBerjalan],
     ),
     baris(

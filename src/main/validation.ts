@@ -1,6 +1,6 @@
 // Validasi input murni (tanpa Electron/DB) — di-test di tests/ipc-validation.test.ts.
 
-import { isBeban } from '../db/coa.js';
+import { isBeban, type CoaTipe } from '../db/coa.js';
 import {
   JENIS_JURNAL,
   tanggalKalenderValid,
@@ -222,6 +222,73 @@ const MAKS_BARIS_JURNAL = 500;
 
 const objek = (nilai: unknown): nilai is Record<string, unknown> =>
   typeof nilai === 'object' && nilai !== null && !Array.isArray(nilai);
+
+export type BentukAkunBaru = {
+  kode: string;
+  nama: string;
+  tipe: CoaTipe;
+};
+
+/**
+ * Bentuk input tambah akun dari renderer. Kode/prefix/keunikan tetap
+ * divalidasi ulang di lapisan DB; di sini hanya bentuk yang aman.
+ */
+export function validasiBentukAkunBaru(
+  nilai: unknown,
+): HasilBentuk<BentukAkunBaru> {
+  if (!objek(nilai)) return { ok: false, error: 'Data akun tidak lengkap.' };
+
+  const kode = teksOpsional(nilai.kode, 'Kode akun', 4);
+  if (!kode.ok) return kode;
+  if (!/^\d{4}$/.test(kode.nilai))
+    return { ok: false, error: 'Kode akun harus 4 digit angka, mis. 5011 atau 4043.' };
+
+  const nama = teksOpsional(nilai.nama, 'Nama akun', 100);
+  if (!nama.ok) return nama;
+  if (!nama.nilai) return { ok: false, error: 'Nama akun wajib diisi.' };
+
+  const tipe = teksOpsional(nilai.tipe, 'Jenis akun', 20);
+  if (!tipe.ok) return tipe;
+  if (tipe.nilai !== 'BEBAN' && tipe.nilai !== 'PENDAPATAN')
+    return { ok: false, error: 'Jenis akun tambahan harus BEBAN atau PENDAPATAN.' };
+
+  return {
+    ok: true,
+    input: { kode: kode.nilai, nama: nama.nilai, tipe: tipe.nilai },
+  };
+}
+
+export type BentukAkunUbah = {
+  kode: string;
+  nama: string;
+};
+
+/** Bentuk input ubah nama akun; kode & jenis tidak boleh diubah. */
+export function validasiBentukAkunUbah(
+  nilai: unknown,
+): HasilBentuk<BentukAkunUbah> {
+  if (!objek(nilai)) return { ok: false, error: 'Data akun tidak lengkap.' };
+
+  const kode = teksOpsional(nilai.kode, 'Kode akun', 4);
+  if (!kode.ok) return kode;
+  if (!/^\d{4}$/.test(kode.nilai))
+    return { ok: false, error: 'Kode akun harus 4 digit angka.' };
+
+  const nama = teksOpsional(nilai.nama, 'Nama akun', 100);
+  if (!nama.ok) return nama;
+  if (!nama.nilai) return { ok: false, error: 'Nama akun wajib diisi.' };
+
+  return { ok: true, input: { kode: kode.nilai, nama: nama.nilai } };
+}
+
+/** Validasi kode akun untuk aksi aktif/nonaktif dan hapus. */
+export function validasiKodeAkun(nilai: unknown): HasilBentuk<string> {
+  const kode = teksOpsional(nilai, 'Kode akun', 4);
+  if (!kode.ok) return kode;
+  if (!/^\d{4}$/.test(kode.nilai))
+    return { ok: false, error: 'Kode akun harus 4 digit angka.' };
+  return { ok: true, input: kode.nilai };
+}
 
 export type HasilBentukJurnalInput =
   | { ok: true; input: JurnalInput }
@@ -642,7 +709,7 @@ export function validasiFilterBukuBesar(nilai: unknown): HasilBentuk<FilterBukuB
 export function validasiCutoffLaporan(nilai: unknown): HasilBentuk<string> {
   const cutoff = tanggalFilterLaporan(nilai);
   if (!cutoff.ok) return cutoff;
-  if (!cutoff.input) return { ok: false, error: 'Tanggal cut-off wajib diisi.' };
+  if (!cutoff.input) return { ok: false, error: 'Tanggal laporan wajib diisi.' };
   return { ok: true, input: cutoff.input };
 }
 

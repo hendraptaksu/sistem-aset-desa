@@ -29,6 +29,9 @@ angka turunan yang disimpan mati.
 
 - Input harian lewat form terpandu: **Terima Uang**, **Bayar**, **Pindah Dana**,
   **Panjar**, **Piutang & Hutang**, dan **Saldo Awal**.
+- **Daftar Akun** untuk menambah, mengubah nama, menonaktifkan, atau menghapus
+  akun **Beban/Pendapatan** baru langsung dari aplikasi (tercatat di audit;
+  akun langsung dipakai form dan laporan).
 - Akuntan pendamping dapat memakai **Jurnal Umum** multi-baris untuk koreksi
   dan jurnal yang tidak cocok dengan form terpandu.
 - Koreksi tidak pernah mengedit/menghapus jurnal lama: selalu **jurnal balik
@@ -49,8 +52,8 @@ angka turunan yang disimpan mati.
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Renderer (Chromium) — React 19 + Tailwind                           │
-│ Tab: Dashboard, Transaksi, Panjar, Pihak, Jurnal, laporan,          │
-│ Pengaturan, Import Excel, Aset                                      │
+│ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Pihak, Jurnal,     │
+│ laporan, Pengaturan, Import Excel, Aset                             │
 │ Tidak pernah menyentuh SQLite; semua lewat window.api.invoke()      │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ IPC (preload CJS, contextBridge)
@@ -167,6 +170,8 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/arah-akuntansi.md` — keputusan arah double-entry.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.
+- `docs/audit-ui-2026-10-27.md` — audit UI/UX + bukti pengukuran.
+- `docs/tickets-ui-2026-10-27.md` — ticket perbaikan UI untuk AI agent.
 - `docs/tickets-audit-2026-10-23.md` — daftar pekerjaan hardening.
 - `docs/erd-v1-arsip.md` — **arsip** ERD v1.2.0 (single-entry), bukan acuan aktif.
 

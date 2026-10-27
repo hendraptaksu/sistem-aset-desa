@@ -92,7 +92,7 @@ export function NeracaSaldoTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Neraca Saldo</h2>
+            <h1 className="text-lg font-bold">Neraca Saldo</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Neraca Saldo adalah daftar saldo semua akun pada satu tanggal. Total debit
               harus sama dengan total kredit. Kalau berbeda, berarti ada jurnal yang tidak
@@ -115,7 +115,7 @@ export function NeracaSaldoTab({
 
       <Card>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Field label="Cut-off (sampai tanggal)">
+          <Field label="Per tanggal">
             <TextInput
               type="date"
               value={cutoff}
@@ -153,12 +153,12 @@ export function NeracaSaldoTab({
             </Button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-stone-500">
+        <p className="mt-2 text-helper text-stone-500">
           {mode === 'tahun'
-            ? 'Pendapatan dan beban hanya dihitung dari 1 Januari tahun cut-off. Laba tahun sebelumnya diringkas pada baris “Laba ditahan sebelum periode”.'
+            ? 'Pendapatan dan beban hanya dihitung dari 1 Januari pada tahun tanggal laporan. Laba tahun sebelumnya diringkas pada baris “Laba ditahan sebelum periode”.'
             : 'Semua saldo sejak awal dihitung kumulatif; laba tahun lalu tetap tampil sebagai pendapatan/beban pada trial balance ini.'}
         </p>
-        <p className="mt-2 text-xs text-stone-500">
+        <p className="mt-2 text-helper text-stone-500">
           Klik baris akun untuk membuka Buku Besar akun tersebut dan menelusuri jurnal asalnya.
         </p>
         {data && (
@@ -177,7 +177,7 @@ export function NeracaSaldoTab({
         </div>
         {!cutoff && (
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-            Isi tanggal cut-off terlebih dahulu.
+            Isi tanggal laporan terlebih dahulu.
           </p>
         )}
         {memuat && !data && <p className="mt-3 text-stone-500">Memuat Neraca Saldo…</p>}
@@ -249,7 +249,7 @@ export function NeracaSaldoTab({
                       <td className="py-2 pr-3">
                         {r.nama}
                         {sintetis && (
-                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold not-italic text-amber-900">
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-helper font-semibold not-italic text-amber-900">
                             sintetis
                           </span>
                         )}
@@ -303,7 +303,7 @@ export function NeracaSaldoTab({
             </table>
           </div>
           {adaLabaDitahan && data.mode === 'tahun' && (
-            <p className="mt-2 text-xs text-stone-500">
+            <p className="mt-2 text-helper text-stone-500">
               “Laba ditahan sebelum periode” adalah laba bersih sebelum{' '}
               {formatTanggal(data.mulai)}. Baris ini sintetis (bukan akun COA) dan
               hanya muncul pada mode tahun berjalan.

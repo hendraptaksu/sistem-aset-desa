@@ -172,6 +172,7 @@ export function AsetTab() {
 
   return (
     <div className="space-y-4">
+      <h1 className="text-lg font-bold">Inventaris Aset</h1>
       <Card>
         <h2 className="mb-1 text-lg font-bold">{editId ? 'Ubah Aset' : 'Tambah Aset (Tanah / Bangunan)'}</h2>
         <p className="mb-3 text-sm text-stone-500">

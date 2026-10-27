@@ -47,6 +47,20 @@ describe('P1-12 — pesanError', () => {
     }
   });
 
+  it('menyamarkan ReferenceError "is not defined" dan pesan runtime serumpun', () => {
+    for (const pesan of [
+      'COA is not defined',
+      'ReferenceError: COA is not defined',
+      'Baris is not a constructor',
+    ]) {
+      expect(pesanError(new Error(pesan))).toBe(PESAN_SIMPAN_GAGAL);
+    }
+    // Pesan bisnis Indonesia tanpa pola teknis tetap lolos apa adanya.
+    expect(pesanError(new Error('Keterangan wajib diisi.'))).toBe(
+      'Keterangan wajib diisi.',
+    );
+  });
+
   it('memakai fallback kustom dan tidak pernah mengembalikan non-Error mentah', () => {
     expect(
       pesanError(new Error('SqliteError: UNIQUE constraint failed'), PESAN_PROSES_GAGAL),
