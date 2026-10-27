@@ -120,7 +120,7 @@ export function rentangLabaBerjalan(
 ): { mulai: string; sampai: string; tahunBuku: number; awalTahunBuku: number; labelPeriode: string } {
   const tahunCutoff = Number(cutoff.slice(0, 4));
   if (!Number.isInteger(tahunCutoff)) {
-    throw new Error('Tanggal cut-off dashboard tidak valid.');
+    throw new Error('Tanggal laporan dashboard tidak valid.');
   }
   const awal =
     Number.isInteger(awalTahunBuku) && awalTahunBuku >= 1 && awalTahunBuku <= 12

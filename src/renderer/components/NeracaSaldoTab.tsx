@@ -115,7 +115,7 @@ export function NeracaSaldoTab({
 
       <Card>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Field label="Cut-off (sampai tanggal)">
+          <Field label="Per tanggal">
             <TextInput
               type="date"
               value={cutoff}
@@ -155,7 +155,7 @@ export function NeracaSaldoTab({
         </div>
         <p className="mt-2 text-helper text-stone-500">
           {mode === 'tahun'
-            ? 'Pendapatan dan beban hanya dihitung dari 1 Januari tahun cut-off. Laba tahun sebelumnya diringkas pada baris “Laba ditahan sebelum periode”.'
+            ? 'Pendapatan dan beban hanya dihitung dari 1 Januari pada tahun tanggal laporan. Laba tahun sebelumnya diringkas pada baris “Laba ditahan sebelum periode”.'
             : 'Semua saldo sejak awal dihitung kumulatif; laba tahun lalu tetap tampil sebagai pendapatan/beban pada trial balance ini.'}
         </p>
         <p className="mt-2 text-helper text-stone-500">
@@ -177,7 +177,7 @@ export function NeracaSaldoTab({
         </div>
         {!cutoff && (
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-            Isi tanggal cut-off terlebih dahulu.
+            Isi tanggal laporan terlebih dahulu.
           </p>
         )}
         {memuat && !data && <p className="mt-3 text-stone-500">Memuat Neraca Saldo…</p>}

@@ -334,7 +334,7 @@ describe('P1-9 — validasi tanggal laporan', () => {
 
     expect(validasiFilterNeraca({})).toMatchObject({
       ok: false,
-      error: 'Tanggal cut-off wajib diisi.',
+      error: 'Tanggal laporan wajib diisi.',
     });
     expect(validasiFilterNeraca({ cutoff: '2028-02-29' })).toEqual({
       ok: true,

@@ -542,7 +542,7 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     expect(cariBarisCetak(doc, 'Total Ekuitas')?.nilai?.[2]).toBe(n.totalEkuitas);
     expect(cariBarisCetak(doc, 'Laba ditahan (tahun sudah tutup)')?.nilai?.[2]).toBe(n.labaDitahan);
     expect(cariBarisCetak(doc, 'Laba tahun lampau belum ditutup')?.nilai?.[2]).toBe(n.labaBelumDitutup);
-    expect(cariBarisCetak(doc, 'Laba berjalan (1 Januari s/d cut-off)')?.nilai?.[2]).toBe(n.labaBerjalan);
+    expect(cariBarisCetak(doc, 'Laba berjalan (1 Januari s/d tanggal laporan)')?.nilai?.[2]).toBe(n.labaBerjalan);
     const totalPasiva = tabel.footer?.find((r) => r.sel[1] === 'TOTAL PASIVA')!;
     expect(totalPasiva.nilai?.[2]).toBe(n.totalPasiva);
     expect(renderPrintHtml(doc)).toContain('TOTAL PASIVA');

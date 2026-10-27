@@ -71,7 +71,7 @@ export function DashboardTab({
 
   async function muat(c = cutoff): Promise<void> {
     if (!c) {
-      setErr('Tanggal cut-off wajib diisi.');
+      setErr('Tanggal laporan wajib diisi.');
       return;
     }
     await jalankan(async () => {
@@ -188,12 +188,12 @@ export function DashboardTab({
               )}
             </h2>
             <p className="mt-1 text-sm text-stone-600">
-              Semua angka dihitung ulang dari jurnal sampai tanggal cut-off. Tidak ada
+              Semua angka dihitung ulang dari jurnal sampai tanggal laporan. Tidak ada
               saldo atau laba yang disimpan.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="Cut-off">
+            <Field label="Per tanggal">
               <TextInput
                 type="date"
                 value={cutoff}
@@ -201,7 +201,7 @@ export function DashboardTab({
               />
             </Field>
             <Button disabled={sibuk} onClick={() => void muat()}>
-              {jenisSibuk === 'muat' ? 'Memuat…' : 'Muat'}
+              {jenisSibuk === 'muat' ? 'Menampilkan…' : 'Tampilkan'}
             </Button>
           </div>
         </div>
@@ -266,7 +266,7 @@ export function DashboardTab({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
-                  <p className="text-sm text-stone-600">Semua dompet kas/bank per cut-off</p>
+                  <p className="text-sm text-stone-600">Semua dompet kas/bank per tanggal laporan</p>
                 </div>
                 <Badge tone="green">Total</Badge>
               </div>
@@ -409,7 +409,7 @@ export function DashboardTab({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Jurnal Terakhir</h3>
-                  <p className="text-sm text-stone-600">Jurnal terbaru s/d cut-off</p>
+                  <p className="text-sm text-stone-600">Jurnal terbaru s/d tanggal laporan</p>
                 </div>
                 {data.jurnalTerakhir && <Badge>{data.jurnalTerakhir.jenis}</Badge>}
               </div>
@@ -429,7 +429,7 @@ export function DashboardTab({
                   </p>
                 </div>
               ) : (
-                <p className="mt-3 text-stone-500">Belum ada jurnal s/d cut-off.</p>
+                <p className="mt-3 text-stone-500">Belum ada jurnal s/d tanggal laporan.</p>
               )}
               <div className="mt-3">
                 <Button

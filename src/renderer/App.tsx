@@ -66,7 +66,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
-  { id: 'pembantu', label: 'Pembantu', Icon: NotebookText },
+  { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
   { id: 'realisasi', label: 'Anggaran', Icon: BarChart3 },
   { id: 'rekonsiliasi', label: 'Rekonsiliasi Bank', Icon: Landmark },
   { id: 'import', label: 'Import Excel', Icon: FileSpreadsheet },

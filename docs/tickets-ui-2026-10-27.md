@@ -501,7 +501,7 @@
     grep pola tanggal.
   - **Dependency:** —
 
-- [ ] **UI-21 — Konsistensi istilah UI** · P2 · S
+- [x] **UI-21 — Konsistensi istilah UI** · P2 · S (2026-10-27: istilah Muat→Tampilkan, Cut-off→Per tanggal, Pembantu→Buku Pembantu diterapkan di UI; 603 test)
   - **Konteks:** Istilah campur: “Dashboard”, “Cut-off”, “Muat”, “Pembantu”,
     “Daftar Akun (COA)”. Sebagian terasa teknis bagi operator awam.
   - **Langkah:**

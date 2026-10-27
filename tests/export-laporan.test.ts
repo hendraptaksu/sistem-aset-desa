@@ -534,7 +534,7 @@ describe('P1-10 — builder XLSX numerik', () => {
     const totalPasiva = cariBaris(ws, 2, 'TOTAL PASIVA');
     expect(ws.getRow(totalPasiva).getCell(3).value).toBe(n.totalPasiva / 100);
     expect(cariBaris(ws, 2, 'Laba ditahan (tahun sudah tutup)')).toBeGreaterThan(0);
-    expect(cariBaris(ws, 2, 'Laba berjalan (1 Januari s/d cut-off)')).toBeGreaterThan(0);
+    expect(cariBaris(ws, 2, 'Laba berjalan (1 Januari s/d tanggal laporan)')).toBeGreaterThan(0);
 
     const status = cariBaris(ws, 1, 'STATUS');
     expect(ws.getRow(status).getCell(2).value).toBe('SEIMBANG');
@@ -702,6 +702,7 @@ describe('P1-10 — export Pembantu dari mesin v2', () => {
 
     const wb = await pembantuToWorkbook(p);
     const ws = wb.worksheets[0]!;
+    expect(ws.name).toBe('Buku Pembantu 1001');
     expect(ws.getRow(1).getCell(1).value).toBe(KOP_ORG_NAMA);
     expect(String(ws.getRow(3).getCell(1).value)).toContain(
       'PERIODE 1 Jan 2026 s/d 31 Des 2026',

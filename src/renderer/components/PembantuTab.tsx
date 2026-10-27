@@ -141,7 +141,7 @@ export function PembantuTab() {
     setErr(null);
     setInfo(null);
     try {
-      const html = wrapPrintDocument(`Pembantu ${kode}`, pembantuToHtml(hasil), { autoPrint: false });
+      const html = wrapPrintDocument(`Buku Pembantu ${kode}`, pembantuToHtml(hasil), { autoPrint: false });
       const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: `pembantu-${kode}.pdf` });
       if (r.saved) setInfo(`Tersimpan: ${r.path}`);
     } catch (e) {
@@ -174,7 +174,7 @@ export function PembantuTab() {
           </Field>
           <div className="flex items-end gap-2">
             <Button disabled={memuat || sibuk || !kode} onClick={muat}>
-              {memuat ? 'Memuat…' : 'Muat'}
+              {memuat ? 'Menampilkan…' : 'Tampilkan'}
             </Button>
           </div>
         </div>
@@ -191,7 +191,7 @@ export function PembantuTab() {
             disabled={memuat || sibuk || !kode}
             onClick={() =>
               setPratinjau({
-                judul: `Pembantu ${kode}`,
+                judul: `Buku Pembantu ${kode}`,
                 body: pembantuToHtml(hasil),
               })
             }

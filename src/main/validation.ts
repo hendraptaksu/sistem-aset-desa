@@ -709,7 +709,7 @@ export function validasiFilterBukuBesar(nilai: unknown): HasilBentuk<FilterBukuB
 export function validasiCutoffLaporan(nilai: unknown): HasilBentuk<string> {
   const cutoff = tanggalFilterLaporan(nilai);
   if (!cutoff.ok) return cutoff;
-  if (!cutoff.input) return { ok: false, error: 'Tanggal cut-off wajib diisi.' };
+  if (!cutoff.input) return { ok: false, error: 'Tanggal laporan wajib diisi.' };
   return { ok: true, input: cutoff.input };
 }
 
