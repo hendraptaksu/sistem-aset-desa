@@ -161,6 +161,7 @@ import {
 } from './kunci.js';
 import { sudahSetupPin } from '../db/repository.js';
 import type { LokasiData } from './lokasiData.js';
+import type { LoggerApp } from './logApp.js';
 import { pengirimDiizinkan, type KonteksNavigasi } from './windowSecurity.js';
 
 export type IpcDeps = {
@@ -187,6 +188,11 @@ export type IpcDeps = {
   lampiranDir(): string;
   /** Lokasi data final (P2-8): folder data, DB, lampiran, backup. */
   lokasiData(): LokasiData;
+  /**
+   * AUD-34: logger main untuk alur backup/restore. Opsional agar test IPC
+   * tidak perlu menyiapkan file log.
+   */
+  log?: Pick<LoggerApp, 'info' | 'warn' | 'error'>;
   /** Waktu acuan yang bisa dipatok di test; default `new Date()`. */
   now?(): Date;
   /**
@@ -1646,8 +1652,10 @@ export function registerIpc(deps: IpcDeps): void {
         alasan: `Backup manual ke ${basename(filePath)}`,
         baru: { path: filePath, jenis: 'manual' },
       });
+      deps.log?.info(`Backup manual dibuat: ${basename(filePath)}`);
       return ok({ saved: true, path: filePath });
     } catch (e) {
+      deps.log?.error('Backup manual gagal', e);
       return fail(pesanError(e, GAGAL_BACKUP));
     }
   });
@@ -1688,12 +1696,16 @@ export function registerIpc(deps: IpcDeps): void {
           ukuranDb: hasil.manifest.ukuranDb,
         },
       });
+      deps.log?.info(
+        `Backup lengkap dibuat: ${basename(hasil.destDir)} (${hasil.manifest.jumlahLampiran} lampiran)`,
+      );
       return ok({
         saved: true,
         path: hasil.destDir,
         jumlahLampiran: hasil.manifest.jumlahLampiran,
       });
     } catch (e) {
+      deps.log?.error('Backup lengkap gagal', e);
       return fail(pesanError(e, GAGAL_BACKUP));
     }
   });
@@ -1718,8 +1730,10 @@ export function registerIpc(deps: IpcDeps): void {
         alasan: `Backup otomatis sebelum tutup buku ${n}`,
         baru: { path: dest, jenis: 'tutup-buku', tahun: n },
       });
+      deps.log?.info(`Backup otomatis tutup buku ${n} dibuat: ${basename(dest)}`);
       return ok({ path: dest });
     } catch (e) {
+      deps.log?.error('Backup otomatis gagal', e);
       return fail(pesanError(e, GAGAL_BACKUP));
     }
   });
@@ -1754,7 +1768,10 @@ export function registerIpc(deps: IpcDeps): void {
         dirBackup: deps.lokasiData().backupsDir,
       });
       deps.setDb(hasil.db);
-      if (!hasil.ok) return fail(hasil.error);
+      if (!hasil.ok) {
+        deps.log?.warn(`Restore dibatalkan: ${hasil.error}`);
+        return fail(hasil.error);
+      }
       try {
         catatAudit(deps.db(), {
           aksi: 'RESTORE',
@@ -1766,12 +1783,16 @@ export function registerIpc(deps: IpcDeps): void {
           },
         });
       } catch (e) {
-        console.warn('[restore] gagal menulis audit:', String(e));
+        deps.log?.warn('[restore] gagal menulis audit', e);
       }
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
       kunciLagi();
+      deps.log?.info(
+        `Restore berhasil dari ${basename(src)}; cadangan pra-restore: ${basename(hasil.preRestorePath)}`,
+      );
       return ok({ restored: true, path: deps.dbPath(), preRestorePath: hasil.preRestorePath });
     } catch (e) {
+      deps.log?.error('Restore gagal', e);
       return fail(pesanError(e, GAGAL_RESTORE));
     }
   });
@@ -1800,7 +1821,10 @@ export function registerIpc(deps: IpcDeps): void {
         stamp: stampBackupLokal(sekarang()),
       });
       deps.setDb(hasil.db);
-      if (!hasil.ok) return fail(hasil.error);
+      if (!hasil.ok) {
+        deps.log?.warn(`Restore lengkap dibatalkan: ${hasil.error}`);
+        return fail(hasil.error);
+      }
 
       try {
         catatAudit(deps.db(), {
@@ -1814,10 +1838,13 @@ export function registerIpc(deps: IpcDeps): void {
           },
         });
       } catch (e) {
-        console.warn('[restore-lengkap] gagal menulis audit:', String(e));
+        deps.log?.warn('[restore-lengkap] gagal menulis audit', e);
       }
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
       kunciLagi();
+      deps.log?.info(
+        `Restore lengkap berhasil dari ${basename(sumber)}; ${hasil.jumlahLampiran} lampiran dipulihkan`,
+      );
       return ok({
         restored: true,
         path: deps.dbPath(),
@@ -1826,6 +1853,7 @@ export function registerIpc(deps: IpcDeps): void {
         jumlahLampiran: hasil.jumlahLampiran,
       });
     } catch (e) {
+      deps.log?.error('Restore lengkap gagal', e);
       return fail(pesanError(e, GAGAL_RESTORE));
     }
   });

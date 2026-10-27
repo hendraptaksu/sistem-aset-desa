@@ -10,6 +10,7 @@ import { seedDev } from '../db/seed-dev.js';
 import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
 import { mulaiBackupPeriodik } from './backupPeriodik.js';
+import { buatLoggerApp, type LoggerApp } from './logApp.js';
 import {
   INTERVAL_AUTO_KUNCI_MS,
   kunciLagi,
@@ -35,6 +36,22 @@ let win: BrowserWindow | null = null;
 let lokasi: LokasiData | null = null;
 let hentikanBackupPeriodik: (() => void) | null = null;
 let hentikanAutoKunci: (() => void) | null = null;
+let logApp: LoggerApp | null = null;
+
+/**
+ * AUD-34: logger dibuat lazy agar error sebelum `app.whenReady()` tetap
+ * tercatat. Kegagalan menyiapkan file log tidak boleh menghalangi aplikasi.
+ */
+function loggerMain(): LoggerApp | null {
+  if (logApp) return logApp;
+  try {
+    logApp = buatLoggerApp({ userDataDir: app.getPath('userData') });
+  } catch (e) {
+    console.error('[log] gagal menyiapkan file log:', String(e));
+    logApp = null;
+  }
+  return logApp;
+}
 
 /** Hentikan interval backup (idempoten); dipanggil saat app quit. */
 function hentikanPenjadwalBackup(): void {
@@ -55,9 +72,9 @@ function mulaiAutoKunci(): () => void {
       const menit = getIdleMenit(db, IDLE_DEFAULT_MENIT);
       if (!perluKunciOtomatis(Date.now(), menit)) return;
       kunciLagi();
-      console.log('[auto-lock] sesi dikunci karena idle.');
+      loggerMain()?.info('[auto-lock] sesi dikunci karena idle.');
     } catch (e) {
-      console.warn('[auto-lock] gagal memeriksa idle:', String(e));
+      loggerMain()?.warn('[auto-lock] gagal memeriksa idle', e);
     }
   }, INTERVAL_AUTO_KUNCI_MS);
   timer.unref?.();
@@ -97,6 +114,17 @@ function bersihkanPenjadwal(): void {
 // Production: installer memakai userData/data/pura.db; build portable memakai
 // <folder exe>/data/pura.db (P2-8) lewat PORTABLE_EXECUTABLE_DIR.
 if (!app.isPackaged) loadEnv();
+
+// AUD-34: error tak tertangani di main wajib meninggalkan jejak di
+// `<userData>/logs/app.log`. Logger juga menyalin ke console; listener ini
+// sengaja tidak melempar ulang agar aplikasi tidak langsung mati di tengah
+// pekerjaan operator — langkah pemulihan tetap menjadi keputusan pengguna.
+process.on('uncaughtException', (error) => {
+  loggerMain()?.error('uncaughtException', error);
+});
+process.on('unhandledRejection', (reason) => {
+  loggerMain()?.error('unhandledRejection', reason);
+});
 
 /** Lokasi final (P2-8); dihitung sekali setelah Electron siap. */
 function lokasiData(): LokasiData {
@@ -211,6 +239,7 @@ function buatIpcDeps(): IpcDeps {
     openPath: (path) => shell.openPath(path),
     lampiranDir: () => lokasiData().attachmentsDir,
     lokasiData,
+    log: loggerMain() ?? undefined,
     // AUD-17: frame pengirim yang sah = renderer build atau dev origin.
     pengirim: {
       devUrl: process.env['ELECTRON_RENDERER_URL'],
@@ -261,6 +290,13 @@ function createWindow(): void {
   win.webContents.on('will-navigate', (event, url) => {
     if (!urlDiizinkan(url, { devUrl, rendererFile })) event.preventDefault();
   });
+  // AUD-34: crash/unresponsive renderer juga perlu jejak di file log.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    loggerMain()?.error(
+      `[renderer] proses renderer berhenti (${details.reason}, exitCode ${details.exitCode})`,
+    );
+  });
+  win.on('unresponsive', () => loggerMain()?.warn('[window] halaman tidak merespons'));
 
   if (devUrl) {
     void win.loadURL(devUrl);
@@ -282,6 +318,10 @@ function mulaiAplikasi(): void {
   void app.whenReady().then(async () => {
     const lokasiAktif = lokasiData();
     const pathDb = lokasiAktif.dbPath;
+    const log = loggerMain();
+    log?.info(
+      `Aplikasi mulai v${app.getVersion()} (mode ${lokasiAktif.mode}); log: ${log.file}`,
+    );
     // Backup pra-upgrade cukup sekali; retry hanya membuka ulang database.
     let backupPraUpgradeDilakukan = false;
     const dbDibuka = await bukaDbDenganPemulihan({
@@ -292,25 +332,25 @@ function mulaiAplikasi(): void {
           backupPraUpgradeDilakukan = true;
           try {
             const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
-            if (p) console.log(`[backup-upgrade] ${p}`);
+            if (p) loggerMain()?.info(`[backup-upgrade] ${p}`);
           } catch (e) {
-            console.warn('[backup-upgrade] gagal:', String(e));
+            loggerMain()?.warn('[backup-upgrade] gagal', e);
           }
         }
         return openDb(pathDb);
       },
       tanya: (e) => {
         // Detail teknis hanya untuk log; layar pemulihan memakai pesan ramah.
-        console.error('[db] gagal membuka database:', String(e));
+        loggerMain()?.error('[db] gagal membuka database', e);
         return tanyaPemulihanDb(lokasiAktif, e);
       },
       bukaFolderBackup: async () => {
         try {
           mkdirSync(lokasiAktif.backupsDir, { recursive: true });
           const galat = await shell.openPath(lokasiAktif.backupsDir);
-          if (galat) console.warn('[pemulihan-db] gagal membuka folder backup:', galat);
+          if (galat) loggerMain()?.warn('[pemulihan-db] gagal membuka folder backup', galat);
         } catch (e) {
-          console.warn('[pemulihan-db] gagal menyiapkan folder backup:', String(e));
+          loggerMain()?.warn('[pemulihan-db] gagal menyiapkan folder backup', e);
         }
       },
       keluar: () => app.quit(),
@@ -320,9 +360,9 @@ function mulaiAplikasi(): void {
     // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
     try {
       const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);
-      console.log(`[backup-auto] ${p}`);
+      loggerMain()?.info(`[backup-auto] ${p}`);
     } catch (e) {
-      console.warn('[backup-auto] gagal:', String(e));
+      loggerMain()?.warn('[backup-auto] gagal', e);
     }
     // AUD-13: app yang dibiarkan terbuka tetap backup saat tanggal berganti.
     // Interval ringan + guard di modul; jangan pernah biarkan timer menahan quit.
@@ -330,8 +370,8 @@ function mulaiAplikasi(): void {
     hentikanBackupPeriodik = mulaiBackupPeriodik({
       db: () => db,
       dirBackup: () => lokasiData().backupsDir,
-      onBackup: (p) => console.log(`[backup-auto] ${p}`),
-      onError: (e) => console.warn('[backup-auto] gagal:', String(e)),
+      onBackup: (p) => loggerMain()?.info(`[backup-auto] ${p}`),
+      onError: (e) => loggerMain()?.warn('[backup-auto] gagal', e),
     });
     // AUD-18: auto-lock ditegakkan main (idle, suspend, lock-screen).
     hentikanPenjadwalKunci();
@@ -341,7 +381,7 @@ function mulaiAplikasi(): void {
     // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
     if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
       const n = seedDev(db);
-      if (n > 0) console.log(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
+      if (n > 0) loggerMain()?.info(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
     }
     registerIpc(buatIpcDeps());
     createWindow();
@@ -351,7 +391,10 @@ function mulaiAplikasi(): void {
   });
 
   // Bersihkan interval backup + auto-lock agar proses main bisa berhenti normal.
-  app.on('before-quit', bersihkanPenjadwal);
+  app.on('before-quit', () => {
+    loggerMain()?.info('Aplikasi akan berhenti.');
+    bersihkanPenjadwal();
+  });
   app.on('will-quit', () => {
     bersihkanPenjadwal();
     lepasPemicuKunciSistem();

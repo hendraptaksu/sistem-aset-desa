@@ -850,7 +850,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm run dist:win` (atau CI Windows) + cek artifact.
   - **Dependency:** —
 
-- [ ] **AUD-34 — Error boundary + log file** · P2 · S
+- [x] **AUD-34 — Error boundary + log file** · P2 · S (2026-10-27: `ErrorBoundary` membungkus root renderer dengan fallback “Tampilan bermasalah” + tombol “Muat ulang”, error console satu baris dan teredaksi; logger main menulis `<userData>/logs/app.log` dengan rotasi >1 MB ke `app.log.1..3`, format ISO + level, redaksi PIN/hash/salt/token/Bearer, dan mencatat startup, backup (harian/manual/lengkap/tutup buku), restore, `uncaughtException`, `unhandledRejection`, serta crash renderer; helper tanpa Electron mencakup path/format/rotasi/redaksi/logger; +17 test (577 total, 50 file), `typecheck`/`build` hijau; smoke Electron: pemicu error renderer sementara (dikembalikan sebelum commit) menampilkan fallback dan tombol muat ulang kembali ke layar PIN, `unhandledRejection` main menambah baris log dan PIN `999999` tertulis `pin=[disunting]`; `npm run test:e2e` normal juga hijau)
   - **Konteks:** Error React membuat layar blank; error main hanya
     `console.warn`/`console.log`, tidak ada file log untuk pendamping.
   - **Langkah:**
