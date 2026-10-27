@@ -153,6 +153,9 @@ export function App() {
   // berganti (bukan saat modal/detail dibuka-tutup atau tab yang sama diklik).
   const mainRef = useRef<HTMLElement | null>(null);
   const tabRef = useRef<TabId>('dashboard');
+  // UI-06: hanya fokuskan konten bila perpindahan tab dipicu keyboard. Modalitas
+  // input terakhir dilacak global agar klik mouse tidak merampas fokus pengguna.
+  const modalitasTerakhirRef = useRef<'keyboard' | 'pointer'>('pointer');
   // UI-05: baca status tersimpan/default lebar sekali saat mount. Jangan
   // menimpa pilihan manual saat resize; pengguna yang mengubah lebar tidak
   // boleh memaksa ulang status lipat.
@@ -180,14 +183,44 @@ export function App() {
 
   const pindahTab = useCallback((id: TabId) => {
     if (tabRef.current === id) return;
+    const dariKeyboard = modalitasTerakhirRef.current === 'keyboard';
     tabRef.current = id;
     setTab(id);
     // Setelah commit React, gulir area konten kembali ke atas. rAF dipakai agar
     // tidak memaksa window.scrollTo dan tidak berkedip saat render tab baru.
     requestAnimationFrame(() => {
-      if (mainRef.current) mainRef.current.scrollTop = 0;
+      const main = mainRef.current;
+      if (!main) return;
+      main.scrollTop = 0;
+      // UI-06: jangan rebut fokus saat modal terbuka atau navigasi lewat mouse.
+      if (dariKeyboard && !document.querySelector('[aria-modal="true"]')) {
+        main.focus({ preventScroll: true });
+      }
     });
   }, []);
+
+  // UI-06: catat modalitas input terakhir. `keydown` selalu mendahului klik
+  // yang dipicu Enter/Space, sedangkan `pointerdown` mendahului klik mouse.
+  useEffect(() => {
+    const tandaiKeyboard = () => {
+      modalitasTerakhirRef.current = 'keyboard';
+    };
+    const tandaiPointer = () => {
+      modalitasTerakhirRef.current = 'pointer';
+    };
+    window.addEventListener('keydown', tandaiKeyboard, true);
+    window.addEventListener('pointerdown', tandaiPointer, true);
+    return () => {
+      window.removeEventListener('keydown', tandaiKeyboard, true);
+      window.removeEventListener('pointerdown', tandaiPointer, true);
+    };
+  }, []);
+
+  // UI-06: judul jendela mencerminkan tab aktif; efek ini juga memasang judul
+  // Dashboard saat aplikasi pertama kali dibuka.
+  useEffect(() => {
+    document.title = `${TAB_BY_ID[tab].label} — Keuangan Pura Dalem Puri`;
+  }, [tab]);
 
   // UI-04: saat tab berubah, buka kelompok yang memuat tab aktif. Efek hanya
   // berjalan saat pindah tab, jadi pengguna tetap bisa menutup kelompok aktif
@@ -422,7 +455,15 @@ export function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-stone-50 text-stone-900">
+    <div className="relative flex h-screen overflow-hidden bg-stone-50 text-stone-900">
+      {/* UI-06: elemen fokus pertama; tersembunyi untuk pembaca layar sampai
+          menerima fokus keyboard, lalu tampil di atas konten. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-emerald-950 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white focus:shadow-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2"
+      >
+        Lewati ke konten
+      </a>
       <aside
         className={clsx(
           'flex h-screen shrink-0 flex-col bg-emerald-950 text-white transition-all',
@@ -513,6 +554,8 @@ export function App() {
       </aside>
       <main
         ref={mainRef}
+        id="main-content"
+        tabIndex={-1}
         data-testid="app-scroll"
         className="min-w-0 flex-1 overflow-y-auto"
       >

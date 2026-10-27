@@ -217,7 +217,7 @@
   - **Verifikasi:** `npm run typecheck && npm test && npm run build && npm run smoke`.
   - **Dependency:** UI-04
 
-- [ ] **UI-06 — Skip link + judul halaman & fokus konten** · P0 · S
+- [x] **UI-06 — Skip link + judul halaman & fokus konten** · P0 · S (2026-10-27: “Lewati ke konten” menjadi fokus pertama dan memindahkan fokus ke main, `document.title` mengikuti tab aktif (Dashboard/Transaksi/Jurnal), dan fokus konten hanya berpindah saat navigasi keyboard tanpa merampas klik mouse atau modal; 595 test + smoke hijau)
   - **Konteks:** Tidak ada skip link; 19 stop Tab (lipat + 18 menu) sebelum
     konten. `document.title` tidak berubah antar tab. Pengguna keyboard/
     pembaca layar tidak tahu halaman mana yang terbuka.
