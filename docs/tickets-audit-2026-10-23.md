@@ -462,7 +462,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/backup-auto.test.ts tests/backup-restore.test.ts`.
   - **Dependency:** —
 
-- [ ] **AUD-16 — Layar pemulihan saat database gagal dibuka** · P0 · M
+- [x] **AUD-16 — Layar pemulihan saat database gagal dibuka** · P0 · M (2026-10-27: `bukaDbDenganPemulihan` membungkus `openDb` + backup pra-upgrade; saat gagal, `dialog.showMessageBox` “Pemulihan Database” menampilkan pesan ramah + path DB tanpa stack/SQL dengan tombol **Buka folder backup**, **Coba lagi**, **Keluar**. Retry hanya berjalan setelah pengguna memilih (tidak ada loop otomatis), folder backup dibuka via `shell.openPath(backupsDir)`, dan Keluar menghentikan app. Helper murni `pesanGagalBukaDb` memetakan kode error menjadi petunjuk aman + 8 test (termasuk bukti retry memanggil `openDb` ulang dan Keluar tanpa retry); typecheck/test/build hijau, 499 test total + 8 test; smoke Electron: `PURA_DB` diarahkan ke file teks bukan SQLite (userData terpisah agar tidak bentrok instance aktif), dialog muncul dengan path DB + 3 tombol tanpa stack/SQL, lalu DB diganti valid dan klik **Coba lagi** membuka window utama tanpa blank + log `[backup-auto]`)
   - **Konteks:** `main/index.ts` memanggil `db = openDb(pathDb)` tanpa
     try/catch. Jika DB korup, path tidak bisa ditulis, atau disk penuh,
     aplikasi tidak menampilkan window; UI restore tidak bisa diakses.

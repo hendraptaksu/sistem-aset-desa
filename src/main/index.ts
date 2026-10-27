@@ -9,6 +9,17 @@ import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js
 import { registerIpc, type IpcDeps } from './ipc.js';
 import { mulaiBackupPeriodik } from './backupPeriodik.js';
 import { tentukanLokasiData, type LokasiData } from './lokasiData.js';
+import {
+  aksiPemulihanDariRespons,
+  bukaDbDenganPemulihan,
+  JUDUL_PEMULIHAN_DB,
+  PESAN_GAGAL_BUKA_DB,
+  pesanGagalBukaDb,
+  TOMBOL_BUKA_BACKUP,
+  TOMBOL_COBA_LAGI,
+  TOMBOL_KELUAR,
+  type AksiPemulihanDb,
+} from './pemulihanDb.js';
 import { urlDiizinkan } from './windowSecurity.js';
 
 let db: Database.Database;
@@ -90,6 +101,29 @@ async function printPdfKeFile(
 function defaultPathSimpan(path?: string): string | undefined {
   if (!path) return undefined;
   return isAbsolute(path) ? path : join(app.getPath('documents'), basename(path));
+}
+
+/**
+ * AUD-16: layar pemulihan tanpa window. Dialog ini tampil saat database gagal
+ * dibuka, sebelum window utama dibuat, sehingga operator tetap punya UI untuk
+ * membuka backup, mencoba lagi, atau keluar.
+ */
+async function tanyaPemulihanDb(
+  lokasiAktif: LokasiData,
+  error: unknown,
+): Promise<AksiPemulihanDb> {
+  app.focus({ steal: true });
+  const hasil = await dialog.showMessageBox({
+    type: 'error',
+    title: JUDUL_PEMULIHAN_DB,
+    message: PESAN_GAGAL_BUKA_DB,
+    detail: pesanGagalBukaDb(error, lokasiAktif.dbPath),
+    buttons: [TOMBOL_BUKA_BACKUP, TOMBOL_COBA_LAGI, TOMBOL_KELUAR],
+    defaultId: 1,
+    cancelId: 2,
+    noLink: true,
+  });
+  return aksiPemulihanDariRespons(hasil.response);
 }
 
 /** Ketergantungan nyata main process untuk seluruh handler IPC (P2-7). */
@@ -180,17 +214,44 @@ function mulaiAplikasi(): void {
     win.focus();
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     const lokasiAktif = lokasiData();
     const pathDb = lokasiAktif.dbPath;
-    // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak hilang.
-    try {
-      const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
-      if (p) console.log(`[backup-upgrade] ${p}`);
-    } catch (e) {
-      console.warn('[backup-upgrade] gagal:', String(e));
-    }
-    db = openDb(pathDb);
+    // Backup pra-upgrade cukup sekali; retry hanya membuka ulang database.
+    let backupPraUpgradeDilakukan = false;
+    const dbDibuka = await bukaDbDenganPemulihan({
+      buka: () => {
+        // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak
+        // hilang. Kegagalan backup tidak boleh menghalangi percobaan buka DB.
+        if (!backupPraUpgradeDilakukan) {
+          backupPraUpgradeDilakukan = true;
+          try {
+            const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
+            if (p) console.log(`[backup-upgrade] ${p}`);
+          } catch (e) {
+            console.warn('[backup-upgrade] gagal:', String(e));
+          }
+        }
+        return openDb(pathDb);
+      },
+      tanya: (e) => {
+        // Detail teknis hanya untuk log; layar pemulihan memakai pesan ramah.
+        console.error('[db] gagal membuka database:', String(e));
+        return tanyaPemulihanDb(lokasiAktif, e);
+      },
+      bukaFolderBackup: async () => {
+        try {
+          mkdirSync(lokasiAktif.backupsDir, { recursive: true });
+          const galat = await shell.openPath(lokasiAktif.backupsDir);
+          if (galat) console.warn('[pemulihan-db] gagal membuka folder backup:', galat);
+        } catch (e) {
+          console.warn('[pemulihan-db] gagal menyiapkan folder backup:', String(e));
+        }
+      },
+      keluar: () => app.quit(),
+    });
+    if (!dbDibuka) return;
+    db = dbDibuka;
     // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
     try {
       const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);
