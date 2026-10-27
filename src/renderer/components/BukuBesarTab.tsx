@@ -74,11 +74,23 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
     if (akunAwal) setAkun(akunAwal);
   }, [akunAwal]);
 
+  // UI-11: rentang "dari" > "sampai" tidak boleh dikirim ke API. Bandingkan
+  // string ISO (YYYY-MM-DD) agar urutannya sama dengan urutan tanggal.
+  const rentangTidakValid = Boolean(mulai && sampai && mulai > sampai);
+
   // Setiap perubahan akun/periode mengambil data baru dari main; tidak ada
   // saldo tersimpan di renderer.
   useEffect(() => {
     if (!akun) {
       setData(null);
+      setMemuat(false);
+      return;
+    }
+    if (rentangTidakValid) {
+      // Hapus hasil lama agar laporan/export tidak menampilkan periode lain.
+      setData(null);
+      setErr(null);
+      setMemuat(false);
       return;
     }
     let aktif = true;
@@ -105,7 +117,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
     return () => {
       aktif = false;
     };
-  }, [akun, mulai, sampai]);
+  }, [akun, mulai, sampai, rentangTidakValid]);
 
   async function bukaDetail(jurnalId: string): Promise<void> {
     if (!jurnalId || detailBusyRef.current) return;
@@ -160,6 +172,10 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
             <TextInput
               type="date"
               value={mulai}
+              aria-invalid={rentangTidakValid || undefined}
+              aria-describedby={
+                rentangTidakValid ? 'buku-besar-rentang-tanggal-error' : undefined
+              }
               onChange={(e) => setMulai(e.target.value)}
             />
           </Field>
@@ -167,6 +183,10 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
             <TextInput
               type="date"
               value={sampai}
+              aria-invalid={rentangTidakValid || undefined}
+              aria-describedby={
+                rentangTidakValid ? 'buku-besar-rentang-tanggal-error' : undefined
+              }
               onChange={(e) => setSampai(e.target.value)}
             />
           </Field>
@@ -178,16 +198,28 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
                 setSampai('');
               }}
             >
-              Semua tanggal
+              Reset tanggal
             </Button>
           </div>
         </div>
+
+        {rentangTidakValid && (
+          <p
+            id="buku-besar-rentang-tanggal-error"
+            role="alert"
+            className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            Tanggal “Dari” tidak boleh setelah “Sampai”. Perbaiki rentang tanggal
+            untuk menampilkan Buku Besar.
+          </p>
+        )}
+
         <p className="mt-2 text-xs text-stone-500">
           Kosongkan tanggal untuk melihat seluruh riwayat. Saldo awal adalah saldo sebelum
           tanggal “Dari”; saldo akhir adalah saldo sampai tanggal “Sampai”.
         </p>
 
-        {data && (
+        {data && !rentangTidakValid && (
           <div className="mt-3">
             <ExportActions
               namaDasar={`buku-besar-${data.kode}-${periodeFile(data.mulai, data.sampai)}`}

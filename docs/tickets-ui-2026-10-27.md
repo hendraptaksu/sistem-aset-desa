@@ -320,7 +320,7 @@
     uji keyboard tiap modal.
   - **Dependency:** UI-09
 
-- [ ] **UI-11 — Label filter Jurnal Umum + reset tanggal** · P1 · S
+- [x] **UI-11 — Label filter Jurnal Umum + reset tanggal** · P1 · S (2026-10-27: filter Jurnal Umum berlabel Cari/Dari tanggal/Sampai tanggal/Jenis dengan layout 2×2 di 1024 dan 5 kolom di 1280, pesan inline serta tanpa fetch/export saat rentang terbalik, dan “Semua tanggal” menjadi “Reset tanggal” di Buku Besar dengan validasi sama; 595 test)
   - **Konteks:** Empat kontrol filter berjajar tanpa label; dua input tanggal
     sama-sama menampilkan `dd/mm/yyyy` sehingga tidak jelas “dari”/“sampai”.
     Placeholder search terpotong. “Semua tanggal” di Buku Besar ambigu.

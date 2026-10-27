@@ -150,6 +150,10 @@ export function JurnalTab({
     };
   }, []);
 
+  // UI-11: rentang "dari" > "sampai" tidak boleh dikirim ke API. Bandingkan
+  // string ISO (YYYY-MM-DD) agar urutannya sama dengan urutan tanggal.
+  const rentangTidakValid = Boolean(fMulai && fSampai && fMulai > fSampai);
+
   // Debounce kata kunci; filter tanggal/jenis langsung memicu muat.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -161,6 +165,16 @@ export function JurnalTab({
 
   useEffect(() => {
     let aktif = true;
+    if (rentangTidakValid) {
+      // Kosongkan hasil agar total/paginasi/export tidak memakai data lama.
+      setDaftar([]);
+      setTotal(0);
+      setErr(null);
+      setMemuat(false);
+      return () => {
+        aktif = false;
+      };
+    }
     setMemuat(true);
     api
       .jurnalCari({
@@ -187,7 +201,7 @@ export function JurnalTab({
     return () => {
       aktif = false;
     };
-  }, [cariServer, fMulai, fSampai, fJenis, page, versi]);
+  }, [cariServer, fMulai, fSampai, fJenis, page, versi, rentangTidakValid]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const pageRows = daftar;
@@ -215,6 +229,8 @@ export function JurnalTab({
 
   /** Export/print memuat SEMUA hasil filter (bukan hanya halaman aktif). */
   async function muatSemuaJurnal(): Promise<JurnalLengkap[]> {
+    // Jaring pengaman: tombol export sudah nonaktif saat rentang tidak valid.
+    if (rentangTidakValid) return [];
     const ukuran = 200;
     const semua: JurnalLengkap[] = [];
     let offset = 0;
@@ -264,49 +280,79 @@ export function JurnalTab({
             {info}
           </div>
         )}
-        <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <TextInput
-            placeholder="Cari no. bukti / keterangan / akun / nominal…"
-            value={cari}
-            onChange={(e) => setCari(e.target.value)}
-          />
-          <TextInput
-            type="date"
-            value={fMulai}
-            onChange={(e) => {
-              setFMulai(e.target.value);
-              resetHalaman();
-            }}
-          />
-          <TextInput
-            type="date"
-            value={fSampai}
-            onChange={(e) => {
-              setFSampai(e.target.value);
-              resetHalaman();
-            }}
-          />
-          <Select
-            value={fJenis}
-            onChange={(e) => {
-              setFJenis(e.target.value);
-              resetHalaman();
-            }}
-          >
-            <option value="">Semua jenis</option>
-            {JENIS_JURNAL.map((j) => (
-              <option key={j} value={j}>
-                {LABEL_JENIS[j] ?? j}
-              </option>
-            ))}
-          </Select>
+        {/* UI-11: 2×2 di layar sempit, 5 kolom di >=1280 dengan search 2 kolom. */}
+        <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="xl:col-span-2">
+            <Field label="Cari">
+              <TextInput
+                placeholder="No. bukti, keterangan, akun, nominal…"
+                value={cari}
+                onChange={(e) => setCari(e.target.value)}
+              />
+            </Field>
+          </div>
+          <Field label="Dari tanggal">
+            <TextInput
+              type="date"
+              value={fMulai}
+              aria-invalid={rentangTidakValid || undefined}
+              aria-describedby={
+                rentangTidakValid ? 'jurnal-rentang-tanggal-error' : undefined
+              }
+              onChange={(e) => {
+                setFMulai(e.target.value);
+                resetHalaman();
+              }}
+            />
+          </Field>
+          <Field label="Sampai tanggal">
+            <TextInput
+              type="date"
+              value={fSampai}
+              aria-invalid={rentangTidakValid || undefined}
+              aria-describedby={
+                rentangTidakValid ? 'jurnal-rentang-tanggal-error' : undefined
+              }
+              onChange={(e) => {
+                setFSampai(e.target.value);
+                resetHalaman();
+              }}
+            />
+          </Field>
+          <Field label="Jenis">
+            <Select
+              value={fJenis}
+              onChange={(e) => {
+                setFJenis(e.target.value);
+                resetHalaman();
+              }}
+            >
+              <option value="">Semua jenis</option>
+              {JENIS_JURNAL.map((j) => (
+                <option key={j} value={j}>
+                  {LABEL_JENIS[j] ?? j}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
+
+        {rentangTidakValid && (
+          <p
+            id="jurnal-rentang-tanggal-error"
+            role="alert"
+            className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            Tanggal “Dari” tidak boleh setelah “Sampai”. Perbaiki rentang tanggal
+            untuk menampilkan jurnal.
+          </p>
+        )}
 
         <div className="mb-3">
           <ExportActions
             namaDasar={namaDasarJurnal}
             judul="Jurnal Umum"
-            disabled={total === 0 || memuat}
+            disabled={total === 0 || memuat || rentangTidakValid}
             buatWorkbook={async (kop) =>
               jurnalToWorkbook(await muatSemuaJurnal(), coa, {
                 ...opsiPeriodeJurnal,
@@ -388,9 +434,11 @@ export function JurnalTab({
                   <td colSpan={7} className="py-4 text-center text-stone-500">
                     {memuat
                       ? 'Memuat jurnal…'
-                      : adaFilter
-                        ? 'Tidak ada jurnal yang cocok dengan filter.'
-                        : 'Belum ada jurnal.'}
+                      : rentangTidakValid
+                        ? 'Perbaiki rentang tanggal untuk menampilkan jurnal.'
+                        : adaFilter
+                          ? 'Tidak ada jurnal yang cocok dengan filter.'
+                          : 'Belum ada jurnal.'}
                   </td>
                 </tr>
               )}
