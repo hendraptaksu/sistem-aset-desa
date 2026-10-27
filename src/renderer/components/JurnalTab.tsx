@@ -248,7 +248,7 @@ export function JurnalTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Jurnal Umum</h2>
+            <h1 className="text-lg font-bold">Jurnal Umum</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Semua transaksi tercatat sebagai jurnal debit–kredit. Kalau ada yang salah,
               jangan dihapus: pakai tombol <b>Koreksi</b>. Jurnal asli tetap disimpan untuk

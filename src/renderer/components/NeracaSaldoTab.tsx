@@ -92,7 +92,7 @@ export function NeracaSaldoTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Neraca Saldo</h2>
+            <h1 className="text-lg font-bold">Neraca Saldo</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Neraca Saldo adalah daftar saldo semua akun pada satu tanggal. Total debit
               harus sama dengan total kredit. Kalau berbeda, berarti ada jurnal yang tidak

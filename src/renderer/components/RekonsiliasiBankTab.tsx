@@ -302,7 +302,7 @@ export function RekonsiliasiBankTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Rekonsiliasi Bank</h2>
+            <h1 className="text-lg font-bold">Rekonsiliasi Bank</h1>
             <p className="mt-1 max-w-2xl text-[15px] text-stone-600">
               Masukkan saldo menurut rekening koran/buku tabungan pada tanggal tertentu.
               Saldo buku, selisih, dan daftar mutasi dihitung ulang dari jurnal — bukan

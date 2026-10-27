@@ -99,10 +99,10 @@ export function NeracaTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+            <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
               Neraca per {cutoff ? formatTanggal(cutoff) : '—'}{' '}
               {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-            </h2>
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Neraca menunjukkan aset, kewajiban, dan ekuitas pada satu tanggal.
               Laba ditahan dan laba berjalan dihitung ulang dari jurnal — tidak ada

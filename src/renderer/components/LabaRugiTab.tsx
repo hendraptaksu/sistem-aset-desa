@@ -87,9 +87,9 @@ export function LabaRugiTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+            <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
               Laba Rugi {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-            </h2>
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Laba Rugi membandingkan pendapatan dan beban pada satu periode.
               Angka dihitung ulang dari jurnal setiap kali layar dibuka — tidak ada

@@ -350,6 +350,7 @@ export function PengaturanTab({
 
   return (
     <div className="space-y-4">
+      <h1 className="text-lg font-bold">Pengaturan</h1>
       <Card>
         <h2 className="mb-1 text-lg font-bold">Kunci Aplikasi (PIN)</h2>
         <p className="mb-3 text-sm text-stone-600">

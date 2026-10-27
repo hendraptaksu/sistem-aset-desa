@@ -206,7 +206,7 @@ export function ImportExcelTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Import Excel</h2>
+            <h1 className="text-lg font-bold">Import Excel</h1>
             <p className="mt-1 max-w-3xl text-[15px] text-stone-600">
               Untuk memasukkan banyak jurnal sekaligus dari pembukuan lama atau catatan
               Excel. Setiap grup di file menjadi satu jurnal; sistem tetap memeriksa

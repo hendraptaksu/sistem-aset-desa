@@ -282,7 +282,7 @@ export function RealisasiTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Anggaran & Realisasi</h2>
+            <h1 className="text-lg font-bold">Anggaran & Realisasi</h1>
             <p className="mt-1 text-[15px] text-stone-600">
               Pagu disimpan per tahun. Realisasi, sisa, dan persen selalu dihitung
               ulang dari jurnal — bukan angka yang disimpan.

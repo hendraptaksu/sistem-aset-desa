@@ -140,7 +140,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Buku Besar</h2>
+            <h1 className="text-lg font-bold">Buku Besar</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Buku Besar menampilkan rincian uang masuk dan keluar untuk satu akun.
               Pilih akun dan periode, lalu klik baris mutasi untuk melihat jurnal asalnya.

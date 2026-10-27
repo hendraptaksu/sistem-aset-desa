@@ -155,7 +155,7 @@ export function PembantuTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="mb-3 text-lg font-bold">Buku Pembantu — {hasil.kode} {hasil.nama}</h2>
+        <h1 className="mb-3 text-lg font-bold">Buku Pembantu — {hasil.kode} {hasil.nama}</h1>
         <ErrorBox msg={err} />
         {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

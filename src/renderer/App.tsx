@@ -600,8 +600,10 @@ function AppShell() {
       >
         <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-6 py-3 shadow-sm">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-stone-700">Keuangan Pura Dalem Puri</p>
-            <p className="truncate text-helper text-stone-500">Sesi PIN terbuka</p>
+            <p className="truncate text-sm font-semibold text-stone-700">{TAB_BY_ID[tab].label}</p>
+            <p className="truncate text-helper text-stone-500">
+              {namaEntitas.trim() || 'Data lokal'}
+            </p>
           </div>
           <Button
             variant="ghost"

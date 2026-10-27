@@ -430,7 +430,7 @@
     screenshot 1024.
   - **Dependency:** —
 
-- [ ] **UI-17 — Header judul halaman + hierarki heading** · P1 · S
+- [x] **UI-17 — Header judul halaman + hierarki heading** · P1 · S (2026-10-27: header kiri menampilkan label tab aktif + nama entitas tanpa “Sesi PIN terbuka”, dan 18 tab masing-masing tepat satu h1; 599 test + smoke)
   - **Konteks:** Header menampilkan “Sesi PIN terbuka” (jargon teknis) dan
     tidak menampilkan halaman aktif. Beberapa tab (Jurnal Umum, Buku Besar,
     Neraca Saldo, Pengaturan) mulai dari `<h2>` tanpa `<h1>`.

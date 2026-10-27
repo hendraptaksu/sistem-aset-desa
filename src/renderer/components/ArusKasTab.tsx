@@ -115,7 +115,7 @@ export function ArusKasTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Arus Kas</h2>
+            <h1 className="text-lg font-bold">Arus Kas</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
               Arus Kas menampilkan uang yang masuk dan keluar dari semua dompet
               kas/bank pada satu periode. Pindah dana antar dompet tidak dihitung
