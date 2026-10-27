@@ -5,6 +5,7 @@
 
 import type Database from 'better-sqlite3';
 import { akun } from './coa.js';
+import { createPihak, postingPihak } from './pihak.js';
 import { insertJurnal } from './repository.js';
 import type { JurnalBarisInput, JurnalJenis } from '../core/types.js';
 
@@ -12,6 +13,31 @@ import type { JurnalBarisInput, JurnalJenis } from '../core/types.js';
 export const SEED_DEV_JURNAL_COUNT = 240;
 
 const TAHUN = 2026;
+
+/**
+ * Pihak contoh untuk seed dev. Dipilih deterministik: Banjar & Koperasi untuk
+ * piutang, Koperasi & Toko untuk hutang, agar tab Piutang & Hutang tidak kosong.
+ */
+const PIHAK_SEED = [
+  {
+    id: 'seed-pihak-banjar',
+    nama: 'Banjar Adat Sari',
+    catatan: 'Pihak contoh seed dev — peminjam (piutang)',
+  },
+  {
+    id: 'seed-pihak-koperasi',
+    nama: 'Koperasi Desa Sari',
+    catatan: 'Pihak contoh seed dev — piutang dan hutang',
+  },
+  {
+    id: 'seed-pihak-toko',
+    nama: 'Toko Bangunan Jaya',
+    catatan: 'Pihak contoh seed dev — pemberi pinjaman (hutang)',
+  },
+] as const;
+
+const PIHAK_PIUTANG = ['seed-pihak-banjar', 'seed-pihak-koperasi'] as const;
+const PIHAK_HUTANG = ['seed-pihak-koperasi', 'seed-pihak-toko'] as const;
 
 const AKUN_KAS_PENERIMAAN = ['1001', '1015', '1016', '1017', '1018', '1029'] as const;
 const AKUN_PENDAPATAN = [
@@ -71,8 +97,12 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
   const saldoKas: Record<string, number> = { '1001': 0, '1029': 0 };
   let seq = 0;
   let panjarSisa = 0;
-  let piutangSisa = 0;
-  let hutangSisa = 0;
+  // Saldo berjalan per pihak supaya pelunasan/pembayaran tidak melebihi saldo
+  // pihak yang dipilih (validasi postingPihak tetap dipakai apa adanya).
+  const sisaPiutang = new Map<string, number>();
+  const sisaHutang = new Map<string, number>();
+  const pihakPiutangGrup = new Map<string, string>();
+  const pihakHutangGrup = new Map<string, string>();
 
   const tanggalUntuk = (i: number): string => {
     // 240 jurnal tersebar merata Jan–Jun 2026 (181 hari).
@@ -86,25 +116,39 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
     keterangan: string,
     baris: JurnalBarisInput[],
     grupId?: string,
+    pihakId?: string,
   ): void => {
     seq += 1;
     const tanggal = tanggalUntuk(i);
-    insertJurnal(
-      db,
-      {
-        id: `seed-${String(seq).padStart(4, '0')}`,
-        tanggal,
-        no_bukti: `JU-${TAHUN}-${String(seq).padStart(4, '0')}`,
-        keterangan,
-        jenis,
-        grup_id: grupId,
-        created_at: `${tanggal}T08:00:00.000Z`,
-      },
-      baris,
-    );
+    const header = {
+      id: `seed-${String(seq).padStart(4, '0')}`,
+      tanggal,
+      no_bukti: `JU-${TAHUN}-${String(seq).padStart(4, '0')}`,
+      keterangan,
+      jenis,
+      grup_id: grupId,
+      created_at: `${tanggal}T08:00:00.000Z`,
+    };
+    if (pihakId) {
+      // Jalur resmi Piutang/Hutang: jurnal + mapping `jurnal_pihak` + audit.
+      const hasil = postingPihak(db, {
+        pihakId,
+        konfirmasiPeringatan: true,
+        input: { header, baris },
+      });
+      if (!hasil.tersimpan) {
+        throw new Error(
+          `Seed dev gagal menyimpan jurnal pihak ${pihakId}: ${hasil.errors.join(' ')}`,
+        );
+      }
+      return;
+    }
+    insertJurnal(db, header, baris);
   };
 
   const namaAkun = (kode: string): string => akun(kode)?.nama ?? kode;
+  const namaPihak = (id: string): string =>
+    PIHAK_SEED.find((p) => p.id === id)?.nama ?? id;
 
   const terima = (i: number): void => {
     const kas = pick(rnd, AKUN_KAS_PENERIMAAN);
@@ -153,6 +197,16 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
   };
 
   const simpan = db.transaction(() => {
+    // 0) Master pihak contoh (deterministik) untuk pemetaan 1050/2050.
+    for (const p of PIHAK_SEED) {
+      createPihak(db, {
+        id: p.id,
+        nama: p.nama,
+        catatan: p.catatan,
+        created_at: `${TAHUN}-01-01T00:00:00.000Z`,
+      });
+    }
+
     // 1) Saldo awal: kas tunai + bank, lawannya modal.
     const modalKas = 10_000_000_000;
     const modalBank = 25_000_000_000;
@@ -216,19 +270,26 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
         continue;
       }
 
-      // 3) Piutang: beri pinjaman lalu pelunasan sebagian/penuh.
+      // 3) Piutang: beri pinjaman lalu pelunasan sebagian (sisakan saldo pihak).
       if (pos === 5 || pos === 50) {
         const sumber = (saldoKas['1001'] ?? 0) > 0 ? '1001' : '1029';
         const n = Math.min(nominal(rnd, 50_000_000, 200_000_000), saldoKas[sumber] ?? 0);
         if (n > 0) {
           saldoKas[sumber] = (saldoKas[sumber] ?? 0) - n;
-          piutangSisa += n;
+          const grupId = `g-piutang-${String(siklus).padStart(2, '0')}-${
+            pos >= 50 ? '2' : '1'
+          }`;
+          const pihakId =
+            PIHAK_PIUTANG[(siklus + (pos >= 50 ? 1 : 0)) % PIHAK_PIUTANG.length]!;
+          pihakPiutangGrup.set(grupId, pihakId);
+          sisaPiutang.set(pihakId, (sisaPiutang.get(pihakId) ?? 0) + n);
           catat(
             i,
             'PIUTANG',
-            `Pinjaman kepada pihak lain #${i + 1}`,
+            `Pinjaman kepada ${namaPihak(pihakId)} #${i + 1}`,
             [debit('1050', n, 'Piutang'), kredit(sumber, n, 'Kas keluar')],
-            `g-piutang-${String(siklus).padStart(2, '0')}-${pos >= 50 ? '2' : '1'}`,
+            grupId,
+            pihakId,
           );
         } else {
           terima(i);
@@ -236,16 +297,25 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
         continue;
       }
       if (pos === 6 || pos === 51) {
-        if (piutangSisa > 0) {
-          const n = Math.min(nominal(rnd, 50_000_000, 200_000_000), piutangSisa);
-          piutangSisa -= n;
+        const grupId = `g-piutang-${String(siklus).padStart(2, '0')}-${
+          pos >= 50 ? '2' : '1'
+        }`;
+        const pihakId = pihakPiutangGrup.get(grupId);
+        const sisa = pihakId ? (sisaPiutang.get(pihakId) ?? 0) : 0;
+        if (pihakId && sisa > 0) {
+          const n = Math.min(
+            nominal(rnd, 50_000_000, 200_000_000),
+            Math.floor((sisa * 0.85) / 1_000_000) * 1_000_000,
+          );
+          sisaPiutang.set(pihakId, sisa - n);
           saldoKas['1001'] = (saldoKas['1001'] ?? 0) + n;
           catat(
             i,
             'PIUTANG',
-            `Pelunasan piutang #${i + 1}`,
+            `Pelunasan piutang ${namaPihak(pihakId)} #${i + 1}`,
             [debit('1001', n, 'Kas masuk'), kredit('1050', n, 'Pelunasan piutang')],
-            `g-piutang-${String(siklus).padStart(2, '0')}-${pos >= 50 ? '2' : '1'}`,
+            grupId,
+            pihakId,
           );
         } else {
           terima(i);
@@ -256,28 +326,39 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
       // 4) Hutang: terima pinjaman lalu bayar sebagian.
       if (pos === 15) {
         const n = nominal(rnd, 100_000_000, 500_000_000);
-        hutangSisa += n;
+        const grupId = `g-hutang-${String(siklus).padStart(2, '0')}`;
+        const pihakId = PIHAK_HUTANG[(siklus - 1) % PIHAK_HUTANG.length]!;
+        pihakHutangGrup.set(grupId, pihakId);
+        sisaHutang.set(pihakId, (sisaHutang.get(pihakId) ?? 0) + n);
         saldoKas['1029'] = (saldoKas['1029'] ?? 0) + n;
         catat(
           i,
           'HUTANG',
-          `Terima pinjaman #${i + 1}`,
+          `Terima pinjaman dari ${namaPihak(pihakId)} #${i + 1}`,
           [debit('1029', n, 'Kas bank'), kredit('2050', n, 'Hutang')],
-          `g-hutang-${String(siklus).padStart(2, '0')}`,
+          grupId,
+          pihakId,
         );
         continue;
       }
       if (pos === 16) {
-        if (hutangSisa > 0) {
-          const n = Math.min(nominal(rnd, 100_000_000, 500_000_000), hutangSisa);
-          hutangSisa -= n;
+        const grupId = `g-hutang-${String(siklus).padStart(2, '0')}`;
+        const pihakId = pihakHutangGrup.get(grupId);
+        const sisa = pihakId ? (sisaHutang.get(pihakId) ?? 0) : 0;
+        if (pihakId && sisa > 0) {
+          const n = Math.min(
+            nominal(rnd, 100_000_000, 500_000_000),
+            Math.floor((sisa * 0.85) / 1_000_000) * 1_000_000,
+          );
+          sisaHutang.set(pihakId, sisa - n);
           saldoKas['1029'] = (saldoKas['1029'] ?? 0) - n;
           catat(
             i,
             'HUTANG',
-            `Bayar hutang #${i + 1}`,
+            `Bayar hutang ${namaPihak(pihakId)} #${i + 1}`,
             [debit('2050', n, 'Pelunasan hutang'), kredit('1029', n, 'Kas bank')],
-            `g-hutang-${String(siklus).padStart(2, '0')}`,
+            grupId,
+            pihakId,
           );
         } else {
           terima(i);

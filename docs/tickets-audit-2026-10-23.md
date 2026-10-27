@@ -668,7 +668,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm run typecheck && npm test` + test restore.
   - **Dependency:** — (koordinasi dengan AUD-22/AUD-24 jika menyentuh migrasi).
 
-- [ ] **AUD-24 — Seed dev: pihak + mapping 1050/2050** · P1 · S
+- [x] **AUD-24 — Seed dev: pihak + mapping 1050/2050** · P1 · S (2026-10-27: seed dev membuat 3 pihak contoh deterministik; seluruh 24 jurnal 1050/2050 diposting lewat `postingPihak` sehingga punya mapping `jurnal_pihak`; total `saldoPerPihak` = saldo akun 1050/2050 dan `rekonsiliasiPihak` belum = 0; idempoten + deterministik; 28 test fokus (seed-dev 9 + pihak 19), 541 test total, +2 test)
   - **Konteks:** Seed dev membuat 1050/2050 tanpa `pihak`/`jurnal_pihak`.
     Tab Piutang & Hutang kosong meski Neraca punya saldo.
   - **Langkah:**

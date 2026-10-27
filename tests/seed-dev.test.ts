@@ -6,6 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
+import { listBarisJurnal } from '../src/db/laporan.js';
+import {
+  listPihak,
+  rekonsiliasiPihakDb,
+  saldoPerPihak,
+} from '../src/db/pihak.js';
 import {
   getJurnalDetail,
   insertJurnal,
@@ -13,6 +19,7 @@ import {
   listJurnalBaris,
 } from '../src/db/repository.js';
 import { SEED_DEV_JURNAL_COUNT, seedDev } from '../src/db/seed-dev.js';
+import { saldoAkun } from '../src/core/reports.js';
 
 const dirs: string[] = [];
 
@@ -42,6 +49,20 @@ function semuaBaris(db: ReturnType<typeof openDb>): unknown[] {
   return db
     .prepare(
       'SELECT jurnal_id, akun_kode, debit, kredit, keterangan FROM jurnal_baris ORDER BY id',
+    )
+    .all();
+}
+
+function semuaPihak(db: ReturnType<typeof openDb>): unknown[] {
+  return db
+    .prepare('SELECT id, nama, catatan, created_at FROM pihak ORDER BY id')
+    .all();
+}
+
+function semuaMapping(db: ReturnType<typeof openDb>): unknown[] {
+  return db
+    .prepare(
+      'SELECT jurnal_id, pihak_id, akun_kode FROM jurnal_pihak ORDER BY jurnal_id, akun_kode',
     )
     .all();
 }
@@ -201,8 +222,14 @@ describe('P0-3 — seed jurnal dev', () => {
     const { db } = freshDb();
     try {
       expect(seedDev(db)).toBe(240);
+      expect(listPihak(db)).toHaveLength(3);
+      expect(semuaMapping(db)).toHaveLength(24);
+
       expect(seedDev(db)).toBe(0);
       expect(listJurnal(db)).toHaveLength(240);
+      // Seed ulang tidak menambah pihak/mapping duplikat.
+      expect(listPihak(db)).toHaveLength(3);
+      expect(semuaMapping(db)).toHaveLength(24);
 
       const lain = freshDb();
       try {
@@ -216,6 +243,8 @@ describe('P0-3 — seed jurnal dev', () => {
         );
         expect(seedDev(lain.db)).toBe(0);
         expect(listJurnal(lain.db).map((j) => j.id)).toEqual(['asli-1']);
+        expect(listPihak(lain.db)).toEqual([]);
+        expect(semuaMapping(lain.db)).toEqual([]);
       } finally {
         lain.db.close();
       }
@@ -224,7 +253,7 @@ describe('P0-3 — seed jurnal dev', () => {
     }
   });
 
-  it('deterministik: dua DB fresh berisi jurnal & baris identik', () => {
+  it('deterministik: dua DB fresh berisi jurnal, baris, pihak & mapping identik', () => {
     const a = freshDb();
     const b = freshDb();
     try {
@@ -232,9 +261,96 @@ describe('P0-3 — seed jurnal dev', () => {
       seedDev(b.db);
       expect(listJurnal(b.db)).toEqual(listJurnal(a.db));
       expect(semuaBaris(b.db)).toEqual(semuaBaris(a.db));
+      expect(semuaPihak(b.db)).toEqual(semuaPihak(a.db));
+      expect(semuaMapping(b.db)).toEqual(semuaMapping(a.db));
     } finally {
       a.db.close();
       b.db.close();
+    }
+  });
+});
+
+describe('AUD-24 — seed dev pihak + mapping 1050/2050', () => {
+  it('membuat 2–3 pihak contoh dan memetakan semua jurnal 1050/2050', () => {
+    const { db } = freshDb();
+    try {
+      seedDev(db);
+
+      const pihak = listPihak(db);
+      expect(pihak.length).toBeGreaterThanOrEqual(2);
+      expect(pihak.length).toBeLessThanOrEqual(3);
+      expect(pihak.map((p) => p.id)).toEqual([
+        'seed-pihak-banjar',
+        'seed-pihak-koperasi',
+        'seed-pihak-toko',
+      ]);
+      for (const p of pihak) {
+        expect(p.nama.trim()).not.toBe('');
+        expect(p.catatan).toContain('seed dev');
+      }
+
+      // Setiap pasangan (jurnal, akun 1050/2050) wajib punya tepat satu mapping.
+      const akunPihak = db
+        .prepare(
+          `SELECT j.id AS jurnal_id, b.akun_kode
+           FROM jurnal j
+           JOIN jurnal_baris b ON b.jurnal_id = j.id
+           WHERE b.akun_kode IN ('1050', '2050')
+           GROUP BY j.id, b.akun_kode
+           ORDER BY j.id, b.akun_kode`,
+        )
+        .all() as { jurnal_id: string; akun_kode: string }[];
+      expect(akunPihak.length).toBeGreaterThan(0);
+
+      const mapping = db
+        .prepare('SELECT jurnal_id, pihak_id, akun_kode FROM jurnal_pihak')
+        .all() as { jurnal_id: string; pihak_id: string; akun_kode: string }[];
+      expect(mapping).toHaveLength(akunPihak.length);
+
+      const kunciMapping = new Set(
+        mapping.map((m) => `${m.jurnal_id}\u0000${m.akun_kode}`),
+      );
+      const idPihak = new Set(pihak.map((p) => p.id));
+      for (const row of akunPihak) {
+        expect(
+          kunciMapping.has(`${row.jurnal_id}\u0000${row.akun_kode}`),
+          `jurnal ${row.jurnal_id} akun ${row.akun_kode} belum punya pihak`,
+        ).toBe(true);
+      }
+      for (const m of mapping) {
+        expect(idPihak.has(m.pihak_id), `pihak ${m.pihak_id} tidak dikenal`).toBe(true);
+        expect(['1050', '2050']).toContain(m.akun_kode);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('saldo per pihak menjumlah ke saldo 1050/2050 dan rekonsiliasi belum = 0', () => {
+    const { db } = freshDb();
+    try {
+      seedDev(db);
+      const baris = listBarisJurnal(db);
+      const saldo = saldoPerPihak(db);
+
+      const totalPiutang = saldo.reduce((s, p) => s + p.piutang, 0);
+      const totalHutang = saldo.reduce((s, p) => s + p.hutang, 0);
+      expect(totalPiutang).toBe(saldoAkun(baris, '1050'));
+      expect(totalHutang).toBe(saldoAkun(baris, '2050'));
+      expect(totalPiutang).toBeGreaterThan(0);
+      expect(totalHutang).toBeGreaterThan(0);
+      // Kedua sisi benar-benar terbagi ke pihak, bukan menumpuk di satu pihak.
+      expect(saldo.filter((p) => p.piutang > 0).length).toBeGreaterThanOrEqual(2);
+      expect(saldo.filter((p) => p.hutang > 0).length).toBeGreaterThanOrEqual(2);
+
+      const rekon = rekonsiliasiPihakDb(db);
+      expect(rekon.piutangBelum).toBe(0);
+      expect(rekon.hutangBelum).toBe(0);
+      expect(rekon.jurnalBelum).toEqual([]);
+      expect(rekon.piutangTeralokasi).toBe(rekon.piutangAkun);
+      expect(rekon.hutangTeralokasi).toBe(rekon.hutangAkun);
+    } finally {
+      db.close();
     }
   });
 });
