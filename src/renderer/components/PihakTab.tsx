@@ -24,6 +24,7 @@ import type { JurnalPihakTampil, Pihak, PihakSaldo } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
   Button,
@@ -359,6 +360,21 @@ export function PihakTab() {
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
 
+  // UI-08: tiga form (transaksi, tambah pihak, ubah pihak) berbagi satu guard.
+  // Status kotor per form mencegah simpan sukses satu form menghapus peringatan
+  // untuk form lain yang masih berisi.
+  const { setDirty } = useTabGuard();
+  const [transaksiDirty, setTransaksiDirty] = useState(false);
+  const [tambahPihakDirty, setTambahPihakDirty] = useState(false);
+  const [editPihakDirty, setEditPihakDirty] = useState(false);
+
+  useEffect(() => {
+    setDirty(transaksiDirty || tambahPihakDirty || editPihakDirty);
+  }, [transaksiDirty, tambahPihakDirty, editPihakDirty, setDirty]);
+
+  // Tab di-unmount saat pindah; jangan biarkan status kotor bocor ke tab lain.
+  useEffect(() => () => setDirty(false), [setDirty]);
+
   const infoAlur = ALUR_INFO[alur];
   const kasList = useMemo(
     () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
@@ -563,6 +579,7 @@ export function PihakTab() {
       setKeterangan('');
       setNoBukti('');
       setSetujuLebih(false);
+      setTransaksiDirty(false);
       await muat();
       setInfoForm(
         `${infoAlur.judul} senilai ${formatRp(nominal)} untuk ` +
@@ -601,6 +618,7 @@ export function PihakTab() {
       });
       setNamaBaru('');
       setCatatanBaru('');
+      setTambahPihakDirty(false);
       await muat();
       setPihakId(r.id);
       setInfo(`Pihak "${r.pihak.nama}" ditambahkan.`);
@@ -616,6 +634,8 @@ export function PihakTab() {
     setEditId(p.id);
     setEditNama(p.nama);
     setEditCatatan(p.catatan);
+    // Prefill terprogram: belum ada perubahan yang perlu diperingatkan.
+    setEditPihakDirty(false);
     setErr(null);
     setInfo(null);
   }
@@ -632,6 +652,7 @@ export function PihakTab() {
         catatan: editCatatan.trim(),
       });
       setEditId('');
+      setEditPihakDirty(false);
       await muat();
       setInfo(`Pihak "${r.pihak.nama}" diperbarui.`);
     } catch (e) {
@@ -740,7 +761,10 @@ export function PihakTab() {
               value={namaBaru}
               disabled={busyMaster}
               placeholder="cth: Banjar / LPD / Toko Bangunan"
-              onChange={(e) => setNamaBaru(e.target.value)}
+              onChange={(e) => {
+                setNamaBaru(e.target.value);
+                setTambahPihakDirty(true);
+              }}
             />
           </Field>
           <Field label="Catatan (opsional)">
@@ -748,7 +772,10 @@ export function PihakTab() {
               value={catatanBaru}
               disabled={busyMaster}
               placeholder="cth: kontak / alamat / keperluan"
-              onChange={(e) => setCatatanBaru(e.target.value)}
+              onChange={(e) => {
+                setCatatanBaru(e.target.value);
+                setTambahPihakDirty(true);
+              }}
             />
           </Field>
           <Button disabled={busyMaster || !namaBaru.trim()} onClick={() => void tambahPihak()}>
@@ -778,7 +805,10 @@ export function PihakTab() {
                         <TextInput
                           value={editNama}
                           disabled={busyMaster}
-                          onChange={(e) => setEditNama(e.target.value)}
+                          onChange={(e) => {
+                            setEditNama(e.target.value);
+                            setEditPihakDirty(true);
+                          }}
                         />
                       ) : (
                         <button
@@ -796,7 +826,10 @@ export function PihakTab() {
                         <TextInput
                           value={editCatatan}
                           disabled={busyMaster}
-                          onChange={(e) => setEditCatatan(e.target.value)}
+                          onChange={(e) => {
+                            setEditCatatan(e.target.value);
+                            setEditPihakDirty(true);
+                          }}
                         />
                       ) : (
                         <span className="text-stone-600">{p.catatan || '—'}</span>
@@ -821,7 +854,10 @@ export function PihakTab() {
                             <Button
                               variant="ghost"
                               disabled={busyMaster}
-                              onClick={() => setEditId('')}
+                              onClick={() => {
+                                setEditId('');
+                                setEditPihakDirty(false);
+                              }}
                             >
                               Batal
                             </Button>
@@ -992,7 +1028,10 @@ export function PihakTab() {
               type="date"
               value={tanggal}
               disabled={busy}
-              onChange={(e) => setTanggal(e.target.value)}
+              onChange={(e) => {
+                setTanggal(e.target.value);
+                setTransaksiDirty(true);
+              }}
             />
           </Field>
 
@@ -1005,6 +1044,7 @@ export function PihakTab() {
                 setSetujuLebih(false);
                 setPesanKonfirmasi(null);
                 setErrForm(null);
+                setTransaksiDirty(true);
               }}
             >
               <option value="">— Pilih pihak —</option>
@@ -1030,7 +1070,10 @@ export function PihakTab() {
               <Select
                 value={akunKas}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunKas(e.target.value)}
+                onChange={(e) => {
+                  setAkunKas(e.target.value);
+                  setTransaksiDirty(true);
+                }}
               >
                 <option value="">— Pilih kas / bank —</option>
                 {kasList.map((a) => (
@@ -1045,7 +1088,10 @@ export function PihakTab() {
               <Select
                 value={akunBeban}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunBeban(e.target.value)}
+                onChange={(e) => {
+                  setAkunBeban(e.target.value);
+                  setTransaksiDirty(true);
+                }}
               >
                 <option value="">— Pilih akun beban —</option>
                 {bebanList.map((a) => (
@@ -1062,7 +1108,14 @@ export function PihakTab() {
           )}
 
           <Field label={infoAlur.labelNominal}>
-            <CurrencyInput value={nominal} onChange={(n) => { setNominal(n); setSetujuLebih(false); }} />
+            <CurrencyInput
+              value={nominal}
+              onChange={(n) => {
+                setNominal(n);
+                setSetujuLebih(false);
+                setTransaksiDirty(true);
+              }}
+            />
           </Field>
 
           <Field label="Keterangan">
@@ -1070,7 +1123,10 @@ export function PihakTab() {
               value={keterangan}
               disabled={busy}
               placeholder={infoAlur.placeholder}
-              onChange={(e) => setKeterangan(e.target.value)}
+              onChange={(e) => {
+                setKeterangan(e.target.value);
+                setTransaksiDirty(true);
+              }}
             />
           </Field>
 
@@ -1080,7 +1136,10 @@ export function PihakTab() {
                 value={noBukti}
                 disabled={busy}
                 placeholder="cth: JU-2026-0001 — boleh dikosongkan"
-                onChange={(e) => setNoBukti(e.target.value)}
+                onChange={(e) => {
+                  setNoBukti(e.target.value);
+                  setTransaksiDirty(true);
+                }}
               />
             </Field>
             <SaranNomorBukti tanggal={tanggal} />
@@ -1123,7 +1182,10 @@ export function PihakTab() {
                 className="mt-1"
                 checked={setujuLebih}
                 disabled={busy}
-                onChange={(e) => setSetujuLebih(e.target.checked)}
+                onChange={(e) => {
+                  setSetujuLebih(e.target.checked);
+                  setTransaksiDirty(true);
+                }}
               />
               <span>
                 Saya sudah memeriksa dan tetap ingin menyimpan transaksi ini.

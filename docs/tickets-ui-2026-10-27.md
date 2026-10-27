@@ -260,7 +260,7 @@
     uji manual alur di atas.
   - **Dependency:** —
 
-- [ ] **UI-08 — Terapkan guard ke Panjar/Pihak/Koreksi** · P0 · S
+- [x] **UI-08 — Terapkan guard ke Panjar/Pihak/Koreksi** · P0 · S (2026-10-27: Guard isian muncul untuk form serah & pertanggungjawaban Panjar, transaksi serta master Pihak, dan Koreksi Jurnal; simpan sukses/Batal membersihkan status tanpa dialog ganda + 595 test + smoke hijau)
   - **Konteks:** Pola kehilangan isian yang sama berlaku untuk form Panjar,
     Piutang & Hutang, dan Koreksi Jurnal.
   - **Langkah:**

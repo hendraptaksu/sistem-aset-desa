@@ -23,6 +23,7 @@ import {
 } from '../../features/export/printDoc.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
   Button,
@@ -499,6 +500,12 @@ function KoreksiModal({
   );
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState('');
 
+  // UI-08: Koreksi adalah modal di dalam tab Jurnal. Isian yang belum disimpan
+  // harus memicu guard saat pindah tab; status dibersihkan saat modal ditutup
+  // agar Batal/Escape/klik latar tidak memunculkan dialog guard ganda.
+  const { setDirty } = useTabGuard();
+  useEffect(() => () => setDirty(false), [setDirty]);
+
   // Form isi ulang: terisi data lama supaya operator tinggal membetulkan typo.
   const [tanggal, setTanggal] = useState(jurnal.tanggal);
   const [keterangan, setKeterangan] = useState(jurnal.keterangan);
@@ -535,6 +542,7 @@ function KoreksiModal({
 
   function ubahBaris(index: number, patch: Partial<BarisForm>) {
     setBaris((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setDirty(true);
   }
 
   function tambahBaris() {
@@ -542,10 +550,19 @@ function KoreksiModal({
       ...rows,
       { akun_kode: coa[0]?.kode ?? '', sisi: 'DEBIT', nominal: 0, keterangan: '' },
     ]);
+    setDirty(true);
   }
 
   function hapusBaris(index: number) {
-    setBaris((rows) => (rows.length <= 2 ? rows : rows.filter((_, i) => i !== index)));
+    if (baris.length <= 2) return;
+    setBaris((rows) => rows.filter((_, i) => i !== index));
+    setDirty(true);
+  }
+
+  /** Batal yang disengaja: bersihkan guard sebelum modal di-unmount. */
+  function batal(): void {
+    setDirty(false);
+    onBatal();
   }
 
   async function kirimBalik(konfirmasi = false) {
@@ -560,6 +577,7 @@ function KoreksiModal({
         tanggal: tanggalBalik,
         konfirmasiPeringatan: konfirmasi,
       });
+      setDirty(false);
       onSelesai(
         `Jurnal balik untuk ${jurnal.no_bukti || jurnal.id} tersimpan. Jurnal asli tetap ada.`,
       );
@@ -606,6 +624,7 @@ function KoreksiModal({
         },
         { tanggal: tanggalBalik, konfirmasiPeringatan: konfirmasi },
       );
+      setDirty(false);
       onSelesai(
         `Koreksi tersimpan: jurnal balik ${hasil.reversal.id} + jurnal pengganti ${hasil.jurnalBaru.id}. Jurnal asli tetap ada.`,
       );
@@ -665,14 +684,20 @@ function KoreksiModal({
                   autoFocus
                   value={alasan}
                   placeholder="cth: salah ketik nominal, seharusnya Rp 80.000"
-                  onChange={(e) => setAlasan(e.target.value)}
+                  onChange={(e) => {
+                    setAlasan(e.target.value);
+                    setDirty(true);
+                  }}
                 />
               </Field>
               <Field label="Tanggal jurnal balik">
                 <TextInput
                   type="date"
                   value={tanggalBalik}
-                  onChange={(e) => setTanggalBalik(e.target.value)}
+                  onChange={(e) => {
+                    setTanggalBalik(e.target.value);
+                    setDirty(true);
+                  }}
                 />
               </Field>
             </div>
@@ -714,7 +739,7 @@ function KoreksiModal({
             )}
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button variant="ghost" disabled={busy} onClick={onBatal}>
+              <Button variant="ghost" disabled={busy} onClick={batal}>
                 Batal
               </Button>
               <Button
@@ -739,16 +764,32 @@ function KoreksiModal({
           <>
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
               <Field label="Tanggal jurnal pengganti">
-                <TextInput type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
+                <TextInput
+                  type="date"
+                  value={tanggal}
+                  onChange={(e) => {
+                    setTanggal(e.target.value);
+                    setDirty(true);
+                  }}
+                />
               </Field>
               <Field label="Keterangan">
-                <TextInput value={keterangan} onChange={(e) => setKeterangan(e.target.value)} />
+                <TextInput
+                  value={keterangan}
+                  onChange={(e) => {
+                    setKeterangan(e.target.value);
+                    setDirty(true);
+                  }}
+                />
               </Field>
               <Field label="No. bukti baru (opsional)">
                 <TextInput
                   value={noBukti}
                   placeholder="kosongkan untuk nomor otomatis"
-                  onChange={(e) => setNoBukti(e.target.value)}
+                  onChange={(e) => {
+                    setNoBukti(e.target.value);
+                    setDirty(true);
+                  }}
                 />
               </Field>
             </div>
@@ -859,7 +900,7 @@ function KoreksiModal({
               <Button variant="ghost" disabled={busy} onClick={() => setLangkah('alasan')}>
                 Kembali
               </Button>
-              <Button variant="ghost" disabled={busy} onClick={onBatal}>
+              <Button variant="ghost" disabled={busy} onClick={batal}>
                 Batal
               </Button>
               <Button

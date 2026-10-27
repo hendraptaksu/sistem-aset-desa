@@ -17,6 +17,7 @@ import { panjarPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
   Button,
@@ -128,6 +129,20 @@ export function PanjarTab() {
   const [detailItems, setDetailItems] = useState<Record<string, PanjarItem[]>>({});
   const [detailBusy, setDetailBusy] = useState('');
   const detailBusyRef = useRef(false);
+
+  // UI-08: serah dan pertanggungjawaban adalah dua form di tab yang sama.
+  // Status kotor disimpan terpisah agar simpan sukses pada satu form tidak
+  // menghapus peringatan untuk form lain yang masih berisi.
+  const { setDirty } = useTabGuard();
+  const [serahDirty, setSerahDirty] = useState(false);
+  const [closeDirty, setCloseDirty] = useState(false);
+
+  useEffect(() => {
+    setDirty(serahDirty || closeDirty);
+  }, [serahDirty, closeDirty, setDirty]);
+
+  // Tab di-unmount saat pindah; jangan biarkan status kotor bocor ke tab lain.
+  useEffect(() => () => setDirty(false), [setDirty]);
 
   const kasList = useMemo(
     () => coa.filter((c) => isAkunKas(c.kode) && c.aktif !== false),
@@ -276,6 +291,7 @@ export function PanjarTab() {
       setJumlah(0);
       setKeterangan('');
       setNoBukti('');
+      setSerahDirty(false);
       await refresh();
       setInfo(
         `Panjar untuk ${r.panjar.penerima} tersimpan` +
@@ -348,6 +364,7 @@ export function PanjarTab() {
       setSetujuKurang(false);
       setDetailId('');
       setDetailItems({});
+      setCloseDirty(false);
       await refresh();
       setInfoClose(
         `Pertanggungjawaban tersimpan. Belanja ${formatRp(r.totalRealisasi)}` +
@@ -376,6 +393,9 @@ export function PanjarTab() {
     setPesanKonfirmasi(null);
     setErrClose(null);
     setInfoClose(null);
+    // Prefill terprogram (bukan ketikan operator) tidak menandai form kotor.
+    // Memilih target lain juga mengganti seluruh rincian form ini.
+    setCloseDirty(false);
     // Gulir ke form pertanggungjawaban (operator awam tidak perlu mencari).
     if (typeof document !== 'undefined') {
       document.getElementById('panjar-pertanggungjawaban')?.scrollIntoView({
@@ -472,7 +492,10 @@ export function PanjarTab() {
               type="date"
               value={tanggal}
               disabled={busyOpen}
-              onChange={(e) => setTanggal(e.target.value)}
+              onChange={(e) => {
+                setTanggal(e.target.value);
+                setSerahDirty(true);
+              }}
             />
           </Field>
           <Field label="Penerima / panitia">
@@ -480,14 +503,30 @@ export function PanjarTab() {
               value={penerima}
               disabled={busyOpen}
               placeholder="cth: Panitia Piodalan"
-              onChange={(e) => setPenerima(e.target.value)}
+              onChange={(e) => {
+                setPenerima(e.target.value);
+                setSerahDirty(true);
+              }}
             />
           </Field>
           <Field label="Jumlah panjar (Rp)">
-            <CurrencyInput value={jumlah} onChange={setJumlah} />
+            <CurrencyInput
+              value={jumlah}
+              onChange={(n) => {
+                setJumlah(n);
+                setSerahDirty(true);
+              }}
+            />
           </Field>
           <Field label="Diambil dari kas / bank">
-            <Select value={sumber} disabled={busyOpen} onChange={(e) => setSumber(e.target.value)}>
+            <Select
+              value={sumber}
+              disabled={busyOpen}
+              onChange={(e) => {
+                setSumber(e.target.value);
+                setSerahDirty(true);
+              }}
+            >
               {kasList.map((k) => (
                 <option key={k.kode} value={k.kode}>
                   {k.kode} — {k.nama}
@@ -500,7 +539,10 @@ export function PanjarTab() {
               value={keterangan}
               disabled={busyOpen}
               placeholder="cth: Panjar kegiatan piodalan"
-              onChange={(e) => setKeterangan(e.target.value)}
+              onChange={(e) => {
+                setKeterangan(e.target.value);
+                setSerahDirty(true);
+              }}
             />
           </Field>
           <div>
@@ -509,7 +551,10 @@ export function PanjarTab() {
                 value={noBukti}
                 disabled={busyOpen}
                 placeholder="cth: JU-2026-0001 — boleh kosong"
-                onChange={(e) => setNoBukti(e.target.value)}
+                onChange={(e) => {
+                  setNoBukti(e.target.value);
+                  setSerahDirty(true);
+                }}
               />
             </Field>
             <SaranNomorBukti tanggal={tanggal} />
@@ -587,7 +632,10 @@ export function PanjarTab() {
               onChange={(e) => {
                 const p = openList.find((x) => x.id === e.target.value);
                 if (p) pilihUntukClose(p);
-                else setCloseId('');
+                else {
+                  setCloseId('');
+                  setCloseDirty(false);
+                }
               }}
             >
               <option value="">— pilih panjar —</option>
@@ -604,7 +652,10 @@ export function PanjarTab() {
               value={tanggalClose}
               min={closeTarget?.tanggal}
               disabled={busyClose}
-              onChange={(e) => setTanggalClose(e.target.value)}
+              onChange={(e) => {
+                setTanggalClose(e.target.value);
+                setCloseDirty(true);
+              }}
             />
           </Field>
         </div>
@@ -623,13 +674,15 @@ export function PanjarTab() {
                 <Select
                   value={it.kategori_baga}
                   disabled={busyClose}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nilai = e.target.value;
                     setItems((xs) =>
                       xs.map((x, j) =>
-                        j === i ? { ...x, kategori_baga: e.target.value } : x,
+                        j === i ? { ...x, kategori_baga: nilai } : x,
                       ),
-                    )
-                  }
+                    );
+                    setCloseDirty(true);
+                  }}
                 >
                   {bagaList.map((b) => (
                     <option key={b.kode} value={b.kode}>
@@ -641,15 +694,19 @@ export function PanjarTab() {
               <Field label={i === 0 ? 'Nominal (Rp)' : ''}>
                 <CurrencyInput
                   value={it.nominal}
-                  onChange={(n) =>
-                    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, nominal: n } : x)))
-                  }
+                  onChange={(n) => {
+                    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, nominal: n } : x)));
+                    setCloseDirty(true);
+                  }}
                 />
               </Field>
               <Button
                 variant="ghost"
                 disabled={busyClose || items.length === 1}
-                onClick={() => setItems((xs) => xs.filter((_, j) => j !== i))}
+                onClick={() => {
+                  setItems((xs) => xs.filter((_, j) => j !== i));
+                  setCloseDirty(true);
+                }}
               >
                 ✕
               </Button>
@@ -658,7 +715,10 @@ export function PanjarTab() {
           <Button
             variant="ghost"
             disabled={busyClose}
-            onClick={() => setItems((xs) => [...xs, { kategori_baga: '5004', nominal: 0 }])}
+            onClick={() => {
+              setItems((xs) => [...xs, { kategori_baga: '5004', nominal: 0 }]);
+              setCloseDirty(true);
+            }}
           >
             + Tambah baris belanja
           </Button>
@@ -691,7 +751,10 @@ export function PanjarTab() {
               className="mt-1"
               checked={setujuKurang}
               disabled={busyClose}
-              onChange={(e) => setSetujuKurang(e.target.checked)}
+              onChange={(e) => {
+                setSetujuKurang(e.target.checked);
+                setCloseDirty(true);
+              }}
             />
             <span>
               Saya setuju kekurangan <b>{formatRp(kurang)}</b> dibayar dari kas sumber{' '}
