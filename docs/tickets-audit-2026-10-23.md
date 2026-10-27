@@ -782,7 +782,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** AUD-28.
 
-- [ ] **AUD-30 — Migrasikan test aset/export ke mesin laporan v2** · P2 · S
+- [x] **AUD-30 — Migrasikan test aset/export ke mesin laporan v2** · P2 · S (2026-10-27: `tests/aset.test.ts` menguji isolasi lewat `core/reports.neraca`/`labaRugi`/`neracaSaldo` dengan jurnal double-entry seimbang (modal Rp 1.000.000 + beban Rp 40.000) dan membuktikan aset ber-`nilai_sen` 999.999.999.999.999 tidak mengubah Laba Rugi/Neraca; test kop Pembantu dipindah ke `tests/export-laporan.test.ts` (Buku Besar → `pembantuDariBukuBesar` → builder `workbooks.ts`) dan `tests/export-kop.test.ts` legacy dihapus; typecheck/test/build hijau, 549 test (47 file, +1 test bersih))
   - **Konteks:** `tests/aset.test.ts` menguji isolasi aset memakai
     `core/ledger.neraca` single-entry, bukan `core/reports.neraca`.
     `tests/export-kop.test.ts` menguji builder legacy.

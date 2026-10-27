@@ -20,6 +20,7 @@ import {
 } from '../src/core/reports.js';
 import { hitungRealisasiAnggaran } from '../src/core/anggaran.js';
 import type { Panjar } from '../src/core/types.js';
+import { pembantuDariBukuBesar } from '../src/features/reports/pembantu/pembantu.js';
 import {
   KOP_ORG_NAMA,
   NUMFMT_PERSEN,
@@ -31,6 +32,7 @@ import {
   bukuBesarToWorkbook,
   jurnalDaftarToHtml,
   jurnalToWorkbook,
+  kopPeriodeEfektif,
   labaRugiToHtml,
   labaRugiToWorkbook,
   neracaHasilToHtml,
@@ -39,6 +41,8 @@ import {
   neracaSaldoToWorkbook,
   panjarToHtml,
   panjarToWorkbook,
+  pembantuToHtml,
+  pembantuToWorkbook,
   workbookToBuffer,
   type JurnalTampil,
   type PanjarTampil,
@@ -683,6 +687,43 @@ describe('P1-10 — HTML print semua laporan', () => {
 
     // Defisit: format Rupiah negatif wajib dalam kurung, bukan minus.
     expect(labaRugiToHtml(lrDefisit)).toContain('(Rp 500.000,00)');
+  });
+});
+
+describe('P1-10 — export Pembantu dari mesin v2', () => {
+  const p = pembantuDariBukuBesar(bb);
+
+  it('workbook + HTML memakai kop, periode, dan angka Buku Besar', async () => {
+    // Buku Besar 1001: saldo awal Rp 106.000.000 + mutasi 2026 neto Rp 1.900.000.
+    expect(p.saldoAwal).toBe(10_600_000_000);
+    expect(p.totalMasuk).toBe(340_000_000);
+    expect(p.totalKeluar).toBe(150_000_000);
+    expect(p.saldo).toBe(10_790_000_000);
+
+    const wb = await pembantuToWorkbook(p);
+    const ws = wb.worksheets[0]!;
+    expect(ws.getRow(1).getCell(1).value).toBe(KOP_ORG_NAMA);
+    expect(String(ws.getRow(3).getCell(1).value)).toContain(
+      'PERIODE 01-01-2026 s/d 31-12-2026',
+    );
+
+    const html = pembantuToHtml(p);
+    expect(html).toContain(KOP_ORG_NAMA);
+    expect(html).toContain('BUKU PEMBANTU — 1001 KAS');
+    expect(html).toContain('PERIODE 01-01-2026 s/d 31-12-2026');
+    expect(html).toContain('TOTAL');
+  });
+
+  it('periode kop fallback ke rentang data, lalu "SEMUA PERIODE"', () => {
+    const tanpaFilter = { ...p, mulai: undefined, sampai: undefined };
+    expect(kopPeriodeEfektif(tanpaFilter.mulai, tanpaFilter.sampai, tanpaFilter.rows)).toBe(
+      'PERIODE 15-01-2026 s/d 05-04-2026',
+    );
+    expect(pembantuToHtml(tanpaFilter)).toContain('PERIODE 15-01-2026 s/d 05-04-2026');
+    expect(kopPeriodeEfektif(undefined, undefined, [])).toBe('SEMUA PERIODE');
+    expect(
+      pembantuToHtml({ ...p, rows: [], mulai: undefined, sampai: undefined }),
+    ).toContain('SEMUA PERIODE');
   });
 });
 
