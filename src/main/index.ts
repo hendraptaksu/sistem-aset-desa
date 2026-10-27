@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { config as loadEnv } from 'dotenv';
-import { join } from 'path';
+import { basename, isAbsolute, join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { openDb } from '../db/database.js';
@@ -73,6 +73,17 @@ async function printPdfKeFile(
   }
 }
 
+/**
+ * Save dialog harus menerima path absolut. Nama file saja membuat macOS
+ * memakai folder terakhir panel (di dev, folder itu dipakai bersama semua
+ * aplikasi Electron karena bundle ID `com.github.Electron`). Arahkan default
+ * ke Documents supaya export tidak mendarat di folder project lain.
+ */
+function defaultPathSimpan(path?: string): string | undefined {
+  if (!path) return undefined;
+  return isAbsolute(path) ? path : join(app.getPath('documents'), basename(path));
+}
+
 /** Ketergantungan nyata main process untuk seluruh handler IPC (P2-7). */
 function buatIpcDeps(): IpcDeps {
   return {
@@ -83,7 +94,14 @@ function buatIpcDeps(): IpcDeps {
     },
     dbPath,
     dialog: {
-      showSaveDialog: (opts) => dialog.showSaveDialog(opts),
+      showSaveDialog: (opts) => {
+        const opsi = { ...opts, defaultPath: defaultPathSimpan(opts.defaultPath) };
+        // Lampirkan ke window utama agar tampil sebagai sheet modal; user
+        // memilih folder tujuan dan nama file langsung di dialog ini.
+        return win
+          ? dialog.showSaveDialog(win, opsi)
+          : dialog.showSaveDialog(opsi);
+      },
       showOpenDialog: (opts) => dialog.showOpenDialog(opts),
     },
     writeFile: (path, data) => writeFileSync(path, data),
