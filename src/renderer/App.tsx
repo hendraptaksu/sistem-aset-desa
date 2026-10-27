@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import {
   ArrowLeftRight,
@@ -7,6 +7,7 @@ import {
   BookMarked,
   BookOpen,
   Building2,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   FileSpreadsheet,
@@ -75,6 +76,59 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'pengaturan', label: 'Pengaturan', Icon: Settings },
 ];
 
+// UI-04: kelompok menu sidebar. TabId, label, dan urutan TABS di atas tidak
+// berubah; kelompok hanya menentukan cara item ditampilkan. Pengaturan tidak
+// masuk kelompok karena dipin di footer sidebar (selalu terlihat).
+type GrupId = 'harian' | 'laporan' | 'data';
+
+const GRUP_MENU: {
+  id: GrupId;
+  label: string;
+  defaultTerbuka: boolean;
+  item: TabId[];
+}[] = [
+  {
+    id: 'harian',
+    label: 'Harian',
+    defaultTerbuka: true,
+    item: ['dashboard', 'transaksi', 'panjar', 'pihak', 'jurnal'],
+  },
+  {
+    id: 'laporan',
+    label: 'Laporan',
+    defaultTerbuka: false,
+    item: [
+      'buku-besar',
+      'neraca-saldo',
+      'laba-rugi',
+      'neraca',
+      'arus-kas',
+      'realisasi',
+      'rekonsiliasi',
+      'pembantu',
+      'aset',
+    ],
+  },
+  {
+    id: 'data',
+    label: 'Data & Sistem',
+    defaultTerbuka: true,
+    item: ['akun', 'import', 'tutup'],
+  },
+];
+
+const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t])) as Record<TabId, (typeof TABS)[number]>;
+
+const GRUP_DARI_TAB: Partial<Record<TabId, GrupId>> = Object.fromEntries(
+  GRUP_MENU.flatMap((g) => g.item.map((id) => [id, g.id] as const)),
+);
+
+const BUKA_AWAL: Record<GrupId, boolean> = {
+  harian: GRUP_MENU[0].defaultTerbuka,
+  laporan: GRUP_MENU[1].defaultTerbuka,
+  data: GRUP_MENU[2].defaultTerbuka,
+};
+
 export function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   // UI-01: main adalah satu-satunya area scroll; posisi direset setelah tab
@@ -82,6 +136,12 @@ export function App() {
   const mainRef = useRef<HTMLElement | null>(null);
   const tabRef = useRef<TabId>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  // UI-04: status buka/tutup kelompok menu + ref item untuk menjaga tab aktif
+  // tetap terlihat saat kelompok dibuka atau sidebar dilipat.
+  const [bukaGrup, setBukaGrup] = useState<Record<GrupId, boolean>>(BUKA_AWAL);
+  const itemRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
+  const tabSebelumnya = useRef<TabId>('dashboard');
+  const perluGulirAktif = useRef(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
   // AUD-19: plaintext kode darurat hanya hidup di state ini sampai modal ditutup.
   const [kodeDaruratBaru, setKodeDaruratBaru] = useState<string | null>(null);
@@ -103,6 +163,40 @@ export function App() {
       if (mainRef.current) mainRef.current.scrollTop = 0;
     });
   }, []);
+
+  // UI-04: saat tab berubah, buka kelompok yang memuat tab aktif. Efek hanya
+  // berjalan saat pindah tab, jadi pengguna tetap bisa menutup kelompok aktif
+  // secara sengaja tanpa langsung dibuka ulang.
+  useEffect(() => {
+    if (tabSebelumnya.current === tab) return;
+    tabSebelumnya.current = tab;
+    perluGulirAktif.current = true;
+    const grup = GRUP_DARI_TAB[tab];
+    if (grup) setBukaGrup((prev) => (prev[grup] ? prev : { ...prev, [grup]: true }));
+  }, [tab]);
+
+  // Buka/lipat sidebar mengubah tinggi item; tab aktif harus tetap terlihat.
+  useEffect(() => {
+    perluGulirAktif.current = true;
+  }, [collapsed]);
+
+  // Gulir item aktif ke viewport nav setelah render. Hanya dipicu oleh pindah
+  // tab, buka kelompok aktif, atau lipat sidebar — bukan setiap toggle kelompok.
+  useEffect(() => {
+    if (!perluGulirAktif.current) return;
+    const el = itemRefs.current[tab];
+    // Kelompok tertutup belum punya kotak layout; tunggu render setelah dibuka.
+    if (!el || el.getClientRects().length === 0) return;
+    perluGulirAktif.current = false;
+    el.scrollIntoView({ block: 'nearest' });
+  }, [tab, bukaGrup, collapsed]);
+
+  const toggleGrup = (id: GrupId) => {
+    const akanTerbuka = !bukaGrup[id];
+    // Saat kelompok aktif dibuka kembali, pastikan tab aktif langsung terlihat.
+    if (akanTerbuka && GRUP_DARI_TAB[tab] === id) perluGulirAktif.current = true;
+    setBukaGrup((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const bukaDariDashboard = useCallback(
     (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => {
@@ -234,6 +328,29 @@ export function App() {
     return <LockScreen sudahSetup={false} onTerbuka={tanganiTerbuka} />;
   }
 
+  const renderItem = (id: TabId) => {
+    const { label, Icon } = TAB_BY_ID[id];
+    return (
+      <button
+        key={id}
+        ref={(el) => { itemRefs.current[id] = el; }}
+        type="button"
+        onClick={() => pindahTab(id)}
+        title={label}
+        aria-label={label}
+        aria-current={tab === id ? 'page' : undefined}
+        className={clsx(
+          'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-semibold transition-colors',
+          collapsed && 'justify-center px-0',
+          tab === id ? 'bg-white/15 text-white' : 'text-emerald-100/80 hover:bg-white/10 hover:text-white',
+        )}
+      >
+        <Icon size={20} aria-hidden="true" className="shrink-0" />
+        {!collapsed && <span className="truncate">{label}</span>}
+      </button>
+    );
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-stone-50 text-stone-900">
       <aside
@@ -255,25 +372,58 @@ export function App() {
             {collapsed ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />}
           </button>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-          {TABS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => pindahTab(id)}
-              title={collapsed ? label : undefined}
-              aria-label={label}
-              aria-current={tab === id ? 'page' : undefined}
-              className={clsx(
-                'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-semibold transition-colors',
-                collapsed && 'justify-center px-0',
-                tab === id ? 'bg-white/15 text-white' : 'text-emerald-100/80 hover:bg-white/10 hover:text-white',
+        <nav
+          aria-label="Menu utama"
+          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
+        >
+          {GRUP_MENU.map((grup, index) => (
+            <Fragment key={grup.id}>
+              <div>
+                {!collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGrup(grup.id)}
+                    aria-expanded={bukaGrup[grup.id]}
+                    aria-controls={`menu-grup-${grup.id}`}
+                    title={bukaGrup[grup.id] ? `Sembunyikan ${grup.label}` : `Tampilkan ${grup.label}`}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white"
+                  >
+                    <span>{grup.label}</span>
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={clsx(
+                        'shrink-0 transition-transform',
+                        !bukaGrup[grup.id] && '-rotate-90',
+                      )}
+                    />
+                  </button>
+                )}
+                <div
+                  id={`menu-grup-${grup.id}`}
+                  role="group"
+                  aria-label={grup.label}
+                  className={clsx(
+                    'flex-col gap-1',
+                    collapsed || bukaGrup[grup.id] ? 'flex' : 'hidden',
+                    !collapsed && 'mt-1',
+                  )}
+                >
+                  {grup.item.map((id) => renderItem(id))}
+                </div>
+              </div>
+              {collapsed && index < GRUP_MENU.length - 1 && (
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  className="my-1 border-t border-white/15"
+                />
               )}
-            >
-              <Icon size={20} className="shrink-0" />
-              {!collapsed && <span className="truncate">{label}</span>}
-            </button>
+            </Fragment>
           ))}
         </nav>
+        {/* UI-04: Pengaturan dipin di luar nav yang scroll agar selalu terlihat. */}
+        <div className="border-t border-white/10 p-3">{renderItem('pengaturan')}</div>
       </aside>
       <main
         ref={mainRef}

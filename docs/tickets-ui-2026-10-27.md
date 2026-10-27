@@ -169,7 +169,7 @@
     screenshot 800/1024/1280.
   - **Dependency:** UI-02
 
-- [ ] **UI-04 — Kelompokkan menu sidebar** · P0 · M
+- [x] **UI-04 — Kelompokkan menu sidebar** · P0 · M (2026-10-27: menu jadi 3 kelompok lipat dengan Harian/Data & Sistem terbuka dan Laporan tertutup, Pengaturan dipin di footer; nav pas tanpa scroll 672/672 px di 1280×800 dan 640/640 px di 1024×768, tab aktif otomatis terlihat; 595 test + smoke hijau)
   - **Konteks:** 18 item datar (termasuk Daftar Akun) membutuhkan 857 px,
     area terlihat 707 px. “Tutup Buku” dan “Pengaturan” tersembunyi; tidak
     ada judul kelompok. Lihat audit bagian P0 butir 2.
