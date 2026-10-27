@@ -6,7 +6,10 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "smoke": "npm run build && npm run test:e2e",
+    "test:e2e": "node --test e2e/smoke.test.mjs",
     "dev": "electron-vite dev",
+    "dev:debug": "electron-vite dev --remoteDebuggingPort 9222 --inspect 5858",
     "build": "electron-vite build",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win --publish never"
@@ -36,6 +39,7 @@
     "electron": "^44.1.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "playwright-core": "^1.64.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",

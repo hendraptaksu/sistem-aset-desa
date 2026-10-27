@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 data/
+e2e/artifacts/
 *.log
 .DS_Store
 *.db
