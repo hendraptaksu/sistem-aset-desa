@@ -14,6 +14,9 @@
 >
 > **Feedback WhatsApp v1.2.0** (edit typo, layout print, pindah kas LPD → kas bendahara, lawan hutang)
 > sudah dipetakan: P0-6, P1-3, P1-5, P1-10, P1-16 — peta lengkap di `docs/arah-akuntansi.md` §12.
+>
+> **Ticket audit 2026-10-23** (bugfix & hardening, ticket kecil untuk AI agent):
+> `docs/tickets-audit-2026-10-23.md`.
 
 ## Cara pakai (untuk AI agent)
 
