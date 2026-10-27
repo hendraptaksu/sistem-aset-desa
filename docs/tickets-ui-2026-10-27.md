@@ -135,7 +135,7 @@
     `document.querySelector('[data-testid="app-scroll"]').scrollTop`.
   - **Dependency:** —
 
-- [ ] **UI-02 — Ukuran minimum & default jendela** · P0 · S
+- [x] **UI-02 — Ukuran minimum & default jendela** · P0 · S (2026-10-27: minimum 1024×680 dan default 1240×760 di-clamp ke work area layar agar muat di 1366×768, terkunci lewat helper murni + 595 test)
   - **Konteks:** `BrowserWindow` di `src/main/index.ts` tidak menetapkan
     `minWidth`/`minHeight` (terukur 0×0). Pada 800×600 layout rusak; default
     1280×800 lebih tinggi dari layar 1366×768.
