@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * UI-15: teks bantu (deskripsi mode, helper field, peringatan, status, path)
+ * minimal 13 px agar tetap terbaca oleh pengguna senior. Metadata murni
+ * (ID jurnal, isi mentah audit, nomor versi) boleh tetap memakai text-xs.
+ */
+@utility text-helper {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 body {
   font-size: 15px;
 }

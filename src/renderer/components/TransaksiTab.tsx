@@ -196,7 +196,7 @@ export function TransaksiTab({
             <ErrorBox msg={err} />
           </div>
         )}
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           {KARTU_JENIS.map(({ id, label, keterangan, Icon, tujuan }) => {
             const aktif = !tujuan && jenis === id;
             const tersedia = !tujuan && bisaDipilih(id);
@@ -231,11 +231,11 @@ export function TransaksiTab({
                   <Icon size={22} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-bold">{label}</span>
-                  <span className="block text-xs">{keterangan}</span>
+                  <span className="block break-words font-bold xl:break-normal">{label}</span>
+                  <span className="block text-helper">{keterangan}</span>
                   <span
                     className={clsx(
-                      'mt-1 block text-xs font-semibold',
+                      'mt-1 block text-helper font-semibold',
                       aktif ? 'text-emerald-700' : 'text-emerald-800',
                     )}
                   >

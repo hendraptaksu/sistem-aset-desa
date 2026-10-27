@@ -126,7 +126,7 @@ export function LabaRugiTab() {
             </Button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-stone-500">
+        <p className="mt-2 text-helper text-stone-500">
           Kosongkan tanggal untuk melihat seluruh riwayat. Klik baris akun untuk
           melihat daftar jurnal pada periode ini, lalu klik jurnal untuk detail
           debit/kredit.

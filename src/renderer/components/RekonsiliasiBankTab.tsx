@@ -70,7 +70,7 @@ function KotakAngka({
     <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
       <div className="text-sm text-stone-600">{label}</div>
       <div className="text-lg font-bold tabular-nums">{nilai}</div>
-      {keterangan && <div className="mt-1 text-xs text-stone-500">{keterangan}</div>}
+      {keterangan && <div className="mt-1 text-helper text-stone-500">{keterangan}</div>}
     </div>
   );
 }
@@ -400,7 +400,7 @@ export function RekonsiliasiBankTab() {
                 <span className="text-stone-500">—</span>
               )}
             </div>
-            <div className="mt-1 text-xs text-stone-500">
+            <div className="mt-1 text-helper text-stone-500">
               {hasil?.cocok
                 ? 'Saldo bank sama dengan saldo buku.'
                 : 'Boleh disimpan dengan catatan/alasan.'}
@@ -510,7 +510,7 @@ export function RekonsiliasiBankTab() {
                         {r.selesai ? 'Selesai' : 'Belum selesai'}
                       </Badge>
                       {r.selesai_at && (
-                        <div className="mt-1 text-xs text-stone-500">
+                        <div className="mt-1 text-helper text-stone-500">
                           {formatTanggal(r.selesai_at.slice(0, 10))}
                         </div>
                       )}
@@ -660,7 +660,7 @@ export function RekonsiliasiBankTab() {
               </table>
             </div>
           )}
-          <p className="mt-2 text-xs text-stone-500">
+          <p className="mt-2 text-helper text-stone-500">
             Saldo akhir {formatRp(detail.saldo_akhir)} − saldo awal{' '}
             {formatRp(detail.saldo_awal)} = total mutasi {formatRp(detail.total_mutasi)}.
           </p>

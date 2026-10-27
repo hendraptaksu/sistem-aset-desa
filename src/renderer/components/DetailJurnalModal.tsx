@@ -236,7 +236,7 @@ export function DetailJurnalModal({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h4 className="font-bold">Lampiran Bukti</h4>
-            <p className="text-xs text-stone-600">
+            <p className="text-helper text-stone-600">
               Foto JPG/JPEG/PNG/WEBP atau PDF, maksimal 10 MB.
             </p>
           </div>
@@ -281,7 +281,7 @@ export function DetailJurnalModal({
               >
                 <div className="min-w-0">
                   <p className="break-all text-[15px] font-medium">{l.nama_asli}</p>
-                  <p className="text-xs text-stone-500">
+                  <p className="text-helper text-stone-500">
                     {formatUkuranFile(l.ukuran)} · diunggah{' '}
                     {formatTanggal(l.created_at.slice(0, 10))}
                   </p>

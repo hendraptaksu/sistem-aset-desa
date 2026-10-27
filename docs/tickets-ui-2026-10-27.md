@@ -395,7 +395,7 @@
     screenshot 1280.
   - **Dependency:** —
 
-- [ ] **UI-15 — Teks bantu 12 px → 13–14 px** · P1 · M
+- [x] **UI-15 — Teks bantu 12 px → 13–14 px** · P1 · M (2026-10-27: text-xs 56 → 6, teks bantu 13 px; 595 test)
   - **Konteks:** Ada 55 pemakaian `text-xs` (12 px), termasuk deskripsi mode
     transaksi, petunjuk nomor bukti, status “Sedang dipakai”, path backup,
     dan ID jurnal. Pengguna utama cenderung senior.

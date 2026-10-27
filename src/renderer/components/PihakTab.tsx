@@ -922,7 +922,7 @@ export function PihakTab() {
             </div>
             <div className="rounded-lg border bg-stone-50 px-3 py-2">
               Total mutasi <b className="block">{formatRp(totalDebitRiwayat)}</b>
-              <span className="text-xs text-stone-500">debit {formatRp(totalKreditRiwayat)} kredit</span>
+              <span className="text-helper text-stone-500">debit {formatRp(totalKreditRiwayat)} kredit</span>
             </div>
           </div>
           {busyRiwayat ? (
@@ -997,7 +997,7 @@ export function PihakTab() {
                 </span>
                 <span className="min-w-0">
                   <span className="block font-bold">{info.judul}</span>
-                  <span className="block text-xs">{info.ringkas}</span>
+                  <span className="block text-helper">{info.ringkas}</span>
                 </span>
               </button>
             );
@@ -1007,7 +1007,7 @@ export function PihakTab() {
         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
           <h3 className="font-bold">{infoAlur.judul}</h3>
           <p className="mt-1 max-w-3xl text-sm text-stone-700">{infoAlur.deskripsi}</p>
-          <p className="mt-1 text-xs font-semibold text-emerald-800">
+          <p className="mt-1 text-helper font-semibold text-emerald-800">
             {alur === 'BELI_KREDIT'
               ? 'D Beban / K Hutang (2050) — bukan D Modal. Modal hanya berubah lewat setoran/penarikan modal atau Saldo Awal.'
               : 'Piutang/hutang selalu punya pihak. Jurnal otomatis seimbang dan bisa diperiksa di Jurnal Umum.'}
@@ -1060,7 +1060,7 @@ export function PihakTab() {
               })}
             </Select>
             {pihak.length === 0 && (
-              <span className="mt-1 block text-xs text-red-700">
+              <span className="mt-1 block text-helper text-red-700">
                 Belum ada pihak. Tambahkan dulu di daftar pihak di atas.
               </span>
             )}
@@ -1101,7 +1101,7 @@ export function PihakTab() {
                   </option>
                 ))}
               </Select>
-              <span className="mt-1 block text-xs text-stone-500">
+              <span className="mt-1 block text-helper text-stone-500">
                 Contoh perbaikan gedung: 5003 BAGA WEWANGUNAN. Tidak ada uang kas yang
                 keluar sekarang; hutang bertambah.
               </span>
@@ -1152,7 +1152,7 @@ export function PihakTab() {
             <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
               Saldo pihak saat ini:{' '}
               <b>{formatRp(saldoRelevan)}</b>{' '}
-              <span className="text-xs text-stone-500">
+              <span className="text-helper text-stone-500">
                 ({alur === 'BERI_PINJAMAN' || alur === 'TERIMA_PELUNASAN' ? 'piutang 1050' : 'hutang 2050'})
               </span>
             </div>

@@ -42,7 +42,7 @@ export function useSaranNomorBukti(tanggal: string): string | null {
 /** Keterangan saran nomor yang dipakai semua form jurnal. */
 export function SaranNomorBukti({
   tanggal,
-  className = 'mt-1 text-xs text-stone-500',
+  className = 'mt-1 text-helper text-stone-500',
 }: {
   tanggal: string;
   className?: string;

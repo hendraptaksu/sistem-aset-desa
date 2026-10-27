@@ -222,7 +222,7 @@ export function AkunTab() {
             )}
           </div>
         </div>
-        <p className="mt-2 text-xs text-amber-800">
+        <p className="mt-2 text-helper text-amber-800">
           Catatan: akun kas/bank dan akun neraca lain belum bisa ditambah dari layar
           ini. Untuk akun kas/bank baru, hubungi pengembang agar penanda kas ikut diatur.
         </p>
@@ -294,7 +294,7 @@ export function AkunTab() {
                 Batal
               </Button>
             )}
-            <span className="text-xs text-stone-500">
+            <span className="text-helper text-stone-500">
               Posisi normal mengikuti jenis: Beban = Debit, Pendapatan = Kredit.
             </span>
           </div>

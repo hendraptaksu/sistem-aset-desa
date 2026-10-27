@@ -863,7 +863,7 @@ function KoreksiModal({
               </Field>
             </div>
             <SaranNomorBukti tanggal={tanggal} />
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-1 text-helper text-stone-500">
               Nomor bukti lama tetap menempel di jurnal asli. Nomor baru otomatis
               memakai urutan berikutnya dan tidak boleh sama.
             </p>

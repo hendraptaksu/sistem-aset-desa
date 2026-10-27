@@ -601,7 +601,7 @@ function AppShell() {
         <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-6 py-3 shadow-sm">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-stone-700">Keuangan Pura Dalem Puri</p>
-            <p className="truncate text-xs text-stone-500">Sesi PIN terbuka</p>
+            <p className="truncate text-helper text-stone-500">Sesi PIN terbuka</p>
           </div>
           <Button
             variant="ghost"
@@ -626,7 +626,7 @@ function AppShell() {
             </div>
           </>
         ) : (
-          <div className="px-6 py-6">
+          <div className="overflow-x-clip px-6 py-6">
             {tab === 'transaksi' && (
               <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={pindahTab} />
             )}

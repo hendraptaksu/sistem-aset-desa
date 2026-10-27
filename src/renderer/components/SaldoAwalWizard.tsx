@@ -298,7 +298,7 @@ export function SaldoAwalWizard({
                       )
                     }
                   />
-                  <span className="mt-1 block text-xs text-stone-500">Saldo (Rp)</span>
+                  <span className="mt-1 block text-helper text-stone-500">Saldo (Rp)</span>
                 </div>
                 <Button
                   variant="ghost"
@@ -332,13 +332,13 @@ export function SaldoAwalWizard({
             <>
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg border border-emerald-200 bg-white p-2">
-                  <div className="text-xs font-semibold text-stone-500">
+                  <div className="text-helper font-semibold text-stone-500">
                     Total aktiva (debit)
                   </div>
                   <div className="font-bold">{formatRp(hasil.data.totalAktiva)}</div>
                 </div>
                 <div className="rounded-lg border border-emerald-200 bg-white p-2">
-                  <div className="text-xs font-semibold text-stone-500">
+                  <div className="text-helper font-semibold text-stone-500">
                     Total kewajiban (kredit)
                   </div>
                   <div className="font-bold">
@@ -346,7 +346,7 @@ export function SaldoAwalWizard({
                   </div>
                 </div>
                 <div className="rounded-lg border border-amber-200 bg-white p-2">
-                  <div className="text-xs font-semibold text-stone-500">
+                  <div className="text-helper font-semibold text-stone-500">
                     Selisih ke 3000 MODAL
                   </div>
                   <div className="font-bold">

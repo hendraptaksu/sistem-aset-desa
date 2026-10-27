@@ -522,7 +522,7 @@ export function FormTransaksiTerpandu({
                   </option>
                 ))}
               </Select>
-              <span className="mt-1 block text-xs text-stone-500">
+              <span className="mt-1 block text-helper text-stone-500">
                 Dompet asal — uang keluar dari akun ini.
               </span>
             </Field>
@@ -543,11 +543,11 @@ export function FormTransaksiTerpandu({
                   </option>
                 ))}
               </Select>
-              <span className="mt-1 block text-xs text-stone-500">
+              <span className="mt-1 block text-helper text-stone-500">
                 Dompet tujuan — uang masuk ke akun ini. Total kas tidak berubah.
               </span>
               {akunKas && akunKe && akunKas === akunKe && (
-                <span className="mt-1 block text-xs text-red-700">
+                <span className="mt-1 block text-helper text-red-700">
                   Akun Dari dan Ke harus berbeda — pilih dua dompet kas/bank
                   yang berbeda.
                 </span>
@@ -594,11 +594,11 @@ export function FormTransaksiTerpandu({
                   </optgroup>
                 ))}
               </Select>
-              <span className="mt-1 block text-xs text-stone-500">
+              <span className="mt-1 block text-helper text-stone-500">
                 {konfigurasi.hintLawan}
               </span>
               {konfigurasi.infoTambahan && (
-                <span className="mt-1 block text-xs text-stone-500">
+                <span className="mt-1 block text-helper text-stone-500">
                   {konfigurasi.infoTambahan}
                 </span>
               )}

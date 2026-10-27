@@ -162,7 +162,7 @@ function InputPaguAkun({
       <span className="text-[15px]">{akun.nama}</span>
       <CurrencyInput value={nilai} onChange={onChange} disabled={disabled} />
       {!akun.aktif && (
-        <span className="col-span-3 text-xs text-red-700">
+        <span className="col-span-3 text-helper text-red-700">
           Akun tidak aktif — pagu lama tetap ditampilkan, tetapi tidak bisa diubah.
         </span>
       )}

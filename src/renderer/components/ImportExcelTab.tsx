@@ -27,7 +27,7 @@ function KotakRingkasan({ label, nilai, keterangan }: { label: string; nilai: st
     <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
       <div className="text-sm text-stone-600">{label}</div>
       <div className="text-lg font-bold tabular-nums">{nilai}</div>
-      {keterangan && <div className="mt-1 text-xs text-stone-500">{keterangan}</div>}
+      {keterangan && <div className="mt-1 text-helper text-stone-500">{keterangan}</div>}
     </div>
   );
 }

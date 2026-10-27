@@ -214,7 +214,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
           </p>
         )}
 
-        <p className="mt-2 text-xs text-stone-500">
+        <p className="mt-2 text-helper text-stone-500">
           Kosongkan tanggal untuk melihat seluruh riwayat. Saldo awal adalah saldo sebelum
           tanggal “Dari”; saldo akhir adalah saldo sampai tanggal “Sampai”.
         </p>
@@ -280,19 +280,19 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
                 <div className="mt-1">
                   <SisiSaldoBadge saldo={data.saldoAwal} posisiNormal={data.posisi_normal} />
                 </div>
-                <div className="mt-1 text-xs text-stone-500">
+                <div className="mt-1 text-helper text-stone-500">
                   {data.mulai ? `sebelum ${formatTanggal(data.mulai)}` : 'tanpa batas awal'}
                 </div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total debit</div>
                 <div className="text-lg font-bold">{formatRp(data.totalDebit)}</div>
-                <div className="mt-1 text-xs text-stone-500">mutasi dalam periode</div>
+                <div className="mt-1 text-helper text-stone-500">mutasi dalam periode</div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total kredit</div>
                 <div className="text-lg font-bold">{formatRp(data.totalKredit)}</div>
-                <div className="mt-1 text-xs text-stone-500">mutasi dalam periode</div>
+                <div className="mt-1 text-helper text-stone-500">mutasi dalam periode</div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo akhir</div>
@@ -300,7 +300,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
                 <div className="mt-1">
                   <SisiSaldoBadge saldo={data.saldoAkhir} posisiNormal={data.posisi_normal} />
                 </div>
-                <div className="mt-1 text-xs text-stone-500">
+                <div className="mt-1 text-helper text-stone-500">
                   {data.sampai ? `s/d ${formatTanggal(data.sampai)}` : 's/d akhir riwayat'}
                 </div>
               </div>

@@ -378,7 +378,7 @@ export function JurnalUmumEditor({
                 ))}
               </Select>
             </Field>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-1 text-helper text-stone-500">
               Template mengisi ulang baris dengan nominal 0; isi nominal sesuai
               bukti.
             </p>
@@ -466,7 +466,7 @@ export function JurnalUmumEditor({
                           onBlur={() => blurAkun(i)}
                         />
                         {akunSalah && (
-                          <span className="mt-1 block text-xs text-red-700">
+                          <span className="mt-1 block text-helper text-red-700">
                             Akun tidak dikenal atau tidak boleh diposting
                             (akun legacy/nonaktif). Pilih dari daftar akun.
                           </span>

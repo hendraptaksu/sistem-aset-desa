@@ -872,11 +872,11 @@ export function PanjarTab() {
                           <>
                             <div>{formatRp(realisasi)}</div>
                             {(p.kurang ?? 0) > 0 ? (
-                              <div className="text-xs font-semibold text-red-700">
+                              <div className="text-helper font-semibold text-red-700">
                                 kurang {formatRp(p.kurang ?? 0)}
                               </div>
                             ) : (
-                              <div className="text-xs text-green-700">
+                              <div className="text-helper text-green-700">
                                 sisa {formatRp(p.sisa ?? 0)}
                               </div>
                             )}
