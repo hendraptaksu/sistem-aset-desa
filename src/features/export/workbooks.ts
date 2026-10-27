@@ -12,7 +12,7 @@ import type {
   BukuBesarHasil,
   LabaRugiHasil,
   NeracaHasil,
-  NeracaSaldoHasil,
+  NeracaSaldoModeHasil,
 } from '../../core/reports.js';
 import type {
   RealisasiAnggaranBaris,
@@ -441,6 +441,16 @@ export function kopPeriodeCutoff(cutoff?: string): string {
   return cutoff ? `PER ${formatTanggal(cutoff)}` : 'SEMUA PERIODE';
 }
 
+/**
+ * Subjudul Neraca Saldo sesuai mode (AUD-21b): tahun buku menampilkan
+ * rentang 1 Januari s/d cut-off, kumulatif tetap "PER cut-off".
+ */
+export function kopPeriodeNeracaSaldo(ns: NeracaSaldoModeHasil): string {
+  return ns.mode === 'tahun'
+    ? `TAHUN BUKU ${kopPeriode(ns.mulai, ns.sampai)}`
+    : kopPeriodeCutoff(ns.cutoff);
+}
+
 /** Bagian nama file dari periode/cut-off; aman untuk nama file Windows. */
 export function periodeFile(mulai?: string, sampai?: string): string {
   if (mulai && sampai) return mulai === sampai ? mulai : `${mulai}_sd_${sampai}`;
@@ -613,13 +623,19 @@ export async function bukuBesarToWorkbook(
   return wb;
 }
 
-/** Neraca Saldo per cut-off → workbook (semua akun + total + status). */
+/** Neraca Saldo per cut-off/tahun buku → workbook (semua akun + total + status). */
 export async function neracaSaldoToWorkbook(
-  ns: NeracaSaldoHasil,
+  ns: NeracaSaldoModeHasil,
   kop?: KopOrganisasi,
 ): Promise<ExcelJS.Workbook> {
   const { wb, ws } = baseWorkbook('Neraca Saldo');
-  const barisKopXlsx = tulisKopXlsx(ws, 'NERACA SALDO', kopPeriodeCutoff(ns.cutoff), 6, kop);
+  const barisKopXlsx = tulisKopXlsx(
+    ws,
+    'NERACA SALDO',
+    kopPeriodeNeracaSaldo(ns),
+    6,
+    kop,
+  );
   ws.views = [{ state: 'frozen', ySplit: barisKopXlsx + 1 }];
 
   const header = ws.addRow(['Kode', 'Nama Akun', 'Tipe', 'Debit', 'Kredit', 'Saldo']);
@@ -633,6 +649,7 @@ export async function neracaSaldoToWorkbook(
       null,
       null,
     ]);
+    if ('sintetis' in r && r.sintetis) row.font = { italic: true };
     selRp(row, 4, r.debit);
     selRp(row, 5, r.kredit);
     selRp(row, 6, r.saldo);
@@ -1343,19 +1360,21 @@ ${rows}
 
 /** Neraca Saldo → HTML print/PDF + status seimbang/selisih. */
 export function neracaSaldoToHtml(
-  ns: NeracaSaldoHasil,
+  ns: NeracaSaldoModeHasil,
   kop?: KopOrganisasi,
 ): string {
   const rows = ns.rows
-    .map(
-      (r) =>
-        `<tr><td>${esc(r.kode)}</td><td>${esc(r.nama)}</td><td>${LABEL_TIPE_COA[r.tipe]}</td>` +
+    .map((r) => {
+      const sintetis = 'sintetis' in r && r.sintetis;
+      return (
+        `<tr${sintetis ? ' style="font-style:italic"' : ''}><td>${esc(r.kode)}</td><td>${esc(r.nama)}</td><td>${LABEL_TIPE_COA[r.tipe]}</td>` +
         `<td style="text-align:right">${formatRp(r.debit)}</td>` +
         `<td style="text-align:right">${formatRp(r.kredit)}</td>` +
-        `<td style="text-align:right">${formatRp(r.saldo)}</td></tr>`,
-    )
+        `<td style="text-align:right">${formatRp(r.saldo)}</td></tr>`
+      );
+    })
     .join('');
-  return `${kopHtml('NERACA SALDO', kopPeriodeCutoff(ns.cutoff), kop)}
+  return `${kopHtml('NERACA SALDO', kopPeriodeNeracaSaldo(ns), kop)}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Nama Akun</th><th>Tipe</th><th>Debit</th><th>Kredit</th><th>Saldo</th></tr></thead>
 <tbody>${rows}</tbody>

@@ -33,6 +33,7 @@ export {
   kopPeriode,
   kopPeriodeEfektif,
   kopPeriodeCutoff,
+  kopPeriodeNeracaSaldo,
   periodeFile,
   rentangDariRows,
   pembantuToWorkbook,

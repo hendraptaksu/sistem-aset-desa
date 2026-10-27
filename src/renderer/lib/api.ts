@@ -30,8 +30,9 @@ import type {
   ArusKasHasil,
   BukuBesarHasil,
   LabaRugiHasil,
+  ModeNeracaSaldo,
   NeracaHasil,
-  NeracaSaldoHasil,
+  NeracaSaldoModeHasil,
 } from '../../core/reports.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 import type { HasilParseImpor } from '../../features/import/parser.js';
@@ -45,8 +46,9 @@ export type {
   HasilParseImpor,
   LabaRugiHasil,
   LampiranJurnal,
+  ModeNeracaSaldo,
   NeracaHasil,
-  NeracaSaldoHasil,
+  NeracaSaldoModeHasil,
   RealisasiAnggaranHasil,
   RekonsiliasiDetail,
   RekonsiliasiTampil,
@@ -73,6 +75,12 @@ export type FilterBukuBesarApi = {
   akun_kode: string;
   mulai?: string;
   sampai?: string;
+};
+
+/** Filter Neraca Saldo per cut-off dan mode tahun/kumulatif (AUD-21b). */
+export type FilterNeracaSaldoApi = {
+  cutoff: string;
+  mode?: ModeNeracaSaldo;
 };
 
 /** Filter pencarian jurnal server-side (P1-11). */
@@ -297,9 +305,12 @@ export const api = {
   /** Buku Besar per akun; saldo awal/berjalan/akhir dihitung dari jurnal. */
   laporanBukuBesar: (f: FilterBukuBesarApi) =>
     call<BukuBesarHasil>('laporan:buku-besar', f),
-  /** Neraca Saldo per cut-off; `seimbang`/`selisih` dihitung di core. */
-  laporanNeracaSaldo: (cutoff: string) =>
-    call<NeracaSaldoHasil>('laporan:neraca-saldo', cutoff),
+  /**
+   * Neraca Saldo per cut-off; `seimbang`/`selisih` dihitung di core.
+   * String cut-off lama tetap diterima (mode default tahun).
+   */
+  laporanNeracaSaldo: (input: string | FilterNeracaSaldoApi) =>
+    call<NeracaSaldoModeHasil>('laporan:neraca-saldo', input),
   /** Drill-down: jurnal yang menyentuh akun, lengkap dengan semua barisnya. */
   laporanJurnalAkun: (f: FilterBukuBesarApi) =>
     call<JurnalLengkap[]>('laporan:jurnal-akun', f),

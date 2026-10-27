@@ -142,6 +142,7 @@ import {
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
   validasiFilterNeraca,
+  validasiFilterNeracaSaldo,
   validasiIdJurnal,
   validasiIdLampiran,
   validasiIdRekonsiliasi,
@@ -514,13 +515,19 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  daftarkan('laporan:neraca-saldo', (_e, cutoff: unknown) => {
+  daftarkan('laporan:neraca-saldo', (_e, input: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const bentuk = validasiCutoffLaporan(cutoff);
+      const bentuk = validasiFilterNeracaSaldo(input);
       if (!bentuk.ok) return fail(bentuk.error);
-      return ok(laporanNeracaSaldo(deps.db(), bentuk.input));
+      return ok(
+        laporanNeracaSaldo(
+          deps.db(),
+          bentuk.input.cutoff,
+          bentuk.input.mode,
+        ),
+      );
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }

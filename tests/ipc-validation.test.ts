@@ -22,6 +22,7 @@ import {
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
   validasiFilterNeraca,
+  validasiFilterNeracaSaldo,
   validasiRentangLaporan,
   validasiTanggalOpsional,
   validatePanjarItems,
@@ -421,6 +422,38 @@ describe('P1-12 — tanggal kalender seragam', () => {
     expect(validasiFilterBukuBesar({ akun_kode: '1001' }).ok).toBe(true);
     expect(validasiTanggalOpsional('').ok).toBe(true);
     expect(validasiCutoffLaporan('2028-02-29').ok).toBe(true);
+  });
+
+  it('AUD-21b: mode Neraca Saldo default tahun dan bentuk lama tetap diterima', () => {
+    expect(validasiFilterNeracaSaldo({ cutoff: '2026-10-27' })).toEqual({
+      ok: true,
+      input: { cutoff: '2026-10-27', mode: 'tahun' },
+    });
+    expect(
+      validasiFilterNeracaSaldo({ cutoff: '2026-10-27', mode: 'kumulatif' }),
+    ).toEqual({
+      ok: true,
+      input: { cutoff: '2026-10-27', mode: 'kumulatif' },
+    });
+    // Pemanggil lama hanya mengirim string cut-off: tetap jalan, mode aman.
+    expect(validasiFilterNeracaSaldo('2026-10-27')).toEqual({
+      ok: true,
+      input: { cutoff: '2026-10-27', mode: 'tahun' },
+    });
+  });
+
+  it('AUD-21b: menolak mode tak dikenal dan cut-off tidak valid', () => {
+    for (const nilai of [
+      { cutoff: '2026-10-27', mode: 'semua' },
+      { cutoff: '2026-10-27', mode: 1 },
+      { cutoff: '2026-02-30', mode: 'tahun' },
+      { mode: 'tahun' },
+      '2026-02-30',
+      null,
+    ]) {
+      const hasil = validasiFilterNeracaSaldo(nilai);
+      expect(hasil.ok, JSON.stringify(nilai)).toBe(false);
+    }
   });
 
   it('menolak rentang tanggal terbalik dengan pesan sederhana', () => {

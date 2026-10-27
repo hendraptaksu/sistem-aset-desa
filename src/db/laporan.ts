@@ -17,13 +17,16 @@ import {
   labaRugi,
   neraca,
   neracaSaldo,
+  neracaSaldoPeriode,
   type ArusKasHasil,
   type BarisJurnalSumber,
   type BukuBesarHasil,
   type LabaRugiHasil,
+  type ModeNeracaSaldo,
   type NeracaHasil,
-  type NeracaSaldoHasil,
+  type NeracaSaldoModeHasil,
 } from '../core/reports.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 
 export type FilterBarisJurnal = {
   mulai?: string;
@@ -158,15 +161,36 @@ export function laporanBukuBesar(
   );
 }
 
-/** Neraca Saldo s/d cut-off; `cutoff` kosong berarti seluruh riwayat. */
+/**
+ * Neraca Saldo untuk UI/export.
+ *
+ * - `mode='tahun'` (default, AUD-21b): hanya P&L tahun buku berjalan
+ *   (`1 Januari` s/d cut-off); laba tahun sebelumnya diringkas pada baris
+ *   sintetis "Laba ditahan sebelum periode".
+ * - `mode='kumulatif'`: perilaku lama, seluruh saldo s/d cut-off.
+ *
+ * `cutoff` opsional. Bila kosong, mode tahun memakai tanggal hari ini dan
+ * mode kumulatif memakai seluruh riwayat. Pemanggil lama tanpa mode tetap
+ * bekerja dan kini mendapat mode tahun yang aman.
+ */
 export function laporanNeracaSaldo(
   db: Database.Database,
   cutoff?: string,
-): NeracaSaldoHasil {
-  return neracaSaldo(
-    listBarisJurnal(db, cutoff ? { sampai: cutoff } : {}),
-    cutoff,
-  );
+  mode: ModeNeracaSaldo = 'tahun',
+): NeracaSaldoModeHasil {
+  const sampai = cutoff?.trim() || undefined;
+  const baris = listBarisJurnal(db, sampai ? { sampai } : {});
+
+  if (mode === 'kumulatif') {
+    return { ...neracaSaldo(baris, sampai), mode: 'kumulatif' };
+  }
+
+  const akhir = sampai ?? tanggalLokal();
+  const mulai = `${akhir.slice(0, 4)}-01-01`;
+  return {
+    ...neracaSaldoPeriode(baris, { mulai, sampai: akhir }),
+    mode: 'tahun',
+  };
 }
 
 /**

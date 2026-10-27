@@ -15,6 +15,7 @@ import {
   labaRugi,
   neraca,
   neracaSaldo,
+  neracaSaldoPeriode,
   type BarisJurnalSumber,
 } from '../src/core/reports.js';
 import { hitungRealisasiAnggaran } from '../src/core/anggaran.js';
@@ -262,6 +263,14 @@ const baris: BarisJurnalSumber[] = [
 
 const bb = bukuBesar(baris, '1001', { mulai: '2026-01-01', sampai: '2026-12-31' });
 const ns = neracaSaldo(baris, '2026-12-31');
+const nsTahun = {
+  mode: 'tahun' as const,
+  ...neracaSaldoPeriode(baris, {
+    mulai: '2026-01-01',
+    sampai: '2026-12-31',
+  }),
+};
+const nsTanpaCutoff = { ...neracaSaldo(baris), mode: 'kumulatif' as const };
 const lr = labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
 const lrDefisit = labaRugi(baris, { mulai: '2026-02-01', sampai: '2026-02-28' });
 const n = neraca(baris, '2026-12-31');
@@ -452,6 +461,35 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(ws.getRow(status).getCell(6).value).toBe(0);
   });
 
+  it('Neraca Saldo mode tahun: periode tahun buku + baris laba ditahan', async () => {
+    const wb = await neracaSaldoToWorkbook(nsTahun);
+    const ws = wb.worksheets[0]!;
+    expect(String(ws.getRow(3).getCell(1).value)).toContain(
+      'TAHUN BUKU 01-01-2026 s/d 31-12-2026',
+    );
+
+    const header = cariBaris(ws, 1, 'Kode');
+    cekNominal(ws, [4, 5, 6], header + 1);
+    expect(ws.rowCount - header).toBe(nsTahun.rows.length + 2);
+
+    const labaDitahan = cariBaris(ws, 2, 'Laba ditahan sebelum periode');
+    expect(labaDitahan).toBeGreaterThan(header);
+    expect(ws.getRow(labaDitahan).getCell(5).value).toBe(6_000_000);
+    expect(ws.getRow(labaDitahan).getCell(4).value).toBe(0);
+
+    const total = cariBaris(ws, 1, 'TOTAL');
+    expect(ws.getRow(total).getCell(4).value).toBe(nsTahun.totalDebit / 100);
+    expect(ws.getRow(total).getCell(5).value).toBe(nsTahun.totalKredit / 100);
+    const status = cariBaris(ws, 1, 'STATUS');
+    expect(ws.getRow(status).getCell(2).value).toBe('Seimbang');
+
+    // Kontrak lama tanpa mode & tanpa cutoff tetap memakai label kumulatif.
+    const wbLama = await neracaSaldoToWorkbook(nsTanpaCutoff);
+    expect(String(wbLama.worksheets[0]!.getRow(3).getCell(1).value)).toBe(
+      'SEMUA PERIODE',
+    );
+  });
+
   it('Laba Rugi: nominal & persen number, total dan defisit negatif', async () => {
     const wb = await labaRugiToWorkbook(lr);
     const ws = wb.worksheets[0]!;
@@ -601,6 +639,11 @@ describe('P1-10 — HTML print semua laporan', () => {
     { nama: 'buku besar', html: bukuBesarToHtml(bb), periode: 'PERIODE 01-01-2026 s/d 31-12-2026' },
     { nama: 'neraca saldo', html: neracaSaldoToHtml(ns), periode: 'PER 31-12-2026' },
     {
+      nama: 'neraca saldo tahun',
+      html: neracaSaldoToHtml(nsTahun),
+      periode: 'TAHUN BUKU 01-01-2026 s/d 31-12-2026',
+    },
+    {
       nama: 'laba rugi',
       html: labaRugiToHtml(lr),
       periode: 'PERIODE 01-01-2026 s/d 31-12-2026',
@@ -631,6 +674,8 @@ describe('P1-10 — HTML print semua laporan', () => {
     expect(jurnalDaftarToHtml(jurnal, COA)).toContain('TOTAL KESELURUHAN');
     expect(bukuBesarToHtml(bb)).toContain('107.900.000,00');
     expect(neracaSaldoToHtml(ns)).toContain('Seimbang');
+    expect(neracaSaldoToHtml(nsTahun)).toContain('Laba ditahan sebelum periode');
+    expect(neracaSaldoToHtml(nsTanpaCutoff)).toContain('SEMUA PERIODE');
     expect(labaRugiToHtml(lr)).toContain('Total Pendapatan');
     expect(neracaHasilToHtml(n)).toContain('TOTAL PASIVA');
     expect(arusKasToHtml(ak)).toContain('TOTAL ARUS (tanpa transfer)');

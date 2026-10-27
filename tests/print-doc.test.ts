@@ -16,6 +16,7 @@ import {
   labaRugi,
   neraca,
   neracaSaldo,
+  neracaSaldoPeriode,
   type BarisJurnalSumber,
 } from '../src/core/reports.js';
 import type { Panjar } from '../src/core/types.js';
@@ -258,6 +259,14 @@ const baris: BarisJurnalSumber[] = [
 
 const bb = bukuBesar(baris, '1001', { mulai: '2026-01-01', sampai: '2026-12-31' });
 const ns = neracaSaldo(baris, '2026-12-31');
+const nsTahun = {
+  mode: 'tahun' as const,
+  ...neracaSaldoPeriode(baris, {
+    mulai: '2026-01-01',
+    sampai: '2026-12-31',
+  }),
+};
+const nsTanpaCutoff = { ...neracaSaldo(baris), mode: 'kumulatif' as const };
 const lr = labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
 const lrDefisit = labaRugi(baris, { mulai: '2026-02-01', sampai: '2026-02-28' });
 const n = neraca(baris, '2026-12-31');
@@ -487,6 +496,28 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     expect(status.sel[1]).toBe('Seimbang');
     expect(status.nilai?.[5]).toBe(ns.selisih);
     expect(renderPrintHtml(doc)).toContain('Seimbang');
+  });
+
+  it('Neraca Saldo mode tahun: subjudul tahun buku + baris laba ditahan', () => {
+    const doc = neracaSaldoPrintDoc(nsTahun, { tanggalCetak: '2026-10-27' });
+    const tabel = tabelPertama(doc);
+    expect(doc.subjudul).toBe('TAHUN BUKU 01-01-2026 s/d 31-12-2026');
+    expect(tabel.baris).toHaveLength(nsTahun.rows.length);
+
+    const labaDitahan = cariBarisCetak(doc, 'Laba ditahan sebelum periode')!;
+    expect(labaDitahan.nilai?.[4]).toBe(RP(6_000_000));
+    expect(labaDitahan.nilai?.[3]).toBe(0);
+    expect(labaDitahan.tebal).toBe(true);
+
+    const total = tabel.footer?.find((r) => r.sel[0] === 'TOTAL')!;
+    expect(total.nilai?.[3]).toBe(nsTahun.totalDebit);
+    expect(total.nilai?.[4]).toBe(nsTahun.totalKredit);
+    const status = tabel.footer?.find((r) => r.sel[0] === 'STATUS')!;
+    expect(status.sel[1]).toBe('Seimbang');
+
+    // Kontrak lama tanpa mode & tanpa cutoff tetap memakai label kumulatif.
+    expect(neracaSaldoPrintDoc(nsTanpaCutoff).subjudul).toBe('SEMUA PERIODE');
+    expect(renderPrintHtml(doc)).toContain('Laba ditahan sebelum periode');
   });
 
   it('Laba Rugi: total pendapatan/beban/laba + defisit dalam kurung', () => {

@@ -18,7 +18,12 @@ import {
   listBarisJurnal,
 } from '../src/db/laporan.js';
 import { seedDev } from '../src/db/seed-dev.js';
-import { saldoAkun } from '../src/core/reports.js';
+import {
+  NAMA_LABA_DITAHAN_SEBELUM_PERIODE,
+  neracaSaldo,
+  saldoAkun,
+} from '../src/core/reports.js';
+import { tanggalLokal } from '../src/utils/tanggal.js';
 import {
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
@@ -197,7 +202,7 @@ describe('P1-8 — Neraca Saldo per cut-off', () => {
     try {
       isiContoh(db);
       const baris = listBarisJurnal(db);
-      const ns = laporanNeracaSaldo(db, '2026-12-31');
+      const ns = laporanNeracaSaldo(db, '2026-12-31', 'kumulatif');
 
       expect(ns.rows).toHaveLength(COA.length);
       expect(ns.totalDebit).toBe(ns.totalKredit);
@@ -230,8 +235,8 @@ describe('P1-8 — Neraca Saldo per cut-off', () => {
     const db = freshDb();
     try {
       isiContoh(db);
-      const sebelum = laporanNeracaSaldo(db, '2026-03-04');
-      const sesudah = laporanNeracaSaldo(db, '2026-03-05');
+      const sebelum = laporanNeracaSaldo(db, '2026-03-04', 'kumulatif');
+      const sesudah = laporanNeracaSaldo(db, '2026-03-05', 'kumulatif');
       expect(sebelum.rows.find((r) => r.kode === '1040')?.saldo).toBe(RP(1_000_000));
       expect(sesudah.rows.find((r) => r.kode === '1040')?.saldo).toBe(0);
       expect(sebelum.seimbang).toBe(true);
@@ -245,7 +250,7 @@ describe('P1-8 — Neraca Saldo per cut-off', () => {
     const db = freshDb();
     try {
       seedDev(db);
-      const ns = laporanNeracaSaldo(db, '2026-12-31');
+      const ns = laporanNeracaSaldo(db, '2026-12-31', 'kumulatif');
       expect(ns.seimbang).toBe(true);
       expect(ns.selisih).toBe(0);
       expect(ns.totalDebit).toBeGreaterThan(0);
@@ -258,12 +263,86 @@ describe('P1-8 — Neraca Saldo per cut-off', () => {
   it('DB tanpa jurnal: semua akun nol dan Neraca Saldo tetap seimbang', () => {
     const db = freshDb();
     try {
-      const ns = laporanNeracaSaldo(db, '2026-12-31');
+      const ns = laporanNeracaSaldo(db, '2026-12-31', 'kumulatif');
       expect(ns.rows).toHaveLength(COA.length);
       expect(ns.rows.every((r) => r.saldo === 0 && r.debit === 0 && r.kredit === 0)).toBe(true);
       expect(ns.rows.every((r) => !r.adaMutasi)).toBe(true);
       expect(ns.seimbang).toBe(true);
       expect(ns.selisih).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AUD-21b — adapter Neraca Saldo per mode', () => {
+  it('mode tahun hanya memuat P&L tahun berjalan + baris laba ditahan', () => {
+    const db = freshDb();
+    try {
+      isiContoh(db);
+      const ns = laporanNeracaSaldo(db, '2026-12-31', 'tahun');
+
+      expect(ns.mode).toBe('tahun');
+      if (ns.mode !== 'tahun') return;
+      expect(ns.mulai).toBe('2026-01-01');
+      expect(ns.sampai).toBe('2026-12-31');
+      expect(ns.rows).toHaveLength(COA.length + 1);
+
+      // P&L 2025 tidak boleh muncul lagi sebagai pendapatan/beban 2026.
+      expect(ns.totalPendapatan).toBe(RP(700_000));
+      expect(ns.totalBeban).toBe(RP(800_000));
+      expect(ns.labaPeriode).toBe(RP(-100_000));
+      expect(ns.labaDitahanSebelumPeriode).toBe(RP(3_000_000));
+
+      const sintetis = ns.rows.find((r) => r.sintetis);
+      expect(sintetis).toMatchObject({
+        kode: '',
+        nama: NAMA_LABA_DITAHAN_SEBELUM_PERIODE,
+        tipe: 'EKUITAS',
+        kredit: RP(3_000_000),
+        debit: 0,
+      });
+      expect(ns.rows.find((r) => r.kode === '5004')?.saldo).toBe(0);
+      expect(ns.totalDebit).toBe(RP(15_700_000));
+      expect(ns.totalKredit).toBe(RP(15_700_000));
+      expect(ns.seimbang).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mode kumulatif sama dengan neracaSaldo lama dan tanpa baris sintetis', () => {
+    const db = freshDb();
+    try {
+      isiContoh(db);
+      const kumulatif = laporanNeracaSaldo(db, '2026-12-31', 'kumulatif');
+      const lama = neracaSaldo(listBarisJurnal(db), '2026-12-31');
+
+      expect(kumulatif).toEqual({ ...lama, mode: 'kumulatif' });
+      expect(kumulatif.rows).toHaveLength(COA.length);
+      expect(kumulatif.rows.some((r) => 'sintetis' in r && r.sintetis)).toBe(false);
+      expect(kumulatif.totalDebit).toBe(RP(17_700_000));
+      expect(kumulatif.totalKredit).toBe(RP(17_700_000));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('cutoff opsional: mode tahun memakai hari ini, kumulatif memakai seluruh riwayat', () => {
+    const db = freshDb();
+    try {
+      isiContoh(db);
+      const tahun = laporanNeracaSaldo(db);
+      expect(tahun.mode).toBe('tahun');
+      if (tahun.mode === 'tahun') {
+        expect(tahun.sampai).toBe(tanggalLokal());
+        expect(tahun.mulai).toBe(`${tahun.sampai.slice(0, 4)}-01-01`);
+      }
+
+      const kumulatif = laporanNeracaSaldo(db, undefined, 'kumulatif');
+      expect(kumulatif.mode).toBe('kumulatif');
+      if (kumulatif.mode === 'kumulatif') expect(kumulatif.cutoff).toBeUndefined();
+      expect(kumulatif.rows).toHaveLength(COA.length);
     } finally {
       db.close();
     }

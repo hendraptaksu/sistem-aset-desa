@@ -210,7 +210,7 @@ describe('P1-9 — adapter Neraca memakai daftar tutup buku', () => {
     expect(sesudah.balance).toBe(true);
 
     // Badge layar memakai Neraca Saldo dari mesin laporan yang sama.
-    const ns = laporanNeracaSaldo(db, cutoff);
+    const ns = laporanNeracaSaldo(db, cutoff, 'kumulatif');
     expect(ns.seimbang).toBe(true);
     expect(badgeNeracaSaldo(ns)).toEqual({
       tone: 'green',

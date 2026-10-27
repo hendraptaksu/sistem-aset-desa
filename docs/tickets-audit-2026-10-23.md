@@ -609,7 +609,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/laporan.test.ts`.
   - **Dependency:** AUD-20.
 
-- [ ] **AUD-21b — UI/export Neraca Saldo per tahun buku** · P1 · M
+- [x] **AUD-21b — UI/export Neraca Saldo per tahun buku** · P1 · M (2026-10-27: toggle “Tahun berjalan” (default) / “Kumulatif sejak awal” di `NeracaSaldoTab`, periode tahun buku dan baris sintetis “Laba ditahan sebelum periode” ditampilkan; IPC `laporan:neraca-saldo` menerima `{ cutoff, mode }`, mode tak dikenal ditolak, string cut-off lama tetap diterima dengan default aman `tahun`, NeracaTab memakai `kumulatif` eksplisit; adapter `laporanNeracaSaldo` mengembalikan `mode` + periode, export XLSX/PDF/HTML memakai subjudul “TAHUN BUKU …” vs “PER …” dan label baris sintetis; typecheck/test/build hijau, 529 test total + 9 test; smoke `npm run test:e2e` lulus + smoke UI Neraca Saldo (default tahun, toggle dua arah, tombol export aktif))
   - **Konteks:** Setelah AUD-21a, UI perlu pilihan mode.
   - **Langkah:**
     1. Di `NeracaSaldoTab`, tambah toggle:

@@ -9,7 +9,7 @@ import type {
   BukuBesarHasil,
   LabaRugiHasil,
   NeracaHasil,
-  NeracaSaldoHasil,
+  NeracaSaldoModeHasil,
 } from '../../core/reports.js';
 import type {
   RealisasiAnggaranBaris,
@@ -21,6 +21,7 @@ import type { KopOrganisasi } from '../../core/pengaturan.js';
 import {
   kopPeriodeCutoff,
   kopPeriodeEfektif,
+  kopPeriodeNeracaSaldo,
   type JurnalTampil,
   type PanjarTampil,
 } from './workbooks.js';
@@ -297,15 +298,18 @@ export function bukuBesarPrintDoc(
 
 /** Neraca Saldo — semua akun + total + status seimbang/selisih. */
 export function neracaSaldoPrintDoc(
-  ns: NeracaSaldoHasil,
+  ns: NeracaSaldoModeHasil,
   opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
 ): PrintDoc {
-  const rows = ns.rows.map((r) =>
-    baris(
+  const rows = ns.rows.map((r) => {
+    const sintetis = 'sintetis' in r && r.sintetis;
+    return baris(
       [r.kode, r.nama, LABEL_TIPE_COA[r.tipe], formatRp(r.debit), formatRp(r.kredit), formatRp(r.saldo)],
       [null, null, null, r.debit, r.kredit, r.saldo],
-    ),
-  );
+      undefined,
+      sintetis,
+    );
+  });
   const tabel: PrintTable = {
     judul: 'NERACA SALDO',
     kolom: [
@@ -334,7 +338,7 @@ export function neracaSaldoPrintDoc(
   };
   return {
     judul: 'NERACA SALDO',
-    subjudul: kopPeriodeCutoff(ns.cutoff),
+    subjudul: kopPeriodeNeracaSaldo(ns),
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
     ...opsiKop(opts.kop),
     orientasi: 'portrait',

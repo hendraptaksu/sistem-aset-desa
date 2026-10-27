@@ -4,7 +4,7 @@ import { neracaHasilToWorkbook } from '../../features/export/workbooks.js';
 import { neracaPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
-import { api, type NeracaHasil, type NeracaSaldoHasil } from '../lib/api.js';
+import { api, type NeracaHasil, type NeracaSaldoModeHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
@@ -22,7 +22,7 @@ export function NeracaTab({
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<NeracaHasil | null>(null);
-  const [neracaSaldo, setNeracaSaldo] = useState<NeracaSaldoHasil | null>(null);
+  const [neracaSaldo, setNeracaSaldo] = useState<NeracaSaldoModeHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [memuat, setMemuat] = useState(false);
 
@@ -35,7 +35,11 @@ export function NeracaTab({
     let aktif = true;
     setMemuat(true);
     setErr(null);
-    Promise.all([api.laporanNeraca(cutoff), api.laporanNeracaSaldo(cutoff)])
+    Promise.all([
+      api.laporanNeraca(cutoff),
+      // Badge Neraca memakai saldo kumulatif s/d cut-off, bukan P&L tahun saja.
+      api.laporanNeracaSaldo({ cutoff, mode: 'kumulatif' }),
+    ])
       .then(([n, ns]) => {
         if (!aktif) return;
         setData(n);

@@ -12,6 +12,7 @@ import {
   type PengaturanPembukuan,
 } from '../core/pengaturan.js';
 import { PESAN_TAHUN_ANGGARAN } from '../core/anggaran.js';
+import type { ModeNeracaSaldo } from '../core/reports.js';
 import type {
   JurnalBarisInput,
   JurnalHeaderInput,
@@ -675,6 +676,46 @@ export function validasiCutoffLaporan(nilai: unknown): HasilBentuk<string> {
   if (!cutoff.ok) return cutoff;
   if (!cutoff.input) return { ok: false, error: 'Tanggal cut-off wajib diisi.' };
   return { ok: true, input: cutoff.input };
+}
+
+export type FilterNeracaSaldo = {
+  cutoff: string;
+  mode: ModeNeracaSaldo;
+};
+
+/**
+ * Bentuk request Neraca Saldo (AUD-21b):
+ * `{ cutoff, mode: 'tahun' | 'kumulatif' }`.
+ *
+ * Pemanggil lama yang hanya mengirim string cut-off tetap diterima dan
+ * memakai default aman `tahun` (bukan perilaku kumulatif lama). `mode` yang
+ * tidak dikenal ditolak agar export tidak diam-diam memakai mode lain.
+ */
+export function validasiFilterNeracaSaldo(
+  nilai: unknown,
+): HasilBentuk<FilterNeracaSaldo> {
+  if (typeof nilai === 'string') {
+    const cutoff = validasiCutoffLaporan(nilai);
+    if (!cutoff.ok) return cutoff;
+    return { ok: true, input: { cutoff: cutoff.input, mode: 'tahun' } };
+  }
+  if (!objek(nilai))
+    return { ok: false, error: 'Data laporan Neraca Saldo tidak lengkap.' };
+
+  const cutoff = validasiCutoffLaporan(nilai.cutoff);
+  if (!cutoff.ok) return cutoff;
+
+  const mode = nilai.mode;
+  if (mode !== undefined && mode !== 'tahun' && mode !== 'kumulatif')
+    return {
+      ok: false,
+      error: 'Mode Neraca Saldo tidak valid. Pilih tahun berjalan atau kumulatif.',
+    };
+
+  return {
+    ok: true,
+    input: { cutoff: cutoff.input, mode: mode ?? 'tahun' },
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -597,7 +597,7 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
 
     const neracaSetelahReverse = await env.panggil(
       'laporan:neraca-saldo',
-      '2026-12-31',
+      { cutoff: '2026-12-31', mode: 'kumulatif' },
     );
     expect(neracaSetelahReverse.ok, neracaSetelahReverse.error).toBe(true);
     expect(neracaSetelahReverse.data.selisih).toBe(0);
@@ -683,7 +683,7 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
 
     const neracaSetelahRestore = await env.panggil(
       'laporan:neraca-saldo',
-      '2026-12-31',
+      { cutoff: '2026-12-31', mode: 'kumulatif' },
     );
     expect(neracaSetelahRestore.ok, neracaSetelahRestore.error).toBe(true);
     expect(neracaSetelahRestore.data.selisih).toBe(0);
@@ -698,6 +698,80 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
     expect(cari.data.rows.map((j: { id: string }) => j.id)).toEqual(
       expect.arrayContaining(['j-parkir-2026', 'rev-parkir-2026']),
     );
+  });
+});
+
+describe('AUD-21b — IPC Neraca Saldo per mode', () => {
+  it('default tahun, kumulatif eksplisit, dan pemanggil string lama tetap jalan', async () => {
+    const env = buatEnv();
+
+    const pendapatan2025 = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-aud21b-2025',
+        tanggal: '2025-03-01',
+        keterangan: 'Pendapatan 2025',
+      },
+      baris: [D('1001', 5_000_000), K('4005', 5_000_000)],
+    });
+    expect(pendapatan2025.ok, pendapatan2025.error).toBe(true);
+
+    const beban2026 = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-aud21b-2026',
+        tanggal: '2026-02-01',
+        keterangan: 'Beban 2026',
+      },
+      baris: [D('5004', 1_000_000), K('1001', 1_000_000)],
+    });
+    expect(beban2026.ok, beban2026.error).toBe(true);
+
+    // Tanpa mode = default aman tahun berjalan.
+    const tahun = await env.panggil('laporan:neraca-saldo', {
+      cutoff: '2026-12-31',
+    });
+    expect(tahun.ok, tahun.error).toBe(true);
+    expect(tahun.data).toMatchObject({
+      mode: 'tahun',
+      mulai: '2026-01-01',
+      sampai: '2026-12-31',
+      labaDitahanSebelumPeriode: 5_000_000,
+      totalPendapatan: 0,
+      totalBeban: 1_000_000,
+      labaPeriode: -1_000_000,
+      seimbang: true,
+    });
+    expect(
+      tahun.data.rows.some((r: { sintetis?: boolean }) => r.sintetis),
+    ).toBe(true);
+
+    // String cut-off lama tetap diterima dan memakai mode tahun.
+    const lama = await env.panggil('laporan:neraca-saldo', '2026-12-31');
+    expect(lama.ok, lama.error).toBe(true);
+    expect(lama.data.mode).toBe('tahun');
+
+    const kumulatif = await env.panggil('laporan:neraca-saldo', {
+      cutoff: '2026-12-31',
+      mode: 'kumulatif',
+    });
+    expect(kumulatif.ok, kumulatif.error).toBe(true);
+    expect(kumulatif.data.mode).toBe('kumulatif');
+    expect(
+      kumulatif.data.rows.find((r: { kode: string }) => r.kode === '4005')?.saldo,
+    ).toBe(5_000_000);
+    expect(
+      kumulatif.data.rows.find((r: { kode: string }) => r.kode === '5004')?.saldo,
+    ).toBe(1_000_000);
+    expect(kumulatif.data.totalDebit).toBe(kumulatif.data.totalKredit);
+    expect(kumulatif.data.totalDebit).toBeGreaterThan(0);
+    expect(
+      kumulatif.data.rows.some((r: { sintetis?: boolean }) => r.sintetis),
+    ).toBe(false);
+
+    const modeSalah = await env.panggil('laporan:neraca-saldo', {
+      cutoff: '2026-12-31',
+      mode: 'semua',
+    });
+    expect(modeSalah.ok).toBe(false);
   });
 });
 

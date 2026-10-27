@@ -352,6 +352,19 @@ export type NeracaSaldoPeriodeHasil = {
   totalBeban: number;
 };
 
+/** Mode tampilan/export Neraca Saldo (AUD-21b). */
+export type ModeNeracaSaldo = 'tahun' | 'kumulatif';
+
+/**
+ * Hasil Neraca Saldo untuk UI/export.
+ *
+ * `mode` wajib ada pada hasil baru. Mode kumulatif opsional agar hasil
+ * `neracaSaldo()` lama (tanpa mode) tetap bisa dipakai builder export.
+ */
+export type NeracaSaldoModeHasil =
+  | (NeracaSaldoHasil & { mode?: 'kumulatif' })
+  | (NeracaSaldoPeriodeHasil & { mode: 'tahun' });
+
 /**
  * Neraca Saldo untuk satu tahun buku/periode.
  *
