@@ -15,7 +15,13 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION } from '../../db/database.js';
-import { catatAudit } from '../../db/repository.js';
+import {
+  KUNCI_PIN_HASH,
+  KUNCI_PIN_SALT,
+  catatAudit,
+  getPengaturan,
+  setPengaturan,
+} from '../../db/repository.js';
 import { pesanError } from '../../utils/pesanError.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 
@@ -238,12 +244,38 @@ export type HasilRestoreDb =
   | { ok: true; db: Database.Database; preRestorePath: string }
   | { ok: false; error: string; db: Database.Database };
 
+/** Pasangan salt/hash PIN milik DB aktif; tidak pernah memuat PIN plaintext. */
+type PinAktif = { salt: string; hash: string };
+
+function bacaPinAktif(db: Database.Database): PinAktif | null {
+  const salt = getPengaturan(db, KUNCI_PIN_SALT);
+  const hash = getPengaturan(db, KUNCI_PIN_HASH);
+  // Hanya pakai pasangan lengkap; data PIN parsial/rusak tidak disalin.
+  return salt && hash ? { salt, hash } : null;
+}
+
+/** Tulis PIN aktif ke DB hasil restore dalam satu transaksi + audit tanpa rahasia. */
+function tulisPinAktif(db: Database.Database, pin: PinAktif): void {
+  const tx = db.transaction(() => {
+    setPengaturan(db, KUNCI_PIN_SALT, pin.salt);
+    setPengaturan(db, KUNCI_PIN_HASH, pin.hash);
+    catatAudit(db, {
+      aksi: 'RESTORE-PIN-DIPERTAHANKAN',
+      alasan: 'PIN aktif dipertahankan setelah restore',
+      baru: { pin: 'PIN dipertahankan' },
+    });
+  });
+  tx();
+}
+
 /**
  * Restore aman (P0-8):
  * 1. validasi kandidat lebih dulu (file sampah ditolak tanpa menyentuh DB aktif);
  * 2. backup DB aktif ke `backups/pre-restore-<stamp>.db` via VACUUM INTO;
  * 3. tutup koneksi, buang `-wal`/`-shm`, copy ke `.tmp`, rename (atomik);
- * 4. buka ulang + jalankan migrasi versi.
+ * 4. buka ulang + jalankan migrasi versi;
+ * 5. tulis kembali PIN DB aktif (AUD-14) dalam transaksi agar PIN backup lama
+ *    tidak mengunci user.
  *
  * Bila langkah mana pun gagal setelah DB ditutup, file lama dipulihkan dari
  * backup pra-restore dan koneksi dibuka kembali. Pemanggil WAJIB memakai
@@ -253,6 +285,8 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
   const validasi = validasiKandidatRestore(opsi.backupPath);
   if (!validasi.valid) return { ok: false, error: validasi.error, db };
 
+  // AUD-14: baca PIN sebelum koneksi aktif ditutup; backup boleh tidak punya PIN.
+  const pinAktif = bacaPinAktif(db);
   const stamp = opsi.stamp ?? new Date().toISOString().replace(/[:.]/g, '-');
   const dirBackup = opsi.dirBackup ?? join(dirname(opsi.dbPath), 'backups');
   const preRestorePath = join(dirBackup, `pre-restore-${stamp}.db`);
@@ -270,14 +304,22 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
   }
 
   const tmp = `${opsi.dbPath}.restore-tmp`;
+  let dbBaru: Database.Database | null = null;
   try {
     db.close();
     buangFileDb(opsi.dbPath);
     copyFileSync(opsi.backupPath, tmp);
     // rename menimpa file yang sudah dihapus; aman di POSIX & Windows.
     renameSync(tmp, opsi.dbPath);
-    return { ok: true, db: openDb(opsi.dbPath), preRestorePath };
+    dbBaru = openDb(opsi.dbPath);
+    if (pinAktif) tulisPinAktif(dbBaru, pinAktif);
+    return { ok: true, db: dbBaru, preRestorePath };
   } catch {
+    try {
+      dbBaru?.close();
+    } catch {
+      /* jangan menutupi error utama */
+    }
     try {
       if (existsSync(tmp)) unlinkSync(tmp);
     } catch {

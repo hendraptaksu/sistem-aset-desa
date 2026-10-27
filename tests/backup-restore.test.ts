@@ -12,10 +12,18 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import pkg from '../package.json';
 import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
-import { insertJurnal, listJurnal } from '../src/db/repository.js';
+import {
+  KUNCI_PIN_HASH,
+  KUNCI_PIN_SALT,
+  getPengaturan,
+  insertJurnal,
+  listAuditLog,
+  listJurnal,
+  sudahSetupPin,
+} from '../src/db/repository.js';
 import {
   TABEL_WAJIB_RESTORE,
   backupPraUpgrade,
@@ -27,6 +35,7 @@ import {
   buatBackupLengkap,
   stampBackupLokal,
 } from '../src/features/export/backupLengkap.js';
+import { bukaKunci, kunciLagi, sesi, setupPin } from '../src/main/kunci.js';
 
 // AUD-15: kontrol test untuk menggagalkan rename tmp -> dest. Semua fungsi fs
 // lain tetap memakai implementasi asli.
@@ -501,6 +510,112 @@ describe('P0-8 — restoreDbAman', () => {
       expect(listJurnal(db).map((j) => j.id)).toEqual(['lama', 'lagi']);
     } finally {
       db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
+  beforeEach(() => {
+    sesi.terbuka = false;
+    sesi.gagal = 0;
+    sesi.blokirSampai = 0;
+  });
+
+  it('PIN DB aktif tetap berlaku, PIN dari DB backup ditolak, audit tercatat', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud14-'));
+    let aktif: Database.Database | null = null;
+    let sumber: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      const sumberPath = join(dir, 'sumber.db');
+      aktif = openDb(aktifPath);
+      expect(setupPin(aktif, '111111')).toBeNull();
+      const saltAktif = getPengaturan(aktif, KUNCI_PIN_SALT);
+      const hashAktif = getPengaturan(aktif, KUNCI_PIN_HASH);
+      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+
+      sumber = openDb(sumberPath);
+      expect(setupPin(sumber, '222222')).toBeNull();
+      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      const kandidat = join(dir, 'kandidat.db');
+      backupVacuumInto(sumber, kandidat);
+      sumber.close();
+      sumber = null;
+
+      kunciLagi();
+      const hasil = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidat,
+        dirBackup: join(dir, 'backups'),
+        stamp: 'aud14',
+      });
+      aktif = hasil.db;
+      expect(hasil.ok).toBe(true);
+      if (!hasil.ok) throw new Error(hasil.error);
+
+      // Data memang berganti, tetapi PIN aktif dipertahankan persis.
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['baru']);
+      expect(getPengaturan(aktif, KUNCI_PIN_SALT)).toBe(saltAktif);
+      expect(getPengaturan(aktif, KUNCI_PIN_HASH)).toBe(hashAktif);
+
+      expect(bukaKunci(aktif, '111111')).toBeNull();
+      kunciLagi();
+      expect(bukaKunci(aktif, '222222')).toMatch(/PIN salah/i);
+
+      const audit = listAuditLog(aktif).filter(
+        (a) => a.aksi === 'RESTORE-PIN-DIPERTAHANKAN',
+      );
+      expect(audit).toHaveLength(1);
+      expect(JSON.parse(audit[0]!.data_baru_json)).toEqual({ pin: 'PIN dipertahankan' });
+      // Audit tidak boleh memuat salt/hash (apalagi PIN plaintext).
+      expect(JSON.stringify(audit[0])).not.toContain(hashAktif!);
+      expect(JSON.stringify(audit[0])).not.toContain(saltAktif!);
+    } finally {
+      sumber?.close();
+      aktif?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('DB backup tanpa PIN tetap mendapat PIN aktif', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud14-tanpa-pin-'));
+    let aktif: Database.Database | null = null;
+    let sumber: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      const sumberPath = join(dir, 'sumber.db');
+      aktif = openDb(aktifPath);
+      expect(setupPin(aktif, '111111')).toBeNull();
+      const saltAktif = getPengaturan(aktif, KUNCI_PIN_SALT);
+      const hashAktif = getPengaturan(aktif, KUNCI_PIN_HASH);
+
+      sumber = openDb(sumberPath);
+      expect(sudahSetupPin(sumber)).toBe(false);
+      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      const kandidat = join(dir, 'kandidat.db');
+      backupVacuumInto(sumber, kandidat);
+      sumber.close();
+      sumber = null;
+
+      kunciLagi();
+      const hasil = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidat,
+        dirBackup: join(dir, 'backups'),
+        stamp: 'aud14-tanpa-pin',
+      });
+      aktif = hasil.db;
+      expect(hasil.ok).toBe(true);
+      if (!hasil.ok) throw new Error(hasil.error);
+
+      expect(sudahSetupPin(aktif)).toBe(true);
+      expect(getPengaturan(aktif, KUNCI_PIN_SALT)).toBe(saltAktif);
+      expect(getPengaturan(aktif, KUNCI_PIN_HASH)).toBe(hashAktif);
+      expect(bukaKunci(aktif, '111111')).toBeNull();
+    } finally {
+      sumber?.close();
+      aktif?.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

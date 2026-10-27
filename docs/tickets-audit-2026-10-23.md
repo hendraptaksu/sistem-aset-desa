@@ -421,7 +421,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run build`.
   - **Dependency:** AUD-02, AUD-04.
 
-- [ ] **AUD-14 — Pertahankan PIN saat restore** · P0 · S
+- [x] **AUD-14 — Pertahankan PIN saat restore** · P0 · S (2026-10-27: `restoreDbAman` membaca `pin_salt`/`pin_hash` DB aktif sebelum tukar file, menulisnya kembali ke DB hasil restore dalam satu transaksi + audit `RESTORE-PIN-DIPERTAHANKAN` tanpa salt/hash/PIN, backup tanpa PIN tetap memakai PIN aktif; IPC `backup:import` memanggil `kunciLagi()` setelah restore sukses; typecheck/test/build hijau, 477 test total + 2 test)
   - **Konteks:** Backup berisi tabel `pengaturan` termasuk hash PIN. Restore
     mengembalikan PIN lama; jika PIN sudah diganti, PIN saat ini tidak berlaku
     setelah restart. Session juga tetap terbuka setelah restore.

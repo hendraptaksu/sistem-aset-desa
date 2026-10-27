@@ -1768,6 +1768,8 @@ export function registerIpc(deps: IpcDeps): void {
       } catch (e) {
         console.warn('[restore] gagal menulis audit:', String(e));
       }
+      // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
+      kunciLagi();
       return ok({ restored: true, path: deps.dbPath(), preRestorePath: hasil.preRestorePath });
     } catch (e) {
       return fail(pesanError(e, GAGAL_RESTORE));
