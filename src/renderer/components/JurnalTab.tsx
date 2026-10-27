@@ -384,6 +384,10 @@ export function JurnalTab({
             <tbody>
               {pageRows.map((j) => {
                 const terkunci = Boolean(j.reversal_of) || Boolean(j.reversal_id);
+                // UI-12: nomor bukti dipakai sebagai konteks aksi baris. Jurnal lama
+                // bisa tanpa no. bukti; tanggal + potongan id menjaga nama tetap unik.
+                const nomorBuktiAksesibel =
+                  j.no_bukti?.trim() || `${formatTanggal(j.tanggal)} ${j.id.slice(0, 12)}`;
                 return (
                   <tr key={j.id} className="border-b align-top last:border-0">
                     <td className="whitespace-nowrap py-2 pr-3">{formatTanggal(j.tanggal)}</td>
@@ -405,11 +409,16 @@ export function JurnalTab({
                     </td>
                     <td className="py-2 text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => setDetail(j)}>
+                        <Button
+                          variant="ghost"
+                          aria-label={`Lihat jurnal ${nomorBuktiAksesibel}`}
+                          onClick={() => setDetail(j)}
+                        >
                           Lihat
                         </Button>
                         <Button
                           variant="ghost"
+                          aria-label={`Koreksi jurnal ${nomorBuktiAksesibel}`}
                           disabled={terkunci}
                           title={
                             terkunci

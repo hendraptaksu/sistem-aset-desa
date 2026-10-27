@@ -814,7 +814,8 @@ export function PihakTab() {
                         <button
                           type="button"
                           onClick={() => void bukaRiwayat(p.id)}
-                          className="text-left font-semibold text-emerald-800 underline-offset-2 hover:underline"
+                          aria-label={`Lihat riwayat jurnal ${p.nama}`}
+                          className="inline-flex min-h-8 items-center py-1 text-left font-semibold text-emerald-800 underline-offset-2 hover:underline"
                           title="Lihat riwayat jurnal pihak ini"
                         >
                           {p.nama}

@@ -245,7 +245,7 @@ export function DashboardTab({
                 {formatRp(data.kasBank.total)}
               </p>
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-emerald-800">
+                <summary className="min-h-8 cursor-pointer py-1 text-sm font-semibold text-emerald-800">
                   Rincian per akun ({data.kasBank.rincian.length})
                 </summary>
                 <table className="mt-2 w-full text-left text-[15px]">

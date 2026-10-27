@@ -339,7 +339,7 @@
     uji keyboard + screenshot.
   - **Dependency:** —
 
-- [ ] **UI-12 — Konteks aksi baris + target klik** · P1 · S
+- [x] **UI-12 — Konteks aksi baris + target klik** · P1 · S (2026-10-27: aria-label “Lihat/Koreksi jurnal” menyebut no. bukti dan unik di 25 baris (fallback tanggal + id bila kosong), tombol nama pihak serta summary “Rincian per akun” setinggi 32 px, Enter tetap membuka detail/riwayat tanpa aksi ganda; 595 test)
   - **Konteks:** Di Jurnal Umum ada 25 “Lihat” + 25 “Koreksi” tanpa nomor
     bukti; pembaca layar tidak tahu baris mana. Nama pihak di Piutang &
     Hutang setinggi 23 px; `summary` “Rincian per akun” 20 px.

@@ -260,7 +260,7 @@ test(
         );
 
       const tombolLihat = page
-        .getByRole('button', { name: 'Lihat', exact: true })
+        .getByRole('button', { name: /^Lihat jurnal / })
         .first();
       await tombolLihat.focus();
       await page.keyboard.press('Enter');
