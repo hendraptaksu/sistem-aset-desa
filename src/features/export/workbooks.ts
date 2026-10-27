@@ -129,23 +129,40 @@ function styleHeader(row: ExcelJS.Row): void {
   row.font = { bold: true };
 }
 
-/** Pembantu → workbook. Kolom: Tanggal | Keterangan | Masuk | Keluar | Saldo jalan. */
+/** Pembantu → workbook. Kolom: Tanggal | Keterangan | Masuk | Keluar | Saldo.
+ * Nominal = NUMBER Rupiah + numFmt Rp (bisa di-SUM di Excel), saldo berjalan
+ * dimulai dari saldo awal periode. */
 export async function pembantuToWorkbook(
   p: PembantuHasil,
   kop?: KopOrganisasi,
 ): Promise<ExcelJS.Workbook> {
   const { wb, ws } = baseWorkbook(`Pembantu ${p.kode}`);
-  tulisKopXlsx(ws, `BUKU PEMBANTU — ${p.kode} ${p.nama}`, kopPeriodeEfektif(p.mulai, p.sampai, p.rows), 4, kop);
-  const header = ws.addRow(['Tanggal', 'Keterangan', 'Masuk', 'Keluar']);
+  tulisKopXlsx(ws, `BUKU PEMBANTU — ${p.kode} ${p.nama}`, kopPeriodeEfektif(p.mulai, p.sampai, p.rows), 5, kop);
+  const header = ws.addRow(['Tanggal', 'Keterangan', 'Masuk', 'Keluar', 'Saldo']);
   styleHeader(header);
-  let jalan = 0;
-  for (const t of p.rows) {
-    jalan += t.masuk - t.keluar;
-    ws.addRow([formatTanggal(t.tanggal), t.keterangan, t.masuk === 0 ? '' : formatRp(t.masuk), t.keluar === 0 ? '' : formatRp(t.keluar)]);
+  if (p.saldoAwal !== undefined) {
+    const awal = ws.addRow(['', 'Saldo awal', null, null, null]);
+    selRp(awal, 3, 0);
+    selRp(awal, 4, 0);
+    selRp(awal, 5, p.saldoAwal);
   }
-  const tr = ws.addRow(['TOTAL', '', formatRp(p.totalMasuk), formatRp(p.totalKeluar)]);
+  let saldo = p.saldoAwal ?? 0;
+  for (const t of p.rows) {
+    saldo += t.masuk - t.keluar;
+    const row = ws.addRow([formatTanggal(t.tanggal), t.keterangan, null, null, null]);
+    selRp(row, 3, t.masuk);
+    selRp(row, 4, t.keluar);
+    selRp(row, 5, saldo);
+  }
+  const tr = ws.addRow(['TOTAL', '', null, null, null]);
+  selRp(tr, 3, p.totalMasuk);
+  selRp(tr, 4, p.totalKeluar);
   styleHeader(tr);
-  ws.addRow(['SALDO AKHIR', '', '', formatRp(p.saldo)]);
+  const akhir = ws.addRow(['SALDO AKHIR', '', null, null, null]);
+  selRp(akhir, 3, 0);
+  selRp(akhir, 4, 0);
+  selRp(akhir, 5, p.saldo);
+  styleHeader(akhir);
   ws.columns.forEach((c) => { c.width = 22; });
   ws.getColumn(2).width = 42;
   return wb;
@@ -1125,15 +1142,22 @@ export function kopHtml(
 }
 
 export function pembantuToHtml(p: PembantuHasil, kop?: KopOrganisasi): string {
+  const saldoAwal = p.saldoAwal !== undefined
+    ? `<tr><td colspan="2"><b>Saldo awal</b></td><td style="text-align:right">${formatRp(0)}</td><td style="text-align:right">${formatRp(0)}</td><td style="text-align:right">${formatRp(p.saldoAwal)}</td></tr>`
+    : '';
+  let saldo = p.saldoAwal ?? 0;
   const rows = p.rows
-    .map((t) => `<tr><td>${formatTanggal(t.tanggal)}</td><td>${esc(t.keterangan)}</td><td style="text-align:right">${formatRp(t.masuk)}</td><td style="text-align:right">${formatRp(t.keluar)}</td></tr>`)
+    .map((t) => {
+      saldo += t.masuk - t.keluar;
+      return `<tr><td>${formatTanggal(t.tanggal)}</td><td>${esc(t.keterangan)}</td><td style="text-align:right">${formatRp(t.masuk)}</td><td style="text-align:right">${formatRp(t.keluar)}</td><td style="text-align:right">${formatRp(saldo)}</td></tr>`;
+    })
     .join('');
   return `${kopHtml(`BUKU PEMBANTU — ${p.kode} ${p.nama}`, kopPeriodeEfektif(p.mulai, p.sampai, p.rows), kop)}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
-<thead><tr><th>Tanggal</th><th>Keterangan</th><th>Masuk</th><th>Keluar</th></tr></thead>
-<tbody>${rows}</tbody>
-<tfoot><tr><th colspan="2">TOTAL</th><th style="text-align:right">${formatRp(p.totalMasuk)}</th><th style="text-align:right">${formatRp(p.totalKeluar)}</th></tr>
-<tr><th colspan="3">SALDO AKHIR</th><th style="text-align:right">${formatRp(p.saldo)}</th></tr></tfoot></table>`;
+<thead><tr><th>Tanggal</th><th>Keterangan</th><th>Masuk</th><th>Keluar</th><th>Saldo</th></tr></thead>
+<tbody>${saldoAwal}${rows}</tbody>
+<tfoot><tr><th colspan="2">TOTAL</th><th style="text-align:right">${formatRp(p.totalMasuk)}</th><th style="text-align:right">${formatRp(p.totalKeluar)}</th><th></th></tr>
+<tr><th colspan="4">SALDO AKHIR</th><th style="text-align:right">${formatRp(p.saldo)}</th></tr></tfoot></table>`;
 }
 
 export function realisasiToHtml(

@@ -10,6 +10,9 @@ export type PembantuHasil = {
   rows: Transaksi[];
   totalMasuk: number;
   totalKeluar: number;
+  /** Saldo sebelum periode (dari jurnal); opsional untuk pemanggil lama. */
+  saldoAwal?: number;
+  /** Saldo akhir, sudah termasuk saldo awal bila tersedia. */
   saldo: number;
   mulai?: string;
   sampai?: string;

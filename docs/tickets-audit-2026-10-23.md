@@ -682,7 +682,8 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/seed-dev.test.ts tests/pihak.test.ts`.
   - **Dependency:** AUD-09.
 
-- [ ] **AUD-25 — Perbaiki arah Pembantu + XLSX numerik (WIP)** · P1 · S
+- [x] **AUD-25 — Perbaiki arah Pembantu + XLSX numerik (WIP)** · P1 · S
+  - **Bukti:** (2026-10-27: arah masuk/keluar dari `posisi_normal`; nominal XLSX number + `NUMFMT_RP`; saldo berjalan + saldo awal konsisten di UI/HTML/XLSX; 430 test hijau, +3 test)
   - **Konteks:** Refactor `pembantuDariBukuBesar` (belum di-commit) memakai
     `isAkunKas` untuk arah masuk/keluar. 1040/1050 adalah AKTIVA non-kas,
     sehingga arahnya terbalik dan saldo berjalan di export melompat.
