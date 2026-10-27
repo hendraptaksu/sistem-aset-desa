@@ -230,6 +230,38 @@ export function DashboardTab({
         <>
           <BannerBackupBasi usiaHari={usiaBackup} />
 
+          {/* UI-14: aksi harian didahulukan agar terlihat di viewport pertama. */}
+          <Card>
+            <h3 className="text-base font-bold">Catat Transaksi / Pintasan</h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Pilih alur yang paling dekat dengan kejadian. Sistem menyusun jurnal
+              debit–kredit otomatis.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'TERIMA')}>
+                Terima Uang
+              </Button>
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'BAYAR')}>
+                Bayar
+              </Button>
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'PINDAH')}>
+                Pindah Dana
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
+                Panjar
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
+                Piutang &amp; Hutang
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
+                Tutup Buku
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
+                Jurnal Umum
+              </Button>
+            </div>
+          </Card>
+
           {/* UI-03: jumlah kolom mengikuti lebar konten (bukan viewport) agar
               nominal tidak dipaksa muat di kartu sempit saat sidebar terbuka. */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(350px,1fr))] gap-3">
@@ -439,37 +471,6 @@ export function DashboardTab({
               )}
             </Card>
           </div>
-
-          <Card>
-            <h3 className="text-base font-bold">Catat Transaksi / Pintasan</h3>
-            <p className="mt-1 text-sm text-stone-600">
-              Pilih alur yang paling dekat dengan kejadian. Sistem menyusun jurnal
-              debit–kredit otomatis.
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'TERIMA')}>
-                Terima Uang
-              </Button>
-              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'BAYAR')}>
-                Bayar
-              </Button>
-              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'PINDAH')}>
-                Pindah Dana
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
-                Panjar
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
-                Piutang &amp; Hutang
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
-                Tutup Buku
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
-                Jurnal Umum
-              </Button>
-            </div>
-          </Card>
         </>
       )}
 

@@ -377,7 +377,7 @@
     uji simpan sukses dan error validasi.
   - **Dependency:** —
 
-- [ ] **UI-14 — Pindahkan pintasan transaksi ke atas dashboard** · P1 · S
+- [x] **UI-14 — Pindahkan pintasan transaksi ke atas dashboard** · P1 · S (2026-10-27: blok pintasan tampil tepat setelah kartu cut-off; Terima Uang/Bayar/Pindah Dana berada di dalam viewport pertama tanpa scroll (bottom 434 px di 1280×800, 498 px di 1024×768); 595 test + smoke)
   - **Konteks:** Kartu “Catat Transaksi / Pintasan” berada setelah 6 kartu
     ringkasan (±1,5 layar). Untuk aplikasi pembukuan harian, aksi utama
     seharusnya paling terlihat.
