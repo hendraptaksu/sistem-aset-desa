@@ -93,6 +93,9 @@ export function klasifikasiAlurPihak(input: JurnalInput): KlasifikasiAlurPihak {
 export type BarisSaldoPihak = {
   jurnal_id?: string;
   tanggal?: string;
+  /** Metadata opsional untuk daftar jurnal belum teralokasi. */
+  no_bukti?: string;
+  keterangan?: string;
   akun_kode: string;
   debit: number;
   kredit: number;
@@ -191,4 +194,177 @@ export function ringkasanSaldoPihak(
       neto: nilai.piutang - nilai.hutang,
     };
   });
+}
+
+/** Satu jurnal yang menyentuh 1050/2050 tetapi belum punya pihak. */
+export type JurnalBelumTeralokasi = {
+  jurnal_id: string;
+  tanggal: string;
+  no_bukti: string;
+  keterangan: string;
+  akun_kode: typeof AKUN_PIUTANG | typeof AKUN_HUTANG;
+  /** Mutasi neto pada akun tersebut dalam posisi normal (bisa negatif untuk reversal). */
+  nominal: number;
+};
+
+/**
+ * Rekonsiliasi saldo akun 1050/2050 dengan `jurnal_pihak`.
+ *
+ * `teralokasi` = mutasi neto jurnal yang punya pemetaan pihak untuk akun itu.
+ * `belum` = saldo akun − teralokasi, sehingga selalu:
+ *   teralokasi + belum = saldo akun (posisi normal).
+ *
+ * Angka ini hanya untuk tampilan/laporan; TIDAK pernah disimpan ke DB.
+ * Jurnal balik yang mewarisi pemetaan otomatis ikut teralokasi (nominalnya
+ * negatif), sedangkan jurnal tanpa pemetaan tampil di `jurnalBelum`.
+ */
+export function rekonsiliasiPihak(
+  baris: readonly BarisSaldoPihak[],
+  mapping: readonly JurnalPihak[],
+  sampai?: string,
+): RekonsiliasiPihak {
+  type MutasiJurnal = {
+    jurnal_id: string;
+    tanggal: string;
+    no_bukti: string;
+    keterangan: string;
+    piutang: number;
+    hutang: number;
+  };
+
+  const mutasi = new Map<string, MutasiJurnal>();
+  let piutangAkun = 0;
+  let hutangAkun = 0;
+
+  baris.forEach((b, i) => {
+    if (sampai && b.tanggal && b.tanggal > sampai) return;
+    const kode = String(b.akun_kode ?? '').trim();
+    if (kode !== AKUN_PIUTANG && kode !== AKUN_HUTANG) return;
+
+    const jurnalId = String(b.jurnal_id ?? '').trim();
+    // Baris tanpa ID tidak bisa dipetakan; pakai kunci unik agar totalnya
+    // tetap muncul sebagai belum teralokasi, bukan hilang diam-diam.
+    const kunci = jurnalId || `baris-${i + 1}`;
+    const cur = mutasi.get(kunci) ?? {
+      jurnal_id: jurnalId,
+      tanggal: String(b.tanggal ?? ''),
+      no_bukti: String(b.no_bukti ?? ''),
+      keterangan: String(b.keterangan ?? ''),
+      piutang: 0,
+      hutang: 0,
+    };
+    if (!cur.tanggal && b.tanggal) cur.tanggal = String(b.tanggal);
+    if (!cur.no_bukti && b.no_bukti) cur.no_bukti = String(b.no_bukti);
+    if (!cur.keterangan && b.keterangan) cur.keterangan = String(b.keterangan);
+
+    if (kode === AKUN_PIUTANG) {
+      const nominal = b.debit - b.kredit;
+      cur.piutang += nominal;
+      piutangAkun += nominal;
+    } else {
+      const nominal = b.kredit - b.debit;
+      cur.hutang += nominal;
+      hutangAkun += nominal;
+    }
+    mutasi.set(kunci, cur);
+  });
+
+  const terpetakan = new Set<string>();
+  for (const m of mapping) {
+    const jurnalId = String(m.jurnal_id ?? '').trim();
+    const kode = String(m.akun_kode ?? '').trim();
+    if (!jurnalId) continue;
+    if (kode !== AKUN_PIUTANG && kode !== AKUN_HUTANG) continue;
+    terpetakan.add(`${jurnalId}\u0000${kode}`);
+  }
+
+  let piutangTeralokasi = 0;
+  let hutangTeralokasi = 0;
+  const jurnalBelum: JurnalBelumTeralokasi[] = [];
+
+  for (const m of mutasi.values()) {
+    const idPiutang = `${m.jurnal_id}\u0000${AKUN_PIUTANG}`;
+    if (terpetakan.has(idPiutang)) {
+      piutangTeralokasi += m.piutang;
+    } else if (m.piutang !== 0) {
+      jurnalBelum.push({
+        jurnal_id: m.jurnal_id,
+        tanggal: m.tanggal,
+        no_bukti: m.no_bukti,
+        keterangan: m.keterangan,
+        akun_kode: AKUN_PIUTANG,
+        nominal: m.piutang,
+      });
+    }
+
+    const idHutang = `${m.jurnal_id}\u0000${AKUN_HUTANG}`;
+    if (terpetakan.has(idHutang)) {
+      hutangTeralokasi += m.hutang;
+    } else if (m.hutang !== 0) {
+      jurnalBelum.push({
+        jurnal_id: m.jurnal_id,
+        tanggal: m.tanggal,
+        no_bukti: m.no_bukti,
+        keterangan: m.keterangan,
+        akun_kode: AKUN_HUTANG,
+        nominal: m.hutang,
+      });
+    }
+  }
+
+  jurnalBelum.sort(
+    (a, b) =>
+      a.tanggal.localeCompare(b.tanggal) ||
+      a.jurnal_id.localeCompare(b.jurnal_id) ||
+      a.akun_kode.localeCompare(b.akun_kode),
+  );
+
+  // Selisih dihitung dari saldo akun − total teralokasi agar invariannya
+  // eksplisit, bukan sekadar kebetulan jumlah daftar di atas.
+  return {
+    piutangAkun,
+    hutangAkun,
+    piutangTeralokasi,
+    hutangTeralokasi,
+    piutangBelum: piutangAkun - piutangTeralokasi,
+    hutangBelum: hutangAkun - hutangTeralokasi,
+    jurnalBelum,
+  };
+}
+
+export type RekonsiliasiPihak = {
+  /** Saldo 1050 dari jurnal (debit − kredit). */
+  piutangAkun: number;
+  /** Saldo 2050 dari jurnal (kredit − debit). */
+  hutangAkun: number;
+  piutangTeralokasi: number;
+  hutangTeralokasi: number;
+  piutangBelum: number;
+  hutangBelum: number;
+  jurnalBelum: JurnalBelumTeralokasi[];
+};
+
+/** Pesan inti saat jurnal menyentuh 1050/2050 tanpa pemetaan pihak. */
+export const PESAN_PIHAK_BELUM_TERALOKASI =
+  'Jurnal ini akan tampil sebagai belum teralokasi di Piutang & Hutang.';
+
+/**
+ * Peringatan (bukan error) untuk jalur Jurnal Umum/Import: jurnal yang memakai
+ * 1050/2050 tanpa metadata pihak akan menambah selisih rekonsiliasi.
+ */
+export function peringatanPihakTanpaMapping(
+  input: Pick<JurnalInput, 'baris'> | null | undefined,
+): string[] {
+  const baris = Array.isArray(input?.baris) ? input.baris : [];
+  const akun = new Set<string>();
+  for (const b of baris) {
+    const kode = String(b?.akun_kode ?? '').trim();
+    if (kode === AKUN_PIUTANG) akun.add('1050 Piutang');
+    else if (kode === AKUN_HUTANG) akun.add('2050 Hutang');
+  }
+  if (akun.size === 0) return [];
+  return [
+    `Jurnal ini memakai akun ${[...akun].join(' dan ')} tanpa pihak. ` +
+      `${PESAN_PIHAK_BELUM_TERALOKASI} Gunakan menu Piutang & Hutang agar saldo punya pihak.`,
+  ];
 }

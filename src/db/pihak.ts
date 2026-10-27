@@ -10,9 +10,11 @@
 import type Database from 'better-sqlite3';
 import {
   klasifikasiAlurPihak,
+  rekonsiliasiPihak as hitungRekonsiliasiPihak,
   ringkasanSaldoPihak,
   saldoPihak,
   type AlurPihak,
+  type RekonsiliasiPihak,
   type SaldoPihak,
 } from '../core/pihak.js';
 import { buatAuditLog } from '../core/ledger.js';
@@ -231,6 +233,17 @@ export function deletePihak(db: Database.Database, id: string): Pihak {
 /** Saldo piutang/hutang semua pihak, dihitung dari jurnal. */
 export function saldoPerPihak(db: Database.Database): PihakSaldo[] {
   return ringkasanSaldoPihak(listBarisJurnal(db), bacaMapping(db), listPihak(db));
+}
+
+/**
+ * Rekonsiliasi saldo akun 1050/2050 vs jurnal yang sudah dipetakan ke pihak.
+ * Hanya membaca jurnal + `jurnal_pihak`; selisih tidak pernah disimpan.
+ */
+export function rekonsiliasiPihakDb(
+  db: Database.Database,
+  sampai?: string,
+): RekonsiliasiPihak {
+  return hitungRekonsiliasiPihak(listBarisJurnal(db), bacaMapping(db), sampai);
 }
 
 /** Riwayat jurnal satu pihak + baris lengkap (untuk drill-down UI). */

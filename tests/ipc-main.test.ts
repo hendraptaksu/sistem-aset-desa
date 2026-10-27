@@ -177,6 +177,7 @@ const CHANNEL_IPC = [
   'pihak:jurnal',
   'pihak:list',
   'pihak:posting',
+  'pihak:rekon',
   'pihak:saldo',
   'pihak:update',
   'rekonsiliasi:create',
@@ -194,11 +195,62 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 72 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 73 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(72);
+    expect(env.handlers.size).toBe(73);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(72);
+    expect(CHANNEL_IPC).toHaveLength(73);
+  });
+});
+
+describe('AUD-09 — peringatan jurnal 1050/2050 tanpa pihak', () => {
+  it('posting 1050 tanpa pihak minta konfirmasi (bukan error), lalu bisa disimpan', async () => {
+    const env = buatEnv();
+    const input = {
+      header: {
+        id: 'j-piutang-tanpa-pihak',
+        tanggal: '2026-02-01',
+        keterangan: 'Piutang tanpa pihak',
+      },
+      baris: [D('1050', 100_000), K('3000', 100_000)],
+    };
+
+    const belum = await env.panggil('jurnal:posting', input);
+    expect(belum.ok).toBe(false);
+    expect(belum.error).toMatch(/belum teralokasi di Piutang & Hutang/i);
+    expect(belum.perluKonfirmasi).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toEqual([]);
+
+    const lanjut = await env.panggil('jurnal:posting', input, {
+      konfirmasiPeringatan: true,
+    });
+    expect(lanjut.ok, lanjut.error).toBe(true);
+
+    const rekon = await env.panggil('pihak:rekon');
+    expect(rekon.ok, rekon.error).toBe(true);
+    expect(rekon.data).toMatchObject({
+      piutangAkun: 100_000,
+      piutangTeralokasi: 0,
+      piutangBelum: 100_000,
+    });
+    expect(rekon.data.jurnalBelum).toHaveLength(1);
+    expect(rekon.data.jurnalBelum[0]).toMatchObject({
+      jurnal_id: 'j-piutang-tanpa-pihak',
+      akun_kode: '1050',
+      nominal: 100_000,
+    });
+
+    // Cutoff opsional tetap divalidasi sebagai tanggal kalender.
+    const salah = await env.panggil('pihak:rekon', '2026-02-31');
+    expect(salah.ok).toBe(false);
+    expect(salah.error).toMatch(/tanggal/i);
+
+    const cutoff = await env.panggil('pihak:rekon', '2025-12-31');
+    expect(cutoff.ok, cutoff.error).toBe(true);
+    expect(cutoff.data).toMatchObject({
+      piutangAkun: 0,
+      piutangBelum: 0,
+    });
   });
 });
 

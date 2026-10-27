@@ -287,7 +287,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run build`.
   - **Dependency:** —
 
-- [ ] **AUD-09 — Rekonsiliasi pihak vs saldo akun 1050/2050** · P0 · M
+- [x] **AUD-09 — Rekonsiliasi pihak vs saldo akun 1050/2050** · P0 · M (2026-10-27: `rekonsiliasiPihak` menghitung saldo 1050/2050 dari jurnal + mapping dengan tanda posisi normal, `belum = saldo akun − teralokasi` (tidak disimpan); IPC `pihak:rekon` dengan cutoff tervalidasi; kartu amber “Rekonsiliasi 1050/2050” + daftar jurnal belum di PihakTab; Jurnal Umum/Import memberi peringatan/konfirmasi “belum teralokasi” tanpa error keras; typecheck/test/build hijau, 463 test total + 8 test, smoke render kartu hijau)
   - **Konteks:** `jurnal_pihak` hanya ditulis form Piutang/Hutang. Jurnal Umum,
     import, saldo awal, dan seed bisa membuat saldo 1050/2050 tanpa mapping.
     Di DB dev: saldo 1050 dan 2050 sama-sama bukan nol, `pihak` = 0,

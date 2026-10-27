@@ -19,7 +19,7 @@ import {
   type HasilJurnalPihak,
 } from '../../core/forms.js';
 import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
-import type { AlurPihak } from '../../core/pihak.js';
+import type { AlurPihak, RekonsiliasiPihak } from '../../core/pihak.js';
 import type { JurnalPihakTampil, Pihak, PihakSaldo } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
@@ -175,10 +175,152 @@ function TabelPratinjau({
   );
 }
 
+/**
+ * Kartu rekonsiliasi saldo akun 1050/2050 vs pemetaan pihak (AUD-09).
+ * Diekspor terpisah agar bisa di-smoke-test tanpa memuat IPC/Electron.
+ */
+export function KartuRekonsiliasiPihak({
+  rekon,
+}: {
+  rekon: RekonsiliasiPihak | null;
+}) {
+  const adaBelum = Boolean(
+    rekon && (rekon.piutangBelum !== 0 || rekon.hutangBelum !== 0),
+  );
+  const baris = rekon
+    ? [
+        {
+          label: 'Piutang (1050)',
+          akun: rekon.piutangAkun,
+          teralokasi: rekon.piutangTeralokasi,
+          belum: rekon.piutangBelum,
+        },
+        {
+          label: 'Hutang (2050)',
+          akun: rekon.hutangAkun,
+          teralokasi: rekon.hutangTeralokasi,
+          belum: rekon.hutangBelum,
+        },
+      ]
+    : [];
+  const tampil = rekon?.jurnalBelum.slice(0, 50) ?? [];
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold">Rekonsiliasi 1050/2050</h2>
+          <p className="mt-1 max-w-3xl text-sm text-stone-600">
+            Saldo akun dari jurnal dibandingkan dengan jurnal yang sudah punya
+            pihak. Selisih di bawah adalah jurnal yang belum teralokasi (mis. dari
+            Jurnal Umum, import, atau saldo awal) — angka ini tidak disimpan.
+          </p>
+        </div>
+        {rekon && (
+          <Badge tone={adaBelum ? 'amber' : 'green'}>
+            {adaBelum ? 'Ada jurnal belum teralokasi' : 'Teralokasi penuh'}
+          </Badge>
+        )}
+      </div>
+
+      {rekon ? (
+        <>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-[15px]">
+              <thead>
+                <tr className="border-b text-stone-500">
+                  <th className="py-2 pr-3">Akun</th>
+                  <th className="py-2 pr-3 text-right">Saldo akun</th>
+                  <th className="py-2 pr-3 text-right">Teralokasi</th>
+                  <th className="py-2 text-right">Belum teralokasi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {baris.map((b) => (
+                  <tr key={b.label} className="border-b last:border-0">
+                    <td className="py-2 pr-3 font-semibold">{b.label}</td>
+                    <td className="py-2 pr-3 text-right whitespace-nowrap">
+                      {formatRp(b.akun)}
+                    </td>
+                    <td className="py-2 pr-3 text-right whitespace-nowrap">
+                      {formatRp(b.teralokasi)}
+                    </td>
+                    <td
+                      className={clsx(
+                        'py-2 text-right whitespace-nowrap font-semibold',
+                        b.belum !== 0 ? 'text-amber-800' : 'text-stone-500',
+                      )}
+                    >
+                      {formatRp(b.belum)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {adaBelum && (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+              <p className="text-[15px] font-semibold">Jurnal belum teralokasi</p>
+              <p className="mt-1 text-sm">
+                Jurnal berikut menyentuh 1050/2050 tanpa pemetaan pihak. Koreksi
+                lewat jurnal balik, atau catat ulang lewat menu Piutang &amp;
+                Hutang bila perlu.
+              </p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full text-left text-[14px]">
+                  <thead>
+                    <tr className="border-b border-amber-200 text-amber-800">
+                      <th className="py-2 pr-2">Tanggal</th>
+                      <th className="py-2 pr-2">No. bukti</th>
+                      <th className="py-2 pr-2">Keterangan</th>
+                      <th className="py-2 pr-2">Akun</th>
+                      <th className="py-2 text-right">Nominal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tampil.map((j) => (
+                      <tr
+                        key={`${j.jurnal_id}-${j.akun_kode}`}
+                        className="border-b border-amber-200 align-top last:border-0"
+                      >
+                        <td className="py-2 pr-2 whitespace-nowrap">
+                          {formatTanggal(j.tanggal)}
+                        </td>
+                        <td className="py-2 pr-2">{j.no_bukti || '—'}</td>
+                        <td className="py-2 pr-2">{j.keterangan || '—'}</td>
+                        <td className="py-2 pr-2 whitespace-nowrap">
+                          {j.akun_kode}
+                        </td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          {formatRp(j.nominal)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {rekon.jurnalBelum.length > tampil.length && (
+                <p className="mt-2 text-sm">
+                  Menampilkan {tampil.length} dari {rekon.jurnalBelum.length}{' '}
+                  jurnal belum teralokasi.
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="mt-3 text-stone-500">Memuat rekonsiliasi…</p>
+      )}
+    </Card>
+  );
+}
+
 export function PihakTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [pihak, setPihak] = useState<Pihak[]>([]);
   const [saldo, setSaldo] = useState<PihakSaldo[]>([]);
+  const [rekon, setRekon] = useState<RekonsiliasiPihak | null>(null);
   const [memuat, setMemuat] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -229,14 +371,16 @@ export function PihakTab() {
   const muat = async (): Promise<void> => {
     setErr(null);
     try {
-      const [c, p, s] = await Promise.all([
+      const [c, p, s, r] = await Promise.all([
         api.coa(),
         api.pihakList(),
         api.pihakSaldo(),
+        api.pihakRekon(),
       ]);
       setCoa(c);
       setPihak(p);
       setSaldo(s);
+      setRekon(r);
       setPihakId((sebelum) => (p.some((x) => x.id === sebelum) ? sebelum : ''));
     } catch (e) {
       setErr(pesanError(e, PESAN_MUAT_GAGAL));
@@ -561,6 +705,8 @@ export function PihakTab() {
           </div>
         )}
       </Card>
+
+      <KartuRekonsiliasiPihak rekon={rekon} />
 
       <Card>
         <h2 className="text-lg font-bold">Daftar Pihak</h2>

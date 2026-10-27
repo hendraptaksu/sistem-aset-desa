@@ -96,7 +96,7 @@ export function ImportExcelTab() {
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [konfirmasi, setKonfirmasi] = useState(false);
-  const [izinkanKasMinus, setIzinkanKasMinus] = useState(false);
+  const [izinkanPeringatan, setIzinkanPeringatan] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
 
   const grupPeringatan = useMemo(
@@ -163,7 +163,7 @@ export function ImportExcelTab() {
 
   function mintaImpor(): void {
     if (sibuk || !hasil || grupValid === 0 || hasilImpor) return;
-    setIzinkanKasMinus(false);
+    setIzinkanPeringatan(false);
     setErr(null);
     setInfo(null);
     setKonfirmasi(true);
@@ -176,7 +176,7 @@ export function ImportExcelTab() {
       setInfo(null);
       try {
         const data = await api.importProses(filePath || undefined, {
-          konfirmasiPeringatan: izinkanKasMinus,
+          konfirmasiPeringatan: izinkanPeringatan,
         });
         if (!data.diproses || !data.hasil) {
           setInfo('Pemilihan file dibatalkan.');
@@ -315,7 +315,8 @@ export function ImportExcelTab() {
           {!hasilImpor && grupPeringatan.length > 0 && (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
               <div className="font-semibold">
-                {grupPeringatan.length} grup membutuhkan konfirmasi (mis. kas/bank akan minus)
+                {grupPeringatan.length} grup membutuhkan konfirmasi (mis. kas/bank
+                minus atau piutang/hutang tanpa pihak)
               </div>
               <ul className="mt-1 list-disc space-y-1 pl-5">
                 {grupPeringatan.slice(0, 5).map((g) => (
@@ -325,7 +326,7 @@ export function ImportExcelTab() {
                 ))}
               </ul>
               <p className="mt-1 text-sm">
-                Grup tersebut tidak diimpor bila Anda tidak mencentang izin kas minus pada
+                Grup tersebut tidak diimpor bila Anda tidak mencentang izin pada
                 konfirmasi impor.
               </p>
             </div>
@@ -404,8 +405,9 @@ export function ImportExcelTab() {
 
           {hasilImpor.grup.some((g) => g.perluKonfirmasi) && (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
-              Sebagian grup gagal karena membutuhkan konfirmasi kas/bank minus. Periksa
-              saldo dan file, lalu pratinjau ulang sebelum mencoba lagi.
+              Sebagian grup gagal karena membutuhkan konfirmasi (kas/bank minus atau
+              piutang/hutang tanpa pihak). Periksa saldo dan file, lalu pratinjau ulang
+              sebelum mencoba lagi.
             </div>
           )}
 
@@ -457,13 +459,14 @@ export function ImportExcelTab() {
                 <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={izinkanKasMinus}
-                    onChange={(e) => setIzinkanKasMinus(e.target.checked)}
+                    checked={izinkanPeringatan}
+                    onChange={(e) => setIzinkanPeringatan(e.target.checked)}
                     className="mt-0.5 h-4 w-4"
                   />
                   <span>
                     Saya sudah memeriksa {grupPeringatan.length} grup yang memberi
-                    peringatan kas/bank minus dan mengizinkannya bila memang benar.
+                    peringatan (kas/bank minus atau piutang/hutang belum teralokasi)
+                    dan mengizinkannya bila memang benar.
                   </span>
                 </label>
               )}

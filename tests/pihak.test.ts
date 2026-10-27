@@ -25,9 +25,15 @@ import {
   getPihak,
   listPihak,
   postingPihak,
+  rekonsiliasiPihakDb,
   saldoPerPihak,
   updatePihak,
 } from '../src/db/pihak.js';
+import {
+  peringatanPihakTanpaMapping,
+  rekonsiliasiPihak,
+  type BarisSaldoPihak,
+} from '../src/core/pihak.js';
 import {
   buatJurnalBayarHutang,
   buatJurnalBeliKredit,
@@ -50,7 +56,10 @@ import {
   validasiBentukPihak,
   validasiBentukPostingPihak,
 } from '../src/main/validation.js';
-import { PihakTab } from '../src/renderer/components/PihakTab.js';
+import {
+  KartuRekonsiliasiPihak,
+  PihakTab,
+} from '../src/renderer/components/PihakTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -796,6 +805,7 @@ describe('P1-5 — layar Piutang & Hutang', () => {
 
     expect(html).toContain('Piutang &amp; Hutang');
     expect(html).toContain('Daftar Pihak');
+    expect(html).toContain('Rekonsiliasi 1050/2050');
     for (const label of [
       'Beri Pinjaman',
       'Terima Pelunasan Piutang',
@@ -808,5 +818,228 @@ describe('P1-5 — layar Piutang & Hutang', () => {
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
     expect(html).toContain('modal (3000) tidak berubah');
     expect(html).toContain('Pihak (wajib)');
+  });
+});
+
+describe('AUD-09 — rekonsiliasi pihak vs saldo 1050/2050', () => {
+  const barisRekon: BarisSaldoPihak[] = [
+    {
+      jurnal_id: 'j-piutang-mapped',
+      tanggal: '2026-02-01',
+      no_bukti: 'B-1',
+      keterangan: 'Pinjam mapped',
+      akun_kode: '1050',
+      debit: RP(1_000_000),
+      kredit: 0,
+    },
+    {
+      jurnal_id: 'j-piutang-belum',
+      tanggal: '2026-02-02',
+      no_bukti: 'B-2',
+      keterangan: 'Pinjam tanpa pihak',
+      akun_kode: '1050',
+      debit: RP(500_000),
+      kredit: 0,
+    },
+    {
+      jurnal_id: 'j-hutang-mapped',
+      tanggal: '2026-02-03',
+      no_bukti: 'B-3',
+      keterangan: 'Hutang mapped',
+      akun_kode: '2050',
+      debit: 0,
+      kredit: RP(700_000),
+    },
+    {
+      jurnal_id: 'j-hutang-belum',
+      tanggal: '2026-02-04',
+      no_bukti: 'B-4',
+      keterangan: 'Hutang tanpa pihak',
+      akun_kode: '2050',
+      debit: 0,
+      kredit: RP(300_000),
+    },
+  ];
+
+  const mappingRekon = [
+    { jurnal_id: 'j-piutang-mapped', pihak_id: 'p-budi', akun_kode: '1050' },
+    { jurnal_id: 'j-hutang-mapped', pihak_id: 'p-budi', akun_kode: '2050' },
+  ];
+
+  it('memisahkan mapped + unmapped dan menjaga teralokasi + belum = saldo akun', () => {
+    const hasil = rekonsiliasiPihak(barisRekon, mappingRekon);
+
+    expect(hasil).toMatchObject({
+      piutangAkun: RP(1_500_000),
+      hutangAkun: RP(1_000_000),
+      piutangTeralokasi: RP(1_000_000),
+      hutangTeralokasi: RP(700_000),
+      piutangBelum: RP(500_000),
+      hutangBelum: RP(300_000),
+    });
+    expect(hasil.jurnalBelum).toEqual([
+      {
+        jurnal_id: 'j-piutang-belum',
+        tanggal: '2026-02-02',
+        no_bukti: 'B-2',
+        keterangan: 'Pinjam tanpa pihak',
+        akun_kode: '1050',
+        nominal: RP(500_000),
+      },
+      {
+        jurnal_id: 'j-hutang-belum',
+        tanggal: '2026-02-04',
+        no_bukti: 'B-4',
+        keterangan: 'Hutang tanpa pihak',
+        akun_kode: '2050',
+        nominal: RP(300_000),
+      },
+    ]);
+
+    expect(hasil.piutangTeralokasi + hasil.piutangBelum).toBe(hasil.piutangAkun);
+    expect(hasil.hutangTeralokasi + hasil.hutangBelum).toBe(hasil.hutangAkun);
+  });
+
+  it('cutoff hanya menghitung jurnal s/d tanggal yang diminta', () => {
+    const hasil = rekonsiliasiPihak(barisRekon, mappingRekon, '2026-02-02');
+
+    expect(hasil).toMatchObject({
+      piutangAkun: RP(1_500_000),
+      hutangAkun: 0,
+      piutangTeralokasi: RP(1_000_000),
+      hutangTeralokasi: 0,
+      piutangBelum: RP(500_000),
+      hutangBelum: 0,
+    });
+    expect(hasil.jurnalBelum.map((j) => j.jurnal_id)).toEqual([
+      'j-piutang-belum',
+    ]);
+  });
+
+  it('jurnal balik yang mewarisi mapping ikut mengurangi teralokasi', () => {
+    const { db, budi } = dbPihak();
+    try {
+      const pinjam = simpan(
+        db,
+        budi.id,
+        buatJurnalBeriPinjaman({
+          ...dasar,
+          pihakId: budi.id,
+          akunKas: '1001',
+          nominal: RP(1_000_000),
+          id: 'j-rekon-asli',
+        }).input,
+      );
+      expect(pinjam.tersimpan, pinjam.errors.join(' ')).toBe(true);
+
+      const sebelum = rekonsiliasiPihakDb(db);
+      expect(sebelum).toMatchObject({
+        piutangAkun: RP(1_000_000),
+        piutangTeralokasi: RP(1_000_000),
+        piutangBelum: 0,
+      });
+
+      const balik = reverseJurnal(db, 'j-rekon-asli', 'Koreksi uji rekonsiliasi', {
+        id: 'j-rekon-balik',
+        tanggal: '2026-02-02',
+      });
+      expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
+
+      const sesudah = rekonsiliasiPihakDb(db);
+      expect(sesudah).toMatchObject({
+        piutangAkun: 0,
+        piutangTeralokasi: 0,
+        piutangBelum: 0,
+        hutangAkun: 0,
+        hutangTeralokasi: 0,
+        hutangBelum: 0,
+      });
+      expect(sesudah.jurnalBelum).toEqual([]);
+      // Mapping jurnal balik ikut tersalin; bukan drift.
+      expect(saldoPerPihak(db).find((p) => p.id === budi.id)?.piutang).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('saldo awal 1050 tanpa mapping tampil sebagai belum teralokasi', () => {
+    const db = openDb(':memory:');
+    try {
+      const awal = postingJurnal(db, {
+        header: {
+          id: 'j-awal-1050',
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal piutang',
+          jenis: 'SALDO_AWAL',
+        },
+        baris: [D('1050', RP(2_000_000)), K(AKUN_MODAL, RP(2_000_000))],
+      });
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+      const hasil = rekonsiliasiPihakDb(db);
+      expect(hasil).toMatchObject({
+        piutangAkun: RP(2_000_000),
+        hutangAkun: 0,
+        piutangTeralokasi: 0,
+        hutangTeralokasi: 0,
+        piutangBelum: RP(2_000_000),
+        hutangBelum: 0,
+      });
+      expect(hasil.jurnalBelum).toEqual([
+        {
+          jurnal_id: 'j-awal-1050',
+          tanggal: '2026-01-01',
+          no_bukti: awal.jurnal!.no_bukti,
+          keterangan: 'Saldo awal piutang',
+          akun_kode: '1050',
+          nominal: RP(2_000_000),
+        },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('peringatan pihak hanya muncul untuk jurnal yang menyentuh 1050/2050', () => {
+    const peringatan = peringatanPihakTanpaMapping({
+      baris: [D('1050', RP(100_000)), K('1001', RP(100_000))],
+    });
+    expect(peringatan.join(' ')).toMatch(/belum teralokasi di Piutang & Hutang/i);
+    expect(
+      peringatanPihakTanpaMapping({
+        baris: [D('1001', RP(100_000)), K('4005', RP(100_000))],
+      }),
+    ).toEqual([]);
+  });
+
+  it('kartu rekonsiliasi menampilkan angka akun dan daftar jurnal belum teralokasi', () => {
+    const html = renderToStaticMarkup(
+      createElement(KartuRekonsiliasiPihak, {
+        rekon: {
+          piutangAkun: RP(1_500_000),
+          hutangAkun: RP(1_000_000),
+          piutangTeralokasi: RP(1_000_000),
+          hutangTeralokasi: RP(700_000),
+          piutangBelum: RP(500_000),
+          hutangBelum: RP(300_000),
+          jurnalBelum: [
+            {
+              jurnal_id: 'j-tampil',
+              tanggal: '2026-02-02',
+              no_bukti: 'B-2',
+              keterangan: 'Pinjam tanpa pihak',
+              akun_kode: '1050',
+              nominal: RP(500_000),
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(html).toContain('Rekonsiliasi 1050/2050');
+    expect(html).toContain('Ada jurnal belum teralokasi');
+    expect(html).toContain('Rp 1.500.000,00');
+    expect(html).toContain('Rp 500.000,00');
+    expect(html).toContain('Pinjam tanpa pihak');
   });
 });

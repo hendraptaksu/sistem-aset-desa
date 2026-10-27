@@ -14,6 +14,7 @@
 import type Database from 'better-sqlite3';
 import { catatAudit } from './repository.js';
 import { postingJurnal, validasiJurnalDb } from './posting.js';
+import { peringatanPihakTanpaMapping } from '../core/pihak.js';
 import type { JurnalInput } from '../core/posting.js';
 import {
   hitungRingkasanImpor,
@@ -141,12 +142,13 @@ export function validasiImporDariExcel(
       };
     }
 
+    const peringatanPihak = peringatanPihakTanpaMapping(input);
     return {
       ...dasar,
       status: 'OK',
       alasan: '',
-      peringatan: [...validasi.peringatan],
-      perluKonfirmasi: validasi.perluKonfirmasi,
+      peringatan: unikAlasan([...validasi.peringatan, ...peringatanPihak]),
+      perluKonfirmasi: validasi.perluKonfirmasi || peringatanPihak.length > 0,
     };
   });
 
@@ -209,6 +211,23 @@ export function imporJurnalDariExcel(
       baris: g.input.baris.map((b) => ({ ...b })),
     };
 
+    // AUD-09: impor belum mendukung kolom pihak. Minta konfirmasi operator
+    // sebelum menyimpan jurnal 1050/2050 yang akan tampil belum teralokasi.
+    const peringatanPihak = peringatanPihakTanpaMapping(input);
+    if (peringatanPihak.length > 0 && opsi.konfirmasiPeringatan !== true) {
+      const peringatan = unikAlasan([...(g.peringatan ?? []), ...peringatanPihak]);
+      const alasan = `Perlu konfirmasi sebelum impor: ${peringatan.join(' ')}`;
+      grup.push({
+        ...g,
+        status: 'GAGAL',
+        alasan,
+        peringatan,
+        perluKonfirmasi: true,
+      });
+      tandaiBaris(baris, g, 'GAGAL', alasan);
+      return;
+    }
+
     try {
       // postingJurnal sudah atomik (satu transaksi DB). Bila gagal, tidak ada
       // jurnal/baris/audit CREATE yang tertinggal.
@@ -225,7 +244,7 @@ export function imporJurnalDariExcel(
           alasan: '',
           jurnalId: posting.jurnal.id,
           noBuktiDibuat: posting.jurnal.no_bukti,
-          peringatan: [...posting.peringatan],
+          peringatan: unikAlasan([...posting.peringatan, ...peringatanPihak]),
           perluKonfirmasi: false,
         });
         tandaiBaris(baris, g, 'OK', '', {
@@ -235,9 +254,10 @@ export function imporJurnalDariExcel(
         return;
       }
 
+      const peringatan = unikAlasan([...peringatanPihak, ...posting.peringatan]);
       const perluKonfirmasi = posting.errors.length === 0 && posting.perluKonfirmasi;
       const pesanDasar =
-        unikAlasan([...posting.errors, ...posting.peringatan]).join(' ') ||
+        unikAlasan([...posting.errors, ...peringatan]).join(' ') ||
         'Jurnal gagal disimpan.';
       const alasan = perluKonfirmasi
         ? `Perlu konfirmasi sebelum impor: ${pesanDasar}`
@@ -246,7 +266,7 @@ export function imporJurnalDariExcel(
         ...g,
         status: 'GAGAL',
         alasan,
-        peringatan: [...posting.peringatan],
+        peringatan,
         perluKonfirmasi,
       });
       tandaiBaris(baris, g, 'GAGAL', alasan);

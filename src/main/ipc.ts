@@ -32,7 +32,7 @@ import {
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
-import { postingJurnal } from '../db/posting.js';
+import { postingJurnal, validasiJurnalDb } from '../db/posting.js';
 import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
 import {
   closePanjarV2,
@@ -46,9 +46,11 @@ import {
   deletePihak,
   listPihak,
   postingPihak,
+  rekonsiliasiPihakDb,
   saldoPerPihak,
   updatePihak,
 } from '../db/pihak.js';
+import { peringatanPihakTanpaMapping } from '../core/pihak.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import {
   getAnggaranTahun,
@@ -669,6 +671,22 @@ export function registerIpc(deps: IpcDeps): void {
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
 
+      // AUD-09: Jurnal Umum tidak punya metadata pihak. Beri peringatan (bukan
+      // error) agar akuntan sadar jurnal 1050/2050 akan tampil belum teralokasi.
+      // Hanya dicek saat belum dikonfirmasi dan tidak ada error lain, sehingga
+      // pesan validasi asli tetap diutamakan.
+      const peringatanPihak = peringatanPihakTanpaMapping(bentuk.input);
+      if (!konfirmasiPeringatan && peringatanPihak.length > 0) {
+        const validasi = validasiJurnalDb(deps.db(), bentuk.input);
+        if (validasi.errors.length === 0) {
+          return fail(
+            pesanValidasi([...validasi.peringatan, ...peringatanPihak]),
+            false,
+            true,
+          );
+        }
+      }
+
       const hasil = postingJurnal(deps.db(), bentuk.input, { konfirmasiPeringatan });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
@@ -953,6 +971,20 @@ export function registerIpc(deps: IpcDeps): void {
   deps.handle('pihak:saldo', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(saldoPerPihak(deps.db()));
+  });
+
+  // Rekonsiliasi saldo akun 1050/2050 vs jurnal yang punya pihak. Cutoff
+  // opsional (YYYY-MM-DD) dan tidak menyimpan angka apa pun.
+  deps.handle('pihak:rekon', (_e, sampai: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const tanggal = validasiTanggalOpsional(sampai);
+      if (!tanggal.ok) return fail(tanggal.error);
+      return ok(rekonsiliasiPihakDb(deps.db(), tanggal.input || undefined));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
   });
 
   deps.handle('pihak:jurnal', (_e, id: string) => {

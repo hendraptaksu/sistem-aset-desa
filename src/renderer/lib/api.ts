@@ -2,7 +2,7 @@ import type { Coa } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
 import type { PengaturanPembukuan } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
-import type { AlurPihak, SaldoPihak } from '../../core/pihak.js';
+import type { AlurPihak, RekonsiliasiPihak, SaldoPihak } from '../../core/pihak.js';
 import type { RealisasiAnggaranHasil } from '../../core/anggaran.js';
 import type { StatusRekonsiliasi } from '../../core/rekonsiliasi.js';
 import type {
@@ -381,6 +381,9 @@ export const api = {
   // ---- Piutang & Hutang + master pihak (P1-5) ----
   pihakList: () => call<Pihak[]>('pihak:list'),
   pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),
+  /** Rekonsiliasi saldo akun 1050/2050 vs jurnal yang sudah dipetakan ke pihak. */
+  pihakRekon: (sampai?: string) =>
+    call<RekonsiliasiPihak>('pihak:rekon', sampai),
   pihakJurnal: (pihakId: string) =>
     call<JurnalPihakTampil[]>('pihak:jurnal', pihakId),
   pihakCreate: (input: { nama: string; catatan?: string }) =>
