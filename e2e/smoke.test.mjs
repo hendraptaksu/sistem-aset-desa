@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -35,7 +35,16 @@ test(
     const workDir = await mkdtemp(join(tmpdir(), 'pura-smoke-'));
     const profileDir = join(workDir, 'profile');
     const dbPath = join(workDir, 'pura.db');
+    const gambarUji = join(workDir, 'lampiran-ui09.png');
     await mkdir(artifacts, { recursive: true });
+    // PNG 1x1 untuk menguji pratinjau lampiran bertumpuk (UI-09).
+    await writeFile(
+      gambarUji,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    );
 
     /** @type {import('playwright-core').ElectronApplication | undefined} */
     let app;
@@ -238,6 +247,81 @@ test(
       await nav('Jurnal Umum').click();
       await page.getByRole('heading', { name: 'Jurnal Umum' }).waitFor({ timeout: 15_000 });
       assert.equal(await dialogGuard.count(), 0);
+
+      // UI-09: detail jurnal adalah dialog aksesibel; fokus masuk, Tab
+      // terkurung, Escape/backdrop/X menutup dan mengembalikan fokus ke pemicu.
+      const fokusDiDialog = () =>
+        page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]')));
+      const tungguFokusTeks = (teks) =>
+        page.waitForFunction(
+          (t) => (document.activeElement?.textContent ?? '').trim() === t,
+          teks,
+          { timeout: 5_000 },
+        );
+
+      const tombolLihat = page
+        .getByRole('button', { name: 'Lihat', exact: true })
+        .first();
+      await tombolLihat.focus();
+      await page.keyboard.press('Enter');
+      const dialogJurnal = page.getByRole('dialog', { name: 'Detail Jurnal' });
+      await dialogJurnal.waitFor({ timeout: 15_000 });
+      assert.ok(await fokusDiDialog(), 'Fokus awal harus masuk dialog detail');
+      for (let i = 0; i < 30; i++) {
+        await page.keyboard.press('Tab');
+        assert.ok(await fokusDiDialog(), `Tab ke-${i + 1} keluar dari dialog detail`);
+      }
+      for (let i = 0; i < 5; i++) {
+        await page.keyboard.press('Shift+Tab');
+        assert.ok(await fokusDiDialog(), `Shift+Tab ke-${i + 1} keluar dari dialog detail`);
+      }
+
+      await page.keyboard.press('Escape');
+      await dialogJurnal.waitFor({ state: 'detached' });
+      await tungguFokusTeks('Lihat');
+
+      await page.keyboard.press('Enter');
+      await dialogJurnal.waitFor();
+      await page.mouse.click(3, 3);
+      await dialogJurnal.waitFor({ state: 'detached' });
+      await tungguFokusTeks('Lihat');
+
+      await page.keyboard.press('Enter');
+      await dialogJurnal.waitFor();
+      await dialogJurnal.getByRole('button', { name: 'Tutup dialog' }).click();
+      await dialogJurnal.waitFor({ state: 'detached' });
+      await tungguFokusTeks('Lihat');
+
+      // Pratinjau lampiran adalah modal kedua: Escape hanya menutup pratinjau
+      // dan fokus kembali ke tombol Lihat di dalam Detail.
+      await page.keyboard.press('Enter');
+      await dialogJurnal.waitFor();
+      await app.evaluate(({ dialog }, filePath) => {
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [filePath],
+        });
+      }, gambarUji);
+      await dialogJurnal.getByRole('button', { name: 'Unggah Lampiran' }).click();
+      await dialogJurnal
+        .getByText('Lampiran bukti tersimpan.')
+        .waitFor({ timeout: 15_000 });
+      await dialogJurnal.getByRole('button', { name: 'Lihat', exact: true }).click();
+      const pratinjau = page.getByRole('dialog', {
+        name: 'Pratinjau: lampiran-ui09.png',
+      });
+      await pratinjau.waitFor({ timeout: 15_000 });
+      assert.ok(await fokusDiDialog(), 'Fokus harus masuk pratinjau lampiran');
+      await page.keyboard.press('Escape');
+      await pratinjau.waitFor({ state: 'detached' });
+      await dialogJurnal.waitFor();
+      await tungguFokusTeks('Lihat');
+      await page.screenshot({
+        path: join(artifacts, '08-modal-detail-jurnal.png'),
+        fullPage: true,
+      });
+      await dialogJurnal.getByRole('button', { name: 'Tutup', exact: true }).click();
+      await dialogJurnal.waitFor({ state: 'detached' });
 
       assert.match(await page.title(), /Keuangan Pura Dalem Puri/);
       assert.equal(

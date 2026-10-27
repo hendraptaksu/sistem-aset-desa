@@ -430,7 +430,13 @@ export function JurnalTab({
           coa={coa}
           onClose={() => setDetail(null)}
           onDuplikat={bukaDuplikat}
-          onPrint={(jurnal) => bukaPratinjau(jurnalDetailPrintDoc(jurnal, coa))}
+          onPrint={(jurnal) => {
+            // Pratinjau cetak belum memakai Modal bersama (UI-10) dan masih
+            // z-30, jadi tutup detail dulu agar pratinjau tidak tertutup
+            // modal detail yang kini minimal z-40.
+            setDetail(null);
+            bukaPratinjau(jurnalDetailPrintDoc(jurnal, coa));
+          }}
         />
       )}
 

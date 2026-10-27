@@ -278,7 +278,7 @@
 
 ## P1 — Aksesibilitas & efisiensi
 
-- [ ] **UI-09 — Komponen modal aksesibel + Detail Jurnal** · P1 · M
+- [x] **UI-09 — Komponen modal aksesibel + Detail Jurnal** · P1 · M (2026-10-27: modal bersama ber-role dialog dengan initial focus, focus trap, stack Escape/backdrop/X, dan restore fokus ke pemicu; Detail Jurnal + pratinjau lampiran memakainya, 595 test + smoke hijau)
   - **Konteks:** `DetailJurnalModal` tidak punya `role="dialog"`/
     `aria-modal`; fokus tetap di tombol “Lihat” di belakang overlay; Escape
     tidak menutup; Tab keluar ke latar. Ini modal yang paling sering dipakai

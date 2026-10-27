@@ -1,5 +1,13 @@
-import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { parseRupiahToSen } from '../../utils/format.js';
 
@@ -239,6 +247,253 @@ function formatSenInput(sen: number): string {
   const sisa = abs % 100;
   const grup = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(rupiah);
   return sisa === 0 ? `${neg}${grup}` : `${neg}${grup},${String(sisa).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Modal bersama (UI-09)
+//
+// Fokus dikelola lewat tumpukan module-level, bukan listener per komponen:
+// hanya modal teratas yang menerima Escape/Tab. Modal baru dirender lewat
+// portal agar tidak terpotong area scroll konten dan selalu berada di atas
+// header aplikasi (minimal z-40).
+// ---------------------------------------------------------------------------
+
+const SELEKTOR_FOKUS = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+].join(',');
+
+function elemenFokusable(dialog: HTMLElement): HTMLElement[] {
+  return Array.from(dialog.querySelectorAll<HTMLElement>(SELEKTOR_FOKUS)).filter((el) => {
+    if (el.hasAttribute('disabled') || el.closest('[inert]')) return false;
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    const gaya = window.getComputedStyle(el);
+    return (
+      gaya.display !== 'none' &&
+      gaya.visibility !== 'hidden' &&
+      el.getClientRects().length > 0
+    );
+  });
+}
+
+type EntriModal = {
+  dialog: HTMLElement;
+  sibuk: () => boolean;
+  tutup: () => void;
+};
+
+const tumpukanModal: EntriModal[] = [];
+let pendengarModalTerpasang = false;
+
+function tanganiTombolModal(e: KeyboardEvent): void {
+  const atas = tumpukanModal[tumpukanModal.length - 1];
+  if (!atas || !atas.dialog.isConnected) return;
+
+  if (e.key === 'Escape') {
+    // Jangan biarkan handler di latar ikut menutup sesuatu saat modal aktif.
+    e.stopPropagation();
+    if (atas.sibuk()) return;
+    e.preventDefault();
+    atas.tutup();
+    return;
+  }
+
+  if (e.key !== 'Tab') return;
+  const fokusable = elemenFokusable(atas.dialog);
+  if (fokusable.length === 0) {
+    e.preventDefault();
+    atas.dialog.focus({ preventScroll: true });
+    return;
+  }
+
+  const pertama = fokusable[0]!;
+  const terakhir = fokusable[fokusable.length - 1]!;
+  const aktif = document.activeElement;
+  const diDalam = aktif instanceof Node && atas.dialog.contains(aktif);
+
+  if (e.shiftKey) {
+    if (!diDalam || aktif === pertama) {
+      e.preventDefault();
+      terakhir.focus({ preventScroll: true });
+    }
+  } else if (!diDalam || aktif === terakhir) {
+    e.preventDefault();
+    pertama.focus({ preventScroll: true });
+  }
+}
+
+/** Cegah fokus programatik/klik latar keluar dari modal teratas. */
+function tanganiFokusModal(e: FocusEvent): void {
+  const atas = tumpukanModal[tumpukanModal.length - 1];
+  if (!atas || !atas.dialog.isConnected) return;
+  if (e.target instanceof Node && atas.dialog.contains(e.target)) return;
+  const fokusable = elemenFokusable(atas.dialog);
+  (fokusable[0] ?? atas.dialog).focus({ preventScroll: true });
+}
+
+function pastikanPendengarModal(): void {
+  if (pendengarModalTerpasang) return;
+  pendengarModalTerpasang = true;
+  document.addEventListener('keydown', tanganiTombolModal, true);
+  document.addEventListener('focusin', tanganiFokusModal, true);
+}
+
+const LEBAR_MODAL = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-xl',
+  '2xl': 'max-w-2xl',
+  '3xl': 'max-w-3xl',
+  '4xl': 'max-w-4xl',
+} as const;
+
+const KedalamanModal = createContext(0);
+
+export type ModalProps = {
+  /** Judul terlihat; juga menjadi nama aksesibel dialog. */
+  judul: ReactNode;
+  /** Penjelasan singkat di bawah judul (opsional). */
+  deskripsi?: ReactNode;
+  onTutup: () => void;
+  /** Saat sibuk, Escape/backdrop/tombol X tidak menutup modal. */
+  sibuk?: boolean;
+  children: ReactNode;
+  className?: string;
+  /** Lebar panel standar; abaikan bila `maxWidth` diisi. */
+  lebar?: keyof typeof LEBAR_MODAL;
+  /** Nilai CSS max-width khusus, mis. '42rem'. */
+  maxWidth?: string;
+};
+
+export function Modal({
+  judul,
+  deskripsi,
+  onTutup,
+  sibuk = false,
+  children,
+  className,
+  lebar = 'lg',
+  maxWidth,
+}: ModalProps) {
+  const idDasar = useId();
+  const idJudul = `${idDasar}-judul`;
+  const idDeskripsi = `${idDasar}-deskripsi`;
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const pemicuRef = useRef<HTMLElement | null>(null);
+  const sibukRef = useRef(sibuk);
+  const tutupRef = useRef(onTutup);
+  const kedalaman = useContext(KedalamanModal);
+  const [terpasang, setTerpasang] = useState(false);
+
+  sibukRef.current = sibuk;
+  tutupRef.current = onTutup;
+
+  useEffect(() => {
+    setTerpasang(true);
+  }, []);
+
+  useEffect(() => {
+    if (!terpasang) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    // Simpan pemicu sebelum fokus dipindahkan; dipulihkan saat modal ditutup.
+    pemicuRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const entri: EntriModal = {
+      dialog,
+      sibuk: () => sibukRef.current,
+      tutup: () => tutupRef.current(),
+    };
+    tumpukanModal.push(entri);
+    pastikanPendengarModal();
+
+    const fokusable = elemenFokusable(dialog);
+    (fokusable[0] ?? dialog).focus({ preventScroll: true });
+
+    return () => {
+      const indeks = tumpukanModal.indexOf(entri);
+      const teratas = indeks === tumpukanModal.length - 1;
+      if (indeks >= 0) tumpukanModal.splice(indeks, 1);
+      // Modal yang ditutup di bawah modal lain tidak boleh merebut fokus.
+      if (!teratas) return;
+      const pemicu = pemicuRef.current;
+      if (!pemicu?.isConnected) return;
+      const aktif = document.activeElement;
+      const fokusMasihDiModal =
+        aktif === null ||
+        aktif === document.body ||
+        !dialog.isConnected ||
+        dialog.contains(aktif);
+      if (fokusMasihDiModal) pemicu.focus({ preventScroll: true });
+    };
+    // Cukup sekali saat modal benar-benar terpasang. Nilai sibuk/onTutup
+    // dibaca lewat ref agar perubahan props tidak memasang ulang tumpukan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terpasang]);
+
+  if (!terpasang || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/50 p-4"
+      style={{ zIndex: 40 + Math.min(kedalaman, 10) }}
+      onClick={(e) => {
+        if (e.target !== e.currentTarget || sibuk) return;
+        onTutup();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={idJudul}
+        {...(deskripsi ? { 'aria-describedby': idDeskripsi } : {})}
+        tabIndex={-1}
+        data-modal="true"
+        className={clsx(
+          'max-h-[92vh] w-full overflow-y-auto rounded-xl bg-white p-5 shadow-xl outline-none',
+          maxWidth ? undefined : LEBAR_MODAL[lebar],
+          className,
+        )}
+        style={maxWidth ? { maxWidth } : undefined}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id={idJudul} className="break-words text-lg font-bold">
+              {judul}
+            </h2>
+            {deskripsi && (
+              <div id={idDeskripsi} className="mt-1 text-sm text-stone-600">
+                {deskripsi}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label="Tutup dialog"
+            title="Tutup dialog"
+            disabled={sibuk}
+            onClick={onTutup}
+            className="-m-1 shrink-0 rounded-lg p-1.5 text-xl leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:opacity-40"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div className="mt-3">
+          <KedalamanModal.Provider value={kedalaman + 1}>{children}</KedalamanModal.Provider>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 /** Modal alasan untuk periode terkunci (kunci longgar). */
