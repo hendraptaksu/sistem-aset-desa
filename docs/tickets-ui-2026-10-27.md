@@ -236,7 +236,7 @@
     uji Tab/Enter manual.
   - **Dependency:** UI-01
 
-- [ ] **UI-07 — Guard “isian belum disimpan” untuk form transaksi** · P0 · M
+- [x] **UI-07 — Guard “isian belum disimpan” untuk form transaksi** · P0 · M (2026-10-27: Dialog “Isian belum disimpan” muncul saat form transaksi kotor, “Tetap di sini” mempertahankan isian, “Tinggalkan” membuang isian, form bersih/simpan sukses tidak memunculkan dialog + 595 test + smoke hijau)
   - **Konteks:** Isian `Nominal 123.456` + `Keterangan` hilang tanpa
     peringatan saat pindah tab (terukur: kedua field kosong setelah kembali).
     Komponen tab di-unmount saat tab berubah.

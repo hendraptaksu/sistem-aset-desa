@@ -175,6 +175,70 @@ test(
         fullPage: true,
       });
 
+      // UI-07: isian transaksi yang belum disimpan harus dikonfirmasi sebelum
+      // pindah tab; "Tetap di sini" mempertahankan isian, "Tinggalkan"
+      // membuangnya. Form bersih dan simpan sukses tidak boleh memunculkan
+      // dialog.
+      const nav = (name) => page.getByRole('button', { name, exact: true });
+      const dialogGuard = page.getByRole('dialog', { name: 'Isian belum disimpan' });
+
+      await nav('Transaksi').click();
+      await page
+        .getByRole('heading', { name: 'Catat Transaksi Harian' })
+        .waitFor({ timeout: 15_000 });
+
+      await page.getByLabel('Nominal').fill('123.456');
+      await page.getByLabel('Keterangan').fill('Isian belum disimpan');
+      await nav('Jurnal Umum').click();
+      await dialogGuard.waitFor({ timeout: 15_000 });
+      await page.screenshot({
+        path: join(artifacts, '07-guard-isian.png'),
+        fullPage: true,
+      });
+
+      await page.getByRole('button', { name: 'Tetap di sini' }).click();
+      await dialogGuard.waitFor({ state: 'detached' });
+      assert.equal(
+        await page.getByLabel('Keterangan').inputValue(),
+        'Isian belum disimpan',
+      );
+
+      await nav('Jurnal Umum').click();
+      await dialogGuard.waitFor({ timeout: 15_000 });
+      await page.getByRole('button', { name: 'Tinggalkan' }).click();
+      await page.getByRole('heading', { name: 'Jurnal Umum' }).waitFor({ timeout: 15_000 });
+
+      await nav('Transaksi').click();
+      await page
+        .getByRole('heading', { name: 'Catat Transaksi Harian' })
+        .waitFor({ timeout: 15_000 });
+      assert.equal(await page.getByLabel('Nominal').inputValue(), '');
+      assert.equal(await page.getByLabel('Keterangan').inputValue(), '');
+
+      // Form bersih: pindah tab langsung tanpa dialog.
+      await nav('Jurnal Umum').click();
+      await page.getByRole('heading', { name: 'Jurnal Umum' }).waitFor({ timeout: 15_000 });
+      assert.equal(await dialogGuard.count(), 0);
+
+      // Simpan sukses: dirty dibersihkan, pindah tab tidak meminta konfirmasi.
+      await nav('Transaksi').click();
+      await page
+        .getByRole('heading', { name: 'Catat Transaksi Harian' })
+        .waitFor({ timeout: 15_000 });
+      await page.getByLabel('Nominal').fill('123.456');
+      await page.getByLabel('Keterangan').fill('Uji simpan guard UI-07');
+      const simpan = page.getByRole('button', { name: 'Simpan Transaksi' });
+      for (let i = 0; i < 50 && !(await simpan.isEnabled()); i++) {
+        await page.waitForTimeout(100);
+      }
+      assert.ok(await simpan.isEnabled(), 'Tombol Simpan Transaksi harus aktif');
+      await simpan.click();
+      await page.getByText(/tersimpan/).first().waitFor({ timeout: 15_000 });
+
+      await nav('Jurnal Umum').click();
+      await page.getByRole('heading', { name: 'Jurnal Umum' }).waitFor({ timeout: 15_000 });
+      assert.equal(await dialogGuard.count(), 0);
+
       assert.match(await page.title(), /Keuangan Pura Dalem Puri/);
       assert.equal(
         consoleErrors.length,

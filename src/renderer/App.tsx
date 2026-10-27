@@ -52,6 +52,7 @@ import { Button } from './components/ui.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
+import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
 
 type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
@@ -147,12 +148,28 @@ function bacaStatusLipatAwal(): boolean {
   return window.innerWidth < LEBAR_OTOMATIS_LIPAT;
 }
 
+/**
+ * UI-07: provider guard membungkus shell agar form transaksi bisa menandai
+ * isian yang belum disimpan dan navigasi bisa meminta konfirmasi.
+ */
 export function App() {
+  return (
+    <UnsavedChangesProvider>
+      <AppShell />
+    </UnsavedChangesProvider>
+  );
+}
+
+function AppShell() {
   const [tab, setTab] = useState<TabId>('dashboard');
+  const { dirty, setDirty, konfirmasiTinggalkan } = useTabGuard();
   // UI-01: main adalah satu-satunya area scroll; posisi direset setelah tab
   // berganti (bukan saat modal/detail dibuka-tutup atau tab yang sama diklik).
   const mainRef = useRef<HTMLElement | null>(null);
   const tabRef = useRef<TabId>('dashboard');
+  // UI-07: ref menjaga `pindahTab` tetap stabil walau status dirty berubah
+  // (efek auto-lock bergantung pada identitas `pindahTab`).
+  const dirtyRef = useRef(dirty);
   // UI-06: hanya fokuskan konten bila perpindahan tab dipicu keyboard. Modalitas
   // input terakhir dilacak global agar klik mouse tidak merampas fokus pengguna.
   const modalitasTerakhirRef = useRef<'keyboard' | 'pointer'>('pointer');
@@ -181,7 +198,11 @@ export function App() {
   const [jenisTransaksiAwal, setJenisTransaksiAwal] =
     useState<DashboardFormTransaksi>('TERIMA');
 
-  const pindahTab = useCallback((id: TabId) => {
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
+  const lakukanPindah = useCallback((id: TabId) => {
     if (tabRef.current === id) return;
     const dariKeyboard = modalitasTerakhirRef.current === 'keyboard';
     tabRef.current = id;
@@ -198,6 +219,20 @@ export function App() {
       }
     });
   }, []);
+
+  // UI-07: tab yang sama tidak pernah memicu dialog atau reset scroll. Opsi
+  // `paksa` dipakai auto-lock karena layar PIN akan mengganti seluruh UI.
+  const pindahTab = useCallback(
+    (id: TabId, opsi?: { paksa?: boolean }) => {
+      if (tabRef.current === id) return;
+      if (dirtyRef.current && !opsi?.paksa) {
+        konfirmasiTinggalkan(() => lakukanPindah(id));
+        return;
+      }
+      lakukanPindah(id);
+    },
+    [konfirmasiTinggalkan, lakukanPindah],
+  );
 
   // UI-06: catat modalitas input terakhir. `keydown` selalu mendahului klik
   // yang dipicu Enter/Space, sedangkan `pointerdown` mendahului klik mouse.
@@ -402,7 +437,11 @@ export function App() {
       clearTimeout(timer);
       timer = setTimeout(() => {
         void api.lockLock().finally(() => {
-          pindahTab('dashboard');
+          // UI-07: jangan biarkan dialog guard menutupi layar PIN. Pindah ke
+          // dashboard dengan paksa dan bersihkan status dirty karena semua UI
+          // akan diganti layar kunci.
+          setDirty(false);
+          pindahTab('dashboard', { paksa: true });
           void refreshLock();
         });
       }, lock.idleMenit * 60_000);
@@ -418,7 +457,7 @@ export function App() {
       for (const a of acara) window.removeEventListener(a, mulai);
       window.removeEventListener('scroll', mulai, true);
     };
-  }, [lock?.terbuka, lock?.sudahSetup, lock?.idleMenit, refreshLock, pindahTab]);
+  }, [lock?.terbuka, lock?.sudahSetup, lock?.idleMenit, refreshLock, pindahTab, setDirty]);
 
   if (!lock) {
     return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;

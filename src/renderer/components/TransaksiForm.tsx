@@ -10,6 +10,7 @@ import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
   Button,
@@ -168,6 +169,11 @@ export function FormTransaksiTerpandu({
   const konfigurasi = KONFIG[jenis];
   const pindah = konfigurasi.mode === 'PINDAH';
   const kasAwal = coa.find((a) => isAkunKas(a.kode) && a.aktif !== false)?.kode ?? '';
+  const { setDirty } = useTabGuard();
+
+  // UI-07: isian yang ditinggalkan hanya boleh menandai tab ini kotor. Saat
+  // form di-unmount (pindah tab/ganti jenis), bersihkan agar tidak bocor.
+  useEffect(() => () => setDirty(false), [setDirty]);
 
   const [tanggal, setTanggal] = useState(tanggalLokal());
   const [akunKas, setAkunKas] = useState(kasAwal);
@@ -368,6 +374,8 @@ export function FormTransaksiTerpandu({
       setNominal(0);
       setKeterangan('');
       setNoBukti('');
+      // UI-07: simpan sukses = tidak ada isian yang perlu diperingatkan.
+      setDirty(false);
     } catch (e) {
       if (isPerluAlasan(e)) {
         setLockOpen(true);
@@ -412,7 +420,10 @@ export function FormTransaksiTerpandu({
             type="date"
             value={tanggal}
             disabled={busy}
-            onChange={(e) => setTanggal(e.target.value)}
+            onChange={(e) => {
+              setTanggal(e.target.value);
+              setDirty(true);
+            }}
           />
         </Field>
 
@@ -422,7 +433,10 @@ export function FormTransaksiTerpandu({
               <Select
                 value={akunKas}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunKas(e.target.value)}
+                onChange={(e) => {
+                  setAkunKas(e.target.value);
+                  setDirty(true);
+                }}
               >
                 <option value="">— Pilih kas / bank —</option>
                 {kasList.map((a) => (
@@ -440,7 +454,10 @@ export function FormTransaksiTerpandu({
               <Select
                 value={akunKe}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunKe(e.target.value)}
+                onChange={(e) => {
+                  setAkunKe(e.target.value);
+                  setDirty(true);
+                }}
               >
                 <option value="">— Pilih kas / bank —</option>
                 {kasList.map((a) => (
@@ -466,7 +483,10 @@ export function FormTransaksiTerpandu({
               <Select
                 value={akunKas}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunKas(e.target.value)}
+                onChange={(e) => {
+                  setAkunKas(e.target.value);
+                  setDirty(true);
+                }}
               >
                 <option value="">— Pilih kas / bank —</option>
                 {kasList.map((a) => (
@@ -481,7 +501,10 @@ export function FormTransaksiTerpandu({
               <Select
                 value={akunLawan}
                 disabled={busy || memuat}
-                onChange={(e) => setAkunLawan(e.target.value)}
+                onChange={(e) => {
+                  setAkunLawan(e.target.value);
+                  setDirty(true);
+                }}
               >
                 <option value="">— Pilih {konfigurasi.labelLawan.toLowerCase()} —</option>
                 {grupLawan.map((grup) => (
@@ -507,7 +530,13 @@ export function FormTransaksiTerpandu({
         )}
 
         <Field label="Nominal">
-          <CurrencyInput value={nominal} onChange={setNominal} />
+          <CurrencyInput
+            value={nominal}
+            onChange={(nilai) => {
+              setNominal(nilai);
+              setDirty(true);
+            }}
+          />
         </Field>
 
         <Field label="Keterangan">
@@ -515,7 +544,10 @@ export function FormTransaksiTerpandu({
             value={keterangan}
             disabled={busy}
             placeholder={konfigurasi.placeholderKeterangan}
-            onChange={(e) => setKeterangan(e.target.value)}
+            onChange={(e) => {
+              setKeterangan(e.target.value);
+              setDirty(true);
+            }}
           />
         </Field>
 
@@ -525,7 +557,10 @@ export function FormTransaksiTerpandu({
               value={noBukti}
               disabled={busy}
               placeholder="cth: JU-2026-0001 — boleh dikosongkan"
-              onChange={(e) => setNoBukti(e.target.value)}
+              onChange={(e) => {
+                setNoBukti(e.target.value);
+                setDirty(true);
+              }}
             />
           </Field>
           <SaranNomorBukti tanggal={tanggal} />
