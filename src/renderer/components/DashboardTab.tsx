@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
 import {
@@ -13,8 +14,6 @@ import {
   TextInput,
 } from './ui.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** Tab yang bisa dibuka dari pintasan dashboard (P1-14). */
 export type DashboardTabTujuan =
@@ -32,7 +31,7 @@ export function DashboardTab({
 }: {
   onBukaTab: (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => void;
 }) {
-  const [cutoff, setCutoff] = useState(today());
+  const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<DashboardHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);

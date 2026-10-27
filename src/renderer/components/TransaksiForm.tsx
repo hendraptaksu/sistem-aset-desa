@@ -8,6 +8,7 @@ import {
 } from '../../core/forms.js';
 import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
   Badge,
@@ -80,7 +81,6 @@ type KonfigurasiPindah = KonfigurasiDasar & {
 
 type KonfigurasiForm = KonfigurasiKasLawan | KonfigurasiPindah;
 
-const today = (): string => new Date().toISOString().slice(0, 10);
 
 /** Pilihan awal akun lawan Bayar: 5010/5000 (beban), lalu hutang. */
 function akunLawanAwalBayar(coa: Coa[]): string {
@@ -180,7 +180,7 @@ export function FormTransaksiTerpandu({
   const pindah = konfigurasi.mode === 'PINDAH';
   const kasAwal = coa.find((a) => isAkunKas(a.kode))?.kode ?? '';
 
-  const [tanggal, setTanggal] = useState(today());
+  const [tanggal, setTanggal] = useState(tanggalLokal());
   const [akunKas, setAkunKas] = useState(kasAwal);
   const [akunLawan, setAkunLawan] = useState(() =>
     konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.akunLawanAwal(coa) : '',

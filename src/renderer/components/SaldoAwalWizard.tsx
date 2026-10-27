@@ -4,6 +4,7 @@ import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
 import { buatJurnalSaldoAwal, type FormSaldoAwal } from '../../core/forms.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
   Badge,
@@ -31,8 +32,6 @@ type GrupAkun = {
   label: string;
   akun: Coa[];
 };
-
-const today = (): string => new Date().toISOString().slice(0, 10);
 
 /**
  * Wizard Saldo Awal (P1-6) — dipakai sekali saat mulai pembukuan nyata.
@@ -62,7 +61,7 @@ export function SaldoAwalWizard({
     '';
 
   const keyRef = useRef(2);
-  const [tanggal, setTanggal] = useState(today());
+  const [tanggal, setTanggal] = useState(tanggalLokal());
   const [rows, setRows] = useState<BarisSaldo[]>([
     { key: 1, akun: akunAwal, nominal: 0 },
   ]);

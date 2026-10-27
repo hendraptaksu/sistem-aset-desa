@@ -4,6 +4,7 @@ import type { Coa } from '../../db/coa.js';
 import type { Transaksi } from '../../core/types.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan } from '../lib/api.js';
 import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, LockModal, Select, TextInput } from './ui.js';
 import {
@@ -12,7 +13,6 @@ import {
   pesanError,
 } from '../../utils/pesanError.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
 const PAGE = 20;
 
 export function BkuTab() {
@@ -25,7 +25,7 @@ export function BkuTab() {
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
 
   // form
-  const [tanggal, setTanggal] = useState(today());
+  const [tanggal, setTanggal] = useState(tanggalLokal());
   const [keterangan, setKeterangan] = useState('');
   const [akunKas, setAkunKas] = useState('1001');
   const [kategori, setKategori] = useState('4005');

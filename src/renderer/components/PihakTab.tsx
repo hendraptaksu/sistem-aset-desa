@@ -22,6 +22,7 @@ import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
 import type { AlurPihak } from '../../core/pihak.js';
 import type { JurnalPihakTampil, Pihak, PihakSaldo } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
   Badge,
@@ -41,8 +42,6 @@ import {
   PESAN_TANGGAL_TIDAK_VALID,
   pesanError,
 } from '../../utils/pesanError.js';
-
-const today = (): string => new Date().toISOString().slice(0, 10);
 
 type InfoAlur = {
   judul: string;
@@ -202,7 +201,7 @@ export function PihakTab() {
 
   // Form transaksi pihak
   const [alur, setAlur] = useState<AlurPihak>('BERI_PINJAMAN');
-  const [tanggal, setTanggal] = useState(today());
+  const [tanggal, setTanggal] = useState(tanggalLokal());
   const [pihakId, setPihakId] = useState('');
   const [akunKas, setAkunKas] = useState('1001');
   const [akunBeban, setAkunBeban] = useState('5003');

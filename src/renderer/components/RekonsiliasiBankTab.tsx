@@ -7,6 +7,7 @@ import {
 } from '../../core/rekonsiliasi.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import {
   PESAN_MUAT_GAGAL,
   PESAN_SIMPAN_GAGAL,
@@ -39,13 +40,6 @@ const TONE_STATUS: Record<StatusRekonsiliasi, 'green' | 'amber' | 'red'> = {
   LEBIH: 'amber',
   KURANG: 'red',
 };
-
-function tanggalHariIni(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
-}
 
 /** Badge Cocok/Lebih/Kurang + nominal selisih (nilai absolut, bahasa operator). */
 function StatusSelisih({
@@ -86,7 +80,7 @@ export function RekonsiliasiBankTab() {
   const [memuatCoa, setMemuatCoa] = useState(true);
 
   const [akun, setAkun] = useState('');
-  const [tanggal, setTanggal] = useState(tanggalHariIni);
+  const [tanggal, setTanggal] = useState(tanggalLokal);
   const [saldoBank, setSaldoBank] = useState(0);
   const [catatan, setCatatan] = useState('');
   const [saldoBuku, setSaldoBuku] = useState<number | null>(null);

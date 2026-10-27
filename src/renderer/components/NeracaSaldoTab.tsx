@@ -3,21 +3,19 @@ import { ChevronRight } from 'lucide-react';
 import { neracaSaldoToWorkbook } from '../../features/export/workbooks.js';
 import { neracaSaldoPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, type NeracaSaldoHasil } from '../lib/api.js';
 import { LABEL_TIPE_AKUN } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-const today = (): string => new Date().toISOString().slice(0, 10);
-
-
 export function NeracaSaldoTab({
   onBukaBukuBesar,
 }: {
   onBukaBukuBesar: (akunKode: string) => void;
 }) {
-  const [cutoff, setCutoff] = useState(today());
+  const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<NeracaSaldoHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [memuat, setMemuat] = useState(false);
@@ -83,7 +81,7 @@ export function NeracaSaldoTab({
             />
           </Field>
           <div className="flex items-end">
-            <Button variant="ghost" onClick={() => setCutoff(today())}>
+            <Button variant="ghost" onClick={() => setCutoff(tanggalLokal())}>
               Hari ini
             </Button>
           </div>

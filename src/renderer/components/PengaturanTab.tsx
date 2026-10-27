@@ -13,6 +13,7 @@ import {
   formatJsonAudit,
   formatWaktuAudit,
 } from '../../utils/auditDetail.js';
+import { tahunLokal } from '../../utils/tanggal.js';
 import { api, type JenisFolderLokasiApi, type LokasiData } from '../lib/api.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
@@ -271,7 +272,7 @@ export function PengaturanTab({ idleAwal, onIdleBerubah }: { idleAwal: number; o
     }
   }
 
-  const tahunContoh = new Date().getFullYear();
+  const tahunContoh = tahunLokal();
   let pratinjauNomor = '—';
   try {
     pratinjauNomor = formatNomorBukti(tahunContoh, 1, prefix, Number(padding));

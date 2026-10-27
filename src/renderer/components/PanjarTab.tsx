@@ -15,6 +15,7 @@ import {
 } from '../../features/export/workbooks.js';
 import { panjarPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
   Badge,
@@ -34,8 +35,6 @@ import {
   PESAN_TANGGAL_TIDAK_VALID,
   pesanError,
 } from '../../utils/pesanError.js';
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 type ItemRow = { kategori_baga: string; nominal: number };
 
@@ -101,7 +100,7 @@ export function PanjarTab() {
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
 
   // Form serah
-  const [tanggal, setTanggal] = useState(today());
+  const [tanggal, setTanggal] = useState(tanggalLokal());
   const [penerima, setPenerima] = useState('');
   const [jumlah, setJumlah] = useState(0);
   const [sumber, setSumber] = useState('1001');
@@ -116,7 +115,7 @@ export function PanjarTab() {
 
   // Form pertanggungjawaban
   const [closeId, setCloseId] = useState('');
-  const [tanggalClose, setTanggalClose] = useState(today());
+  const [tanggalClose, setTanggalClose] = useState(tanggalLokal());
   const [items, setItems] = useState<ItemRow[]>([{ kategori_baga: '5004', nominal: 0 }]);
   const [setujuKurang, setSetujuKurang] = useState(false);
   const [busyClose, setBusyClose] = useState(false);
@@ -356,7 +355,7 @@ export function PanjarTab() {
 
   function pilihUntukClose(p: Panjar) {
     setCloseId(p.id);
-    setTanggalClose(today() < p.tanggal ? p.tanggal : today());
+    setTanggalClose(tanggalLokal() < p.tanggal ? p.tanggal : tanggalLokal());
     setItems([{ kategori_baga: '5004', nominal: 0 }]);
     setSetujuKurang(false);
     setPesanKonfirmasi(null);

@@ -8,6 +8,7 @@ import type { AnggaranAkunApi, AnggaranListData } from '../lib/api.js';
 import { api } from '../lib/api.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
 import { formatPersen, formatRp, formatTanggal } from '../../utils/format.js';
+import { tahunLokal } from '../../utils/tanggal.js';
 import {
   PESAN_MUAT_GAGAL,
   PESAN_SIMPAN_GAGAL,
@@ -27,7 +28,7 @@ import { ExportActions } from './ExportActions.js';
 import { anggaranToWorkbook } from '../../features/export/workbooks.js';
 import { anggaranPrintDoc } from '../../features/export/printAdapters.js';
 
-const TAHUN_SEKARANG = new Date().getFullYear();
+const TAHUN_SEKARANG = tahunLokal();
 const TAHUN_OPTIONS = Array.from({ length: 101 }, (_, i) => 2000 + i);
 
 function statusAnggaran(lebih: boolean): string {

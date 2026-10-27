@@ -11,6 +11,7 @@ import {
 } from '../../core/jurnalForm.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import { formatRp } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
   Badge,
@@ -31,7 +32,6 @@ type BarisEditor = BarisJurnalForm & {
   akun_teks: string;
 };
 
-const today = (): string => new Date().toISOString().slice(0, 10);
 const DAFTAR_AKUN_ID = 'daftar-akun-jurnal-umum';
 
 const kosong = (): Omit<BarisEditor, 'key'> => ({
@@ -76,7 +76,7 @@ export function JurnalUmumEditor({
     return a ? `${a.kode} — ${a.nama}` : kode;
   };
 
-  const [tanggal, setTanggal] = useState(awal?.tanggal ?? today());
+  const [tanggal, setTanggal] = useState(awal?.tanggal ?? tanggalLokal());
   const [keterangan, setKeterangan] = useState(awal?.keterangan ?? '');
   const [noBukti, setNoBukti] = useState(awal?.noBukti ?? '');
   const [templateId, setTemplateId] = useState('');
@@ -157,7 +157,7 @@ export function JurnalUmumEditor({
   const adaIsian =
     Boolean(keterangan.trim()) ||
     Boolean(noBukti.trim()) ||
-    tanggal !== today() ||
+    tanggal !== tanggalLokal() ||
     rows.some((r) => !barisEditorKosong(r));
   const headerSah =
     tanggalKalenderValid(tanggal) && Boolean(keterangan.trim());

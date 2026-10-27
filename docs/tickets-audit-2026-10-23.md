@@ -178,7 +178,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** AUD-02.
 
-- [ ] **AUD-04 — Ganti tanggal default di renderer** · P0 · M
+- [x] **AUD-04 — Ganti tanggal default di renderer** · P0 · M (2026-10-27: `tanggalLokal`/`tahunLokal` dipakai di 14 komponen renderer; helper `tanggalHariIni` RekonsiliasiBank dihapus; grep `toISOString().slice` renderer kosong; typecheck/test/build hijau, 442 test total + 0 test baru karena helper sudah teruji di `tests/tanggal.test.ts`)
   - **Konteks:** Semua form dan tab memakai `today()` UTC.
   - **Langkah:**
     1. Ganti `today()`/`new Date().toISOString().slice(0, 10)` di:

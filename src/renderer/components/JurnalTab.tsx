@@ -22,6 +22,7 @@ import {
   type PrintOrientation,
 } from '../../features/export/printDoc.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
 import {
   Badge,
@@ -41,7 +42,6 @@ import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-const today = (): string => new Date().toISOString().slice(0, 10);
 const PAGE = 25;
 
 const LABEL_JENIS: Record<string, string> = {
@@ -488,7 +488,7 @@ function KoreksiModal({
 }) {
   const [langkah, setLangkah] = useState<'alasan' | 'isi-ulang'>('alasan');
   const [alasan, setAlasan] = useState('');
-  const [tanggalBalik, setTanggalBalik] = useState(today());
+  const [tanggalBalik, setTanggalBalik] = useState(tanggalLokal());
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);

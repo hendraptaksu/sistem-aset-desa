@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatRp } from '../../utils/format.js';
+import { tahunLokal } from '../../utils/tanggal.js';
 import {
   api,
   type TutupBukuTampil,
@@ -24,7 +25,7 @@ import {
 
 type Step = 1 | 2 | 3;
 
-const TAHUN_BERJALAN = new Date().getFullYear();
+const TAHUN_BERJALAN = tahunLokal();
 const TAHUN_TERAKHIR_BOLEH_DITUTUP = TAHUN_BERJALAN - 1;
 
 export function TutupTab() {
