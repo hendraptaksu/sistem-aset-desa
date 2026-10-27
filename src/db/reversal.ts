@@ -15,6 +15,7 @@ import { rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
 import { validasiJurnal } from '../core/posting.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 import {
   getJurnalDetail,
   insertAuditLog,
@@ -49,7 +50,7 @@ export type HasilKoreksi = HasilPosting & {
 
 const idBaru = (prefix: string): string => `${prefix}-${randomUUID()}`;
 
-const hariIni = (): string => new Date().toISOString().slice(0, 10);
+const hariIni = (): string => tanggalLokal();
 
 function hasilGagal(errors: string[]): HasilValidasiJurnal & { tersimpan: false } {
   return { boleh: false, errors, peringatan: [], perluKonfirmasi: false, tersimpan: false };

@@ -7,6 +7,7 @@
 // K2: hanya tahun yang sudah selesai (<= tahun lalu) yang boleh ditutup.
 
 import { labaTahun, type BarisJurnalSumber } from './reports.js';
+import { tahunLokal } from '../utils/tanggal.js';
 
 export type TutupBukuRef = { tahun: number };
 
@@ -66,7 +67,7 @@ export function validasiTutupBuku(
   tahun: number,
   ctx: KonteksValidasiTutup,
 ): HasilValidasiTutup {
-  const tahunSekarang = tahunDariTanggal(ctx.sekarang, new Date().getFullYear());
+  const tahunSekarang = tahunDariTanggal(ctx.sekarang, tahunLokal());
   const batasTahun = tahunSekarang - 1;
   const daftar = tahunTutupTerurut(ctx.tutup);
   const tahunTerakhir = daftar.length > 0 ? daftar[daftar.length - 1]! : null;

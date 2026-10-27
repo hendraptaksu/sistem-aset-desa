@@ -18,6 +18,7 @@ import type {
   JurnalJenis,
 } from '../core/types.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
+import { tahunLokal } from '../utils/tanggal.js';
 
 export type TransaksiInput = {
   tanggal: string;
@@ -225,7 +226,7 @@ export function validateAsetInput(a: AsetInput): string[] {
   if (!(ASET_KONDISI as readonly string[]).includes(a.kondisi)) err.push('Kondisi aset tidak valid.');
   if (a.luas_m2 !== null && (!Number.isFinite(a.luas_m2) || a.luas_m2 < 0 || a.luas_m2 > 1e9))
     err.push('Luas harus angka ≥ 0 (atau kosongkan).');
-  const tahunIni = new Date().getFullYear();
+  const tahunIni = tahunLokal();
   if (
     a.tahun_perolehan !== null &&
     (!Number.isInteger(a.tahun_perolehan) || a.tahun_perolehan < 1900 || a.tahun_perolehan > tahunIni + 1)

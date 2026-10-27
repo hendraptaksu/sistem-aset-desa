@@ -7,6 +7,7 @@
 // iframe.contentWindow.print() dari React (aman untuk CSP P1-15).
 
 import { formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { KOP_ORG_NAMA } from './workbooks.js';
 
 export type PrintOrientation = 'portrait' | 'landscape';
@@ -357,7 +358,7 @@ ${doc.subjudul ? `<div class="kop-periode">${esc(doc.subjudul)}</div>` : ''}
 }
 
 function tanggalCetakEfektif(doc: PrintDoc, opts: PrintRenderOptions): string {
-  const iso = opts.tanggalCetak ?? doc.tanggalCetak ?? new Date().toISOString().slice(0, 10);
+  const iso = opts.tanggalCetak ?? doc.tanggalCetak ?? tanggalLokal();
   return formatTanggal(iso);
 }
 

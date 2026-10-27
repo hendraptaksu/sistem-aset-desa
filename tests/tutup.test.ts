@@ -2,7 +2,7 @@
 // Fokus: K2 (hanya tahun selesai), urut menaik, konfirmasi tutup ulang,
 // audit, dan regresi "koreksi setelah tutup tidak membuat Neraca selisih".
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
 import { insertJurnal, listTutupBuku } from '../src/db/repository.js';
@@ -93,6 +93,24 @@ describe('P0-7 — validasi tutup buku (murni)', () => {
 });
 
 describe('P0-7 — tutup buku di DB', () => {
+  it('default sekarang mengikuti WITA, bukan UTC', () => {
+    vi.useFakeTimers();
+    try {
+      // 2025-12-31T16:30:00Z = 2026-01-01 00:30 WITA.
+      vi.setSystemTime(new Date('2025-12-31T16:30:00Z'));
+      const db = freshDb();
+      try {
+        const pratinjau = previewTutupBuku(db, 2025);
+        expect(pratinjau.batasTahun).toBe(2025);
+        expect(pratinjau.boleh).toBe(true);
+      } finally {
+        db.close();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('menyimpan penanda + catatan + audit, tanpa kolom laba', () => {
     const db = freshDb();
     try {

@@ -116,6 +116,7 @@ import {
   pesanError,
   pesanValidasi,
 } from '../utils/pesanError.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 import {
   validasiBentukJurnalInput,
   validasiBentukAnggaranList,
@@ -187,7 +188,7 @@ export type IpcDeps = {
 
 export function registerIpc(deps: IpcDeps): void {
   const sekarang = (): Date => deps.now?.() ?? new Date();
-  const tanggalSekarang = (): string => sekarang().toISOString().slice(0, 10);
+  const tanggalSekarang = (): string => tanggalLokal(sekarang());
 
   const ok = <T>(data: T) => ({ ok: true as const, data });
   const fail = (error: string, perluAlasan = false, perluKonfirmasi = false) => ({

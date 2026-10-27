@@ -153,7 +153,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/tanggal.test.ts` + `npm run typecheck`.
   - **Dependency:** —
 
-- [ ] **AUD-03 — Ganti tanggal default di core/db/main** · P0 · M
+- [x] **AUD-03 — Ganti tanggal default di core/db/main** · P0 · M (2026-10-27: `tanggalLokal`/`tahunLokal` dipakai di jurnalForm, reversal, tutup, pengaturan, ipc, auto-backup, printDoc, dan validasi aset; typecheck/test/build hijau, 442 test total + 2 test)
   - **Konteks:** Setelah AUD-02, semua tanggal bisnis di proses non-renderer
     harus memakai helper.
   - **Langkah:**

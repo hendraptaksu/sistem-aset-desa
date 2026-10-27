@@ -17,6 +17,7 @@ import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION } from '../../db/database.js';
 import { catatAudit } from '../../db/repository.js';
 import { pesanError } from '../../utils/pesanError.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 
 export {
   KOP_ORG_NAMA,
@@ -286,7 +287,7 @@ export function autoBackupHarian(
   db: Database.Database,
   dir: string,
   keep = 7,
-  stamp = new Date().toISOString().slice(0, 10),
+  stamp = tanggalLokal(),
 ): string {
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, `auto-${stamp}.db`);

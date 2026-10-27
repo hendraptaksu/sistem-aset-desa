@@ -5,6 +5,7 @@
 // default sengaja sama dengan kop lama agar export/test lama tidak berubah.
 
 import { tanggalKalenderValid } from './posting.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 
 export type PengaturanPembukuan = {
   /** Nama organisasi di kop semua laporan. */
@@ -223,7 +224,7 @@ export function tanggalMulaiEfektif(
     | string
     | null
     | undefined,
-  hariIni = new Date().toISOString().slice(0, 10),
+  hariIni = tanggalLokal(),
 ): string {
   const nilai =
     typeof pengaturan === 'string'

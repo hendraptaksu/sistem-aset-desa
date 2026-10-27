@@ -22,6 +22,7 @@ import { listJurnalLengkap } from '../src/db/repository.js';
 import { JurnalTab } from '../src/renderer/components/JurnalTab.js';
 import { JurnalUmumEditor } from '../src/renderer/components/JurnalUmumEditor.js';
 import { jurnalToHtml } from '../src/features/export/workbooks.js';
+import { tanggalLokal } from '../src/utils/tanggal.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -311,7 +312,7 @@ describe('P1-7 — template & duplikat jurnal', () => {
     const form = duplikatJurnalKeForm(asal);
     expect(form.id).toBeTruthy();
     expect(form.id).not.toBe(asal.id);
-    expect(form.tanggal).toBe(new Date().toISOString().slice(0, 10));
+    expect(form.tanggal).toBe(tanggalLokal());
     expect(form.noBukti).toBe('');
     expect(form.keterangan).toBe(asal.keterangan);
     expect(form.baris).toEqual([

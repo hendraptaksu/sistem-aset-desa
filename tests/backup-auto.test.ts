@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { insertJurnal, listJurnal } from '../src/db/repository.js';
 import { autoBackupHarian } from '../src/features/export/export.js';
@@ -23,6 +23,29 @@ function makeJurnal(i: number) {
 }
 
 describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
+  it('stamp default memakai tanggal lokal WITA', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-auto-'));
+    try {
+      const db = openDb(join(dir, 'pura.db'));
+      try {
+        vi.useFakeTimers();
+        try {
+          // 2025-12-31T16:30:00Z = 2026-01-01 00:30 WITA.
+          vi.setSystemTime(new Date('2025-12-31T16:30:00Z'));
+          const dest = autoBackupHarian(db, join(dir, 'backups'));
+          expect(dest).toBe(join(dir, 'backups', 'auto-2026-01-01.db'));
+          expect(existsSync(dest)).toBe(true);
+        } finally {
+          vi.useRealTimers();
+        }
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('membuat backup hari ini via koneksi terbuka dan isi sama', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-auto-'));
     try {

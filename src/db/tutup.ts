@@ -14,6 +14,7 @@ import {
 } from '../core/tutup.js';
 import { labaTahun } from '../core/reports.js';
 import type { TutupBuku } from '../core/types.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 import { listBarisJurnal } from './laporan.js';
 import { insertAuditLog, insertTutupBuku, listTutupBuku } from './repository.js';
 
@@ -46,7 +47,7 @@ export type HasilTutupBuku = HasilValidasiTutup & {
   data?: TutupBuku;
 };
 
-const hariIni = (): string => new Date().toISOString().slice(0, 10);
+const hariIni = (): string => tanggalLokal();
 
 function hitungLabaDitahan(
   baris: ReturnType<typeof listBarisJurnal>,

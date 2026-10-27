@@ -14,6 +14,7 @@ import { tanggalKalenderValid, type JurnalInput } from './posting.js';
 import type { JurnalBarisInput } from './types.js';
 import { formatRp } from '../utils/format.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 
 export type BarisJurnalForm = {
   akun_kode: string;
@@ -286,7 +287,7 @@ export const TEMPLATE_JURNAL: readonly TemplateJurnal[] = [
   },
 ];
 
-const hariIni = (): string => new Date().toISOString().slice(0, 10);
+const hariIni = (): string => tanggalLokal();
 
 /**
  * Isi form duplikat dari jurnal lama: baris & keterangan disalin, tanggal
