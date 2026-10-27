@@ -1,468 +1,251 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron';
 import { config as loadEnv } from 'dotenv';
-import { join, dirname } from 'path';
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { basename, isAbsolute, join } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
+import { IDLE_DEFAULT_MENIT } from '../core/pin.js';
 import { openDb } from '../db/database.js';
+import { getIdleMenit } from '../db/repository.js';
 import { seedDev } from '../db/seed-dev.js';
+import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
+import { registerIpc, type IpcDeps } from './ipc.js';
+import { mulaiBackupPeriodik } from './backupPeriodik.js';
+import { buatLoggerApp, type LoggerApp } from './logApp.js';
 import {
-  closePanjar,
-  deleteAset,
-  getAset,
-  guardPeriodeTerkunci,
-  insertAset,
-  insertAuditLog,
-  insertPanjar,
-  insertTransaksi,
-  insertTutupBuku,
-  listAset,
-  listAuditLog,
-  listPanjar,
-  listPanjarItems,
-  listTransaksi,
-  listTutupBuku,
-  updateAset,
-} from '../db/repository.js';
-import { KAS_KODES, COA } from '../db/coa.js';
-import {
-  buatAuditLog,
-  labaTahun,
-  neraca,
-  panjarCloseToTransaksi,
-  panjarOpenToTransaksi,
-  saldoSemuaKas,
-} from '../core/ledger.js';
-import { buildDashboard } from '../features/dashboard/dashboard.js';
-import { autoBackupHarian, lastAutoBackup } from '../features/export/export.js';
-import type { Aset, Panjar, Transaksi } from '../core/types.js';
-import { validateAsetInput, validatePanjarItems, validateTransaksiInput, type AsetInput, type TransaksiInput } from './validation.js';
-import {
-  aturIdle,
-  bukaKunci,
+  INTERVAL_AUTO_KUNCI_MS,
   kunciLagi,
-  resetPaksa,
+  perluKunciOtomatis,
   sesi,
-  setupPin,
-  statusKunci,
-  ubahPin,
 } from './kunci.js';
-import { sudahSetupPin } from '../db/repository.js';
+import { tentukanLokasiData, type LokasiData } from './lokasiData.js';
+import {
+  aksiPemulihanDariRespons,
+  bukaDbDenganPemulihan,
+  JUDUL_PEMULIHAN_DB,
+  PESAN_GAGAL_BUKA_DB,
+  pesanGagalBukaDb,
+  TOMBOL_BUKA_BACKUP,
+  TOMBOL_COBA_LAGI,
+  TOMBOL_KELUAR,
+  type AksiPemulihanDb,
+} from './pemulihanDb.js';
+import { urlDiizinkan } from './windowSecurity.js';
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
+let lokasi: LokasiData | null = null;
+let hentikanBackupPeriodik: (() => void) | null = null;
+let hentikanAutoKunci: (() => void) | null = null;
+let logApp: LoggerApp | null = null;
 
-// Dev saja: baca .env di root repo agar PURA_DB bisa di-override.
-// App production (isPackaged) selalu pakai userData/data/pura.db.
-if (!app.isPackaged) loadEnv();
-
-function dbPath(): string {
-  if (process.env.PURA_DB) return process.env.PURA_DB;
-  const dir = join(app.getPath('userData'), 'data');
-  mkdirSync(dir, { recursive: true });
-  return join(dir, 'pura.db');
+/**
+ * AUD-34: logger dibuat lazy agar error sebelum `app.whenReady()` tetap
+ * tercatat. Kegagalan menyiapkan file log tidak boleh menghalangi aplikasi.
+ */
+function loggerMain(): LoggerApp | null {
+  if (logApp) return logApp;
+  try {
+    logApp = buatLoggerApp({ userDataDir: app.getPath('userData') });
+  } catch (e) {
+    console.error('[log] gagal menyiapkan file log:', String(e));
+    logApp = null;
+  }
+  return logApp;
 }
 
-const ok = <T>(data: T) => ({ ok: true as const, data });
-const fail = (error: string, perluAlasan = false) => ({ ok: false as const, error, perluAlasan });
-const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+/** Hentikan interval backup (idempoten); dipanggil saat app quit. */
+function hentikanPenjadwalBackup(): void {
+  hentikanBackupPeriodik?.();
+  hentikanBackupPeriodik = null;
+}
 
-function registerIpc(): void {
-  ipcMain.handle('coa:list', () => ok(COA));
-
-  // Kunci aplikasi: sesi selalu terkunci saat app dibuka (sesi.terbuka=false awal).
-  ipcMain.handle('lock:status', () => ok(statusKunci(db)));
-  ipcMain.handle('lock:setup', (_e, pin: string) => {
-    const err = setupPin(db, String(pin ?? ''));
-    return err ? fail(err) : ok({ terbuka: true });
-  });
-  ipcMain.handle('lock:unlock', (_e, pin: string) => {
-    const err = bukaKunci(db, String(pin ?? ''));
-    return err ? fail(err) : ok({ terbuka: true });
-  });
-  ipcMain.handle('lock:lock', () => {
-    kunciLagi();
-    return ok({ terkunci: true });
-  });
-  ipcMain.handle('lock:change', (_e, lama: string, baru: string) => {
-    const k = perluBuka();
-    if (k) return fail(k);
-    const err = ubahPin(db, String(lama ?? ''), String(baru ?? ''));
-    return err ? fail(err) : ok({ diubah: true });
-  });
-  ipcMain.handle('lock:idle-set', (_e, menit: number) => {
-    const k = perluBuka();
-    if (k) return fail(k);
-    const err = aturIdle(db, Number(menit));
-    return err ? fail(err) : ok({ idleMenit: Number(menit) });
-  });
-  ipcMain.handle('lock:reset', (_e, kode: string, pinBaru: string) => {
-    const err = resetPaksa(db, String(kode ?? ''), String(pinBaru ?? ''));
-    return err ? fail(err) : ok({ terbuka: true });
-  });
-
-  // Gembok data: selain channel lock:* & coa:list, tolak bila PIN sudah di-setup
-  // tapi sesi belum dibuka. Mencegah bypass via devtools (ancaman anak/iseng).
-  // lock:change & lock:idle-set justru WAJIB terbuka → ikut dijaga di bawah.
-  const perluBuka = (): string | null =>
-    sudahSetupPin(db) && !sesi.terbuka ? 'Aplikasi terkunci. Buka dengan PIN dulu.' : null;
-
-  ipcMain.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listTransaksi(db, f));
-  });
-
-  ipcMain.handle('transaksi:create', (_e, input: TransaksiInput, alasan?: string) => {
+/**
+ * AUD-18: keputusan idle ditegakkan di main. Renderer bisa freeze/di-pause,
+ * tetapi interval ini tetap berjalan dan mengunci sesi bila melewati batas.
+ * Timer di-`unref()` dan dibersihkan saat quit agar tidak menahan proses.
+ */
+function mulaiAutoKunci(): () => void {
+  let dihentikan = false;
+  const timer = setInterval(() => {
+    if (dihentikan || !sesi.terbuka) return;
     try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const errs = validateTransaksiInput(input);
-      if (errs.length) return fail(errs.join(' '));
-      const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
-      if (lockedErr) return fail(lockedErr, true);
-      const row: Transaksi = { id: uid('t'), ...input };
-      insertTransaksi(db, row);
-      if (alasan) insertAuditLog(db, buatAuditLog(`CREATE ${row.id}`, alasan, row));
-      return ok({ id: row.id });
+      const menit = getIdleMenit(db, IDLE_DEFAULT_MENIT);
+      if (!perluKunciOtomatis(Date.now(), menit)) return;
+      kunciLagi();
+      loggerMain()?.info('[auto-lock] sesi dikunci karena idle.');
     } catch (e) {
-      return fail(String(e));
+      loggerMain()?.warn('[auto-lock] gagal memeriksa idle', e);
     }
-  });
+  }, INTERVAL_AUTO_KUNCI_MS);
+  timer.unref?.();
 
-  ipcMain.handle('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listPanjar(db, status));
-  });
+  return () => {
+    dihentikan = true;
+    clearInterval(timer);
+  };
+}
 
-  ipcMain.handle('panjar:items', (_e, id: string) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listPanjarItems(db, id));
-  });
+function hentikanPenjadwalKunci(): void {
+  hentikanAutoKunci?.();
+  hentikanAutoKunci = null;
+}
 
-  ipcMain.handle(
-    'panjar:create',
-    (
-      _e,
-      input: { tanggal: string; penerima: string; jumlah: number; akun_kas_sumber: string },
-      alasan?: string,
-    ) => {
-      try {
-        const k = perluBuka();
-        if (k) return fail(k);
-        if (!input.penerima.trim()) return fail('Nama penerima wajib diisi.');
-        if (!Number.isInteger(input.jumlah) || input.jumlah <= 0)
-          return fail('Jumlah panjar harus > 0.');
-        const lockedErr = guardPeriodeTerkunci(db, input.tanggal, alasan);
-        if (lockedErr) return fail(lockedErr, true);
-        const p: Panjar = { id: uid('p'), status: 'OPEN', ...input };
-        insertPanjar(db, p);
-        insertTransaksi(db, panjarOpenToTransaksi(p));
-        if (alasan) insertAuditLog(db, buatAuditLog(`PANJAR-OPEN ${p.id}`, alasan, p));
-        return ok({ id: p.id });
-      } catch (e) {
-        return fail(String(e));
-      }
-    },
-  );
+/** Suspend/lock-screen OS = sesi tidak boleh tetap terbuka saat laptop dibuka lagi. */
+function kunciSaatSistemTidur(): void {
+  kunciLagi();
+}
 
-  ipcMain.handle(
-    'panjar:close',
-    (
-      _e,
-      req: {
-        id: string;
-        tanggalClose: string;
-        items: { kategori_baga: string; nominal: number }[];
+function pasangPemicuKunciSistem(): void {
+  powerMonitor.on('suspend', kunciSaatSistemTidur);
+  powerMonitor.on('lock-screen', kunciSaatSistemTidur);
+}
+
+function lepasPemicuKunciSistem(): void {
+  powerMonitor.removeListener('suspend', kunciSaatSistemTidur);
+  powerMonitor.removeListener('lock-screen', kunciSaatSistemTidur);
+}
+
+function bersihkanPenjadwal(): void {
+  hentikanPenjadwalBackup();
+  hentikanPenjadwalKunci();
+}
+
+// Dev saja: baca .env di root repo agar PURA_DB bisa di-override.
+// Production: installer memakai userData/data/pura.db; build portable memakai
+// <folder exe>/data/pura.db (P2-8) lewat PORTABLE_EXECUTABLE_DIR.
+if (!app.isPackaged) loadEnv();
+
+// AUD-34: error tak tertangani di main wajib meninggalkan jejak di
+// `<userData>/logs/app.log`. Logger juga menyalin ke console; listener ini
+// sengaja tidak melempar ulang agar aplikasi tidak langsung mati di tengah
+// pekerjaan operator — langkah pemulihan tetap menjadi keputusan pengguna.
+process.on('uncaughtException', (error) => {
+  loggerMain()?.error('uncaughtException', error);
+});
+process.on('unhandledRejection', (reason) => {
+  loggerMain()?.error('unhandledRejection', reason);
+});
+
+/** Lokasi final (P2-8); dihitung sekali setelah Electron siap. */
+function lokasiData(): LokasiData {
+  if (!lokasi) {
+    lokasi = tentukanLokasiData({
+      userDataDir: app.getPath('userData'),
+      portableDir: process.env.PORTABLE_EXECUTABLE_DIR,
+      overrideDbPath: process.env.PURA_DB,
+    });
+    mkdirSync(lokasi.dataDir, { recursive: true });
+  }
+  return lokasi;
+}
+
+function dbPath(): string {
+  return lokasiData().dbPath;
+}
+
+/**
+ * Render HTML laporan di hidden window lalu tulis PDF ke `filePath`.
+ * Implementasi Electron sengaja tetap di main; `src/main/ipc.ts` hanya
+ * memanggil lewat `IpcDeps.printPdf` agar bisa diuji tanpa Electron (P2-7).
+ */
+async function printPdfKeFile(
+  html: string,
+  filePath: string,
+  landscape = false,
+): Promise<void> {
+  let pdfWin: BrowserWindow | null = null;
+  try {
+    pdfWin = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        offscreen: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
       },
-      alasan?: string,
-    ) => {
-      try {
-        const k = perluBuka();
-        if (k) return fail(k);
-        const errs = validatePanjarItems(req.items);
-        if (errs.length) return fail(errs.join(' '));
-        const lockedErr = guardPeriodeTerkunci(db, req.tanggalClose, alasan);
-        if (lockedErr) return fail(lockedErr, true);
-        const p = listPanjar(db).find((x) => x.id === req.id);
-        if (!p) return fail('Panjar tidak ditemukan.');
-        if (p.status === 'CLOSED') return fail('Panjar sudah closed.');
-        const close = panjarCloseToTransaksi(
-          p,
-          req.items.map((it) => ({ panjar_id: p.id, ...it })),
-          req.tanggalClose,
-        );
-        const rows = [...close.bebanRows, close.kompensasiRow, ...(close.sisaRow ? [close.sisaRow] : [])];
-        closePanjar(db, p.id, rows);
-        if (alasan) insertAuditLog(db, buatAuditLog(`PANJAR-CLOSE ${p.id}`, alasan, p));
-        const totalRealisasi = req.items.reduce((s, i) => s + i.nominal, 0);
-        return ok({
-          totalRealisasi,
-          sisa: close.sisaRow?.masuk ?? 0,
-          kurang: Math.max(0, totalRealisasi - p.jumlah),
-        });
-      } catch (e) {
-        return fail(String(e));
-      }
+    });
+    await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    const pdf = await pdfWin.webContents.printToPDF({
+      pageSize: 'A4',
+      landscape,
+      printBackground: true,
+      // Margin diatur oleh @page + padding .halaman pada HTML paginator,
+      // supaya PDF identik dengan pratinjau (tidak dobel margin).
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      preferCSSPageSize: true,
+    });
+    writeFileSync(filePath, pdf);
+  } finally {
+    pdfWin?.close();
+  }
+}
+
+/**
+ * Save dialog harus menerima path absolut. Nama file saja membuat macOS
+ * memakai folder terakhir panel (di dev, folder itu dipakai bersama semua
+ * aplikasi Electron karena bundle ID `com.github.Electron`). Arahkan default
+ * ke Documents supaya export tidak mendarat di folder project lain.
+ */
+function defaultPathSimpan(path?: string): string | undefined {
+  if (!path) return undefined;
+  return isAbsolute(path) ? path : join(app.getPath('documents'), basename(path));
+}
+
+/**
+ * AUD-16: layar pemulihan tanpa window. Dialog ini tampil saat database gagal
+ * dibuka, sebelum window utama dibuat, sehingga operator tetap punya UI untuk
+ * membuka backup, mencoba lagi, atau keluar.
+ */
+async function tanyaPemulihanDb(
+  lokasiAktif: LokasiData,
+  error: unknown,
+): Promise<AksiPemulihanDb> {
+  app.focus({ steal: true });
+  const hasil = await dialog.showMessageBox({
+    type: 'error',
+    title: JUDUL_PEMULIHAN_DB,
+    message: PESAN_GAGAL_BUKA_DB,
+    detail: pesanGagalBukaDb(error, lokasiAktif.dbPath),
+    buttons: [TOMBOL_BUKA_BACKUP, TOMBOL_COBA_LAGI, TOMBOL_KELUAR],
+    defaultId: 1,
+    cancelId: 2,
+    noLink: true,
+  });
+  return aksiPemulihanDariRespons(hasil.response);
+}
+
+/** Ketergantungan nyata main process untuk seluruh handler IPC (P2-7). */
+function buatIpcDeps(): IpcDeps {
+  return {
+    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    db: () => db,
+    setDb: (d) => {
+      db = d;
     },
-  );
-
-  // ---- Inventaris Aset (non-keuangan, TIDAK kena kunci tutup buku) ----
-  ipcMain.handle('aset:list', (_e, f: { jenis?: string; cari?: string } = {}) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listAset(db, f));
-  });
-
-  ipcMain.handle('aset:create', (_e, input: AsetInput) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const errs = validateAsetInput(input);
-      if (errs.length) return fail(errs.join(' '));
-      const now = new Date().toISOString();
-      const row: Aset = {
-        id: uid('a'),
-        kode: input.kode.trim(),
-        nama: input.nama.trim(),
-        jenis: input.jenis as Aset['jenis'],
-        luas_m2: input.luas_m2,
-        lokasi: input.lokasi.trim(),
-        status_hukum: input.status_hukum.trim(),
-        tahun_perolehan: input.tahun_perolehan,
-        asal_usul: input.asal_usul.trim(),
-        kondisi: input.kondisi as Aset['kondisi'],
-        keterangan: input.keterangan.trim(),
-        nilai_sen: input.nilai_sen,
-        created_at: now,
-        updated_at: now,
-      };
-      insertAset(db, row);
-      return ok({ id: row.id });
-    } catch (e) {
-      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(String(e));
-    }
-  });
-
-  ipcMain.handle('aset:update', (_e, id: string, input: AsetInput) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const errs = validateAsetInput(input);
-      if (errs.length) return fail(errs.join(' '));
-      const lama = getAset(db, String(id));
-      if (!lama) return fail('Aset tidak ditemukan.');
-      updateAset(db, {
-        ...lama,
-        kode: input.kode.trim(),
-        nama: input.nama.trim(),
-        jenis: input.jenis as Aset['jenis'],
-        luas_m2: input.luas_m2,
-        lokasi: input.lokasi.trim(),
-        status_hukum: input.status_hukum.trim(),
-        tahun_perolehan: input.tahun_perolehan,
-        asal_usul: input.asal_usul.trim(),
-        kondisi: input.kondisi as Aset['kondisi'],
-        keterangan: input.keterangan.trim(),
-        nilai_sen: input.nilai_sen,
-        updated_at: new Date().toISOString(),
-      });
-      return ok({ id });
-    } catch (e) {
-      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(String(e));
-    }
-  });
-
-  ipcMain.handle('aset:delete', (_e, id: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      deleteAset(db, String(id));
-      return ok({ id });
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  ipcMain.handle('tutup:list', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listTutupBuku(db));
-  });
-  ipcMain.handle('audit:list', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listAuditLog(db));
-  });
-  ipcMain.handle('tutup:preview', (_e, tahun: number) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok({ tahun, laba: labaTahun(listTransaksi(db), tahun) });
-  });
-  ipcMain.handle('tutup:create', (_e, tahun: number, backupPath = '') => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const laba = labaTahun(listTransaksi(db), tahun);
-      insertTutupBuku(db, { tahun, laba, created_at: new Date().toISOString(), backup_path: backupPath });
-      return ok({ tahun, laba });
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  ipcMain.handle('saldo:list', (_e, cutoff?: string) => {
-    const k = perluBuka();
-    if (k) return fail(k);
-    const tx = listTransaksi(db);
-    const perKas = saldoSemuaKas(tx, KAS_KODES, cutoff);
-    return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
-  });
-
-  ipcMain.handle('neraca:get', (_e, cutoff: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
-      const n = neraca(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
-      return ok(n);
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  ipcMain.handle('dashboard:get', (_e, cutoff: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) return fail('Cut-off tidak valid (YYYY-MM-DD).');
-      const d = buildDashboard(listTransaksi(db), listPanjar(db), listTutupBuku(db), cutoff, KAS_KODES);
-      return ok(d);
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  // Simpan buffer (xlsx/html) via save dialog. Renderer bangun buffer murni,
-  // main hanya tulis file — sesuai handoff: builder tetap di renderer.
-  ipcMain.handle(
-    'file:save-buffer',
-    async (_e, req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) => {
-      try {
-        const k = perluBuka();
-        if (k) return fail(k);
-        const { canceled, filePath } = await dialog.showSaveDialog({
-          defaultPath: req.defaultName,
-          filters: req.filters,
-        });
-        if (canceled || !filePath) return ok({ saved: false, path: '' });
-        writeFileSync(filePath, Buffer.from(req.bufferB64, 'base64'));
-        return ok({ saved: true, path: filePath });
-      } catch (e) {
-        return fail(String(e));
-      }
+    dbPath,
+    dialog: {
+      showSaveDialog: (opts) => {
+        const opsi = { ...opts, defaultPath: defaultPathSimpan(opts.defaultPath) };
+        // Lampirkan ke window utama agar tampil sebagai sheet modal; user
+        // memilih folder tujuan dan nama file langsung di dialog ini.
+        return win
+          ? dialog.showSaveDialog(win, opsi)
+          : dialog.showSaveDialog(opsi);
+      },
+      showOpenDialog: (opts) => dialog.showOpenDialog(opts),
     },
-  );
-
-  // Simpan PDF langsung: render HTML laporan di hidden window lalu printToPDF.
-  // Renderer membangun HTML via wrapPrintDocument(..., { autoPrint: false }).
-  ipcMain.handle(
-    'file:save-pdf',
-    async (_e, req: { htmlB64: string; defaultName: string }) => {
-      let pdfWin: BrowserWindow | null = null;
-      try {
-        const k = perluBuka();
-        if (k) return fail(k);
-        const html = Buffer.from(req.htmlB64, 'base64').toString('utf-8');
-        if (!html.trim()) return fail('HTML laporan kosong.');
-        const name = req.defaultName.endsWith('.pdf') ? req.defaultName : `${req.defaultName}.pdf`;
-        const { canceled, filePath } = await dialog.showSaveDialog({
-          defaultPath: name,
-          filters: [{ name: 'PDF', extensions: ['pdf'] }],
-        });
-        if (canceled || !filePath) return ok({ saved: false, path: '' });
-        pdfWin = new BrowserWindow({ show: false, webPreferences: { offscreen: true } });
-        await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-        const pdf = await pdfWin.webContents.printToPDF({
-          pageSize: 'A4',
-          printBackground: true,
-          margins: { top: 0.55, bottom: 0.55, left: 0.47, right: 0.47 },
-        });
-        writeFileSync(filePath, pdf);
-        return ok({ saved: true, path: filePath });
-      } catch (e) {
-        return fail(String(e));
-      } finally {
-        pdfWin?.close();
-      }
+    writeFile: (path, data) => writeFileSync(path, data),
+    printPdf: printPdfKeFile,
+    openPath: (path) => shell.openPath(path),
+    lampiranDir: () => lokasiData().attachmentsDir,
+    lokasiData,
+    log: loggerMain() ?? undefined,
+    // AUD-17: frame pengirim yang sah = renderer build atau dev origin.
+    pengirim: {
+      devUrl: process.env['ELECTRON_RENDERER_URL'],
+      rendererFile: join(__dirname, '../renderer/index.html'),
     },
-  );
-
-  // Backup manual .db via save dialog (copy file).
-  ipcMain.handle('backup:export', async () => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const Stamp = new Date().toISOString().slice(0, 10);
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `pura-backup-${Stamp}.db`,
-        filters: [{ name: 'SQLite DB', extensions: ['db'] }],
-      });
-      if (canceled || !filePath) return ok({ saved: false, path: '' });
-      copyFileSync(dbPath(), filePath);
-      return ok({ saved: true, path: filePath });
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  // Auto-backup internal untuk wizard Tutup Buku (tanpa dialog).
-  ipcMain.handle('backup:auto', (_e, tahun: number) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const dir = join(dirname(dbPath()), 'backups');
-      mkdirSync(dir, { recursive: true });
-      const dest = join(dir, `pura-${tahun}.db`);
-      copyFileSync(dbPath(), dest);
-      return ok({ path: dest });
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  // Status backup otomatis harian terakhir (untuk Dashboard).
-  ipcMain.handle('backup:status', () => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const dir = join(dirname(dbPath()), 'backups');
-      return ok({ path: lastAutoBackup(dir) });
-    } catch (e) {
-      return fail(String(e));
-    }
-  });
-
-  // Restore .db via open dialog. Tutup koneksi dulu, copy, buka ulang.
-  ipcMain.handle('backup:import', async () => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const { canceled, filePaths } = await dialog.showOpenDialog({
-        filters: [{ name: 'SQLite DB', extensions: ['db'] }],
-        properties: ['openFile'],
-      });
-      if (canceled || filePaths.length === 0) return ok({ restored: false, path: '' });
-      const src = filePaths[0]!;
-      db.close();
-      copyFileSync(src, dbPath());
-      db = openDb(dbPath());
-      return ok({ restored: true, path: dbPath() });
-    } catch (e) {
-      try {
-        db = openDb(dbPath());
-      } catch {
-        /* biarkan error asli */
-      }
-      return fail(String(e));
-    }
-  });
+  };
 }
 
 /**
@@ -484,42 +267,148 @@ function preloadPath(): string {
 }
 
 function createWindow(): void {
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  const rendererFile = join(__dirname, '../renderer/index.html');
+
   win = new BrowserWindow({
     width: 1280,
     height: 800,
     title: 'Keuangan Pura Dalem Puri',
-    webPreferences: { preload: preloadPath() },
+    webPreferences: {
+      preload: preloadPath(),
+      // P1-15: preload hanya memakai contextBridge + ipcRenderer sehingga aman
+      // dijalankan sandbox; preload tetap CJS sesuai catatan electron-vite.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    void win.loadURL(process.env['ELECTRON_RENDERER_URL']);
+
+  // Cegah window baru (target=_blank/window.open) dari renderer.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Hanya izinkan navigasi ke dev server aplikasi atau file renderer sendiri.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!urlDiizinkan(url, { devUrl, rendererFile })) event.preventDefault();
+  });
+  // AUD-34: crash/unresponsive renderer juga perlu jejak di file log.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    loggerMain()?.error(
+      `[renderer] proses renderer berhenti (${details.reason}, exitCode ${details.exitCode})`,
+    );
+  });
+  win.on('unresponsive', () => loggerMain()?.warn('[window] halaman tidak merespons'));
+
+  if (devUrl) {
+    void win.loadURL(devUrl);
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    void win.loadFile(rendererFile);
   }
   win.on('closed', () => (win = null));
 }
 
-void app.whenReady().then(() => {
-  db = openDb(dbPath());
-  // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
-  try {
-    const p = autoBackupHarian(db, join(dirname(dbPath()), 'backups'), 7);
-    console.log(`[backup-auto] ${p}`);
-  } catch (e) {
-    console.warn('[backup-auto] gagal:', String(e));
-  }
-  // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
-  // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
-  if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
-    const n = seedDev(db);
-    if (n > 0) console.log(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
-  }
-  registerIpc();
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+function mulaiAplikasi(): void {
+  // Instance kedua tidak boleh membuka window baru: fokus/restore window utama.
+  app.on('second-instance', () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
   });
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  void app.whenReady().then(async () => {
+    const lokasiAktif = lokasiData();
+    const pathDb = lokasiAktif.dbPath;
+    const log = loggerMain();
+    log?.info(
+      `Aplikasi mulai v${app.getVersion()} (mode ${lokasiAktif.mode}); log: ${log.file}`,
+    );
+    // Backup pra-upgrade cukup sekali; retry hanya membuka ulang database.
+    let backupPraUpgradeDilakukan = false;
+    const dbDibuka = await bukaDbDenganPemulihan({
+      buka: () => {
+        // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak
+        // hilang. Kegagalan backup tidak boleh menghalangi percobaan buka DB.
+        if (!backupPraUpgradeDilakukan) {
+          backupPraUpgradeDilakukan = true;
+          try {
+            const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
+            if (p) loggerMain()?.info(`[backup-upgrade] ${p}`);
+          } catch (e) {
+            loggerMain()?.warn('[backup-upgrade] gagal', e);
+          }
+        }
+        return openDb(pathDb);
+      },
+      tanya: (e) => {
+        // Detail teknis hanya untuk log; layar pemulihan memakai pesan ramah.
+        loggerMain()?.error('[db] gagal membuka database', e);
+        return tanyaPemulihanDb(lokasiAktif, e);
+      },
+      bukaFolderBackup: async () => {
+        try {
+          mkdirSync(lokasiAktif.backupsDir, { recursive: true });
+          const galat = await shell.openPath(lokasiAktif.backupsDir);
+          if (galat) loggerMain()?.warn('[pemulihan-db] gagal membuka folder backup', galat);
+        } catch (e) {
+          loggerMain()?.warn('[pemulihan-db] gagal menyiapkan folder backup', e);
+        }
+      },
+      keluar: () => app.quit(),
+    });
+    if (!dbDibuka) return;
+    db = dbDibuka;
+    // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
+    try {
+      const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);
+      loggerMain()?.info(`[backup-auto] ${p}`);
+    } catch (e) {
+      loggerMain()?.warn('[backup-auto] gagal', e);
+    }
+    // AUD-13: app yang dibiarkan terbuka tetap backup saat tanggal berganti.
+    // Interval ringan + guard di modul; jangan pernah biarkan timer menahan quit.
+    hentikanPenjadwalBackup();
+    hentikanBackupPeriodik = mulaiBackupPeriodik({
+      db: () => db,
+      dirBackup: () => lokasiData().backupsDir,
+      onBackup: (p) => loggerMain()?.info(`[backup-auto] ${p}`),
+      onError: (e) => loggerMain()?.warn('[backup-auto] gagal', e),
+    });
+    // AUD-18: auto-lock ditegakkan main (idle, suspend, lock-screen).
+    hentikanPenjadwalKunci();
+    hentikanAutoKunci = mulaiAutoKunci();
+    pasangPemicuKunciSistem();
+    // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
+    // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
+    if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
+      const n = seedDev(db);
+      if (n > 0) loggerMain()?.info(`[seed-dev] ${n} baris transaksi dummy dimasukkan.`);
+    }
+    registerIpc(buatIpcDeps());
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  // Bersihkan interval backup + auto-lock agar proses main bisa berhenti normal.
+  app.on('before-quit', () => {
+    loggerMain()?.info('Aplikasi akan berhenti.');
+    bersihkanPenjadwal();
+  });
+  app.on('will-quit', () => {
+    bersihkanPenjadwal();
+    lepasPemicuKunciSistem();
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}
+
+// Wajib sebelum whenReady: instance kedua langsung keluar dan tidak mendaftar
+// IPC/window apa pun. Instance pertama menerima event `second-instance`.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  mulaiAplikasi();
+}

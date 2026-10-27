@@ -1,40 +1,50 @@
 import { useEffect, useState } from 'react';
-import type { AuditLog, TutupBuku } from '../../core/types.js';
-import { formatRp, formatTanggal } from '../../utils/format.js';
-import { formatAksiAudit, parseAuditDetail } from '../../utils/auditDetail.js';
-import { api } from '../lib/api.js';
-import { Badge, Button, Card, DetailModal, ErrorBox, Field, TextInput } from './ui.js';
+import { formatRp } from '../../utils/format.js';
+import { tahunLokal } from '../../utils/tanggal.js';
+import {
+  api,
+  type TutupBukuTampil,
+  type TutupPreviewData,
+} from '../lib/api.js';
+import { useAksiSibuk } from '../lib/aksiSibuk.js';
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorBox,
+  Field,
+  KonfirmasiModal,
+  TextInput,
+} from './ui.js';
+import {
+  PESAN_MUAT_GAGAL,
+  PESAN_PROSES_GAGAL,
+  pesanError,
+  pesanValidasi,
+} from '../../utils/pesanError.js';
 
 type Step = 1 | 2 | 3;
 
-function Baris({ label, value }: { label: string; value: string }) {
-  return (
-    <p>
-      <span className="text-stone-500">{label}: </span>
-      <span className="font-medium break-all">{value}</span>
-    </p>
-  );
-}
+const TAHUN_BERJALAN = tahunLokal();
+const TAHUN_TERAKHIR_BOLEH_DITUTUP = TAHUN_BERJALAN - 1;
 
 export function TutupTab() {
-  const [list, setList] = useState<TutupBuku[]>([]);
-  const [audit, setAudit] = useState<AuditLog[]>([]);
+  const [list, setList] = useState<TutupBukuTampil[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [tahun, setTahun] = useState(new Date().getFullYear());
+  const [tahun, setTahun] = useState(TAHUN_TERAKHIR_BOLEH_DITUTUP);
   const [step, setStep] = useState<Step>(1);
-  const [laba, setLaba] = useState<number | null>(null);
+  const [preview, setPreview] = useState<TutupPreviewData | null>(null);
   const [backupPath, setBackupPath] = useState('');
-  const [detail, setDetail] = useState<AuditLog | null>(null);
-  const detailView = detail ? parseAuditDetail(detail.data_lama_json) : null;
+  const [catatan, setCatatan] = useState('');
+  const [konfirmasiOpen, setKonfirmasiOpen] = useState(false);
+  const { sibuk, jalankan } = useAksiSibuk();
 
   async function refresh() {
     try {
-      const [t, a] = await Promise.all([api.tutupList(), api.auditList()]);
-      setList(t);
-      setAudit(a);
+      setList(await api.tutupList());
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
   }
 
@@ -42,42 +52,67 @@ export function TutupTab() {
     void refresh();
   }, []);
 
-  async function preview() {
-    setErr(null);
-    setInfo(null);
-    try {
-      const r = await api.tutupPreview(tahun);
-      setLaba(r.laba);
-      setStep(2);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function mulaiPreview(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      try {
+        const r = await api.tutupPreview(tahun);
+        setPreview(r);
+        if (!r.boleh && !r.perluKonfirmasi) {
+          setErr(pesanValidasi(r.errors) || 'Tahun belum bisa ditutup.');
+          setStep(1);
+          return;
+        }
+        // Tahun yang sudah ditutup boleh dilanjutkan, tetapi langkah konfirmasi
+        // akan menampilkan peringatan "tutup ulang".
+        setStep(2);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      }
+    });
   }
 
-  async function autoBackup() {
-    setErr(null);
-    try {
-      const r = await api.backupAuto(tahun);
-      setBackupPath(r.path);
-      setStep(3);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function autoBackup(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      try {
+        const r = await api.backupAuto(tahun);
+        setBackupPath(r.path);
+        setStep(3);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      }
+    });
   }
 
-  async function konfirmasi() {
-    setErr(null);
-    setInfo(null);
-    try {
-      const r = await api.tutupCreate(tahun, backupPath);
-      setInfo(`Tahun ${r.tahun} ditutup. Laba ${formatRp(r.laba)}. Backup: ${backupPath || '-'}`);
-      setStep(1);
-      setLaba(null);
-      setBackupPath('');
-      await refresh();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function konfirmasi(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      try {
+        const r = await api.tutupCreate({
+          tahun,
+          catatan,
+          backupPath,
+          konfirmasiTimpak: preview?.sudahDitutup === true,
+        });
+        setInfo(
+          `Tahun ${r.tahun} ${r.aksi === 'TUTUP-ULANG' ? 'ditutup ulang' : 'ditutup'}. ` +
+            `Laba ${formatRp(r.laba)}. Laba ditahan ${formatRp(r.labaDitahan)}. ` +
+            `Backup: ${backupPath || '-'}`,
+        );
+        setStep(1);
+        setPreview(null);
+        setBackupPath('');
+        setCatatan('');
+        await refresh();
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setKonfirmasiOpen(false);
+      }
+    });
   }
 
   return (
@@ -88,7 +123,12 @@ export function TutupTab() {
         {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
         <p className="mb-3 text-sm text-stone-600">
           Langkah {step}/3: {step === 1 ? 'Preview laba' : step === 2 ? 'Auto-backup .db' : 'Konfirmasi'}.
-          Data tahun lalu masih bisa diubah dengan mencantumkan alasan, dan tercatat otomatis.
+          Tutup buku hanya mengunci periode dan menyimpan catatan — laba selalu dihitung ulang dari jurnal.
+          Tahun yang sudah selesai bisa dikoreksi dengan alasan, dan tercatat otomatis.
+        </p>
+        <p className="mb-3 text-sm text-stone-600">
+          Tahun yang boleh ditutup: <b>≤ {TAHUN_TERAKHIR_BOLEH_DITUTUP}</b>. Tahun berjalan
+          ({TAHUN_BERJALAN}) dan tahun berikutnya belum boleh ditutup.
         </p>
 
         {step === 1 && (
@@ -96,38 +136,74 @@ export function TutupTab() {
             <Field label="Tahun">
               <TextInput
                 type="number"
+                min={1900}
+                max={TAHUN_TERAKHIR_BOLEH_DITUTUP}
                 value={String(tahun)}
-                onChange={(e) => setTahun(Number(e.target.value))}
+                onChange={(e) => {
+                  setTahun(Number(e.target.value));
+                  setPreview(null);
+                }}
               />
             </Field>
             <div className="flex items-end">
-              <Button onClick={() => void preview()}>Preview laba</Button>
+              <Button disabled={sibuk} onClick={() => void mulaiPreview()}>
+                {sibuk ? 'Memuat…' : 'Preview laba'}
+              </Button>
             </div>
           </div>
         )}
 
-        {step === 2 && (
+        {step === 2 && preview && (
           <div className="space-y-3">
             <p className="text-[15px]">
-              Laba tahun {tahun}: <b>{laba !== null ? formatRp(laba) : '-'}</b>
+              Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>
             </p>
+            <p className="text-[15px]">
+              Laba ditahan setelah tutup: <b>{formatRp(preview.labaDitahanSesudah)}</b>
+            </p>
+            {preview.sudahDitutup && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800">
+                Tahun {preview.tahun} sudah pernah ditutup. Melanjutkan akan memperbarui
+                catatan dan tetap tercatat di audit sebagai <b>TUTUP-ULANG</b>.
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep(1)}>Kembali</Button>
-              <Button onClick={() => void autoBackup()}>Backup otomatis & lanjut</Button>
+              <Button variant="ghost" disabled={sibuk} onClick={() => setStep(1)}>
+                Kembali
+              </Button>
+              <Button disabled={sibuk} onClick={() => void autoBackup()}>
+                {sibuk ? 'Memproses…' : 'Backup otomatis & lanjut'}
+              </Button>
             </div>
           </div>
         )}
 
-        {step === 3 && (
+        {step === 3 && preview && (
           <div className="space-y-3">
             <p className="text-[15px]">
-              Laba tahun {tahun}: <b>{laba !== null ? formatRp(laba) : '-'}</b>
+              Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>
               <br />
               Backup: <span className="break-all text-stone-600">{backupPath}</span>
             </p>
+            <Field label="Catatan tutup buku (opsional)">
+              <TextInput
+                value={catatan}
+                onChange={(e) => setCatatan(e.target.value)}
+                placeholder="Contoh: tutup tahun 2025, data sudah diperiksa akuntan"
+              />
+            </Field>
+            {preview.sudahDitutup && (
+              <p className="text-sm text-amber-700">
+                Tahun ini akan ditutup ulang (TUTUP-ULANG).
+              </p>
+            )}
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep(2)}>Kembali</Button>
-              <Button onClick={() => void konfirmasi()}>Konfirmasi tutup buku</Button>
+              <Button variant="ghost" disabled={sibuk} onClick={() => setStep(2)}>
+                Kembali
+              </Button>
+              <Button disabled={sibuk} onClick={() => setKonfirmasiOpen(true)}>
+                {preview.sudahDitutup ? 'Konfirmasi tutup ulang' : 'Konfirmasi tutup buku'}
+              </Button>
             </div>
           </div>
         )}
@@ -135,11 +211,16 @@ export function TutupTab() {
 
       <Card>
         <h3 className="mb-2 font-bold">Riwayat tutup buku</h3>
+        <p className="mb-2 text-sm text-stone-600">
+          Laba di kolom riwayat dihitung ulang dari jurnal, jadi tetap benar walau ada koreksi
+          setelah tutup buku.
+        </p>
         <table className="w-full text-left text-[15px]">
           <thead>
             <tr className="border-b text-stone-500">
               <th className="py-2 pr-3">Tahun</th>
               <th className="py-2 pr-3 text-right">Laba</th>
+              <th className="py-2 pr-3">Catatan</th>
               <th className="py-2 pr-3">Backup</th>
             </tr>
           </thead>
@@ -148,73 +229,51 @@ export function TutupTab() {
               <tr key={t.tahun} className="border-b last:border-0">
                 <td className="py-2 pr-3"><Badge>{t.tahun}</Badge></td>
                 <td className="py-2 pr-3 text-right">{formatRp(t.laba)}</td>
+                <td className="py-2 pr-3 text-sm text-stone-700">{t.catatan || '-'}</td>
                 <td className="py-2 pr-3 break-all text-sm text-stone-600">{t.backup_path || '-'}</td>
               </tr>
             ))}
             {list.length === 0 && (
-              <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum pernah tutup buku.</td></tr>
+              <tr><td colSpan={4} className="py-4 text-center text-stone-500">Belum pernah tutup buku.</td></tr>
             )}
           </tbody>
         </table>
       </Card>
 
-      <Card>
-        <h3 className="mb-2 font-bold">Riwayat Perubahan (koreksi periode tutup)</h3>
-        <table className="w-full text-left text-[15px]">
-          <thead>
-            <tr className="border-b text-stone-500">
-              <th className="py-2 pr-3">Tanggal</th>
-              <th className="py-2 pr-3">Aksi</th>
-              <th className="py-2 pr-3">Alasan</th>
-              <th className="py-2 pr-3">Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {audit.map((a) => (
-              <tr key={a.id} className="border-b last:border-0">
-                <td className="py-2 pr-3 whitespace-nowrap">{formatTanggal(a.tanggal.slice(0, 10))}</td>
-                <td className="py-2 pr-3 break-all">{formatAksiAudit(a.aksi)}</td>
-                <td className="py-2 pr-3">{a.alasan}</td>
-                <td className="py-2 pr-3">
-                  <Button variant="ghost" onClick={() => setDetail(a)}>Lihat</Button>
-                </td>
-              </tr>
-            ))}
-            {audit.length === 0 && (
-              <tr><td colSpan={4} className="py-4 text-center text-stone-500">Belum ada koreksi periode tutup.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
-
-      {detail && (
-        <DetailModal title="Detail koreksi" onClose={() => setDetail(null)}>
-          <Baris label="Tanggal catat" value={formatTanggal(detail.tanggal.slice(0, 10))} />
-          <Baris label="Aksi" value={formatAksiAudit(detail.aksi)} />
-          <Baris label="Alasan" value={detail.alasan} />
-          {detailView?.kind === 'transaksi' && (
+      {konfirmasiOpen && preview && (
+        <KonfirmasiModal
+          judul={
+            preview.sudahDitutup
+              ? `Tutup ulang tahun ${preview.tahun}?`
+              : `Tutup buku tahun ${preview.tahun}?`
+          }
+          deskripsi={
             <>
-              <Baris label="Tanggal transaksi" value={formatTanggal(detailView.tanggal)} />
-              <Baris label="Keterangan" value={detailView.keterangan} />
-              <Baris label="Dompet" value={detailView.akun_kas} />
-              <Baris label="Kategori" value={detailView.kategori} />
-              <Baris label="Masuk" value={detailView.masuk ? formatRp(detailView.masuk) : '-'} />
-              <Baris label="Keluar" value={detailView.keluar ? formatRp(detailView.keluar) : '-'} />
+              <p>
+                Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>.
+              </p>
+              <p>
+                Laba ditahan setelah tutup:{' '}
+                <b>{formatRp(preview.labaDitahanSesudah)}</b>.
+              </p>
+              <p className="text-sm text-stone-600">
+                Periode akan dikunci. Koreksi setelah ini tetap boleh, tetapi wajib
+                alasan dan tercatat di audit. Backup sudah dibuat:{' '}
+                <span className="break-all">{backupPath || '-'}</span>.
+              </p>
+              {preview.sudahDitutup && (
+                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+                  Tahun ini sudah pernah ditutup. Melanjutkan akan mencatat{' '}
+                  <b>TUTUP-ULANG</b>.
+                </p>
+              )}
             </>
-          )}
-          {detailView?.kind === 'panjar' && (
-            <>
-              <Baris label="Tanggal panjar" value={formatTanggal(detailView.tanggal)} />
-              <Baris label="Penerima" value={detailView.penerima} />
-              <Baris label="Jumlah" value={formatRp(detailView.jumlah)} />
-              <Baris label="Diambil dari" value={detailView.akun_kas_sumber} />
-              <Baris label="Status" value={detailView.status} />
-            </>
-          )}
-          {detailView?.kind === 'mentah' && (
-            <p className="break-all text-sm text-stone-600">{detailView.teks || '-'}</p>
-          )}
-        </DetailModal>
+          }
+          labelYa={preview.sudahDitutup ? 'Ya, tutup ulang' : 'Ya, tutup buku'}
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiOpen(false)}
+          onKonfirmasi={() => void konfirmasi()}
+        />
       )}
     </div>
   );

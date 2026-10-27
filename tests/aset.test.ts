@@ -1,12 +1,20 @@
-// Modul Inventaris Aset: validasi opsional-nilai + CRUD repo + isolasi dari Neraca + export kop.
+// Modul Inventaris Aset: validasi opsional-nilai + CRUD repo + isolasi dari
+// laporan keuangan v2 (core/reports) + export kop.
 import { describe, expect, it } from 'vitest';
 import { validateAsetInput } from '../src/main/validation.js';
 import { openDb } from '../src/db/database.js';
-import { deleteAset, getAset, insertAset, listAset, updateAset } from '../src/db/repository.js';
-import { neraca } from '../src/core/ledger.js';
-import { KAS_KODES } from '../src/db/coa.js';
+import {
+  deleteAset,
+  getAset,
+  insertAset,
+  insertJurnal,
+  listAset,
+  updateAset,
+} from '../src/db/repository.js';
+import { listBarisJurnal } from '../src/db/laporan.js';
+import { labaRugi, neraca, neracaSaldo } from '../src/core/reports.js';
 import { asetToHtml, asetToWorkbook, KOP_ORG_NAMA, workbookToBuffer } from '../src/features/export/workbooks.js';
-import type { Aset, Transaksi } from '../src/core/types.js';
+import type { Aset } from '../src/core/types.js';
 
 const BASE = {
   kode: 'AST-001',
@@ -69,16 +77,117 @@ describe('repository aset', () => {
     deleteAset(db, 'a2');
     expect(listAset(db)).toHaveLength(1);
   });
+});
 
-  it('isolasi: aset tidak mengubah Neraca (Aktiva=Pasiva tetap)', () => {
-    const MODAL: Transaksi = { id: 't0', tanggal: '2025-01-05', keterangan: 'Modal', akun_kas: '1001', kategori: '3000', masuk: 1_000_000_000, keluar: 0 };
-    const sebelum = neraca([MODAL], [], [], '2025-12-31', KAS_KODES);
+const RP = (rupiah: number): number => rupiah * 100;
+
+/** Jurnal double-entry seimbang: satu modal awal + satu beban upakara. */
+function isiJurnalDasar(db: ReturnType<typeof openDb>): void {
+  insertJurnal(
+    db,
+    {
+      id: 'j-modal',
+      tanggal: '2025-01-01',
+      no_bukti: 'JU-2025-0001',
+      keterangan: 'Modal awal',
+    },
+    [
+      { akun_kode: '1001', debit: RP(1_000_000), kredit: 0 },
+      { akun_kode: '3000', debit: 0, kredit: RP(1_000_000) },
+    ],
+  );
+  insertJurnal(
+    db,
+    {
+      id: 'j-beban',
+      tanggal: '2025-02-01',
+      no_bukti: 'JU-2025-0002',
+      keterangan: 'Beban upakara',
+    },
+    [
+      { akun_kode: '5004', debit: RP(40_000), kredit: 0 },
+      { akun_kode: '1001', debit: 0, kredit: RP(40_000) },
+    ],
+  );
+}
+
+describe('isolasi aset dari laporan keuangan (core/reports v2)', () => {
+  it('jurnal modal + beban menghasilkan Laba Rugi & Neraca yang diharapkan', () => {
     const db = openDb(':memory:');
-    insertAset(db, asetRow({ id: 'a9', kode: 'AST-009', nilai_sen: null }));
-    insertAset(db, asetRow({ id: 'a10', kode: 'AST-010', nilai_sen: 99_999_999_999 }));
-    const sesudah = neraca([MODAL], [], [], '2025-12-31', KAS_KODES);
-    expect(sesudah.aktiva).toBe(sebelum.aktiva);
-    expect(sesudah.balance).toBe(true);
+    isiJurnalDasar(db);
+    const baris = listBarisJurnal(db);
+
+    // Laba Rugi: tidak ada pendapatan, beban Rp 40.000 → defisit Rp 40.000.
+    const lr = labaRugi(baris, { mulai: '2025-01-01', sampai: '2025-12-31' });
+    expect(lr.totalPendapatan).toBe(0);
+    expect(lr.totalBeban).toBe(RP(40_000));
+    expect(lr.laba).toBe(-RP(40_000));
+    expect(lr.defisit).toBe(true);
+
+    // Neraca: kas Rp 960.000 = modal Rp 1.000.000 − defisit Rp 40.000.
+    const n = neraca(baris, '2025-12-31');
+    expect(n.totalAset).toBe(RP(960_000));
+    expect(n.totalKewajiban).toBe(0);
+    expect(n.totalEkuitasAkun).toBe(RP(1_000_000));
+    expect(n.labaBerjalan).toBe(-RP(40_000));
+    expect(n.totalEkuitas).toBe(RP(960_000));
+    expect(n.totalPasiva).toBe(RP(960_000));
+    expect(n.selisih).toBe(0);
+    expect(n.balance).toBe(true);
+
+    // Neraca Saldo juga harus seimbang: debit 1001+5004 = kredit 3000.
+    const ns = neracaSaldo(baris, '2025-12-31');
+    expect(ns.totalDebit).toBe(RP(1_000_000));
+    expect(ns.totalKredit).toBe(RP(1_000_000));
+    expect(ns.selisih).toBe(0);
+    expect(ns.seimbang).toBe(true);
+  });
+
+  it('aset dengan nilai_sen besar tidak mengubah Laba Rugi/Neraca', () => {
+    const db = openDb(':memory:');
+    isiJurnalDasar(db);
+
+    const sebelumBaris = listBarisJurnal(db);
+    const sebelumLr = labaRugi(sebelumBaris, { mulai: '2025-01-01', sampai: '2025-12-31' });
+    const sebelumNeraca = neraca(sebelumBaris, '2025-12-31');
+
+    // Nilai aset sengaja sangat besar: tetap data inventaris, bukan jurnal.
+    insertAset(
+      db,
+      asetRow({
+        id: 'a-besar',
+        kode: 'AST-900',
+        nama: 'Tanah Nilai Besar',
+        nilai_sen: 999_999_999_999_999,
+      }),
+    );
+    insertAset(
+      db,
+      asetRow({
+        id: 'a-null',
+        kode: 'AST-901',
+        nama: 'Bangunan Belum Dinilai',
+        jenis: 'BANGUNAN',
+        nilai_sen: null,
+      }),
+    );
+
+    // Aset benar-benar tersimpan di tabel inventaris...
+    expect(listAset(db).map((a) => [a.kode, a.nilai_sen])).toEqual([
+      ['AST-900', 999_999_999_999_999],
+      ['AST-901', null],
+    ]);
+
+    // ...dan tidak menambah/mengubah baris jurnal apa pun.
+    const sesudahBaris = listBarisJurnal(db);
+    expect(sesudahBaris).toHaveLength(sebelumBaris.length);
+    expect(sesudahBaris).toEqual(sebelumBaris);
+
+    // Karena itu Laba Rugi dan Neraca identik sebelum vs sesudah input aset.
+    expect(labaRugi(sesudahBaris, { mulai: '2025-01-01', sampai: '2025-12-31' })).toEqual(
+      sebelumLr,
+    );
+    expect(neraca(sesudahBaris, '2025-12-31')).toEqual(sebelumNeraca);
   });
 });
 

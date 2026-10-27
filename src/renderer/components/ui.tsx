@@ -23,6 +23,10 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={clsx(inputCls, props.className)} />;
 }
 
+export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={clsx(inputCls, 'min-h-[4.5rem]', props.className)} />;
+}
+
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={clsx(inputCls, props.className)} />;
 }
@@ -184,7 +188,15 @@ export function PinInput({
 
 /** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
  * Desimal opsional — ketik '1500' jadi Rp 1.500,00; '1500,50' jadi Rp 1.500,50. */
-export function CurrencyInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+export function CurrencyInput({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+}) {
   const [teks, setTeks] = useState<string | null>(null);
   const [fokus, setFokus] = useState(false);
   // Perubahan value dari luar (cth. reset form setelah submit) tersinkron saat blur.
@@ -196,6 +208,7 @@ export function CurrencyInput({ value, onChange }: { value: number; onChange: (n
     <TextInput
       inputMode="decimal"
       placeholder="0"
+      disabled={disabled}
       value={shown}
       onFocus={() => {
         setFokus(true);
@@ -259,6 +272,56 @@ export function LockModal({
   );
 }
 
+/**
+ * Konfirmasi aksi besar (tutup buku, restore, koreksi, hapus).
+ *
+ * Selalu dirender di atas modal lain (z-30) dan memakai bahasa operator awam:
+ * judul singkat, akibat aksi, lalu tombol Batal / Ya, lanjutkan.
+ */
+export function KonfirmasiModal({
+  judul,
+  deskripsi,
+  labelYa = 'Ya, lanjutkan',
+  labelBatal = 'Batal',
+  variant = 'danger',
+  sibuk = false,
+  onBatal,
+  onKonfirmasi,
+}: {
+  judul: string;
+  deskripsi: ReactNode;
+  labelYa?: string;
+  labelBatal?: string;
+  variant?: 'primary' | 'danger';
+  sibuk?: boolean;
+  onBatal: () => void;
+  onKonfirmasi: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="judul-konfirmasi"
+    >
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+        <h3 id="judul-konfirmasi" className="text-lg font-bold">
+          {judul}
+        </h3>
+        <div className="mt-2 space-y-2 text-[15px] text-stone-700">{deskripsi}</div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" disabled={sibuk} onClick={onBatal}>
+            {labelBatal}
+          </Button>
+          <Button variant={variant} disabled={sibuk} onClick={onKonfirmasi}>
+            {sibuk ? 'Memproses…' : labelYa}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Modal baca-saja generik (dipakai popup detail koreksi). */
 export function DetailModal({
   title,
@@ -271,7 +334,7 @@ export function DetailModal({
 }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-lg">
         <h3 className="text-lg font-bold">{title}</h3>
         <div className="mt-3 space-y-1.5 text-[15px]">{children}</div>
         <div className="mt-4 flex justify-end">

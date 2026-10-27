@@ -1,0 +1,157 @@
+// Jembatan posting layer murni (core/posting.ts) dengan database.
+// Semua jalur simpan jurnal untuk aplikasi sebaiknya lewat `postingJurnal()`,
+// supaya aturan bisnis tidak tersebar di UI/IPC (P0-4).
+
+import type Database from 'better-sqlite3';
+import { KAS_KODES, isAkunKas } from './coa.js';
+import { buatAuditLog } from '../core/audit.js';
+import { insertAuditLog, insertJurnal, listAkun, listTutupBuku } from './repository.js';
+import {
+  validasiJurnal,
+  type HasilValidasiJurnal,
+  type JurnalInput,
+  type PostingContext,
+} from '../core/posting.js';
+import type { AuditLog, Jurnal } from '../core/types.js';
+
+export type OpsiPosting = {
+  /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
+  konfirmasiPeringatan?: boolean;
+  /**
+   * Baris audit yang ditulis ATOMIK bersama jurnal. Dipakai reversal (P0-6)
+   * dan nanti operasi lain yang wajib punya jejak audit (P0-9).
+   */
+  audit?: AuditLog[];
+};
+
+export type HasilPosting = HasilValidasiJurnal & {
+  tersimpan: boolean;
+  jurnal?: Jurnal;
+};
+
+/** Ambil konteks DB yang dibutuhkan validator murni. */
+export function buatKonteksPosting(db: Database.Database, header: JurnalInput['header']): PostingContext {
+  const tanggal = String(header.tanggal ?? '').trim();
+  const noBukti = String(header.no_bukti ?? '').trim();
+  // AUD-23: validasi duplikat hanya terhadap nomor di tahun yang sama. Validasi
+  // tanggal tetap dilakukan di posting layer; query ini memakai prefix tahun
+  // agar cocok dengan unique index `idx_jurnal_no_bukti_tahun`.
+  const noBuktiTerpakai = noBukti
+    ? (db
+        .prepare(
+          `SELECT no_bukti FROM jurnal
+           WHERE no_bukti <> ''
+             AND substr(tanggal, 1, 4) = ?
+             AND no_bukti = ? COLLATE NOCASE`,
+        )
+        .all(tanggal.slice(0, 4), noBukti) as { no_bukti: string }[]).map((r) => String(r.no_bukti))
+    : [];
+
+  // AUD-10: saldo kas harus mencerminkan posisi pada tanggal jurnal, bukan
+  // seluruh riwayat. Jurnal bertanggal setelah header tidak boleh "menutupi"
+  // kas minus yang terjadi lebih dulu (mis. pengeluaran backdate).
+  const saldoKas: Record<string, number> = {};
+  for (const kode of KAS_KODES) saldoKas[kode] = 0;
+  const saldoRows = db
+    .prepare(
+      `SELECT b.akun_kode, COALESCE(SUM(b.debit - b.kredit), 0) AS saldo
+       FROM jurnal_baris b JOIN jurnal j ON j.id = b.jurnal_id
+       WHERE j.tanggal <= ?
+       GROUP BY b.akun_kode`,
+    )
+    .all(tanggal) as { akun_kode: string; saldo: number }[];
+  for (const r of saldoRows) {
+    if (isAkunKas(r.akun_kode)) saldoKas[String(r.akun_kode)] = Number(r.saldo);
+  }
+
+  return {
+    akun: listAkun(db).map((a) => ({
+      kode: a.kode,
+      nama: a.nama,
+      tipe: a.tipe,
+      posisi_normal: a.posisi_normal,
+      aktif: a.aktif,
+    })),
+    tutupBuku: listTutupBuku(db).map((t) => ({ tahun: Number(t.tahun) })),
+    noBuktiTerpakai,
+    saldoKas,
+  };
+}
+
+/** Validasi jurnal dengan konteks dari DB (tanpa menyimpan). */
+export function validasiJurnalDb(
+  db: Database.Database,
+  input: JurnalInput,
+): HasilValidasiJurnal {
+  return validasiJurnal(input, buatKonteksPosting(db, input.header));
+}
+
+/**
+ * Validasi + simpan jurnal dalam satu pintu.
+ * - Error -> `tersimpan: false`, tidak ada baris yang ditulis.
+ * - Peringatan + belum dikonfirmasi -> `tersimpan: false`, `perluKonfirmasi: true`.
+ * - Peringatan + `konfirmasiPeringatan` -> tetap disimpan.
+ */
+export function postingJurnal(
+  db: Database.Database,
+  input: JurnalInput,
+  opsi: OpsiPosting = {},
+): HasilPosting {
+  const hasil = validasiJurnalDb(db, input);
+  if (hasil.errors.length > 0) return { ...hasil, tersimpan: false };
+  if (hasil.peringatan.length > 0 && !opsi.konfirmasiPeringatan)
+    return { ...hasil, tersimpan: false };
+
+  try {
+    const simpan = db.transaction(() => {
+      const jurnal = insertJurnal(db, input.header, input.baris);
+      // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
+      // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.
+      const audit =
+        opsi.audit === undefined
+          ? [
+              buatAuditLog(
+                `CREATE ${jurnal.id}`,
+                String(input.alasan ?? '').trim(),
+                undefined,
+                { jurnal, baris: input.baris },
+              ),
+            ]
+          : opsi.audit;
+      for (const a of audit) insertAuditLog(db, a);
+      return jurnal;
+    });
+    const jurnal = simpan();
+    return { ...hasil, tersimpan: true, jurnal };
+  } catch (e) {
+    return {
+      ...hasil,
+      tersimpan: false,
+      errors: [...hasil.errors, e instanceof Error ? e.message : String(e)],
+    };
+  }
+}
+
+/**
+ * Helper pemakaian nanti untuk Saldo Awal (belum ada endpoint/UI di P0-9).
+ * Sama seperti `postingJurnal`, tetapi memaksa jenis SALDO_AWAL dan memberi
+ * aksi audit khusus `SALDO-AWAL` agar mudah dibedakan dari jurnal biasa.
+ */
+export function postingSaldoAwal(
+  db: Database.Database,
+  input: JurnalInput,
+  opsi: OpsiPosting = {},
+): HasilPosting {
+  const header = { ...input.header, jenis: 'SALDO_AWAL' as const };
+  const audit =
+    opsi.audit ??
+    [
+      buatAuditLog(
+        `SALDO-AWAL ${header.id}`,
+        String(input.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
+        undefined,
+        { jurnal: header, baris: input.baris },
+      ),
+    ];
+  return postingJurnal(db, { ...input, header }, { ...opsi, audit });
+}

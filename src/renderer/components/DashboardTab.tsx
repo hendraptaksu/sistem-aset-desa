@@ -1,31 +1,93 @@
 import { useEffect, useState } from 'react';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
-import { formatRp } from '../../utils/format.js';
+import { pesanBackupBasi, tanggalDariPathBackup, usiaBackupHari } from '../../utils/backup.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
-import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { useAksiSibuk } from '../lib/aksiSibuk.js';
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorBox,
+  Field,
+  KonfirmasiModal,
+  TextInput,
+} from './ui.js';
+import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
+/** Tab yang bisa dibuka dari pintasan dashboard (P1-14). */
+export type DashboardTabTujuan =
+  | 'transaksi'
+  | 'panjar'
+  | 'pihak'
+  | 'tutup'
+  | 'jurnal';
 
-export function DashboardTab() {
-  const [cutoff, setCutoff] = useState(today());
+/** Form terpandu yang langsung dipilih saat membuka tab Transaksi. */
+export type DashboardFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
+
+/** Banner amber AUD-13: backup lebih tua dari 2 hari. Null = tidak tampil. */
+export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
+  const pesan = pesanBackupBasi(usiaHari);
+  if (!pesan) return null;
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900"
+    >
+      <p className="font-semibold">{pesan}</p>
+      <p className="mt-1 text-sm">
+        Gunakan tombol Backup Export .db atau Backup Lengkap di bawah.
+      </p>
+    </div>
+  );
+}
+
+export function DashboardTab({
+  onBukaTab,
+}: {
+  onBukaTab: (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => void;
+}) {
+  const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<DashboardHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [autoPath, setAutoPath] = useState<string>('');
+  const [jenisSibuk, setJenisSibuk] = useState<
+    null | 'muat' | 'backup' | 'backup-lengkap' | 'restore' | 'restore-lengkap'
+  >(null);
+  const [konfirmasiRestore, setKonfirmasiRestore] = useState(false);
+  const [konfirmasiRestoreLengkap, setKonfirmasiRestoreLengkap] = useState(false);
+  const { sibuk, jalankan } = useAksiSibuk();
 
-  async function muat(c = cutoff) {
-    setErr(null);
-    try {
-      setData(await api.dashboard(c));
-      try {
-        const s = await api.backupStatus();
-        setAutoPath(s.path);
-      } catch {
-        /* status backup best-effort, jangan tutupi dashboard */
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+  // Data backup bisa tidak tersedia/berformat asing; helper mengembalikan null
+  // sehingga dashboard tidak crash dan banner hanya muncul saat benar-benar basi.
+  const usiaBackup = usiaBackupHari(
+    tanggalDariPathBackup(data?.backupTerakhir),
+    tanggalLokal(),
+  );
+
+  /** Muat data tanpa guard; pemanggil yang mengatur status sibuk. */
+  async function muatData(c: string): Promise<void> {
+    setData(await api.dashboard(c));
+  }
+
+  async function muat(c = cutoff): Promise<void> {
+    if (!c) {
+      setErr('Tanggal cut-off wajib diisi.');
+      return;
     }
+    await jalankan(async () => {
+      setErr(null);
+      setJenisSibuk('muat');
+      try {
+        await muatData(c);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      } finally {
+        setJenisSibuk(null);
+      }
+    });
   }
 
   useEffect(() => {
@@ -33,101 +95,481 @@ export function DashboardTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function backup() {
-    setErr(null);
-    setInfo(null);
-    try {
-      const r = await api.backupExport();
-      if (r.saved) setInfo(`Backup tersimpan: ${r.path}`);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function backup(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      setJenisSibuk('backup');
+      try {
+        const r = await api.backupExport();
+        if (r.saved) setInfo(`Backup tersimpan: ${r.path}`);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setJenisSibuk(null);
+      }
+    });
   }
 
-  async function restore() {
-    setErr(null);
-    setInfo(null);
-    try {
-      const r = await api.backupImport();
-      if (r.restored) {
-        setInfo(`Restore OK dari backup. Memuat ulang…`);
-        await muat();
+  async function backupLengkap(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      setJenisSibuk('backup-lengkap');
+      try {
+        const r = await api.backupLengkap();
+        if (r.saved) {
+          setInfo(
+            `Backup lengkap tersimpan: ${r.path} (${r.jumlahLampiran} lampiran)`,
+          );
+        }
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setJenisSibuk(null);
       }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+    });
+  }
+
+  async function restore(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      setJenisSibuk('restore');
+      setKonfirmasiRestore(false);
+      try {
+        const r = await api.backupImport();
+        if (r.restored) {
+          setInfo(
+            `Restore OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
+          );
+          await muatData(cutoff);
+        }
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setJenisSibuk(null);
+      }
+    });
+  }
+
+  async function restoreLengkap(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      setJenisSibuk('restore-lengkap');
+      setKonfirmasiRestoreLengkap(false);
+      try {
+        const r = await api.backupRestoreLengkap();
+        if (r.restored) {
+          setInfo(
+            `Restore lengkap OK (${r.jumlahLampiran} lampiran). Cadangan data lama: ${
+              r.preRestorePath ?? '-'
+            }; lampiran lama: ${r.preRestoreAttachmentsPath ?? '-'}. Data dimuat ulang…`,
+          );
+          await muatData(cutoff);
+        }
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setJenisSibuk(null);
+      }
+    });
   }
 
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="mb-3 text-lg font-bold">
-          Dashboard{' '}
-          {data && <Badge tone={data.balance ? 'green' : 'red'}>{data.badge}</Badge>}
-        </h2>
-        <ErrorBox msg={err} />
-        {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Field label="Cut-off">
-            <TextInput type="date" value={cutoff} onChange={(e) => setCutoff(e.target.value)} />
-          </Field>
-          <div className="flex items-end gap-2">
-            <Button onClick={() => void muat()}>Muat</Button>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">
+              Dashboard Akuntan{' '}
+              {data && (
+                <Badge tone={data.neracaSaldo.seimbang ? 'green' : 'red'}>
+                  {data.neracaSaldo.seimbang ? 'Seimbang' : 'Selisih'}
+                </Badge>
+              )}
+            </h2>
+            <p className="mt-1 text-sm text-stone-600">
+              Semua angka dihitung ulang dari jurnal sampai tanggal cut-off. Tidak ada
+              saldo atau laba yang disimpan.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="Cut-off">
+              <TextInput
+                type="date"
+                value={cutoff}
+                onChange={(e) => setCutoff(e.target.value)}
+              />
+            </Field>
+            <Button disabled={sibuk} onClick={() => void muat()}>
+              {jenisSibuk === 'muat' ? 'Memuat…' : 'Muat'}
+            </Button>
           </div>
         </div>
+        <div className="mt-3">
+          <ErrorBox msg={err} />
+        </div>
+        {info && (
+          <div className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+            {info}
+          </div>
+        )}
       </Card>
 
-      {data && (
+      {!data && !err && (
         <Card>
-          <table className="w-full text-left text-[15px]">
-            <tbody>
-              <tr className="border-b">
-                <th className="py-2 pr-3">Saldo Kas Tunai (1001)</th>
-                <td className="py-2 text-right">{formatRp(data.kasTunai)}</td>
-              </tr>
-              <tr className="border-b">
-                <th className="py-2 pr-3">Total LPD</th>
-                <td className="py-2 text-right">{formatRp(data.totalLpd)}</td>
-              </tr>
-              <tr className="border-b">
-                <th className="py-2 pr-3">Aktiva</th>
-                <td className="py-2 text-right">{formatRp(data.aktiva)}</td>
-              </tr>
-              <tr className="border-b">
-                <th className="py-2 pr-3">Pasiva</th>
-                <td className="py-2 text-right">{formatRp(data.pasiva)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <details className="mt-3">
-            <summary className="cursor-pointer text-sm font-semibold text-stone-600">Rincian LPD</summary>
-            <table className="mt-2 w-full text-left text-[15px]">
-              <tbody>
-                {Object.entries(data.rincianLpd).map(([k, v]) => (
-                  <tr key={k} className="border-b last:border-0">
-                    <td className="py-2 pr-3">{k}</td>
-                    <td className="py-2 text-right">{formatRp(v)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
+          <p className="text-stone-500" role="status">
+            Memuat dashboard…
+          </p>
         </Card>
       )}
 
+      {data && (
+        <>
+          <BannerBackupBasi usiaHari={usiaBackup} />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
+                  <p className="text-sm text-stone-600">Semua dompet kas/bank per cut-off</p>
+                </div>
+                <Badge tone="green">Total</Badge>
+              </div>
+              <p className="mt-3 text-3xl font-bold text-emerald-900">
+                {formatRp(data.kasBank.total)}
+              </p>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-emerald-800">
+                  Rincian per akun ({data.kasBank.rincian.length})
+                </summary>
+                <table className="mt-2 w-full text-left text-[15px]">
+                  <tbody>
+                    {data.kasBank.rincian.map((a) => (
+                      <tr key={a.kode} className="border-b last:border-0">
+                        <td className="py-2 pr-3">
+                          <span className="font-mono text-sm text-stone-500">{a.kode}</span>{' '}
+                          {a.nama}
+                        </td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          {formatRp(a.saldo)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            </Card>
+
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold">Laba / Rugi Tahun Berjalan</h3>
+                  <p className="text-sm text-stone-600">{data.labaRugiBerjalan.labelPeriode}</p>
+                </div>
+                <Badge tone={data.labaRugiBerjalan.defisit ? 'red' : 'green'}>
+                  {data.labaRugiBerjalan.badge}
+                </Badge>
+              </div>
+              <p
+                className={
+                  data.labaRugiBerjalan.defisit
+                    ? 'mt-3 text-3xl font-bold text-red-800'
+                    : 'mt-3 text-3xl font-bold text-emerald-900'
+                }
+              >
+                {formatRp(data.labaRugiBerjalan.laba)}
+              </p>
+              <p className="mt-1 text-sm text-stone-600">
+                {data.labaRugiBerjalan.defisit
+                  ? 'Beban lebih besar dari pendapatan pada periode ini.'
+                  : 'Pendapatan dikurangi beban pada periode ini.'}
+              </p>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-[15px]">
+                <div>
+                  <dt className="text-sm text-stone-500">Total pendapatan</dt>
+                  <dd className="font-semibold">{formatRp(data.labaRugiBerjalan.totalPendapatan)}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-stone-500">Total beban</dt>
+                  <dd className="font-semibold">{formatRp(data.labaRugiBerjalan.totalBeban)}</dd>
+                </div>
+              </dl>
+            </Card>
+
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold">Status Neraca Saldo</h3>
+                  <p className="text-sm text-stone-600">Total debit harus sama dengan total kredit</p>
+                </div>
+                <Badge tone={data.neracaSaldo.seimbang ? 'green' : 'red'}>
+                  {data.neracaSaldo.seimbang ? 'Seimbang' : 'Selisih'}
+                </Badge>
+              </div>
+              <dl className="mt-3 space-y-2 text-[15px]">
+                <div className="flex justify-between gap-3 border-b pb-2">
+                  <dt className="text-stone-600">Total debit</dt>
+                  <dd className="font-semibold">{formatRp(data.neracaSaldo.totalDebit)}</dd>
+                </div>
+                <div className="flex justify-between gap-3 border-b pb-2">
+                  <dt className="text-stone-600">Total kredit</dt>
+                  <dd className="font-semibold">{formatRp(data.neracaSaldo.totalKredit)}</dd>
+                </div>
+                {!data.neracaSaldo.seimbang && (
+                  <div className="flex justify-between gap-3 text-red-800">
+                    <dt>Selisih</dt>
+                    <dd className="font-bold">{formatRp(data.neracaSaldo.selisih)}</dd>
+                  </div>
+                )}
+              </dl>
+              <p className="mt-2 text-sm text-stone-600">
+                Bila selisih, jangan tutup buku. Periksa Jurnal Umum terlebih dahulu.
+              </p>
+            </Card>
+
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold">Periode Buku</h3>
+                  <p className="text-sm text-stone-600">{data.periode.status}</p>
+                </div>
+                <Badge tone={data.periode.tahunTerakhirDitutup ? 'amber' : 'stone'}>
+                  {data.periode.tahunTerakhirDitutup
+                    ? `Tutup ${data.periode.tahunTerakhirDitutup}`
+                    : 'Belum tutup'}
+                </Badge>
+              </div>
+              <dl className="mt-3 space-y-2 text-[15px]">
+                <div className="flex justify-between gap-3 border-b pb-2">
+                  <dt className="text-stone-600">Tahun terakhir ditutup</dt>
+                  <dd className="font-semibold">
+                    {data.periode.tahunTerakhirDitutup ?? 'Belum ada'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3 border-b pb-2">
+                  <dt className="text-stone-600">Tahun terkunci</dt>
+                  <dd className="font-semibold">
+                    {data.periode.tahunTerkunci.length > 0
+                      ? data.periode.tahunTerkunci.join(', ')
+                      : 'Belum ada'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-stone-600">Boleh ditutup s/d</dt>
+                  <dd className="font-semibold">{data.periode.batasTahun}</dd>
+                </div>
+              </dl>
+              <div className="mt-3">
+                <Button
+                  variant="ghost"
+                  disabled={sibuk}
+                  onClick={() => onBukaTab('tutup')}
+                >
+                  Buka Tutup Buku
+                </Button>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold">Jurnal Terakhir</h3>
+                  <p className="text-sm text-stone-600">Jurnal terbaru s/d cut-off</p>
+                </div>
+                {data.jurnalTerakhir && <Badge>{data.jurnalTerakhir.jenis}</Badge>}
+              </div>
+              {data.jurnalTerakhir ? (
+                <div className="mt-3 space-y-1 text-[15px]">
+                  <p className="text-lg font-bold">
+                    {data.jurnalTerakhir.noBukti || '(tanpa nomor)'}
+                  </p>
+                  <p className="font-semibold text-stone-800">
+                    {data.jurnalTerakhir.keterangan || '(tanpa keterangan)'}
+                  </p>
+                  <p className="text-stone-600">
+                    Tanggal {formatTanggal(data.jurnalTerakhir.tanggal)} · Total{' '}
+                    <span className="font-semibold">
+                      {formatRp(data.jurnalTerakhir.total)}
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-stone-500">Belum ada jurnal s/d cut-off.</p>
+              )}
+              <div className="mt-3">
+                <Button
+                  variant="ghost"
+                  disabled={sibuk}
+                  onClick={() => onBukaTab('jurnal')}
+                >
+                  Buka Jurnal Umum
+                </Button>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold">Backup Terakhir</h3>
+                  <p className="text-sm text-stone-600">Cadangan otomatis harian</p>
+                </div>
+                <Badge tone={data.backupTerakhir ? 'green' : 'stone'}>
+                  {data.backupTerakhir ? 'Ada' : 'Belum ada'}
+                </Badge>
+              </div>
+              {data.backupTerakhir ? (
+                <>
+                  <p className="mt-3 break-all font-semibold text-stone-800">
+                    {data.backupTerakhir.split(/[\\/]/).pop()}
+                  </p>
+                  <p className="mt-1 break-all text-sm text-stone-500">
+                    {data.backupTerakhir}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-3 text-stone-500">
+                  Belum ada backup otomatis. Gunakan tombol Backup di bawah.
+                </p>
+              )}
+            </Card>
+          </div>
+
+          <Card>
+            <h3 className="text-base font-bold">Catat Transaksi / Pintasan</h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Pilih alur yang paling dekat dengan kejadian. Sistem menyusun jurnal
+              debit–kredit otomatis.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'TERIMA')}>
+                Terima Uang
+              </Button>
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'BAYAR')}>
+                Bayar
+              </Button>
+              <Button disabled={sibuk} onClick={() => onBukaTab('transaksi', 'PINDAH')}>
+                Pindah Dana
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
+                Panjar
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
+                Piutang &amp; Hutang
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
+                Tutup Buku
+              </Button>
+              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
+                Jurnal Umum
+              </Button>
+            </div>
+          </Card>
+        </>
+      )}
+
       <Card>
-        <h3 className="mb-2 font-bold">Backup / Restore (.db)</h3>
+        <h3 className="mb-2 font-bold">Backup / Restore</h3>
         <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => void backup()}>Backup Export .db</Button>
-          <Button variant="ghost" onClick={() => void restore()}>Restore Import .db</Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
+            {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db'}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() => void backupLengkap()}
+          >
+            {jenisSibuk === 'backup-lengkap'
+              ? 'Membuat backup lengkap…'
+              : 'Backup Lengkap (DB + lampiran)'}
+          </Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => setKonfirmasiRestore(true)}>
+            {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() => setKonfirmasiRestoreLengkap(true)}
+          >
+            {jenisSibuk === 'restore-lengkap'
+              ? 'Memulihkan lengkap…'
+              : 'Restore Lengkap (DB + lampiran)'}
+          </Button>
         </div>
+        {jenisSibuk && (
+          <p className="mt-2 text-sm font-semibold text-emerald-800" role="status">
+            {jenisSibuk === 'backup'
+              ? 'Sedang membuat backup…'
+              : jenisSibuk === 'backup-lengkap'
+                ? 'Sedang menyalin database dan lampiran…'
+                : jenisSibuk === 'restore'
+                  ? 'Sedang memulihkan data…'
+                  : jenisSibuk === 'restore-lengkap'
+                    ? 'Sedang memulihkan database dan lampiran…'
+                    : 'Sedang memuat data…'}
+          </p>
+        )}
         <p className="mt-2 text-sm text-stone-600">
-          Single-file SQLite lokal offline. Export untuk cadangan manual, import untuk pulihkan saat ganti laptop/pengurus.
+          Backup lengkap menyimpan satu folder berisi <code>pura.db</code>, semua
+          lampiran bukti, dan <code>manifest.json</code> — pakai ini untuk arsip
+          atau pindah laptop. Backup Export .db hanya berisi database.
         </p>
         <p className="mt-1 text-sm text-stone-600">
-          Backup otomatis terakhir: {autoPath ? autoPath.split(/[\\/]/).pop() : '—'}
+          Restore Import .db memulihkan database saja; lampiran tetap di folder
+          aplikasi. Restore Lengkap memulihkan database <b>dan</b> lampiran dari
+          folder hasil Backup Lengkap; data lama disimpan sebagai cadangan lebih dulu.
         </p>
       </Card>
+
+      {konfirmasiRestore && (
+        <KonfirmasiModal
+          judul="Pulihkan data dari backup?"
+          deskripsi={
+            <>
+              <p>
+                Data yang sekarang aktif akan <b>diganti</b> dengan isi file backup
+                yang Anda pilih.
+              </p>
+              <p className="text-sm text-stone-600">
+                Sistem membuat cadangan otomatis data saat ini lebih dulu. Setelah
+                restore selesai, layar dimuat ulang. Pastikan file .db berasal dari
+                aplikasi ini.
+              </p>
+            </>
+          }
+          labelYa="Pilih file & pulihkan"
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiRestore(false)}
+          onKonfirmasi={() => void restore()}
+        />
+      )}
+
+      {konfirmasiRestoreLengkap && (
+        <KonfirmasiModal
+          judul="Pulihkan database dan lampiran?"
+          deskripsi={
+            <>
+              <p>
+                Database <b>dan seluruh lampiran</b> yang sekarang aktif akan diganti
+                dengan isi folder backup lengkap yang Anda pilih.
+              </p>
+              <p className="text-sm text-stone-600">
+                Sistem mencadangkan database dan folder lampiran saat ini lebih dulu.
+                Setelah restore selesai, layar dimuat ulang dan aplikasi terkunci
+                kembali. Pastikan folder berisi <code>manifest.json</code>,{' '}
+                <code>pura.db</code>, dan folder <code>attachments</code>.
+              </p>
+            </>
+          }
+          labelYa="Pilih folder & pulihkan"
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiRestoreLengkap(false)}
+          onKonfirmasi={() => void restoreLengkap()}
+        />
+      )}
     </div>
   );
 }

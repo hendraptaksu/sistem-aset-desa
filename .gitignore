@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 data/
+e2e/artifacts/
 *.log
 .DS_Store
 *.db
@@ -10,4 +11,11 @@ data/
 .env.local
 .lavish/
 .opencode/
-.superpowers/
+
+# Sertifikat/kunci signing — jangan pernah di-commit.
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.b64

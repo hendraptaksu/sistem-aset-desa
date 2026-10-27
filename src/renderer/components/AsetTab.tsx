@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Aset } from '../../core/types.js';
 import { formatRp } from '../../utils/format.js';
-import { asetToHtml, asetToWorkbook, printLaporan, workbookToBuffer, wrapPrintDocument } from '../../features/export/workbooks.js';
+import { asetToHtml, asetToWorkbook, workbookToBuffer, wrapPrintDocument } from '../../features/export/workbooks.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
-import { Badge, Button, Card, CurrencyInput, ErrorBox, Field, Select, TextInput } from './ui.js';
+import { useAksiSibuk } from '../lib/aksiSibuk.js';
+import {
+  Badge,
+  Button,
+  Card,
+  CurrencyInput,
+  ErrorBox,
+  Field,
+  KonfirmasiModal,
+  Select,
+  TextInput,
+} from './ui.js';
+import { PratinjauHtmlModal } from './PratinjauHtmlModal.js';
+import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 const JENIS = ['TANAH', 'BANGUNAN', 'LAINNYA'] as const;
 const KONDISI = ['BAIK', 'RUSAK_RINGAN', 'RUSAK_BERAT', 'TIDAK_DIKETAHUI'] as const;
@@ -23,13 +36,16 @@ export function AsetTab() {
   const [adaNilai, setAdaNilai] = useState(false);
   const [nilai, setNilai] = useState(0);
   const [editId, setEditId] = useState<string | null>(null);
+  const [hapusTarget, setHapusTarget] = useState<Aset | null>(null);
+  const [pratinjau, setPratinjau] = useState<{ judul: string; body: string } | null>(null);
+  const { sibuk, jalankan } = useAksiSibuk();
 
   async function refresh() {
     try {
       setErr(null);
       setList(await api.asetList());
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
   }
   useEffect(() => { void refresh(); }, []);
@@ -66,71 +82,89 @@ export function AsetTab() {
     setNilai(0);
   }
 
-  async function submit() {
-    setErr(null); setInfo(null);
-    const luas_m2 = form.luas.trim() === '' ? null : Number(form.luas.replace(',', '.'));
-    const tahun_perolehan = form.tahun.trim() === '' ? null : Number(form.tahun);
-    const input = {
-      kode: form.kode, nama: form.nama, jenis: form.jenis,
-      luas_m2: luas_m2 !== null && Number.isFinite(luas_m2) ? luas_m2 : null,
-      lokasi: form.lokasi, status_hukum: form.status_hukum,
-      tahun_perolehan: tahun_perolehan !== null && Number.isInteger(tahun_perolehan) ? tahun_perolehan : null,
-      asal_usul: form.asal_usul, kondisi: form.kondisi, keterangan: form.keterangan,
-      nilai_sen: adaNilai ? nilai : null,
-    };
-    try {
-      if (editId) {
-        await api.asetUpdate(editId, input);
-        setInfo('Aset diperbarui.');
-      } else {
-        await api.asetCreate(input);
-        setInfo('Aset tersimpan — tidak mengubah BKU/Neraca.');
+  async function submit(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null); setInfo(null);
+      const luas_m2 = form.luas.trim() === '' ? null : Number(form.luas.replace(',', '.'));
+      const tahun_perolehan = form.tahun.trim() === '' ? null : Number(form.tahun);
+      const input = {
+        kode: form.kode, nama: form.nama, jenis: form.jenis,
+        luas_m2: luas_m2 !== null && Number.isFinite(luas_m2) ? luas_m2 : null,
+        lokasi: form.lokasi, status_hukum: form.status_hukum,
+        tahun_perolehan: tahun_perolehan !== null && Number.isInteger(tahun_perolehan) ? tahun_perolehan : null,
+        asal_usul: form.asal_usul, kondisi: form.kondisi, keterangan: form.keterangan,
+        nilai_sen: adaNilai ? nilai : null,
+      };
+      try {
+        if (editId) {
+          await api.asetUpdate(editId, input);
+          setInfo('Aset diperbarui.');
+        } else {
+          await api.asetCreate(input);
+          setInfo('Aset tersimpan — tidak mengubah BKU/Neraca.');
+        }
+        resetForm();
+        await refresh();
+      } catch (e) {
+        setErr(pesanError(e));
       }
-      resetForm();
-      await refresh();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+    });
   }
 
-  async function hapus(id: string) {
-    if (!confirm('Hapus aset ini dari inventaris? (tidak mengubah BKU/Neraca)')) return;
-    setErr(null); setInfo(null);
-    try {
-      await api.asetDelete(id);
-      if (editId === id) resetForm();
-      await refresh();
-      setInfo('Aset dihapus.');
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function hapus(id: string): Promise<void> {
+    await jalankan(async () => {
+      setErr(null); setInfo(null);
+      try {
+        await api.asetDelete(id);
+        if (editId === id) resetForm();
+        await refresh();
+        setInfo('Aset dihapus.');
+      } catch (e) {
+        setErr(pesanError(e));
+      }
+    });
   }
 
-  async function exportXlsx() {
-    setErr(null); setInfo(null);
-    try {
-      const wb = await asetToWorkbook(shown);
-      const buf = await workbookToBuffer(wb);
-      const r = await api.saveBuffer({
-        bufferB64: u8ToB64(new Uint8Array(buf)),
-        defaultName: 'inventaris-aset.xlsx',
-        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-      });
-      if (r.saved) setInfo(`Tersimpan: ${r.path}`);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  function mintaHapus(a: Aset): void {
+    setHapusTarget(a);
   }
 
-  async function simpanPdf() {
-    setErr(null); setInfo(null);
-    try {
-      const html = wrapPrintDocument('Inventaris Aset', asetToHtml(shown), { autoPrint: false });
-      const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'inventaris-aset.pdf' });
-      if (r.saved) setInfo(`Tersimpan: ${r.path}`);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
+  async function konfirmasiHapus(): Promise<void> {
+    if (!hapusTarget) return;
+    const id = hapusTarget.id;
+    await hapus(id);
+    setHapusTarget(null);
+  }
+
+  async function exportXlsx(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null); setInfo(null);
+      try {
+        const wb = await asetToWorkbook(shown);
+        const buf = await workbookToBuffer(wb);
+        const r = await api.saveBuffer({
+          bufferB64: u8ToB64(new Uint8Array(buf)),
+          defaultName: 'inventaris-aset.xlsx',
+          filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+        });
+        if (r.saved) setInfo(`Tersimpan: ${r.path}`);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      }
+    });
+  }
+
+  async function simpanPdf(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null); setInfo(null);
+      try {
+        const html = wrapPrintDocument('Inventaris Aset', asetToHtml(shown), { autoPrint: false });
+        const r = await api.savePdf({ htmlB64: strToB64(html), defaultName: 'inventaris-aset.pdf' });
+        if (r.saved) setInfo(`Tersimpan: ${r.path}`);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      }
+    });
   }
 
   const set = (k: keyof typeof KOSONG) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -188,8 +222,14 @@ export function AsetTab() {
           </Field>
         </div>
         <div className="mt-3 flex gap-2">
-          <Button onClick={() => void submit()}>{editId ? 'Simpan Perubahan' : 'Simpan Aset'}</Button>
-          {editId && <Button variant="ghost" onClick={resetForm}>Batal</Button>}
+          <Button disabled={sibuk} onClick={() => void submit()}>
+            {sibuk ? 'Menyimpan…' : editId ? 'Simpan Perubahan' : 'Simpan Aset'}
+          </Button>
+          {editId && (
+            <Button variant="ghost" disabled={sibuk} onClick={resetForm}>
+              Batal
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -203,9 +243,21 @@ export function AsetTab() {
           </Select>
         </div>
         <div className="mb-3 flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => void exportXlsx()}>Export .xlsx</Button>
-          <Button variant="ghost" onClick={() => printLaporan('Inventaris Aset', asetToHtml(shown))}>Print / PDF</Button>
-          <Button variant="ghost" onClick={() => void simpanPdf()}>Simpan PDF</Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void exportXlsx()}>
+            {sibuk ? 'Memproses…' : 'Export .xlsx'}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() =>
+              setPratinjau({ judul: 'Inventaris Aset', body: asetToHtml(shown) })
+            }
+          >
+            Print / PDF
+          </Button>
+          <Button variant="ghost" disabled={sibuk} onClick={() => void simpanPdf()}>
+            {sibuk ? 'Memproses…' : 'Simpan PDF'}
+          </Button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">
@@ -232,8 +284,8 @@ export function AsetTab() {
                     {a.nilai_sen === null ? <span className="text-stone-400">belum dinilai</span> : formatRp(a.nilai_sen)}
                   </td>
                   <td className="py-2 whitespace-nowrap">
-                    <Button variant="ghost" onClick={() => isiEdit(a)}>Ubah</Button>{' '}
-                    <Button variant="danger" onClick={() => void hapus(a.id)}>Hapus</Button>
+                    <Button variant="ghost" disabled={sibuk} onClick={() => isiEdit(a)}>Ubah</Button>{' '}
+                    <Button variant="danger" disabled={sibuk} onClick={() => mintaHapus(a)}>Hapus</Button>
                   </td>
                 </tr>
               ))}
@@ -249,6 +301,34 @@ export function AsetTab() {
           </table>
         </div>
       </Card>
+
+      {pratinjau && (
+        <PratinjauHtmlModal
+          judul={pratinjau.judul}
+          body={pratinjau.body}
+          onClose={() => setPratinjau(null)}
+        />
+      )}
+
+      {hapusTarget && (
+        <KonfirmasiModal
+          judul="Hapus aset dari inventaris?"
+          deskripsi={
+            <>
+              <p>
+                Aset <b>{hapusTarget.kode} — {hapusTarget.nama}</b> akan dihapus.
+              </p>
+              <p className="text-sm text-stone-600">
+                Inventaris tidak masuk BKU/Neraca, jadi angka laporan tidak berubah.
+              </p>
+            </>
+          }
+          labelYa="Ya, hapus"
+          sibuk={sibuk}
+          onBatal={() => setHapusTarget(null)}
+          onKonfirmasi={() => void konfirmasiHapus()}
+        />
+      )}
     </div>
   );
 }
