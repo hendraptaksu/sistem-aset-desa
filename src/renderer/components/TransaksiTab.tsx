@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import { api, type StatusSaldoAwal } from '../lib/api.js';
-import { Badge, Button, Card, ErrorBox } from './ui.js';
+import { Badge, Button, Card, ErrorBox, RING_FOKUS } from './ui.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -214,6 +214,7 @@ export function TransaksiTab({
                 }}
                 className={clsx(
                   'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                  RING_FOKUS,
                   aktif &&
                     'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm',
                   !aktif &&

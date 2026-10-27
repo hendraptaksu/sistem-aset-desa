@@ -466,7 +466,7 @@
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** —
 
-- [ ] **UI-19 — Focus ring konsisten untuk keyboard** · P2 · S
+- [x] **UI-19 — Focus ring konsisten untuk keyboard** · P2 · S (2026-10-27: ring `focus-visible` emerald konsisten di tombol, input, modal, dan sidebar; klik mouse tanpa ring + 601 test)
   - **Konteks:** Input memakai `focus:outline-none` dan hanya mengganti
     border 1 px; tombol memakai ring oranye bawaan Chromium. Indikator fokus
     tidak konsisten dan tipis.

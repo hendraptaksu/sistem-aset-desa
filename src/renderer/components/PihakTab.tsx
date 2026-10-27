@@ -34,6 +34,7 @@ import {
   Field,
   KonfirmasiModal,
   LockModal,
+  RING_FOKUS,
   Select,
   TextInput,
 } from './ui.js';
@@ -815,7 +816,7 @@ export function PihakTab() {
                           type="button"
                           onClick={() => void bukaRiwayat(p.id)}
                           aria-label={`Lihat riwayat jurnal ${p.nama}`}
-                          className="inline-flex min-h-8 items-center py-1 text-left font-semibold text-emerald-800 underline-offset-2 hover:underline"
+                          className={`inline-flex min-h-8 items-center rounded py-1 text-left font-semibold text-emerald-800 underline-offset-2 hover:underline ${RING_FOKUS}`}
                           title="Lihat riwayat jurnal pihak ini"
                         >
                           {p.nama}
@@ -982,6 +983,7 @@ export function PihakTab() {
                 onClick={() => pilihAlur(id)}
                 className={clsx(
                   'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                  RING_FOKUS,
                   aktif
                     ? 'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-sm'
                     : 'border-stone-200 bg-white text-stone-700 hover:border-emerald-300 hover:bg-emerald-50/40',

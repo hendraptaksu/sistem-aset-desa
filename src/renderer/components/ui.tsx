@@ -24,8 +24,15 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-const inputCls =
-  'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[15px] focus:border-emerald-600 focus:outline-none';
+/** UI-19: indikator fokus keyboard yang sama untuk kontrol terang. */
+export const RING_FOKUS =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2';
+
+/** UI-19: varian untuk sidebar gelap agar ring tetap terlihat. */
+export const RING_FOKUS_GELAP =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950';
+
+const inputCls = `w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[15px] focus:border-emerald-600 focus:outline-none ${RING_FOKUS}`;
 
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={clsx(inputCls, props.className)} />;
@@ -51,6 +58,7 @@ export function Button({
       {...props}
       className={clsx(
         'rounded-lg px-4 py-2 text-[15px] font-semibold whitespace-nowrap disabled:opacity-50',
+        RING_FOKUS,
         variant === 'primary' && 'bg-emerald-700 text-white hover:bg-emerald-800',
         variant === 'ghost' && 'border border-stone-300 bg-white hover:bg-stone-100',
         variant === 'danger' && 'bg-red-700 text-white hover:bg-red-800',
@@ -202,6 +210,7 @@ export function PinInput({
           className={clsx(
             'h-12 w-11 rounded-lg border bg-white text-center text-xl font-bold',
             'focus:border-emerald-600 focus:outline-none',
+            RING_FOKUS,
             invalid ? 'border-red-400' : 'border-stone-300',
             disabled && 'opacity-60',
           )}
@@ -523,7 +532,7 @@ export function Modal({
             title="Tutup dialog"
             disabled={sibuk}
             onClick={onTutup}
-            className="-m-1 shrink-0 rounded-lg p-1.5 text-xl leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:opacity-40"
+            className={`-m-1 shrink-0 rounded-lg p-1.5 text-xl leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 ${RING_FOKUS}`}
           >
             <span aria-hidden="true">×</span>
           </button>

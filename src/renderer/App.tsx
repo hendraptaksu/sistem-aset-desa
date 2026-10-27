@@ -48,7 +48,7 @@ import type {
 import { LockScreen } from './components/LockScreen.js';
 import { KodeDaruratModal } from './components/KodeDaruratModal.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
-import { Button } from './components/ui.js';
+import { Button, RING_FOKUS_GELAP } from './components/ui.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
@@ -483,6 +483,7 @@ function AppShell() {
         aria-current={tab === id ? 'page' : undefined}
         className={clsx(
           'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-semibold transition-colors',
+          RING_FOKUS_GELAP,
           collapsed && 'justify-center px-0',
           tab === id ? 'bg-white/15 text-white' : 'text-emerald-100/80 hover:bg-white/10 hover:text-white',
         )}
@@ -517,7 +518,7 @@ function AppShell() {
             aria-expanded={!collapsed}
             aria-label={collapsed ? 'Buka menu' : 'Lipat menu'}
             title={collapsed ? 'Buka menu' : 'Lipat menu'}
-            className="rounded-lg p-2 text-emerald-100 hover:bg-white/10 hover:text-white"
+            className={`rounded-lg p-2 text-emerald-100 hover:bg-white/10 hover:text-white ${RING_FOKUS_GELAP}`}
           >
             {collapsed ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />}
           </button>
@@ -539,7 +540,7 @@ function AppShell() {
                         aria-expanded={bukaGrup[grup.id]}
                         aria-controls={`menu-grup-${grup.id}`}
                         title={bukaGrup[grup.id] ? `Sembunyikan ${grup.label}` : `Tampilkan ${grup.label}`}
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white"
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white ${RING_FOKUS_GELAP}`}
                       >
                         <span>{grup.label}</span>
                         <ChevronDown
