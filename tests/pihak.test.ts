@@ -746,7 +746,7 @@ describe('P1-5 — skema v5 idempoten', () => {
       const db = openDb(path);
       try {
         expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(8);
+        expect(SCHEMA_VERSION).toBe(9);
         const tabel = (
           db
             .prepare(

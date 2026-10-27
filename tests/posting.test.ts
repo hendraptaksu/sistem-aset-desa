@@ -45,15 +45,27 @@ function jumlahJurnal(db: ReturnType<typeof openDb>): number {
 }
 
 describe('P0-4 — satu pintu posting jurnal', () => {
-  it('menyimpan jurnal seimbang dan menyediakan index no_bukti unik parsial', () => {
+  it('menyimpan jurnal seimbang dan menyediakan index no_bukti unik per tahun', () => {
     const { db } = freshDb();
     try {
       const idx = db
-        .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_jurnal_no_bukti'")
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_jurnal_no_bukti_tahun'",
+        )
         .get() as { sql: string } | undefined;
-      expect(idx, 'index no_bukti harus ada').toBeTruthy();
+      expect(idx, 'index no_bukti per tahun harus ada').toBeTruthy();
       expect(idx!.sql).toMatch(/UNIQUE INDEX/);
+      expect(idx!.sql).toMatch(/substr\(tanggal,\s*1,\s*4\)/);
+      expect(idx!.sql).toMatch(/COLLATE NOCASE/);
       expect(idx!.sql).toMatch(/WHERE no_bukti <> ''/);
+      expect(
+        db
+          .prepare(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_jurnal_no_bukti'",
+          )
+          .get(),
+        'index global lama harus sudah dibuang',
+      ).toBeUndefined();
 
       const hasil = postingJurnal(db, { header: header(), baris: pasangan() });
       expect(hasil.tersimpan).toBe(true);

@@ -501,8 +501,8 @@ describe('P2-2 — migrasi v6 & data tetap setelah reopen', () => {
     const db = openDb(path);
     let rekId = '';
     try {
-      expect(SCHEMA_VERSION).toBe(8);
-      expect(Number(db.pragma('user_version', { simple: true }))).toBe(8);
+      expect(SCHEMA_VERSION).toBe(9);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(9);
       expect(
         db
           .prepare(

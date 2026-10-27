@@ -25,14 +25,19 @@ import { COA } from './coa.js';
  *          disimpan; saldo buku, selisih, dan daftar mutasi dihitung dari jurnal.
  * - 8    = lampiran bukti jurnal (P2-4). Hanya metadata; file fisik ada di
  *          `<userData>/attachments` dan TIDAK ikut backup `.db`.
+ * - 9    = integritas jurnal (AUD-23): trigger menolak baris debit+kredit
+ *          sekaligus dan menolak update/delete jurnal; nomor bukti unik per
+ *          tahun (bukan global).
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
- * DDL v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung yang tetap
- * dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
+ * DDL dasar v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung
+ * yang tetap dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
+ * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
+ * `terapkanAturanV9()` agar DB lama ikut termigrasi dan idempoten.
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -58,10 +63,8 @@ CREATE TABLE IF NOT EXISTS jurnal (
 CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
 CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
--- P0-4: nomor bukti unik (index parsial; jurnal draft boleh tanpa no_bukti).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_jurnal_no_bukti
-  ON jurnal(no_bukti COLLATE NOCASE)
-  WHERE no_bukti <> '';
+-- AUD-23: tidak ada lagi index no_bukti global. Unique index per tahun dibuat
+-- oleh terapkanAturanV9() supaya nomor yang sama boleh dipakai di tahun berbeda.
 
 CREATE TABLE IF NOT EXISTS jurnal_baris (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -270,9 +273,66 @@ function buangTabelLama(db: Database.Database): void {
 }
 
 /**
+ * AUD-23 — aturan integritas v9. Dijalankan setiap `migrasi()` agar DB lama
+ * (v8) ikut terlindungi dan DB yang sudah v9 tetap konsisten bila trigger
+ * hilang. Semua perintah idempoten:
+ * - index global lama dibuang (nomor bukti kini unik PER TAHUN);
+ * - trigger menolak baris dengan debit & kredit sekaligus;
+ * - trigger menolak update/delete jurnal dan barisnya (koreksi lewat reversal).
+ */
+function terapkanAturanV9(db: Database.Database): void {
+  db.exec(`
+    DROP INDEX IF EXISTS idx_jurnal_no_bukti;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_jurnal_no_bukti_tahun
+      ON jurnal(substr(tanggal, 1, 4), no_bukti COLLATE NOCASE)
+      WHERE no_bukti <> '';
+
+    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_satu_sisi_insert
+    BEFORE INSERT ON jurnal_baris
+    WHEN NEW.debit > 0 AND NEW.kredit > 0
+    BEGIN
+      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_satu_sisi_update
+    BEFORE UPDATE ON jurnal_baris
+    WHEN NEW.debit > 0 AND NEW.kredit > 0
+    BEGIN
+      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_jurnal_immutable_update
+    BEFORE UPDATE ON jurnal
+    BEGIN
+      SELECT RAISE(ABORT, 'Jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_jurnal_immutable_delete
+    BEFORE DELETE ON jurnal
+    BEGIN
+      SELECT RAISE(ABORT, 'Jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_immutable_update
+    BEFORE UPDATE ON jurnal_baris
+    BEGIN
+      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_immutable_delete
+    BEFORE DELETE ON jurnal_baris
+    BEGIN
+      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
+    END;
+  `);
+}
+
+/**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
  * - Selalu membersihkan tabel single-entry lama (P0-3).
  * - Membuat seluruh DDL v2 bila belum ada.
+ * - Menerapkan aturan integritas v9 (trigger + unique index per tahun).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -285,6 +345,7 @@ export function migrasi(db: Database.Database): number {
     if (!kolomTabel(db, 'audit_log').includes('data_baru_json')) {
       db.exec("ALTER TABLE audit_log ADD COLUMN data_baru_json TEXT NOT NULL DEFAULT ''");
     }
+    terapkanAturanV9(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

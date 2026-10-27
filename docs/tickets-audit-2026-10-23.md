@@ -640,7 +640,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm test`.
   - **Dependency:** —
 
-- [ ] **AUD-23 — Migrasi v9: integritas jurnal + nomor bukti per tahun** · P1 · M
+- [x] **AUD-23 — Migrasi v9: integritas jurnal + nomor bukti per tahun** · P1 · M (2026-10-27: `SCHEMA_VERSION` 9; migrasi idempoten memasang 6 trigger — baris `debit > 0 AND kredit > 0` ditolak saat insert/update, jurnal & baris jurnal tidak boleh di-update/delete — membuang index global `idx_jurnal_no_bukti`, dan membuat unique index `idx_jurnal_no_bukti_tahun` pada `substr(tanggal,1,4)` + `no_bukti COLLATE NOCASE` parsial; `insertJurnal`/`buatKonteksPosting` mengecek duplikat hanya di tahun yang sama dan query memakai index tersebut; backup pra-upgrade tetap berjalan; typecheck/test/build hijau, 539 test total + 7 test, termasuk upgrade v8→v9 dan restore backup v8→v9 dengan data lama awet)
   - **Konteks:** DB mengizinkan baris dengan debit dan kredit sama-sama > 0.
     Jurnal juga bisa di-UPDATE/DELETE langsung. `no_bukti` unik global,
     padahal ticket P1-11 mengatakan unik per tahun.

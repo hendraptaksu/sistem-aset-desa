@@ -6,7 +6,7 @@
 // - urutan simpan file → metadata; metadata gagal = file yatim dibersihkan;
 // - metadata DB: tambah/list/get/hapus, jurnal wajib ada, unik nama_simpan,
 //   audit LAMPIRAN-TAMBAH / LAMPIRAN-HAPUS tanpa isi file;
-// - DB v7 lama terbuka, tabel lampiran dibuat, user_version naik ke v8.
+// - DB v7 lama terbuka, tabel lampiran dibuat, user_version naik ke v9.
 
 import Database from 'better-sqlite3';
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -372,7 +372,7 @@ describe('P2-4 — metadata lampiran di DB', () => {
   });
 });
 
-describe('P2-4 — migrasi v7 → v8', () => {
+describe('P2-4 — migrasi v7 → v9', () => {
   it('membuat tabel lampiran_jurnal + index, menaikkan user_version, data lama awet', () => {
     const dir = tmpDir('pura-lampiran-migrasi-');
     const path = join(dir, 'pura.db');
@@ -387,8 +387,8 @@ describe('P2-4 — migrasi v7 → v8', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(8);
-      expect(Number(db.pragma('user_version', { simple: true }))).toBe(8);
+      expect(SCHEMA_VERSION).toBe(9);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(9);
       expect(
         db
           .prepare(
@@ -412,7 +412,7 @@ describe('P2-4 — migrasi v7 → v8', () => {
       db.close();
     }
 
-    // Idempoten: buka ulang tidak error dan versi tetap v8.
+    // Idempoten: buka ulang tidak error dan versi tetap v9.
     const db2 = openDb(path);
     try {
       expect(Number(db2.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);

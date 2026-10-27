@@ -129,16 +129,25 @@ export function insertJurnal(
   const jenis = header.jenis ?? 'UMUM';
   if (!JENIS_JURNAL.includes(jenis)) throw new Error('Jenis jurnal tidak dikenal.');
 
-  const noBukti = String(header.no_bukti ?? '').trim();
-  if (noBukti) {
-    const dup = db
-      .prepare('SELECT id FROM jurnal WHERE lower(no_bukti) = lower(?)')
-      .get(noBukti) as { id: string } | undefined;
-    if (dup) throw new Error(`Nomor bukti ${noBukti} sudah dipakai jurnal ${dup.id}.`);
-  }
   // Tahun divalidasi di sini (tanggal sudah lolos tanggalKalenderValid) supaya
   // penomoran otomatis tidak pernah memakai tahun aneh.
   const tahunJurnal = tahunDariTanggal(String(header.tanggal));
+
+  const noBukti = String(header.no_bukti ?? '').trim();
+  if (noBukti) {
+    // AUD-23: nomor bukti hanya unik dalam tahun yang sama. Nomor yang sama
+    // boleh dipakai lagi di tahun berbeda (mis. JU-2026-0001 & JU-2025-0001).
+    const dup = db
+      .prepare(
+        `SELECT id FROM jurnal
+         WHERE no_bukti <> ''
+           AND substr(tanggal, 1, 4) = ?
+           AND no_bukti = ? COLLATE NOCASE
+         LIMIT 1`,
+      )
+      .get(String(tahunJurnal), noBukti) as { id: string } | undefined;
+    if (dup) throw new Error(`Nomor bukti ${noBukti} sudah dipakai jurnal ${dup.id}.`);
+  }
 
   const reversalOf = header.reversal_of?.trim() || null;
   if (reversalOf) {
@@ -227,8 +236,14 @@ export function insertJurnal(
         pengaturan.paddingNomorBukti,
       );
       const dup = db
-        .prepare('SELECT id FROM jurnal WHERE lower(no_bukti) = lower(?)')
-        .get(row.no_bukti) as { id: string } | undefined;
+        .prepare(
+          `SELECT id FROM jurnal
+           WHERE no_bukti <> ''
+             AND substr(tanggal, 1, 4) = ?
+             AND no_bukti = ? COLLATE NOCASE
+           LIMIT 1`,
+        )
+        .get(String(tahunJurnal), row.no_bukti) as { id: string } | undefined;
       if (dup) throw new Error(`Nomor bukti ${row.no_bukti} sudah dipakai jurnal ${dup.id}.`);
     }
     db.prepare(
@@ -254,9 +269,10 @@ export function insertJurnal(
   try {
     simpan();
   } catch (e) {
-    // Index parsial `idx_jurnal_no_bukti` adalah penjaga terakhir bila ada
-    // pemanggil yang melewati validasi aplikasi.
-    if (String(e).includes('UNIQUE constraint failed: jurnal.no_bukti'))
+    // AUD-23: unique index per tahun adalah penjaga terakhir bila ada pemanggil
+    // yang melewati validasi aplikasi. Pesan SQLite diterjemahkan ke Indonesia.
+    const pesan = e instanceof Error ? e.message : String(e);
+    if (/UNIQUE constraint failed:.*(jurnal\.no_bukti|idx_jurnal_no_bukti)/i.test(pesan))
       throw new Error(`Nomor bukti ${row.no_bukti} sudah dipakai. Gunakan nomor bukti lain.`);
     throw e;
   }

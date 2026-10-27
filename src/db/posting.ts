@@ -31,11 +31,20 @@ export type HasilPosting = HasilValidasiJurnal & {
 
 /** Ambil konteks DB yang dibutuhkan validator murni. */
 export function buatKonteksPosting(db: Database.Database, header: JurnalInput['header']): PostingContext {
+  const tanggal = String(header.tanggal ?? '').trim();
   const noBukti = String(header.no_bukti ?? '').trim();
+  // AUD-23: validasi duplikat hanya terhadap nomor di tahun yang sama. Validasi
+  // tanggal tetap dilakukan di posting layer; query ini memakai prefix tahun
+  // agar cocok dengan unique index `idx_jurnal_no_bukti_tahun`.
   const noBuktiTerpakai = noBukti
     ? (db
-        .prepare('SELECT no_bukti FROM jurnal WHERE lower(no_bukti) = lower(?)')
-        .all(noBukti) as { no_bukti: string }[]).map((r) => String(r.no_bukti))
+        .prepare(
+          `SELECT no_bukti FROM jurnal
+           WHERE no_bukti <> ''
+             AND substr(tanggal, 1, 4) = ?
+             AND no_bukti = ? COLLATE NOCASE`,
+        )
+        .all(tanggal.slice(0, 4), noBukti) as { no_bukti: string }[]).map((r) => String(r.no_bukti))
     : [];
 
   // AUD-10: saldo kas harus mencerminkan posisi pada tanggal jurnal, bukan
@@ -50,7 +59,7 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
        WHERE j.tanggal <= ?
        GROUP BY b.akun_kode`,
     )
-    .all(String(header.tanggal ?? '').trim()) as { akun_kode: string; saldo: number }[];
+    .all(tanggal) as { akun_kode: string; saldo: number }[];
   for (const r of saldoRows) {
     if (isAkunKas(r.akun_kode)) saldoKas[String(r.akun_kode)] = Number(r.saldo);
   }
