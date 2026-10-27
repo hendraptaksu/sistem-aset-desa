@@ -534,7 +534,7 @@
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **UI-23 — Audit ulang regresi UI** · P2 · M
+- [x] **UI-23 — Audit ulang regresi UI** · P2 · M (2026-10-27: audit ulang 18 tab @1280/1024/min, 0 error console, 0 overflow, header sticky, modal trap, guard, simpan/filter OK + 604 test + smoke + audit)
   - **Konteks:** Setelah ticket P0/P1 selesai, perlu bukti bahwa tidak ada
     regresi visual/aksesibilitas.
   - **Langkah:**
