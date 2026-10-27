@@ -134,7 +134,7 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
     if (!kode) errors.push(`Baris ${no}: akun belum dipilih.`);
     else if (!akunBaris) errors.push(`Baris ${no}: akun ${kode} tidak dikenal.`);
     else if (!akunBaris.aktif) errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} sudah tidak aktif.`);
-    else if (!akunBolehDiposting(kode, akunBaris.aktif))
+    else if (!akunBolehDiposting(kode, akunBaris.aktif, { dikenal: true }))
       errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} ${PESAN_AKUN_LEGACY}`);
 
     if (akunBaris) {

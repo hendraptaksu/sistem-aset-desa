@@ -24,6 +24,7 @@ import {
 import type { Jurnal, Panjar, PanjarItem } from '../core/types.js';
 import { formatRp } from '../utils/format.js';
 import { isAkunKas } from './coa.js';
+import { listAkun } from './repository.js';
 import { postingJurnal } from './posting.js';
 
 export type SerahPanjarInput = {
@@ -155,6 +156,7 @@ export function serahkanPanjar(
       nominal: input.jumlah,
       keterangan,
       id: jurnalId,
+      daftarAkun: listAkun(db),
       ...(input.noBukti ? { noBukti: input.noBukti } : {}),
       ...(input.alasan ? { alasan: input.alasan } : {}),
     });
@@ -256,6 +258,7 @@ export function closePanjarV2(
       akunKas: panjar.akun_kas_sumber,
       jumlahPanjar: panjar.jumlah,
       items,
+      daftarAkun: listAkun(db),
       ...(input.alasan ? { alasan: input.alasan } : {}),
       ...(input.jurnalId ? { id: input.jurnalId } : {}),
     });

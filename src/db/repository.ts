@@ -17,7 +17,7 @@ import {
 } from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
-import { PESAN_AKUN_LEGACY, akunBolehDiposting, type CoaTipe, type PosisiNormal } from './coa.js';
+import { COA, PESAN_AKUN_LEGACY, POSISI_NORMAL, akunBolehDiposting, type CoaTipe, type PosisiNormal } from './coa.js';
 import type {
   Aset,
   AuditLog,
@@ -60,6 +60,207 @@ export function getAkun(db: Database.Database, kode: string): AkunDb | null {
     | Record<string, unknown>
     | undefined;
   return r ? rowToAkun(r) : null;
+}
+
+/** Tipe akun yang boleh ditambah operator dari layar Daftar Akun. */
+export const TIPE_AKUN_TAMBAHAN: readonly CoaTipe[] = ['BEBAN', 'PENDAPATAN'];
+
+export type AkunBaruInput = {
+  kode: string;
+  nama: string;
+  tipe: CoaTipe;
+};
+
+function validasiAkunBaru(input: AkunBaruInput): AkunBaruInput {
+  const kode = String(input?.kode ?? '').trim();
+  const nama = String(input?.nama ?? '').trim();
+  const tipe = String(input?.tipe ?? '').trim() as CoaTipe;
+
+  if (!/^\d{4}$/.test(kode))
+    throw new Error('Kode akun harus 4 digit angka, mis. 5011 atau 4043.');
+  if (!nama) throw new Error('Nama akun wajib diisi.');
+  if (nama.length > 100) throw new Error('Nama akun maks. 100 karakter.');
+  if (!TIPE_AKUN_TAMBAHAN.includes(tipe))
+    throw new Error('Jenis akun tambahan harus BEBAN atau PENDAPATAN.');
+
+  // Jaga struktur COA: beban 5xxx, pendapatan 4xxx.
+  if (tipe === 'BEBAN' && !kode.startsWith('5'))
+    throw new Error('Akun BEBAN harus memakai kode 5xxx, mis. 5011.');
+  if (tipe === 'PENDAPATAN' && !kode.startsWith('4'))
+    throw new Error('Akun PENDAPATAN harus memakai kode 4xxx, mis. 4043.');
+
+  return { kode, nama, tipe };
+}
+
+/**
+ * Tambah akun COA baru (BEBAN/PENDAPATAN) ke master `akun`.
+ *
+ * Akun tambahan disimpan di database, bukan di kode statis. `coa:list` dan
+ * seluruh laporan membaca master DB, sehingga akun langsung tersedia setelah
+ * disimpan. Upsert COA statis saat `openDb` tidak menghapus baris tambahan.
+ */
+export function tambahAkun(db: Database.Database, input: AkunBaruInput): AkunDb {
+  const bersih = validasiAkunBaru(input);
+  const posisi_normal = POSISI_NORMAL[bersih.tipe];
+
+  const simpan = db.transaction(() => {
+    if (getAkun(db, bersih.kode))
+      throw new Error(`Kode akun ${bersih.kode} sudah dipakai. Pilih kode lain.`);
+    const namaDipakai = db
+      .prepare('SELECT kode FROM akun WHERE nama = ? COLLATE NOCASE LIMIT 1')
+      .get(bersih.nama) as { kode: string } | undefined;
+    if (namaDipakai)
+      throw new Error(
+        `Nama akun "${bersih.nama}" sudah dipakai oleh kode ${namaDipakai.kode}. Gunakan nama yang membedakan.`,
+      );
+
+    db.prepare(
+      `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
+       VALUES (?, ?, ?, ?, 1)`,
+    ).run(bersih.kode, bersih.nama, bersih.tipe, posisi_normal);
+
+    const baru = getAkun(db, bersih.kode);
+    catatAudit(db, {
+      aksi: `AKUN-TAMBAH ${bersih.kode}`,
+      alasan: 'Tambah akun COA',
+      baru,
+    });
+  });
+  simpan();
+
+  const hasil = getAkun(db, bersih.kode);
+  if (!hasil) throw new Error(`Akun ${bersih.kode} gagal dibaca setelah disimpan.`);
+  return hasil;
+}
+
+/** Pastikan akun ada dan bukan akun bawaan (statis) sebelum diubah/dihapus. */
+function pastikanAkunTambahan(db: Database.Database, kode: string): AkunDb {
+  const kodeBersih = String(kode ?? '').trim();
+  if (!/^\d{4}$/.test(kodeBersih))
+    throw new Error('Kode akun harus 4 digit angka.');
+  if (COA.some((a) => a.kode === kodeBersih))
+    throw new Error(
+      `Akun ${kodeBersih} adalah akun bawaan dan tidak bisa diubah/dinonaktifkan/dihapus dari layar ini.`,
+    );
+  const akun = getAkun(db, kodeBersih);
+  if (!akun) throw new Error(`Akun ${kodeBersih} tidak ditemukan.`);
+  return akun;
+}
+
+function validasiNamaAkunSendiri(nama: string): string {
+  const namaBersih = String(nama ?? '').trim();
+  if (!namaBersih) throw new Error('Nama akun wajib diisi.');
+  if (namaBersih.length > 100) throw new Error('Nama akun maks. 100 karakter.');
+  return namaBersih;
+}
+
+/** Nama akun unik tanpa membedakan huruf besar/kecil (kecuali akun yang diedit). */
+function pastikanNamaAkunUnik(
+  db: Database.Database,
+  nama: string,
+  kecualiKode = '',
+): void {
+  const dipakai = db
+    .prepare(
+      'SELECT kode FROM akun WHERE nama = ? COLLATE NOCASE AND kode <> ? LIMIT 1',
+    )
+    .get(nama, kecualiKode) as { kode: string } | undefined;
+  if (dipakai)
+    throw new Error(
+      `Nama akun "${nama}" sudah dipakai oleh kode ${dipakai.kode}. Gunakan nama yang membedakan.`,
+    );
+}
+
+/** Ubah nama akun tambahan; kode & jenis akun tetap agar histori tidak berubah. */
+export function ubahNamaAkun(
+  db: Database.Database,
+  kode: string,
+  nama: string,
+): AkunDb {
+  const lama = pastikanAkunTambahan(db, kode);
+  const namaBersih = validasiNamaAkunSendiri(nama);
+
+  const simpan = db.transaction(() => {
+    pastikanNamaAkunUnik(db, namaBersih, lama.kode);
+    db.prepare('UPDATE akun SET nama = ? WHERE kode = ?').run(namaBersih, lama.kode);
+    const baru = getAkun(db, lama.kode);
+    catatAudit(db, {
+      aksi: `AKUN-UBAH ${lama.kode}`,
+      alasan: 'Ubah nama akun',
+      lama,
+      baru,
+    });
+  });
+  simpan();
+
+  const hasil = getAkun(db, lama.kode);
+  if (!hasil) throw new Error(`Akun ${lama.kode} gagal dibaca setelah diubah.`);
+  return hasil;
+}
+
+/**
+ * Aktif/nonaktifkan akun tambahan. Nonaktif = soft delete: akun tidak muncul
+ * di form input baru, tetapi histori/laporan lama tetap memakai nama akun ini.
+ */
+export function setAkunAktif(
+  db: Database.Database,
+  kode: string,
+  aktif: boolean,
+): AkunDb {
+  const lama = pastikanAkunTambahan(db, kode);
+  if (lama.aktif === aktif) return lama;
+
+  const simpan = db.transaction(() => {
+    db.prepare('UPDATE akun SET aktif = ? WHERE kode = ?').run(aktif ? 1 : 0, lama.kode);
+    const baru = getAkun(db, lama.kode);
+    catatAudit(db, {
+      aksi: `AKUN-${aktif ? 'AKTIF' : 'NONAKTIF'} ${lama.kode}`,
+      alasan: aktif ? 'Aktifkan akun' : 'Nonaktifkan akun',
+      lama,
+      baru,
+    });
+  });
+  simpan();
+
+  const hasil = getAkun(db, lama.kode);
+  if (!hasil) throw new Error(`Akun ${lama.kode} gagal dibaca setelah diubah.`);
+  return hasil;
+}
+
+/**
+ * Hapus permanen akun tambahan hanya bila belum pernah dipakai. Akun yang
+ * sudah punya jurnal/anggaran/panjar harus dinonaktifkan agar histori utuh.
+ */
+export function hapusAkun(
+  db: Database.Database,
+  kode: string,
+): { kode: string } {
+  const lama = pastikanAkunTambahan(db, kode);
+  const referensi: { label: string; sql: string }[] = [
+    { label: 'jurnal', sql: 'SELECT 1 FROM jurnal_baris WHERE akun_kode = ? LIMIT 1' },
+    { label: 'anggaran', sql: 'SELECT 1 FROM anggaran WHERE akun_kode = ? LIMIT 1' },
+    { label: 'panjar', sql: 'SELECT 1 FROM panjar_item WHERE kategori_baga = ? LIMIT 1' },
+    { label: 'piutang/hutang', sql: 'SELECT 1 FROM jurnal_pihak WHERE akun_kode = ? LIMIT 1' },
+  ];
+  for (const r of referensi) {
+    const ada = db.prepare(r.sql).get(lama.kode);
+    if (ada)
+      throw new Error(
+        `Akun ${lama.kode} sudah dipakai di ${r.label}; tidak bisa dihapus permanen. ` +
+          'Gunakan Nonaktifkan agar histori tetap utuh.',
+      );
+  }
+
+  const simpan = db.transaction(() => {
+    db.prepare('DELETE FROM akun WHERE kode = ?').run(lama.kode);
+    catatAudit(db, {
+      aksi: `AKUN-HAPUS ${lama.kode}`,
+      alasan: 'Hapus akun yang belum dipakai',
+      lama,
+    });
+  });
+  simpan();
+  return { kode: lama.kode };
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +374,7 @@ export function insertJurnal(
       throw new Error(`Baris ${i + 1}: akun ${akunKode || '(kosong)'} tidak dikenal.`);
     if (Number(akunDb.aktif) !== 1)
       throw new Error(`Baris ${i + 1}: akun ${akunKode} sudah tidak aktif.`);
-    if (!akunBolehDiposting(akunKode, Number(akunDb.aktif) === 1))
+    if (!akunBolehDiposting(akunKode, Number(akunDb.aktif) === 1, { dikenal: true }))
       throw new Error(`Baris ${i + 1}: akun ${akunKode} ${PESAN_AKUN_LEGACY}`);
     if (!Number.isInteger(b.debit) || b.debit < 0)
       throw new Error(`Baris ${i + 1}: debit harus bilangan bulat ≥ 0.`);

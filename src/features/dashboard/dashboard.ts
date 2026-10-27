@@ -6,7 +6,7 @@
 // Path backup terakhir sengaja TIDAK dicari di sini; main menempelkannya lewat
 // `denganBackupTerakhir` karena hanya main yang tahu folder backup.
 
-import { LPD_KODES } from '../../db/coa.js';
+import { COA, LPD_KODES, type Coa } from '../../db/coa.js';
 import { rentangTahunBuku } from '../../core/pengaturan.js';
 import {
   labaRugi,
@@ -100,6 +100,8 @@ export type DashboardOpsi = {
   awalTahunBuku?: number;
   /** Tanggal acuan batas tutup buku; default = cutoff (mudah diuji). */
   sekarang?: string;
+  /** Master akun dari DB (termasuk akun tambahan); default COA statis. */
+  daftarAkun?: readonly Coa[];
 };
 
 const NAMA_BULAN = [
@@ -269,22 +271,23 @@ export function buildDashboardJurnal(
   cutoff: string,
   opsi: DashboardOpsi = {},
 ): DashboardHasil {
-  const kasTunai = saldoAkun(baris, '1001', cutoff);
-  const lpd = saldoSemuaKas(baris, LPD_KODES, cutoff);
+  const coa = opsi.daftarAkun ?? COA;
+  const kasTunai = saldoAkun(baris, '1001', cutoff, coa);
+  const lpd = saldoSemuaKas(baris, LPD_KODES, cutoff, coa);
   const totalLpd = Object.values(lpd).reduce((s, v) => s + v, 0);
-  const totalKasBank = totalKas(baris, undefined, cutoff);
-  const rincian = rincianKas(baris, cutoff);
+  const totalKasBank = totalKas(baris, undefined, cutoff, coa);
+  const rincian = rincianKas(baris, cutoff, coa);
   const kasBank: DashboardKasBank = {
     total: totalKasBank,
     rincian: Object.entries(rincian).map(([kode, saldo]) => ({
       kode,
-      nama: namaAkun(kode),
+      nama: namaAkun(kode, coa),
       saldo,
     })),
   };
 
   const rentang = rentangLabaBerjalan(cutoff, opsi.awalTahunBuku ?? 1);
-  const lr = labaRugi(baris, { mulai: rentang.mulai, sampai: rentang.sampai });
+  const lr = labaRugi(baris, { mulai: rentang.mulai, sampai: rentang.sampai }, coa);
   const labaRugiBerjalan: DashboardLabaRugi = {
     ...rentang,
     totalPendapatan: lr.totalPendapatan,
@@ -294,7 +297,7 @@ export function buildDashboardJurnal(
     badge: lr.defisit ? 'DEFISIT' : 'SURPLUS',
   };
 
-  const ns = hitungNeracaSaldo(baris, cutoff);
+  const ns = hitungNeracaSaldo(baris, cutoff, coa);
   const neracaSaldo: DashboardNeracaSaldo = {
     totalDebit: ns.totalDebit,
     totalKredit: ns.totalKredit,
@@ -302,7 +305,7 @@ export function buildDashboardJurnal(
     seimbang: ns.seimbang,
   };
 
-  const n = neraca(baris, { cutoff, tutup });
+  const n = neraca(baris, { cutoff, tutup }, coa);
   const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? cutoff);
 
   return {

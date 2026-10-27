@@ -15,7 +15,7 @@
 // - `no_bukti` opsional; kosong = sistem membuat `JU-<tahun>-<urut>`.
 
 import ExcelJS from 'exceljs';
-import { COA } from '../../db/coa.js';
+import { COA, type Coa } from '../../db/coa.js';
 import { NUMFMT_RP } from '../export/workbooks.js';
 
 export const NAMA_FILE_TEMPLATE_IMPOR = 'template-impor-jurnal.xlsx';
@@ -136,7 +136,7 @@ function tulisHeader(ws: ExcelJS.Worksheet, judul: string[], lebar: number[]): v
 }
 
 /** Workbook template impor (sheet Jurnal + Petunjuk + Akun). */
-export function buatTemplateImpor(): ExcelJS.Workbook {
+export function buatTemplateImpor(daftarAkun: readonly Coa[] = COA): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Pura Dalem Puri';
   wb.created = new Date();
@@ -203,7 +203,7 @@ export function buatTemplateImpor(): ExcelJS.Workbook {
   // ---- Sheet Akun ----
   const akun = wb.addWorksheet(SHEET_AKUN_IMPOR);
   tulisHeader(akun, ['kode', 'nama', 'tipe'], [12, 46, 16]);
-  for (const a of COA) {
+  for (const a of daftarAkun) {
     const row = akun.addRow([a.kode, a.nama, a.tipe]);
     row.getCell(1).numFmt = '@';
   }
@@ -213,8 +213,10 @@ export function buatTemplateImpor(): ExcelJS.Workbook {
 }
 
 /** Buffer template siap tulis; renderer-safe (Uint8Array, tanpa Node Buffer). */
-export async function buatBufferTemplateImpor(): Promise<Uint8Array> {
-  const wb = buatTemplateImpor();
+export async function buatBufferTemplateImpor(
+  daftarAkun: readonly Coa[] = COA,
+): Promise<Uint8Array> {
+  const wb = buatTemplateImpor(daftarAkun);
   const out = (await wb.xlsx.writeBuffer()) as unknown as Uint8Array | ArrayBuffer;
   return out instanceof Uint8Array ? new Uint8Array(out) : new Uint8Array(out);
 }

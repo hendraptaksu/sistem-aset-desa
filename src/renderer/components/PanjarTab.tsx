@@ -129,8 +129,14 @@ export function PanjarTab() {
   const [detailBusy, setDetailBusy] = useState('');
   const detailBusyRef = useRef(false);
 
-  const kasList = useMemo(() => coa.filter((c) => isAkunKas(c.kode)), [coa]);
-  const bagaList = useMemo(() => coa.filter((c) => c.tipe === 'BEBAN'), [coa]);
+  const kasList = useMemo(
+    () => coa.filter((c) => isAkunKas(c.kode) && c.aktif !== false),
+    [coa],
+  );
+  const bagaList = useMemo(
+    () => coa.filter((c) => c.tipe === 'BEBAN' && c.aktif !== false),
+    [coa],
+  );
   const namaAkun = useMemo(() => new Map(coa.map((c) => [c.kode, c.nama])), [coa]);
   const labelAkun = (kode: string): string => namaAkun.get(kode) ?? kode;
 
@@ -150,9 +156,16 @@ export function PanjarTab() {
 
   useEffect(() => {
     if (coa.length === 0) return;
-    const pertama = coa.find((c) => isAkunKas(c.kode))?.kode;
-    if (pertama) setSumber((sebelum) => (sebelum && namaAkun.has(sebelum) ? sebelum : pertama));
-  }, [coa, namaAkun]);
+    const pertama = coa.find(
+      (c) => isAkunKas(c.kode) && c.aktif !== false,
+    )?.kode;
+    if (pertama)
+      setSumber((sebelum) =>
+        namaAkun.has(sebelum) && kasList.some((k) => k.kode === sebelum)
+          ? sebelum
+          : pertama,
+      );
+  }, [coa, namaAkun, kasList]);
 
   const shown = list.filter((p) => !fStatus || p.status === fStatus);
   const openList = list.filter((p) => p.status === 'OPEN');
@@ -172,6 +185,7 @@ export function PanjarTab() {
           akunKas: sumber,
           nominal: jumlah,
           keterangan: keterangan.trim() || `Serah panjar ${penerima.trim()}`,
+          daftarAkun: coa,
           ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
         }),
         error: null,
@@ -182,7 +196,7 @@ export function PanjarTab() {
         error: pesanError(e),
       };
     }
-  }, [tanggal, penerima, sumber, jumlah, keterangan, noBukti]);
+  }, [tanggal, penerima, sumber, jumlah, keterangan, noBukti, coa]);
 
   const pratinjauClose = useMemo<{ hasil: HasilPanjarClose | null; error: string | null }>(() => {
     if (!closeTarget || totalRealisasi <= 0) return { hasil: null, error: null };
@@ -195,6 +209,7 @@ export function PanjarTab() {
           jumlahPanjar: closeTarget.jumlah,
           items: items.map((it) => ({ akun: it.kategori_baga, nominal: it.nominal })),
           keterangan: `Pertanggungjawaban panjar ${closeTarget.penerima}`,
+          daftarAkun: coa,
         }),
         error: null,
       };
@@ -204,7 +219,7 @@ export function PanjarTab() {
         error: pesanError(e),
       };
     }
-  }, [closeTarget, totalRealisasi, tanggalClose, items]);
+  }, [closeTarget, totalRealisasi, tanggalClose, items, coa]);
 
   const formSerahSah =
     tanggalKalenderValid(tanggal) &&

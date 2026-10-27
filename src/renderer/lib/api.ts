@@ -1,4 +1,4 @@
-import type { Coa } from '../../db/coa.js';
+import type { Coa, CoaTipe } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
 import type { PengaturanPembukuan } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
@@ -296,6 +296,17 @@ export const api = {
       jenis,
     ),
   coa: () => call<Coa[]>('coa:list'),
+  /** Tambah akun Beban/Pendapatan baru ke master COA (P2). */
+  akunTambah: (input: { kode: string; nama: string; tipe: CoaTipe }) =>
+    call<Coa>('akun:tambah', input),
+  /** Ubah nama akun tambahan; kode & jenis tetap. */
+  akunUbah: (input: { kode: string; nama: string }) =>
+    call<Coa>('akun:ubah', input),
+  /** Aktif/nonaktifkan akun tambahan (nonaktif = soft delete). */
+  akunSetAktif: (kode: string, aktif: boolean) =>
+    call<Coa>('akun:set-aktif', kode, aktif),
+  /** Hapus permanen akun tambahan yang belum pernah dipakai. */
+  akunHapus: (kode: string) => call<{ kode: string }>('akun:hapus', kode),
   jurnalList: (
     f: FilterJurnalCariApi = {},
   ) => call<JurnalLengkap[]>('jurnal:list', f),

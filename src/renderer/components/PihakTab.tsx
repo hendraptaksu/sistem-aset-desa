@@ -360,8 +360,14 @@ export function PihakTab() {
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
 
   const infoAlur = ALUR_INFO[alur];
-  const kasList = useMemo(() => coa.filter((a) => isAkunKas(a.kode)), [coa]);
-  const bebanList = useMemo(() => coa.filter((a) => a.tipe === 'BEBAN'), [coa]);
+  const kasList = useMemo(
+    () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
+    [coa],
+  );
+  const bebanList = useMemo(
+    () => coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false),
+    [coa],
+  );
   const namaAkun = useMemo(
     () => new Map(coa.map((a) => [a.kode, `${a.kode} — ${a.nama}`])),
     [coa],
@@ -396,12 +402,23 @@ export function PihakTab() {
 
   useEffect(() => {
     if (coa.length === 0) return;
-    const kasPertama = coa.find((a) => isAkunKas(a.kode))?.kode;
-    if (kasPertama) setAkunKas((sebelum) => sebelum || kasPertama);
-    const bebanWewangunan = coa.find((a) => a.kode === '5003' && a.tipe === 'BEBAN');
-    const bebanPertama = bebanWewangunan ?? coa.find((a) => a.tipe === 'BEBAN');
-    if (bebanPertama) setAkunBeban((sebelum) => sebelum || bebanPertama.kode);
-  }, [coa]);
+    const kasPertama = coa.find(
+      (a) => isAkunKas(a.kode) && a.aktif !== false,
+    )?.kode;
+    if (kasPertama)
+      setAkunKas((sebelum) =>
+        kasList.some((a) => a.kode === sebelum) ? sebelum : kasPertama,
+      );
+    const bebanWewangunan = coa.find(
+      (a) => a.kode === '5003' && a.tipe === 'BEBAN' && a.aktif !== false,
+    );
+    const bebanPertama =
+      bebanWewangunan ?? coa.find((a) => a.tipe === 'BEBAN' && a.aktif !== false);
+    if (bebanPertama)
+      setAkunBeban((sebelum) =>
+        bebanList.some((a) => a.kode === sebelum) ? sebelum : bebanPertama.kode,
+      );
+  }, [coa, kasList, bebanList]);
 
   const saldoTerpilih = saldo.find((s) => s.id === pihakId);
   const saldoRelevan =
@@ -430,6 +447,7 @@ export function PihakTab() {
       pihakId,
       nominal,
       keterangan: keterangan.trim() || infoAlur.placeholder,
+      daftarAkun: coa,
       ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
     };
     try {
@@ -448,7 +466,7 @@ export function PihakTab() {
     } catch (e) {
       return { hasil: null, error: pesanError(e) };
     }
-  }, [akunBeban, akunKas, alur, infoAlur.placeholder, keterangan, noBukti, nominal, pihakId, tanggal]);
+  }, [akunBeban, akunKas, alur, coa, infoAlur.placeholder, keterangan, noBukti, nominal, pihakId, tanggal]);
 
   const formSah =
     tanggalKalenderValid(tanggal) &&
@@ -484,6 +502,7 @@ export function PihakTab() {
       pihakId,
       nominal,
       keterangan: keterangan.trim(),
+      daftarAkun: coa,
       ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
       ...(alasan ? { alasan } : {}),
     };

@@ -13,6 +13,7 @@ import {
   HandCoins,
   Landmark,
   LayoutDashboard,
+  List,
   ListChecks,
   Lock,
   NotebookText,
@@ -23,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { TransaksiTab } from './components/TransaksiTab.js';
+import { AkunTab } from './components/AkunTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
 import { BukuBesarTab } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
@@ -50,11 +52,12 @@ import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { id: 'transaksi', label: 'Transaksi', Icon: ArrowLeftRight },
+  { id: 'akun', label: 'Daftar Akun', Icon: List },
   { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
   { id: 'buku-besar', label: 'Buku Besar', Icon: BookMarked },
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
@@ -286,6 +289,7 @@ export function App() {
             {tab === 'transaksi' && (
               <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={setTab} />
             )}
+            {tab === 'akun' && <AkunTab />}
             {tab === 'jurnal' && <JurnalTab />}
             {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
             {tab === 'neraca-saldo' && (

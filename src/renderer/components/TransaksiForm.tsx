@@ -84,7 +84,7 @@ type KonfigurasiForm = KonfigurasiKasLawan | KonfigurasiPindah;
 
 /** Pilihan awal akun lawan Bayar: 5010/5000, lalu beban pertama. */
 function akunLawanAwalBayar(coa: Coa[]): string {
-  const beban = coa.filter((a) => a.tipe === 'BEBAN');
+  const beban = coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false);
   return (
     beban.find((a) => a.kode === '5010')?.kode ??
     beban.find((a) => a.kode === '5000')?.kode ??
@@ -111,7 +111,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     posisiKas: 'DEBIT',
     buat: buatJurnalTerimaUang,
     grupLawan: (coa) => {
-      const pendapatan = coa.filter((a) => a.tipe === 'PENDAPATAN');
+      const pendapatan = coa.filter((a) => a.tipe === 'PENDAPATAN' && a.aktif !== false);
       const modal = coa.find((a) => a.kode === AKUN_MODAL);
       const grup: GrupAkun[] = [];
       if (pendapatan.length > 0) grup.push({ label: 'Pendapatan', akun: pendapatan });
@@ -119,7 +119,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
       return grup;
     },
     akunLawanAwal: (coa) =>
-      (coa.find((a) => a.tipe === 'PENDAPATAN') ??
+      (coa.find((a) => a.tipe === 'PENDAPATAN' && a.aktif !== false) ??
         coa.find((a) => a.kode === AKUN_MODAL))?.kode ?? '',
   },
   BAYAR: {
@@ -139,7 +139,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     posisiKas: 'KREDIT',
     buat: buatJurnalBayar,
     grupLawan: (coa) => {
-      const beban = coa.filter((a) => a.tipe === 'BEBAN');
+      const beban = coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false);
       return beban.length > 0 ? [{ label: 'Beban', akun: beban }] : [];
     },
     akunLawanAwal: akunLawanAwalBayar,
@@ -167,7 +167,7 @@ export function FormTransaksiTerpandu({
 }) {
   const konfigurasi = KONFIG[jenis];
   const pindah = konfigurasi.mode === 'PINDAH';
-  const kasAwal = coa.find((a) => isAkunKas(a.kode))?.kode ?? '';
+  const kasAwal = coa.find((a) => isAkunKas(a.kode) && a.aktif !== false)?.kode ?? '';
 
   const [tanggal, setTanggal] = useState(tanggalLokal());
   const [akunKas, setAkunKas] = useState(kasAwal);
@@ -176,7 +176,7 @@ export function FormTransaksiTerpandu({
   );
   const [akunKe, setAkunKe] = useState(
     () =>
-      coa.find((a) => isAkunKas(a.kode) && a.kode !== kasAwal)?.kode ?? '',
+      coa.find((a) => isAkunKas(a.kode) && a.aktif !== false && a.kode !== kasAwal)?.kode ?? '',
   );
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
@@ -192,19 +192,30 @@ export function FormTransaksiTerpandu({
   // COA dimuat async oleh TransaksiTab. Isi pilihan awal saat datanya tiba,
   // tanpa menimpa pilihan yang sudah dibuat operator.
   useEffect(() => {
-    const kasPertama = coa.find((a) => isAkunKas(a.kode))?.kode ?? '';
-    setAkunKas((sebelum) => sebelum || kasPertama);
+    const kasAktif = coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false);
+    const kasPertama = kasAktif[0]?.kode ?? '';
+    setAkunKas((sebelum) =>
+      kasAktif.some((a) => a.kode === sebelum) ? sebelum : kasPertama,
+    );
     if (konfigurasi.mode === 'KAS_LAWAN') {
+      const pilihan = konfigurasi.grupLawan(coa).flatMap((g) => g.akun);
       const lawanAwal = konfigurasi.akunLawanAwal(coa);
-      setAkunLawan((sebelum) => sebelum || lawanAwal);
+      setAkunLawan((sebelum) =>
+        pilihan.some((a) => a.kode === sebelum) ? sebelum : lawanAwal,
+      );
     } else {
       const tujuanAwal =
-        coa.find((a) => isAkunKas(a.kode) && a.kode !== kasPertama)?.kode ?? '';
-      setAkunKe((sebelum) => sebelum || tujuanAwal);
+        kasAktif.find((a) => a.kode !== kasPertama)?.kode ?? '';
+      setAkunKe((sebelum) =>
+        kasAktif.some((a) => a.kode === sebelum) ? sebelum : tujuanAwal,
+      );
     }
   }, [coa, konfigurasi]);
 
-  const kasList = useMemo(() => coa.filter((a) => isAkunKas(a.kode)), [coa]);
+  const kasList = useMemo(
+    () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
+    [coa],
+  );
   const grupLawan = useMemo(
     () => (konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.grupLawan(coa) : []),
     [coa, konfigurasi],
@@ -224,6 +235,7 @@ export function FormTransaksiTerpandu({
           ke: nilai.akunKe,
           nominal: nilai.nominal,
           keterangan: nilai.keterangan,
+          daftarAkun: coa,
           ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
           ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
         });
@@ -234,11 +246,12 @@ export function FormTransaksiTerpandu({
         akunLawan: nilai.akunLawan,
         nominal: nilai.nominal,
         keterangan: nilai.keterangan,
+        daftarAkun: coa,
         ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
         ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
       });
     },
-    [konfigurasi],
+    [coa, konfigurasi],
   );
 
   // Pratinjau memakai builder yang sama dengan yang dipakai saat menyimpan.

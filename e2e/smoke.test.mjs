@@ -115,6 +115,52 @@ test(
         fullPage: true,
       });
 
+      // Daftar Akun: tambah akun BEBAN baru dan pastikan muncul di daftar.
+      await page.getByRole('button', { name: 'Daftar Akun' }).click();
+      await page
+        .getByRole('heading', { name: 'Daftar Akun (COA)' })
+        .waitFor({ timeout: 15_000 });
+      await page.getByLabel('Kode akun (4 digit)').fill('5011');
+      await page.getByLabel('Nama akun').fill('PENGELUARAN ARTOS');
+      await page.getByRole('button', { name: 'Tambah Akun', exact: true }).click();
+      await page
+        .getByText('Akun 5011 — PENGELUARAN ARTOS tersimpan.')
+        .waitFor({ timeout: 15_000 });
+      await page.screenshot({
+        path: join(artifacts, '04-daftar-akun.png'),
+        fullPage: true,
+      });
+
+      // Ubah nama → nonaktifkan → aktifkan → hapus akun tambahan.
+      await page.getByRole('button', { name: 'Ubah' }).click();
+      await page.getByLabel('Nama akun').fill('PENGELUARAN ARTOS BARU');
+      await page.getByRole('button', { name: 'Simpan Perubahan' }).click();
+      await page
+        .getByText('Nama akun 5011 diubah menjadi PENGELUARAN ARTOS BARU.')
+        .waitFor({ timeout: 15_000 });
+
+      await page.getByRole('button', { name: 'Nonaktifkan' }).click();
+      await page.getByRole('button', { name: 'Ya, nonaktifkan' }).click();
+      await page
+        .getByText(/dinonaktifkan\. Histori dan laporan lama tetap utuh/i)
+        .waitFor({ timeout: 15_000 });
+
+      await page.getByRole('button', { name: 'Aktifkan' }).click();
+      await page.getByRole('button', { name: 'Ya, aktifkan' }).click();
+      await page
+        .getByText(/diaktifkan kembali/i)
+        .waitFor({ timeout: 15_000 });
+
+      await page.getByRole('button', { name: 'Hapus' }).click();
+      await page.getByRole('button', { name: 'Ya, hapus permanen' }).click();
+      await page
+        .getByText(/dihapus permanen/i)
+        .waitFor({ timeout: 15_000 });
+      await page.screenshot({
+        path: join(artifacts, '05-kelola-akun.png'),
+        fullPage: true,
+      });
+
       // Smoke reset: kunci → Lupa PIN → kode darurat per-install → PIN baru.
       await page.getByRole('button', { name: 'Kunci aplikasi' }).click();
       await page.getByRole('button', { name: 'Lupa PIN?' }).click();
@@ -122,9 +168,10 @@ test(
       await page.getByLabel('PIN baru 6 digit').fill('654321');
       await page.getByLabel('Ulangi PIN baru').fill('654321');
       await page.getByRole('button', { name: 'Reset PIN' }).click();
+      await page.getByRole('button', { name: 'Dashboard' }).click();
       await page.getByText('Dashboard Akuntan').waitFor({ timeout: 15_000 });
       await page.screenshot({
-        path: join(artifacts, '04-setelah-reset.png'),
+        path: join(artifacts, '06-setelah-reset.png'),
         fullPage: true,
       });
 

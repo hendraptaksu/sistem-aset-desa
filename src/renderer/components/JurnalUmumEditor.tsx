@@ -83,7 +83,7 @@ export function JurnalUmumEditor({
    * dibaca (mis. saat duplikat).
    */
   const coaPosting = useMemo(
-    () => coa.filter((a) => akunBolehDiposting(a.kode)),
+    () => coa.filter((a) => akunBolehDiposting(a.kode, a.aktif !== false, { dikenal: true })),
     [coa],
   );
 

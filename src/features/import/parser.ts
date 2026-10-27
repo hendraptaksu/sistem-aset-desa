@@ -574,7 +574,7 @@ function validasiAkun(
   const akun = akunValid.get(kode);
   if (!akun) return `Akun ${kode} tidak ada di daftar akun (COA).`;
   if (akun.aktif === false) return `Akun ${kode} sudah tidak aktif.`;
-  if (!akunBolehDiposting(kode))
+  if (!akunBolehDiposting(kode, akun.aktif, { dikenal: true }))
     return `Akun ${kode} ${PESAN_AKUN_LEGACY}`;
   return null;
 }

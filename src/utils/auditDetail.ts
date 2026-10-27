@@ -252,6 +252,11 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('PIHAK-CREATE')) return 'Tambah pihak';
   if (a.startsWith('PIHAK-UPDATE')) return 'Ubah pihak';
   if (a.startsWith('PIHAK-DELETE')) return 'Hapus pihak';
+  if (a.startsWith('AKUN-TAMBAH')) return 'Tambah akun';
+  if (a.startsWith('AKUN-UBAH')) return 'Ubah nama akun';
+  if (a.startsWith('AKUN-NONAKTIF')) return 'Nonaktifkan akun';
+  if (a.startsWith('AKUN-AKTIF')) return 'Aktifkan akun';
+  if (a.startsWith('AKUN-HAPUS')) return 'Hapus akun';
   if (a.startsWith('PIUTANG-BERI-PINJAMAN')) return 'Beri pinjaman (piutang)';
   if (a.startsWith('PIUTANG-PELUNASAN')) return 'Terima pelunasan piutang';
   if (a.startsWith('HUTANG-TERIMA-PINJAMAN')) return 'Terima pinjaman (hutang)';

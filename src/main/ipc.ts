@@ -16,6 +16,7 @@ import {
   getJurnal,
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
+  hapusAkun,
   insertAset,
   listAkun,
   listAset,
@@ -24,7 +25,10 @@ import {
   listJurnalLengkapPage,
   listTutupBuku,
   saranNomorBukti,
+  setAkunAktif,
   simpanPengaturanPembukuan,
+  tambahAkun,
+  ubahNamaAkun,
   updateAset,
   type AuditFilter,
   type JurnalFilter,
@@ -83,7 +87,7 @@ import {
   buatBufferTemplateImpor,
 } from '../features/import/template.js';
 import { imporJurnalDariExcel, validasiImporDariExcel } from '../db/impor.js';
-import { KAS_KODES, COA } from '../db/coa.js';
+import { KAS_KODES } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
   saldoSemuaKas as saldoSemuaKasJurnal,
@@ -122,6 +126,9 @@ import {
 import { tanggalLokal } from '../utils/tanggal.js';
 import {
   validasiBentukJurnalInput,
+  validasiBentukAkunBaru,
+  validasiBentukAkunUbah,
+  validasiKodeAkun,
   validasiBentukAnggaranList,
   validasiBentukAnggaranSimpan,
   validasiBentukPanjarClose,
@@ -328,7 +335,53 @@ export function registerIpc(deps: IpcDeps): void {
     };
   };
 
-  daftarkan('coa:list', () => ok(COA));
+  daftarkan('coa:list', () => ok(listAkun(deps.db())));
+  daftarkan('akun:tambah', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukAkunBaru(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(tambahAkun(deps.db(), bentuk.input));
+    } catch (e) {
+      return fail(pesanError(e, 'Gagal menambah akun.'));
+    }
+  });
+  daftarkan('akun:ubah', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukAkunUbah(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(ubahNamaAkun(deps.db(), bentuk.input.kode, bentuk.input.nama));
+    } catch (e) {
+      return fail(pesanError(e, 'Gagal mengubah nama akun.'));
+    }
+  });
+  daftarkan('akun:set-aktif', (_e, kode: unknown, aktif: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiKodeAkun(kode);
+      if (!bentuk.ok) return fail(bentuk.error);
+      if (typeof aktif !== 'boolean')
+        return fail('Status aktif akun harus true/false.');
+      return ok(setAkunAktif(deps.db(), bentuk.input, aktif));
+    } catch (e) {
+      return fail(pesanError(e, 'Gagal mengubah status akun.'));
+    }
+  });
+  daftarkan('akun:hapus', (_e, kode: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiKodeAkun(kode);
+      if (!bentuk.ok) return fail(bentuk.error);
+      return ok(hapusAkun(deps.db(), bentuk.input));
+    } catch (e) {
+      return fail(pesanError(e, 'Gagal menghapus akun.'));
+    }
+  });
 
   // Kunci aplikasi: sesi selalu terkunci saat app dibuka (sesi.terbuka=false awal).
   daftarkan('lock:status', () => ok(statusKunci(deps.db())));
@@ -1478,6 +1531,7 @@ export function registerIpc(deps: IpcDeps): void {
           awalTahunBuku: pengaturan.awalTahunBuku,
           // Batas tutup buku mengikuti hari ini, bukan cut-off pelaporan.
           sekarang: tanggalSekarang(),
+          daftarAkun: listAkun(deps.db()),
         },
       );
       const dirBackup = deps.lokasiData().backupsDir;
@@ -1499,7 +1553,7 @@ export function registerIpc(deps: IpcDeps): void {
         filters: [{ name: 'Excel', extensions: ['xlsx'] }],
       });
       if (canceled || !filePath) return ok({ saved: false, path: '' });
-      const buffer = await buatBufferTemplateImpor();
+      const buffer = await buatBufferTemplateImpor(listAkun(deps.db(), { aktif: true }));
       deps.writeFile(filePath, Buffer.from(buffer));
       return ok({ saved: true, path: filePath });
     } catch (e) {

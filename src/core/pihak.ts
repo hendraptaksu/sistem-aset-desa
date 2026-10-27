@@ -9,8 +9,10 @@
 import {
   AKUN_HUTANG,
   AKUN_PIUTANG,
+  COA,
   isAkunKas,
   isBeban,
+  type Coa,
 } from '../db/coa.js';
 import type { JurnalInput } from './posting.js';
 import type { JurnalPihak, JurnalJenis, Pihak, PihakSaldo } from './types.js';
@@ -41,7 +43,10 @@ export type KlasifikasiAlurPihak = {
  * - 1050 hanya untuk jenis PIUTANG, 2050 hanya untuk jenis HUTANG;
  * - sisi kas harus akun kas/bank; beli kredit memakai akun BEBAN.
  */
-export function klasifikasiAlurPihak(input: JurnalInput): KlasifikasiAlurPihak {
+export function klasifikasiAlurPihak(
+  input: JurnalInput,
+  daftarAkun: readonly Coa[] = COA,
+): KlasifikasiAlurPihak {
   const baris = Array.isArray(input?.baris) ? input.baris : [];
   if (baris.length !== 2)
     throw new Error(
@@ -62,6 +67,8 @@ export function klasifikasiAlurPihak(input: JurnalInput): KlasifikasiAlurPihak {
 
   const akunDebit = String(d.akun_kode ?? '').trim();
   const akunKredit = String(k.akun_kode ?? '').trim();
+  const bebanDebit =
+    isBeban(akunDebit) || daftarAkun.find((a) => a.kode === akunDebit)?.tipe === 'BEBAN';
   const jenis = String(input.header?.jenis ?? 'UMUM') as JurnalJenis;
   const hasil = (alur: AlurPihak, akunPihak: KlasifikasiAlurPihak['akunPihak'], akunLawan: string) => {
     const jenisWajib: JurnalJenis = akunPihak === AKUN_PIUTANG ? 'PIUTANG' : 'HUTANG';
@@ -80,7 +87,7 @@ export function klasifikasiAlurPihak(input: JurnalInput): KlasifikasiAlurPihak {
     return hasil('TERIMA_PINJAMAN', AKUN_HUTANG, akunDebit);
   if (akunDebit === AKUN_HUTANG && isAkunKas(akunKredit))
     return hasil('BAYAR_HUTANG', AKUN_HUTANG, akunKredit);
-  if (isBeban(akunDebit) && akunKredit === AKUN_HUTANG)
+  if (bebanDebit && akunKredit === AKUN_HUTANG)
     return hasil('BELI_KREDIT', AKUN_HUTANG, akunDebit);
 
   throw new Error(

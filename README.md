@@ -29,6 +29,9 @@ angka turunan yang disimpan mati.
 
 - Input harian lewat form terpandu: **Terima Uang**, **Bayar**, **Pindah Dana**,
   **Panjar**, **Piutang & Hutang**, dan **Saldo Awal**.
+- **Daftar Akun** untuk menambah, mengubah nama, menonaktifkan, atau menghapus
+  akun **Beban/Pendapatan** baru langsung dari aplikasi (tercatat di audit;
+  akun langsung dipakai form dan laporan).
 - Akuntan pendamping dapat memakai **Jurnal Umum** multi-baris untuk koreksi
   dan jurnal yang tidak cocok dengan form terpandu.
 - Koreksi tidak pernah mengedit/menghapus jurnal lama: selalu **jurnal balik
@@ -49,8 +52,8 @@ angka turunan yang disimpan mati.
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Renderer (Chromium) — React 19 + Tailwind                           │
-│ Tab: Dashboard, Transaksi, Panjar, Pihak, Jurnal, laporan,          │
-│ Pengaturan, Import Excel, Aset                                      │
+│ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Pihak, Jurnal,     │
+│ laporan, Pengaturan, Import Excel, Aset                             │
 │ Tidak pernah menyentuh SQLite; semua lewat window.api.invoke()      │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ IPC (preload CJS, contextBridge)
