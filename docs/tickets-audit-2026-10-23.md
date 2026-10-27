@@ -820,7 +820,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npm test -- tests/dokumentasi.test.ts` + review manual.
   - **Dependency:** AUD-06, AUD-07, AUD-08, AUD-20, AUD-21b.
 
-- [ ] **AUD-32 — CI di branch `dev`, npm audit, update dependency** · P2 · S
+- [x] **AUD-32 — CI di branch `dev`, npm audit, update dependency** · P2 · S (2026-10-27: `.github/workflows/build-win.yml` menjadi CI push/PR `main`+`dev`; job verifikasi Linux memakai Node 24 via `.nvmrc` + cache npm dan menjalankan `npm audit --omit=dev --audit-level=high` (`continue-on-error`, laporan di artifact `npm-audit`), typecheck, test, build; job Windows terpisah menjalankan `npm run dist:win` + artifact installer tanpa wine. `npm audit fix` (tanpa `--force`) menaikkan brace-expansion 1.1.18→1.1.21, 2.1.4→2.1.7, 5.0.9→5.0.12 (plus update semver electron/vite/vitest). Audit produksi sebelum: 1 high + 2 moderate; sesudah: 0 high + 2 moderate. `uuid` 8.3.2 via exceljs 4.4.0 sengaja dibiarkan sebagai risiko diketahui karena fix hanya lewat `npm audit fix --force` yang men-downgrade exceljs ke 3.4.0 (breaking); advisori hanya v3/v5/v6 dengan buffer, sedangkan exceljs memakai v4. Node 24, 554 test (47 file), typecheck/build hijau)
   - **Konteks:** workflow hanya `main`, sedangkan kerja di `dev`. `npm audit`
     melaporkan `brace-expansion` high dan `uuid` moderate via `exceljs`.
   - **Langkah:**

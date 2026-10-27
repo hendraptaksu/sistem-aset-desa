@@ -1,15 +1,63 @@
-name: Build Windows
+name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
   workflow_dispatch:
   release:
     types: [created]
 
+permissions:
+  contents: read
+
 jobs:
+  verify:
+    name: Verifikasi (Node 24)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24, sama dengan dev lokal dan .nvmrc.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Risiko diketahui: uuid 8.3.2 (via exceljs 4.4.0) masih moderate.
+      # Perbaikannya hanya tersedia lewat `npm audit fix --force`, yang
+      # men-downgrade exceljs ke 3.4.0 (breaking change). Tidak dilakukan
+      # sampai ada test migrasi export Excel. Advisori uuid hanya menyentuh
+      # v3/v5/v6 dengan buffer, sedangkan exceljs memakai uuid v4.
+      # Step ini sengaja continue-on-error sementara: hasil audit tetap
+      # terlihat di log dan artifact, tetapi high baru tidak memblokir job
+      # tanpa terlihat.
+      - name: Audit dependency produksi (high+)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm audit --omit=dev --audit-level=high 2>&1 | tee npm-audit.txt
+
+      - name: Upload laporan audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: npm-audit.txt
+          if-no-files-found: warn
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
   build-win:
+    name: Build Windows
     runs-on: windows-latest
+    needs: verify
     permissions:
       contents: write
     steps:
@@ -20,13 +68,10 @@ jobs:
           # PENTING: better-sqlite3@13 segfault (0xC0000005) di new Database()
           # pada Node 20 / 22 lama (upstream WiseLibs/better-sqlite3#1514).
           # Node 24 = sama dengan dev lokal (terbukti 47/47 hijau).
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
-
-      - run: npm run typecheck
-      - run: npm test
 
       - run: npm run dist:win
 
