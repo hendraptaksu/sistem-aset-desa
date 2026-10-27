@@ -69,16 +69,13 @@ export function Badge({
   tone = 'stone',
 }: {
   children: ReactNode;
-  tone?: 'stone' | 'green' | 'amber' | 'red' | 'warning';
+  tone?: 'stone' | 'green' | 'amber' | 'red';
 }) {
   const tones: Record<string, string> = {
     stone: 'bg-stone-100 text-stone-700',
     green: 'bg-green-100 text-green-800',
-    amber: 'bg-emerald-100 text-emerald-800',
+    amber: 'bg-amber-100 text-amber-800',
     red: 'bg-red-100 text-red-800',
-    // UI-16: tone amber yang benar untuk status basi; tone `amber` lama
-    // menunggu perbaikan terpisah (UI-18) agar pemakaian lain tidak berubah.
-    warning: 'bg-amber-100 text-amber-800',
   };
   return <span className={clsx('rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;
 }

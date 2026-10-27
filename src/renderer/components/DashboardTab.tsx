@@ -448,7 +448,7 @@ export function DashboardTab({
                   <h3 className="text-base font-bold">Backup Terakhir</h3>
                   <p className="text-sm text-stone-600">Cadangan otomatis harian</p>
                 </div>
-                <Badge tone={ringkasan.tone === 'amber' ? 'warning' : ringkasan.tone}>
+                <Badge tone={ringkasan.tone}>
                   {!data.backupTerakhir
                     ? 'Belum ada'
                     : ringkasan.tone === 'green'

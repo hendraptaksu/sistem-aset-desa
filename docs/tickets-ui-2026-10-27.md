@@ -451,7 +451,7 @@
 
 ## P2 — Konsistensi & polesan
 
-- [ ] **UI-18 — Perbaiki tone `Badge` amber** · P2 · S
+- [x] **UI-18 — Perbaiki tone `Badge` amber** · P2 · S (2026-10-27: mapping amber kini `bg-amber-100 text-amber-800` dan workaround tone warning dihapus, badge koreksi/basi tampil kuning + 601 test)
   - **Konteks:** `Badge` tone `amber` memakai `bg-emerald-100 text-emerald-800`,
     jadi “Sudah dikoreksi”, “Mode akuntan”, dan “Total kas tetap” tampil
     hijau seperti status sukses.
