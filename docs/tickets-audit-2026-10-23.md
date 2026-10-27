@@ -440,7 +440,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm test`.
   - **Dependency:** —
 
-- [ ] **AUD-15 — Tulis backup aman (temp + rename)** · P0 · S
+- [x] **AUD-15 — Tulis backup aman (temp + rename)** · P0 · S (2026-10-27: `backupVacuumInto` menulis ke `<dest>.tmp-<pid>-<timestamp>`, memindahkan tujuan lama ke `<dest>.bak-<pid>`, lalu rename tmp → dest; VACUUM gagal membersihkan tmp, rename gagal mengembalikan `.bak` dan mempertahankan tmp untuk diagnosis, sidecar `-wal`/`-shm` lama dibersihkan; typecheck/test/build hijau, 471 test total + 3 test)
   - **Konteks:** `backupVacuumInto` menghapus tujuan lebih dulu. Jika VACUUM
     gagal (disk penuh), backup lama di path yang sama ikut hilang.
   - **Langkah:**

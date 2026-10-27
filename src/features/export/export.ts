@@ -74,28 +74,83 @@ export async function writeXlsx(wb: ExcelJS.Workbook, filePath: string): Promise
 // bisa masih berada di WAL dan hilang dari salinan. Semua backup memakai
 // `VACUUM INTO` lewat satu helper di bawah.
 
-/** Hapus file DB beserta sidecar WAL/SHM agar tidak bercampur dengan hasil baru. */
-function buangFileDb(path: string): void {
-  for (const p of [path, `${path}-wal`, `${path}-shm`]) {
+/** Hapus sidecar WAL/SHM milik sebuah file DB (best-effort). */
+function buangSidecarDb(path: string): void {
+  for (const p of [`${path}-wal`, `${path}-shm`]) {
     try {
       if (existsSync(p)) unlinkSync(p);
     } catch {
-      /* biarkan pemanggil melaporkan error tulis utama */
+      /* sidecar lama tidak boleh menggagalkan backup utama */
     }
   }
+}
+
+/** Hapus file DB beserta sidecar WAL/SHM agar tidak bercampur dengan hasil baru. */
+function buangFileDb(path: string): void {
+  try {
+    if (existsSync(path)) unlinkSync(path);
+  } catch {
+    /* biarkan pemanggil melaporkan error tulis utama */
+  }
+  buangSidecarDb(path);
 }
 
 /**
  * Backup aman dari koneksi yang sedang terbuka: `VACUUM INTO` menghasilkan
  * satu file konsisten (termasuk isi WAL), tanpa menghentikan aplikasi.
- * File tujuan lama (dan sidecar-nya) dihapus lebih dulu karena `VACUUM INTO`
- * menolak tujuan yang sudah ada. Path di-escape agar aman untuk nama folder
- * yang mengandung tanda kutip.
+ *
+ * Hasil VACUUM ditulis ke file sementara `<dest>.tmp-<pid>-<timestamp>` lebih
+ * dulu. Setelah tmp valid, backup lama dipindahkan ke `<dest>.bak-<pid>` lalu
+ * tmp di-rename menjadi `<dest>`. Dengan urutan ini kegagalan VACUUM atau
+ * rename tidak menghapus backup lama. Bila rename gagal, backup lama
+ * dikembalikan dan tmp dipertahankan untuk diagnosis. Path di-escape agar aman
+ * untuk nama folder yang mengandung tanda kutip.
  */
 export function backupVacuumInto(db: Database.Database, dest: string): string {
   mkdirSync(dirname(dest), { recursive: true });
-  buangFileDb(dest);
-  db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+  const tmp = `${dest}.tmp-${process.pid}-${Date.now()}`;
+  const bak = `${dest}.bak-${process.pid}`;
+
+  try {
+    db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
+    if (!existsSync(tmp) || !statSync(tmp).isFile() || statSync(tmp).size === 0)
+      throw new Error('VACUUM INTO tidak menghasilkan file backup yang valid.');
+  } catch (e) {
+    // Jangan tinggalkan file sementara/parsial saat VACUUM gagal.
+    buangFileDb(tmp);
+    throw e;
+  }
+
+  let destLamaDipindah = false;
+  try {
+    if (existsSync(dest)) {
+      // Sisa proses dengan PID sama (mis. crash sebelumnya) tidak boleh
+      // menghalangi rename.
+      buangFileDb(bak);
+      renameSync(dest, bak);
+      destLamaDipindah = true;
+    }
+    renameSync(tmp, dest);
+  } catch (e) {
+    if (destLamaDipindah) {
+      try {
+        renameSync(bak, dest);
+      } catch (gagalPulih) {
+        throw new Error(
+          `Backup gagal dan file lama tidak bisa dikembalikan otomatis. File lama tersimpan di ${bak}. ${pesanError(
+            gagalPulih,
+            'Hubungi pendamping sebelum memakai aplikasi lagi.',
+          )}`,
+        );
+      }
+    }
+    // tmp sengaja dipertahankan untuk diagnosis (tidak dihapus).
+    throw e;
+  }
+
+  // Sukses: backup lama dan sidecar-nya tidak diperlukan lagi.
+  buangFileDb(bak);
+  buangSidecarDb(dest);
   return dest;
 }
 

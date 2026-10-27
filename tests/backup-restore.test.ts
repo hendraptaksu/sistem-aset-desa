@@ -1,9 +1,9 @@
 // P0-8: backup .db aman (VACUUM INTO) + restore tervalidasi & tidak merusak data lama.
 import Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { insertJurnal, listJurnal } from '../src/db/repository.js';
 import {
@@ -13,6 +13,22 @@ import {
   restoreDbAman,
   validasiKandidatRestore,
 } from '../src/features/export/export.js';
+
+// AUD-15: kontrol test untuk menggagalkan rename tmp -> dest. Semua fungsi fs
+// lain tetap memakai implementasi asli.
+const kontrolRename = vi.hoisted(() => ({ gagalTmp: false }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const asli = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...asli,
+    renameSync: (from: string, to: string) => {
+      if (kontrolRename.gagalTmp && from.includes('.tmp-'))
+        throw Object.assign(new Error('EPERM simulasi: rename backup gagal'), { code: 'EPERM' });
+      return asli.renameSync(from, to);
+    },
+  };
+});
 
 function jurnal(id: string, tanggal = '2026-09-09') {
   return {
@@ -54,6 +70,115 @@ describe('P0-8 — backupVacuumInto: konsisten walau WAL belum checkpoint', () =
       cek = openDb(dest);
       expect(listJurnal(cek).map((j) => j.id)).toEqual(['j1', 'j2', 'j3']);
     } finally {
+      cek?.close();
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan backup lama', () => {
+  it('backup baru valid, menimpa tujuan lama, dan membersihkan bak/tmp/sidecar', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud15-ok-'));
+    let db: Database.Database | null = null;
+    let cek: Database.Database | null = null;
+    try {
+      db = openDb(join(dir, 'pura.db'));
+      insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
+      const dest = join(dir, 'backup.db');
+      backupVacuumInto(db, dest);
+
+      // Sidecar lama yang mungkin tertinggal saat tujuan pernah dibuka.
+      writeFileSync(`${dest}-wal`, 'wal-lama');
+      writeFileSync(`${dest}-shm`, 'shm-lama');
+      insertJurnal(db, jurnal('baru').header, jurnal('baru').baris);
+
+      backupVacuumInto(db, dest);
+      expect(existsSync(dest)).toBe(true);
+      expect(existsSync(`${dest}-wal`)).toBe(false);
+      expect(existsSync(`${dest}-shm`)).toBe(false);
+      expect(readdirSync(dir).filter((f) => f.includes('.tmp-'))).toEqual([]);
+      expect(readdirSync(dir).filter((f) => f.includes('.bak-'))).toEqual([]);
+
+      cek = openDb(dest);
+      expect(listJurnal(cek).map((j) => j.id)).toEqual(['lama', 'baru']);
+    } finally {
+      cek?.close();
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('VACUUM gagal tidak menghapus backup lama dan membersihkan tmp', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud15-vacuum-'));
+    let db: Database.Database | null = null;
+    let cek: Database.Database | null = null;
+    try {
+      const koneksi = openDb(join(dir, 'pura.db'));
+      db = koneksi;
+      insertJurnal(koneksi, jurnal('lama').header, jurnal('lama').baris);
+      const dest = join(dir, 'backup.db');
+      backupVacuumInto(koneksi, dest);
+
+      // VACUUM INTO ditolak SQLite saat berada di dalam transaksi.
+      insertJurnal(koneksi, jurnal('baru').header, jurnal('baru').baris);
+      koneksi.exec('BEGIN');
+      try {
+        expect(() => backupVacuumInto(koneksi, dest)).toThrow(/transaction/i);
+      } finally {
+        koneksi.exec('ROLLBACK');
+      }
+
+      expect(existsSync(dest)).toBe(true);
+      expect(existsSync(`${dest}.bak-${process.pid}`)).toBe(false);
+      expect(readdirSync(dir).filter((f) => f.includes('.tmp-'))).toEqual([]);
+
+      cek = openDb(dest);
+      expect(listJurnal(cek).map((j) => j.id)).toEqual(['lama']);
+    } finally {
+      cek?.close();
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rename tmp gagal: backup lama dikembalikan dan tmp dipertahankan', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud15-rename-'));
+    let db: Database.Database | null = null;
+    let cek: Database.Database | null = null;
+    try {
+      db = openDb(join(dir, 'pura.db'));
+      insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
+      const dest = join(dir, 'backup.db');
+      backupVacuumInto(db, dest);
+      insertJurnal(db, jurnal('baru').header, jurnal('baru').baris);
+
+      let error: unknown;
+      kontrolRename.gagalTmp = true;
+      try {
+        backupVacuumInto(db, dest);
+      } catch (e) {
+        error = e;
+      } finally {
+        kontrolRename.gagalTmp = false;
+      }
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(/EPERM simulasi/);
+
+      // Backup lama kembali di path tujuan, bukan hilang.
+      expect(existsSync(dest)).toBe(true);
+      expect(existsSync(`${dest}.bak-${process.pid}`)).toBe(false);
+      cek = openDb(dest);
+      expect(listJurnal(cek).map((j) => j.id)).toEqual(['lama']);
+      cek.close();
+      cek = null;
+
+      // tmp sengaja dipertahankan untuk diagnosis.
+      const tmp = readdirSync(dir).filter((f) => f.includes('.tmp-'));
+      expect(tmp).toHaveLength(1);
+      expect(statSync(join(dir, tmp[0]!)).size).toBeGreaterThan(0);
+    } finally {
+      kontrolRename.gagalTmp = false;
       cek?.close();
       db?.close();
       rmSync(dir, { recursive: true, force: true });
