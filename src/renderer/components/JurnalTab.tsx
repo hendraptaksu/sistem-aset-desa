@@ -22,7 +22,6 @@ import {
   type PrintOrientation,
 } from '../../features/export/printDoc.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
-import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
 import {
   Badge,
@@ -488,7 +487,9 @@ function KoreksiModal({
 }) {
   const [langkah, setLangkah] = useState<'alasan' | 'isi-ulang'>('alasan');
   const [alasan, setAlasan] = useState('');
-  const [tanggalBalik, setTanggalBalik] = useState(tanggalLokal());
+  // Default satu periode dengan jurnal asli: koreksi tidak menggeser laba
+  // tahunan ke tahun berjalan. Operator tetap bisa mengubah tanggalnya.
+  const [tanggalBalik, setTanggalBalik] = useState(jurnal.tanggal);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -527,6 +528,10 @@ function KoreksiModal({
     Boolean(keterangan.trim()) &&
     dataBarisSah &&
     seimbang;
+  const bedaTahun =
+    tanggalKalenderValid(tanggalBalik) &&
+    tanggalKalenderValid(tanggal) &&
+    tanggalBalik.slice(0, 4) !== tanggal.slice(0, 4);
 
   function ubahBaris(index: number, patch: Partial<BarisForm>) {
     setBaris((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -626,6 +631,10 @@ function KoreksiModal({
           ditukar), lalu Anda bisa mengisi ulang data yang benar. Semua koreksi tercatat di
           riwayat audit.
         </p>
+        <p className="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+          Jurnal balik mengikuti tanggal asli. Jika periode terkunci, isi alasan minimal{' '}
+          {ALASAN_REVERSAL_MIN} karakter.
+        </p>
         <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
           <p className="font-semibold">{jurnal.keterangan}</p>
           <p className="text-sm text-stone-600">
@@ -635,6 +644,18 @@ function KoreksiModal({
         </div>
 
         <ErrorBox msg={err} />
+
+        {bedaTahun && (
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+            <p className="font-semibold">Tanggal jurnal balik dan pengganti berbeda tahun.</p>
+            <p className="mt-1 text-[15px]">
+              Laba Rugi tahunan akan terdistorsi: pembalikan dicatat di tahun{' '}
+              {tanggalBalik.slice(0, 4)}, sedangkan jurnal pengganti dicatat di tahun{' '}
+              {tanggal.slice(0, 4)}. Total ekuitas tetap benar, tetapi laba tiap tahun tidak
+              mencerminkan koreksi. Sebaiknya samakan tahunnya dengan jurnal asli.
+            </p>
+          </div>
+        )}
 
         {langkah === 'alasan' ? (
           <>

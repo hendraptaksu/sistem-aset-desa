@@ -216,7 +216,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm test`.
   - **Dependency:** AUD-02.
 
-- [ ] **AUD-06 — Default tanggal koreksi harus satu periode** · P0 · S
+- [x] **AUD-06 — Default tanggal koreksi harus satu periode** · P0 · S (2026-10-27: `KoreksiModal` memakai tanggal jurnal asli sebagai default `tanggalBalik`; catatan periode terkunci dan peringatan kuning bila tanggal balik/pengganti beda tahun; regression test laba tahunan satu periode + skenario lama; typecheck/test/build hijau, 450 test total + 2 test)
   - **Konteks:** `KoreksiModal` memakai `tanggalBalik = today()` (UTC) tetapi
     tanggal pengganti = tanggal jurnal asli. Koreksi jurnal 2025 pada 2026
     membuat 2025 naik X dan 2026 turun X; total ekuitas benar, tetapi laba

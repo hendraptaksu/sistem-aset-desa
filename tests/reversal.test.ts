@@ -17,7 +17,7 @@ import {
 } from '../src/db/repository.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
-import { neracaSaldo, saldoAkun } from '../src/core/reports.js';
+import { neracaSaldo, labaTahun, saldoAkun } from '../src/core/reports.js';
 import {
   PESAN_REVERSAL,
   rencanaReversal,
@@ -501,6 +501,104 @@ describe('P0-6 — koreksi & isi ulang', () => {
       expect(hasil.tersimpan).toBe(true);
       expect(hasil.jurnalBaru?.tanggal).toBe('2025-12-20');
       expect(listAuditLog(db)).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('koreksi dengan kedua tanggal di tahun yang sama menjaga laba tahunan', () => {
+    const db = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-2025',
+          tanggal: '2025-06-15',
+          no_bukti: 'JU-2025-0100',
+          keterangan: 'Pendapatan 2025',
+          jenis: 'TERIMA',
+        },
+        pasangan('1001', '4005', RP(100)),
+      );
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-2025',
+        'Nominal salah, seharusnya 120',
+        {
+          header: {
+            id: 'j-2025-baru',
+            tanggal: '2025-06-15',
+            no_bukti: 'JU-2025-0101',
+            keterangan: 'Pendapatan 2025 (koreksi)',
+            jenis: 'TERIMA',
+          },
+          baris: pasangan('1001', '4005', RP(120)),
+        },
+        // Default baru: jurnal balik memakai tanggal jurnal asli (satu periode).
+        { id: 'j-2025-balik', tanggal: '2025-06-15' },
+      );
+
+      expect(hasil.tersimpan).toBe(true);
+      const baris = listBarisJurnal(db);
+      expect(labaTahun(baris, 2025)).toBe(RP(120));
+      expect(labaTahun(baris, 2026)).toBe(0);
+      expect(saldoAkun(baris, '1001', '2026-12-31')).toBe(RP(120));
+      expect(neracaSaldo(baris, '2026-12-31')).toMatchObject({
+        selisih: 0,
+        seimbang: true,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('skenario lama: balik 2026 + pengganti 2025 menggeser laba antartahun', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      insertJurnal(
+        db,
+        {
+          id: 'j-beban-2025',
+          tanggal: '2025-06-15',
+          no_bukti: 'JU-2025-0200',
+          keterangan: 'Beban 2025',
+          jenis: 'BAYAR',
+        },
+        pasangan('5000', '1001', RP(100)),
+      );
+
+      // Skenario lama (default tanggal balik = hari ini): jurnal beban 2025
+      // Rp 100 dikoreksi menjadi Rp 120, tetapi baliknya jatuh di 2026.
+      // 2025 = -100 (asli) - 120 (pengganti) = -220 → turun Rp 100 dari -120.
+      // 2026 = +100 (pembalikan beban) → naik Rp 100 dari 0.
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-beban-2025',
+        'Nominal salah, seharusnya 120',
+        {
+          header: {
+            id: 'j-beban-2025-baru',
+            tanggal: '2025-06-15',
+            no_bukti: 'JU-2025-0201',
+            keterangan: 'Beban 2025 (koreksi)',
+            jenis: 'BAYAR',
+          },
+          baris: pasangan('5000', '1001', RP(120)),
+        },
+        { id: 'j-beban-2025-balik', tanggal: '2026-01-10' },
+      );
+
+      expect(hasil.tersimpan).toBe(true);
+      const baris = listBarisJurnal(db);
+      expect(labaTahun(baris, 2025)).toBe(-RP(220));
+      expect(labaTahun(baris, 2026)).toBe(RP(100));
+      // Total tetap seimbang, jadi distorsi tahunan tidak terlihat di Neraca Saldo.
+      expect(neracaSaldo(baris, '2026-12-31')).toMatchObject({
+        selisih: 0,
+        seimbang: true,
+      });
     } finally {
       db.close();
     }
