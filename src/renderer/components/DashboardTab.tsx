@@ -35,9 +35,9 @@ export function DashboardTab({
   const [data, setData] = useState<DashboardHasil | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [jenisSibuk, setJenisSibuk] = useState<null | 'muat' | 'backup' | 'restore'>(
-    null,
-  );
+  const [jenisSibuk, setJenisSibuk] = useState<
+    null | 'muat' | 'backup' | 'backup-lengkap' | 'restore'
+  >(null);
   const [konfirmasiRestore, setKonfirmasiRestore] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
 
@@ -77,6 +77,26 @@ export function DashboardTab({
       try {
         const r = await api.backupExport();
         if (r.saved) setInfo(`Backup tersimpan: ${r.path}`);
+      } catch (e) {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      } finally {
+        setJenisSibuk(null);
+      }
+    });
+  }
+
+  async function backupLengkap(): Promise<void> {
+    await jalankan(async () => {
+      setErr(null);
+      setInfo(null);
+      setJenisSibuk('backup-lengkap');
+      try {
+        const r = await api.backupLengkap();
+        if (r.saved) {
+          setInfo(
+            `Backup lengkap tersimpan: ${r.path} (${r.jumlahLampiran} lampiran)`,
+          );
+        }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
       } finally {
@@ -400,10 +420,19 @@ export function DashboardTab({
       )}
 
       <Card>
-        <h3 className="mb-2 font-bold">Backup / Restore (.db)</h3>
+        <h3 className="mb-2 font-bold">Backup / Restore</h3>
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
             {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db'}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={sibuk}
+            onClick={() => void backupLengkap()}
+          >
+            {jenisSibuk === 'backup-lengkap'
+              ? 'Membuat backup lengkap…'
+              : 'Backup Lengkap (DB + lampiran)'}
           </Button>
           <Button variant="ghost" disabled={sibuk} onClick={() => setKonfirmasiRestore(true)}>
             {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
@@ -413,14 +442,21 @@ export function DashboardTab({
           <p className="mt-2 text-sm font-semibold text-emerald-800" role="status">
             {jenisSibuk === 'backup'
               ? 'Sedang membuat backup…'
-              : jenisSibuk === 'restore'
-                ? 'Sedang memulihkan data…'
-                : 'Sedang memuat data…'}
+              : jenisSibuk === 'backup-lengkap'
+                ? 'Sedang menyalin database dan lampiran…'
+                : jenisSibuk === 'restore'
+                  ? 'Sedang memulihkan data…'
+                  : 'Sedang memuat data…'}
           </p>
         )}
         <p className="mt-2 text-sm text-stone-600">
-          Single-file SQLite lokal offline. Export untuk cadangan manual, import untuk
-          pulihkan saat ganti laptop/pengurus.
+          Backup lengkap menyimpan satu folder berisi <code>pura.db</code>, semua
+          lampiran bukti, dan <code>manifest.json</code> — pakai ini untuk arsip
+          atau pindah laptop. Backup Export .db hanya berisi database.
+        </p>
+        <p className="mt-1 text-sm text-stone-600">
+          Restore Import .db memulihkan database saja; lampiran tetap di folder
+          aplikasi.
         </p>
       </Card>
 

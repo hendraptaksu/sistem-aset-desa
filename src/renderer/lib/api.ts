@@ -493,6 +493,9 @@ export const api = {
   savePdf: (req: { htmlB64: string; defaultName: string; landscape?: boolean }) =>
     call<{ saved: boolean; path: string }>('file:save-pdf', req),
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
+  /** Backup lengkap satu folder: DB + lampiran + manifest. */
+  backupLengkap: () =>
+    call<{ saved: boolean; path: string; jumlahLampiran: number }>('backup:lengkap'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupStatus: () => call<{ path: string }>('backup:status'),
   backupImport: () => call<{ restored: boolean; path: string; preRestorePath?: string }>('backup:import'),

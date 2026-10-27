@@ -1,10 +1,20 @@
 // P0-8: backup .db aman (VACUUM INTO) + restore tervalidasi & tidak merusak data lama.
 import Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { openDb } from '../src/db/database.js';
+import pkg from '../package.json';
+import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import { insertJurnal, listJurnal } from '../src/db/repository.js';
 import {
   TABEL_WAJIB_RESTORE,
@@ -13,6 +23,10 @@ import {
   restoreDbAman,
   validasiKandidatRestore,
 } from '../src/features/export/export.js';
+import {
+  buatBackupLengkap,
+  stampBackupLokal,
+} from '../src/features/export/backupLengkap.js';
 
 // AUD-15: kontrol test untuk menggagalkan rename tmp -> dest. Semua fungsi fs
 // lain tetap memakai implementasi asli.
@@ -183,6 +197,104 @@ describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan b
       db?.close();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('AUD-11 — backup lengkap: DB + lampiran + manifest', () => {
+  it('menyalin DB dan 2 lampiran; manifest valid; DB backup memuat data WAL terbaru', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud11-'));
+    let db: Database.Database | null = null;
+    let cek: Database.Database | null = null;
+    try {
+      const dbPath = join(dir, 'data', 'pura.db');
+      db = openDb(dbPath);
+      insertJurnal(db, jurnal('j1').header, jurnal('j1').baris);
+      insertJurnal(db, jurnal('j2').header, jurnal('j2').baris);
+      expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+      // Transaksi terbaru masih di WAL (belum checkpoint, koneksi terbuka).
+      expect(existsSync(`${dbPath}-wal`)).toBe(true);
+
+      const attachmentsDir = join(dir, 'lampiran');
+      mkdirSync(join(attachmentsDir, 'nested'), { recursive: true });
+      writeFileSync(join(attachmentsDir, 'foto.jpg'), 'isi-foto');
+      writeFileSync(join(attachmentsDir, 'nested', 'bukti.pdf'), 'isi-pdf');
+
+      const destDir = join(dir, 'tujuan', 'pura-backup-2026-10-27-1530');
+      const hasil = buatBackupLengkap({
+        db,
+        dbPath,
+        attachmentsDir,
+        destDir,
+        stamp: '2026-10-27-1530',
+      });
+
+      expect(hasil.destDir).toBe(destDir);
+      expect(existsSync(join(destDir, 'pura.db'))).toBe(true);
+      expect(existsSync(join(destDir, 'attachments', 'foto.jpg'))).toBe(true);
+      expect(
+        existsSync(join(destDir, 'attachments', 'nested', 'bukti.pdf')),
+      ).toBe(true);
+      expect(readFileSync(join(destDir, 'attachments', 'foto.jpg'), 'utf-8')).toBe(
+        'isi-foto',
+      );
+
+      const manifest = JSON.parse(
+        readFileSync(join(destDir, 'manifest.json'), 'utf-8'),
+      ) as Record<string, unknown>;
+      expect(manifest).toMatchObject({
+        versiApp: pkg.version,
+        schemaVersion: SCHEMA_VERSION,
+        jumlahLampiran: 2,
+        ukuranDb: statSync(join(destDir, 'pura.db')).size,
+        daftarFile: [
+          'pura.db',
+          'attachments/foto.jpg',
+          'attachments/nested/bukti.pdf',
+        ],
+      });
+      expect(typeof manifest.dibuat).toBe('string');
+      expect(Number.isNaN(Date.parse(String(manifest.dibuat)))).toBe(false);
+      expect(hasil.manifest).toEqual(manifest);
+
+      // DB hasil VACUUM bisa dibuka dan berisi jurnal yang tadinya di WAL.
+      cek = openDb(join(destDir, 'pura.db'));
+      expect(listJurnal(cek).map((j) => j.id)).toEqual(['j1', 'j2']);
+    } finally {
+      cek?.close();
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('lampiran tidak ada tetap menghasilkan folder attachments kosong + manifest 0', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud11-kosong-'));
+    let db: Database.Database | null = null;
+    try {
+      const dbPath = join(dir, 'pura.db');
+      db = openDb(dbPath);
+      const destDir = join(dir, 'backup');
+      const hasil = buatBackupLengkap({
+        db,
+        dbPath,
+        attachmentsDir: join(dir, 'attachments-tidak-ada'),
+        destDir,
+        stamp: '2026-10-27-1531',
+      });
+
+      expect(readdirSync(join(destDir, 'attachments'))).toEqual([]);
+      expect(hasil.manifest.jumlahLampiran).toBe(0);
+      expect(hasil.manifest.daftarFile).toEqual(['pura.db']);
+    } finally {
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('stamp default memakai jam lokal WITA, bukan UTC', () => {
+    // 16:05 UTC = 00:05 WITA tanggal berikutnya.
+    expect(stampBackupLokal(new Date('2026-10-27T16:05:00.000Z'))).toBe(
+      '2026-10-28-0005',
+    );
   });
 });
 

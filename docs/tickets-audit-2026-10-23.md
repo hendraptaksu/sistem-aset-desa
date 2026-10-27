@@ -353,7 +353,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/posting.test.ts tests/reversal.test.ts`.
   - **Dependency:** —
 
-- [ ] **AUD-11 — Buat backup lengkap (DB + lampiran)** · P0 · M
+- [x] **AUD-11 — Buat backup lengkap (DB + lampiran)** · P0 · M (2026-10-27: modul main-only `buatBackupLengkap` menulis `pura.db` via `backupVacuumInto` (bukan copy WAL), menyalin isi `attachments/` (termasuk subfolder/kosong), dan `manifest.json` berisi `versiApp`, `schemaVersion`, `dibuat`, `jumlahLampiran`, `ukuranDb`, `daftarFile`; IPC `backup:lengkap` memilih folder induk, membuat subfolder `pura-backup-YYYY-MM-DD-HHmm` (stamp WITA), dan audit `BACKUP-LENGKAP`; tombol “Backup Lengkap (DB + lampiran)” + penjelasan di Dashboard; typecheck/test/build hijau, 475 test total + 4 test; smoke UI Electron: klik tombol membuat folder `pura-backup-2026-10-27-0954` dengan 2 lampiran dan manifest valid)
   - **Konteks:** Backup saat ini hanya `.db`; semua foto/PDF di `attachments`
     tidak ikut. Docs sudah memberi tahu, tetapi user awam tetap akan
     menganggap “Backup” = semua data.

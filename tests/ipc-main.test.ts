@@ -3,7 +3,14 @@
 // alur create → reverse → tutup → backup → restore dijalankan pada DB sementara.
 
 import type Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -131,6 +138,7 @@ const CHANNEL_IPC = [
   'backup:auto',
   'backup:export',
   'backup:import',
+  'backup:lengkap',
   'backup:status',
   'coa:list',
   'dashboard:get',
@@ -195,11 +203,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 73 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 74 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(73);
+    expect(env.handlers.size).toBe(74);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(73);
+    expect(CHANNEL_IPC).toHaveLength(74);
   });
 });
 
@@ -290,6 +298,55 @@ describe('P2-8 — info lokasi & buka folder', () => {
     expect(auto.ok, auto.error).toBe(true);
     expect(auto.data.path).toBe(join(env.dir, 'data', 'backups', 'pura-2025.db'));
     expect(existsSync(auto.data.path)).toBe(true);
+  });
+});
+
+describe('AUD-11 — IPC backup lengkap (DB + lampiran)', () => {
+  it('membuat subfolder bertanggal, menyalin lampiran, dan menulis audit', async () => {
+    const env = buatEnv();
+    await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-aud11',
+        tanggal: '2026-10-23',
+        keterangan: 'Jurnal sebelum backup lengkap',
+      },
+      baris: [D('1001', 75_000), K('4005', 75_000)],
+    });
+
+    const attachments = join(env.dir, 'attachments');
+    mkdirSync(attachments, { recursive: true });
+    writeFileSync(join(attachments, 'foto.jpg'), 'isi-foto');
+    writeFileSync(join(attachments, 'bukti.pdf'), 'isi-pdf');
+
+    const induk = join(env.dir, 'tujuan-backup');
+    mkdirSync(induk, { recursive: true });
+    env.openQueue.push({ canceled: false, filePaths: [induk] });
+    const hasil = await env.panggil('backup:lengkap');
+    expect(hasil.ok, hasil.error).toBe(true);
+
+    // now() test = 2026-10-23T08:00Z = 16:00 WITA.
+    const dest = join(induk, 'pura-backup-2026-10-23-1600');
+    expect(hasil.data).toEqual({ saved: true, path: dest, jumlahLampiran: 2 });
+    expect(existsSync(join(dest, 'pura.db'))).toBe(true);
+    expect(existsSync(join(dest, 'attachments', 'foto.jpg'))).toBe(true);
+    expect(existsSync(join(dest, 'attachments', 'bukti.pdf'))).toBe(true);
+    const manifest = JSON.parse(
+      readFileSync(join(dest, 'manifest.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+    expect(manifest).toMatchObject({ jumlahLampiran: 2 });
+
+    const audit = await env.panggil('audit:list', { aksi: 'BACKUP-LENGKAP' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.rows[0]).toMatchObject({ aksi: 'BACKUP-LENGKAP' });
+    expect(JSON.parse(audit.data.rows[0].data_baru_json)).toMatchObject({
+      path: dest,
+      jumlahLampiran: 2,
+    });
+
+    // Dialog batal = bukan error dan tidak membuat backup baru.
+    const batal = await env.panggil('backup:lengkap');
+    expect(batal.ok, batal.error).toBe(true);
+    expect(batal.data).toEqual({ saved: false, path: '', jumlahLampiran: 0 });
   });
 });
 

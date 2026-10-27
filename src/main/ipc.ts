@@ -7,7 +7,7 @@
 // diuji dengan vitest tanpa Electron.
 
 import type Database from 'better-sqlite3';
-import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
   catatAudit,
@@ -108,6 +108,10 @@ import {
   lastAutoBackup,
   restoreDbAman,
 } from '../features/export/export.js';
+import {
+  buatBackupLengkap,
+  stampBackupLokal,
+} from '../features/export/backupLengkap.js';
 import type { Aset, Transaksi } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
@@ -1649,6 +1653,52 @@ export function registerIpc(deps: IpcDeps): void {
         baru: { path: filePath, jenis: 'manual' },
       });
       return ok({ saved: true, path: filePath });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_BACKUP));
+    }
+  });
+
+  // Backup lengkap: satu folder berisi DB (VACUUM INTO) + semua lampiran +
+  // manifest. Folder induk dipilih user; subfolder memakai waktu lokal WITA.
+  deps.handle('backup:lengkap', async () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const { canceled, filePaths } = await deps.dialog.showOpenDialog({
+        properties: ['openDirectory', 'createDirectory'],
+        title: 'Pilih folder induk untuk backup lengkap',
+      });
+      if (canceled || !filePaths?.[0])
+        return ok({ saved: false, path: '', jumlahLampiran: 0 });
+
+      const stamp = stampBackupLokal(sekarang());
+      let destDir = join(filePaths[0], `pura-backup-${stamp}`);
+      // Nama folder tetap `pura-backup-YYYY-MM-DD-HHmm`; hanya bila folder itu
+      // sudah berisi (backup lain pada menit yang sama) tambahkan urutan.
+      for (let n = 2; existsSync(destDir) && readdirSync(destDir).length > 0; n += 1) {
+        destDir = join(filePaths[0], `pura-backup-${stamp}-${n}`);
+      }
+
+      const hasil = buatBackupLengkap({
+        db: deps.db(),
+        dbPath: deps.dbPath(),
+        attachmentsDir: deps.lampiranDir(),
+        destDir,
+      });
+      catatAudit(deps.db(), {
+        aksi: 'BACKUP-LENGKAP',
+        alasan: `Backup lengkap ke ${basename(hasil.destDir)}`,
+        baru: {
+          path: hasil.destDir,
+          jumlahLampiran: hasil.manifest.jumlahLampiran,
+          ukuranDb: hasil.manifest.ukuranDb,
+        },
+      });
+      return ok({
+        saved: true,
+        path: hasil.destDir,
+        jumlahLampiran: hasil.manifest.jumlahLampiran,
+      });
     } catch (e) {
       return fail(pesanError(e, GAGAL_BACKUP));
     }
