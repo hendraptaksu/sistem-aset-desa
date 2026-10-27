@@ -218,17 +218,33 @@ export function koreksiDanIsiUlang(
     alasan: String(inputBaru.alasan ?? '').trim() || alasan.trim(),
   };
 
-  // Validasi jurnal balik tanpa peringatan kas: dalam alur isi ulang,
-  // peringatan yang relevan adalah saldo AKHIR setelah jurnal pengganti.
-  const ctx = buatKonteksPosting(db, rencana.input.header);
-  const validasiBalik = validasiJurnal(rencana.input, { ...ctx, saldoKas: undefined });
-  const saldoSetelahBalik: Record<string, number> = { ...(ctx.saldoKas ?? {}) };
-  for (const b of rencana.input.baris) {
-    if (isAkunKas(b.akun_kode))
-      saldoSetelahBalik[b.akun_kode] =
-        (saldoSetelahBalik[b.akun_kode] ?? 0) + b.debit - b.kredit;
-  }
-  const validasiBaru = validasiJurnal(baru, { ...ctx, saldoKas: saldoSetelahBalik });
+  // AUD-10: jurnal balik dan pengganti bisa bertanggal berbeda. Masing-masing
+  // harus dievaluasi dengan saldo kas pada tanggalnya sendiri — bukan satu ctx
+  // untuk dua tanggal. Jurnal yang tanggalnya lebih dulu ikut diperhitungkan
+  // bila jatuh pada/sebelum tanggal jurnal yang sedang divalidasi, karena
+  // keduanya tersimpan atomik dalam transaksi yang sama.
+  const ctxBalik = buatKonteksPosting(db, rencana.input.header);
+  const ctxBaru = buatKonteksPosting(db, headerBaru);
+  const tanggalBalik = String(rencana.input.header.tanggal ?? '').trim();
+  const tanggalBaru = String(headerBaru.tanggal ?? '').trim();
+
+  const tambahDeltaKas = (
+    saldo: Record<string, number>,
+    baris: JurnalInput['baris'],
+  ): void => {
+    for (const b of baris) {
+      if (isAkunKas(b.akun_kode))
+        saldo[b.akun_kode] = (saldo[b.akun_kode] ?? 0) + b.debit - b.kredit;
+    }
+  };
+
+  const saldoBalik: Record<string, number> = { ...(ctxBalik.saldoKas ?? {}) };
+  if (tanggalBaru <= tanggalBalik) tambahDeltaKas(saldoBalik, baru.baris);
+  const validasiBalik = validasiJurnal(rencana.input, { ...ctxBalik, saldoKas: saldoBalik });
+
+  const saldoBaru: Record<string, number> = { ...(ctxBaru.saldoKas ?? {}) };
+  if (tanggalBalik <= tanggalBaru) tambahDeltaKas(saldoBaru, rencana.input.baris);
+  const validasiBaru = validasiJurnal(baru, { ...ctxBaru, saldoKas: saldoBaru });
 
   const errors = [
     ...validasiBalik.errors.map((e) => `Jurnal balik: ${e}`),

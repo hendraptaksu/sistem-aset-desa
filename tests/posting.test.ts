@@ -208,6 +208,113 @@ describe('P0-4 — peringatan kas minus', () => {
   });
 });
 
+describe('AUD-10 — peringatan kas minus memakai saldo per tanggal jurnal', () => {
+  it('pengeluaran backdate dievaluasi dengan saldo tanggalnya, bukan saldo masa depan', () => {
+    const { db } = freshDb();
+    try {
+      // Kas Februari Rp 1.000; kas 15 Januari masih 0.
+      const feb = postingJurnal(db, {
+        header: header({
+          id: 'j-feb',
+          tanggal: '2026-02-01',
+          no_bukti: 'JU-2026-0002',
+          keterangan: 'Penerimaan Februari',
+        }),
+        baris: pasangan('1001', '4005', 100_000),
+      });
+      expect(feb.tersimpan).toBe(true);
+
+      const backdate = {
+        header: header({
+          id: 'j-jan',
+          tanggal: '2026-01-15',
+          no_bukti: 'JU-2026-0003',
+          keterangan: 'Pengeluaran backdate',
+          jenis: 'BAYAR' as const,
+        }),
+        baris: pasangan('5000', '1001', 20_000),
+      };
+
+      const validasi = validasiJurnalDb(db, backdate);
+      expect(validasi.boleh).toBe(true);
+      expect(validasi.peringatan.join(' ')).toMatch(/akan minus/);
+
+      const belum = postingJurnal(db, backdate);
+      expect(belum.tersimpan).toBe(false);
+      expect(belum.perluKonfirmasi).toBe(true);
+      expect(belum.peringatan.join(' ')).toMatch(/akan minus/);
+      expect(jumlahJurnal(db)).toBe(1);
+
+      const lanjut = postingJurnal(db, backdate, { konfirmasiPeringatan: true });
+      expect(lanjut.tersimpan).toBe(true);
+      expect(jumlahJurnal(db)).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('transaksi maju normal tetap tanpa peringatan palsu', () => {
+    const { db } = freshDb();
+    try {
+      expect(
+        postingJurnal(db, {
+          header: header({ id: 'j-modal', no_bukti: 'JU-2026-0010', keterangan: 'Modal awal' }),
+          baris: pasangan('1001', '3000', 100_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      const maju = postingJurnal(db, {
+        header: header({
+          id: 'j-maju',
+          tanggal: '2026-01-15',
+          no_bukti: 'JU-2026-0011',
+          keterangan: 'Bayar listrik',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 20_000),
+      });
+      expect(maju.errors).toEqual([]);
+      expect(maju.peringatan).toEqual([]);
+      expect(maju.perluKonfirmasi).toBe(false);
+      expect(maju.tersimpan).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('saldo dihitung per akun kas, bukan total semua dompet', () => {
+    const { db } = freshDb();
+    try {
+      // Bank 1029 punya saldo, kas 1001 tidak.
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-bank',
+            no_bukti: 'JU-2026-0020',
+            keterangan: 'Penerimaan via bank',
+          }),
+          baris: pasangan('1029', '4005', 100_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      const hasil = validasiJurnalDb(db, {
+        header: header({
+          id: 'j-kas',
+          tanggal: '2026-01-20',
+          no_bukti: 'JU-2026-0021',
+          keterangan: 'Bayar dari kas',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 20_000),
+      });
+      expect(hasil.boleh).toBe(true);
+      expect(hasil.peringatan.join(' ')).toMatch(/Kas\/Bank 1001/);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('P0-4 — kunci periode via DB', () => {
   it('menolak tanggal periode tutup tanpa alasan, menerima dengan alasan', () => {
     const { db } = freshDb();

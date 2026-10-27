@@ -328,7 +328,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run build`.
   - **Dependency:** —
 
-- [ ] **AUD-10 — Peringatan kas minus berdasarkan tanggal jurnal** · P0 · S
+- [x] **AUD-10 — Peringatan kas minus berdasarkan tanggal jurnal** · P0 · S (2026-10-27: `buatKonteksPosting` menghitung saldo kas per akun dengan cutoff `j.tanggal <= header.tanggal`; `koreksiDanIsiUlang` memakai konteks tanggal balik dan tanggal pengganti secara terpisah, termasuk pengaruh balik bila tanggalnya lebih dulu; test backdate Rp 1.000/Feb → pengeluaran 15 Jan Rp 200, transaksi maju normal, saldo per akun kas, serta koreksi lintas tanggal; typecheck/test/build hijau, 468 test total + 5 test)
   - **Konteks:** `buatKonteksPosting` menjumlahkan **seluruh** riwayat kas,
     bukan saldo pada tanggal jurnal. Contoh yang sudah direproduksi:
     kas Jan 0, kas Feb Rp 1.000, posting pengeluaran backdate 15 Jan Rp 200 →

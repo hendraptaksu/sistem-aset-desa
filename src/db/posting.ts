@@ -38,13 +38,19 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
         .all(noBukti) as { no_bukti: string }[]).map((r) => String(r.no_bukti))
     : [];
 
+  // AUD-10: saldo kas harus mencerminkan posisi pada tanggal jurnal, bukan
+  // seluruh riwayat. Jurnal bertanggal setelah header tidak boleh "menutupi"
+  // kas minus yang terjadi lebih dulu (mis. pengeluaran backdate).
   const saldoKas: Record<string, number> = {};
   for (const kode of KAS_KODES) saldoKas[kode] = 0;
   const saldoRows = db
     .prepare(
-      'SELECT akun_kode, COALESCE(SUM(debit - kredit), 0) AS saldo FROM jurnal_baris GROUP BY akun_kode',
+      `SELECT b.akun_kode, COALESCE(SUM(b.debit - b.kredit), 0) AS saldo
+       FROM jurnal_baris b JOIN jurnal j ON j.id = b.jurnal_id
+       WHERE j.tanggal <= ?
+       GROUP BY b.akun_kode`,
     )
-    .all() as { akun_kode: string; saldo: number }[];
+    .all(String(header.tanggal ?? '').trim()) as { akun_kode: string; saldo: number }[];
   for (const r of saldoRows) {
     if (isAkunKas(r.akun_kode)) saldoKas[String(r.akun_kode)] = Number(r.saldo);
   }

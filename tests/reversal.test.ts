@@ -596,9 +596,17 @@ describe('P0-6 — koreksi & isi ulang', () => {
           },
           baris: pasangan('5000', '1001', RP(120)),
         },
-        { id: 'j-beban-2025-balik', tanggal: '2026-01-10' },
+        // AUD-10: pengganti dievaluasi pada saldo 15 Jun 2025. Kas 2025 baru
+        // -Rp 100 (modal masuk 2026), jadi pengganti Rp 120 membuat kas minus
+        // dan operator wajib mengonfirmasi.
+        {
+          id: 'j-beban-2025-balik',
+          tanggal: '2026-01-10',
+          konfirmasiPeringatan: true,
+        },
       );
 
+      expect(hasil.peringatan.join(' ')).toMatch(/akan minus/);
       expect(hasil.tersimpan).toBe(true);
       const baris = listBarisJurnal(db);
       expect(labaTahun(baris, 2025)).toBe(-RP(220));
@@ -608,6 +616,178 @@ describe('P0-6 — koreksi & isi ulang', () => {
         selisih: 0,
         seimbang: true,
       });
+    } finally {
+      db.close();
+    }
+  });
+
+  // AUD-10: saldo kas untuk validasi koreksi harus dihitung pada tanggal
+  // masing-masing jurnal (balik dan pengganti), bukan satu saldo bersama.
+  it('pengganti backdate memakai saldo tanggalnya, bukan saldo tanggal balik', () => {
+    const db = freshDb();
+    try {
+      // Kas 1 Jan Rp 500.
+      insertJurnal(
+        db,
+        {
+          id: 'j-modal-kecil',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0300',
+          keterangan: 'Modal awal kecil',
+          jenis: 'SALDO_AWAL',
+        },
+        pasangan('1001', '3000', RP(500)),
+      );
+      // Beban asli Rp 100 (1 Feb) + penerimaan Rp 1.000 (1 Mar) membuat saldo
+      // pada tanggal balik (1 Apr) terlihat cukup.
+      insertJurnal(
+        db,
+        {
+          id: 'j-beban-asli',
+          tanggal: '2026-02-01',
+          no_bukti: 'JU-2026-0301',
+          keterangan: 'Beban asli',
+          jenis: 'BAYAR',
+        },
+        pasangan('5000', '1001', RP(100)),
+      );
+      insertJurnal(
+        db,
+        {
+          id: 'j-masuk-mar',
+          tanggal: '2026-03-01',
+          no_bukti: 'JU-2026-0302',
+          keterangan: 'Penerimaan Maret',
+          jenis: 'TERIMA',
+        },
+        pasangan('1001', '4005', RP(1_000)),
+      );
+
+      const pengganti = {
+        header: {
+          id: 'j-beban-baru',
+          tanggal: '2026-01-15',
+          no_bukti: 'JU-2026-0303',
+          keterangan: 'Beban koreksi (backdate)',
+          jenis: 'BAYAR' as const,
+        },
+        baris: pasangan('5000', '1001', RP(800)),
+      };
+
+      // 15 Jan kas hanya Rp 500 → pengganti Rp 800 minus. Saldo 1 Apr tidak
+      // boleh dipakai karena pengganti bertanggal 15 Jan.
+      const belum = koreksiDanIsiUlang(
+        db,
+        'j-beban-asli',
+        'Nominal salah, seharusnya 800',
+        pengganti,
+        { id: 'j-beban-balik', tanggal: '2026-04-01' },
+      );
+      expect(belum.tersimpan).toBe(false);
+      expect(belum.perluKonfirmasi).toBe(true);
+      expect(belum.peringatan.join(' ')).toMatch(/akan minus/);
+      expect(jumlahJurnal(db)).toBe(3);
+
+      const lanjut = koreksiDanIsiUlang(
+        db,
+        'j-beban-asli',
+        'Nominal salah, seharusnya 800',
+        pengganti,
+        {
+          id: 'j-beban-balik',
+          tanggal: '2026-04-01',
+          konfirmasiPeringatan: true,
+        },
+      );
+      expect(lanjut.tersimpan).toBe(true);
+      expect(jumlahJurnal(db)).toBe(5);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('jurnal balik dievaluasi pada tanggal balik, bukan tanggal pengganti', () => {
+    const db = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-modal-kecil',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0310',
+          keterangan: 'Modal awal kecil',
+          jenis: 'SALDO_AWAL',
+        },
+        pasangan('1001', '3000', RP(100)),
+      );
+      insertJurnal(
+        db,
+        {
+          id: 'j-masuk-asli',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0311',
+          keterangan: 'Penerimaan asli',
+          jenis: 'TERIMA',
+        },
+        pasangan('1001', '4005', RP(100)),
+      );
+      insertJurnal(
+        db,
+        {
+          id: 'j-belanja',
+          tanggal: '2026-01-10',
+          no_bukti: 'JU-2026-0312',
+          keterangan: 'Belanja habiskan kas',
+          jenis: 'BAYAR',
+        },
+        pasangan('5000', '1001', RP(200)),
+      );
+
+      // Balik 20 Jan: kas saat itu 0 → minus Rp 100. Pengganti baru 1 Mei,
+      // jadi tidak boleh menutupi minus pada tanggal balik.
+      const belum = koreksiDanIsiUlang(
+        db,
+        'j-masuk-asli',
+        'Nominal salah, seharusnya 700',
+        {
+          header: {
+            id: 'j-masuk-baru',
+            tanggal: '2026-05-01',
+            no_bukti: 'JU-2026-0313',
+            keterangan: 'Penerimaan koreksi',
+            jenis: 'TERIMA',
+          },
+          baris: pasangan('1001', '4005', RP(700)),
+        },
+        { id: 'j-masuk-balik', tanggal: '2026-01-20' },
+      );
+      expect(belum.tersimpan).toBe(false);
+      expect(belum.perluKonfirmasi).toBe(true);
+      expect(belum.peringatan.join(' ')).toMatch(/akan minus/);
+      expect(jumlahJurnal(db)).toBe(3);
+
+      const lanjut = koreksiDanIsiUlang(
+        db,
+        'j-masuk-asli',
+        'Nominal salah, seharusnya 700',
+        {
+          header: {
+            id: 'j-masuk-baru',
+            tanggal: '2026-05-01',
+            no_bukti: 'JU-2026-0313',
+            keterangan: 'Penerimaan koreksi',
+            jenis: 'TERIMA',
+          },
+          baris: pasangan('1001', '4005', RP(700)),
+        },
+        {
+          id: 'j-masuk-balik',
+          tanggal: '2026-01-20',
+          konfirmasiPeringatan: true,
+        },
+      );
+      expect(lanjut.tersimpan).toBe(true);
+      expect(jumlahJurnal(db)).toBe(5);
     } finally {
       db.close();
     }
