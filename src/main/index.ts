@@ -151,6 +151,11 @@ function buatIpcDeps(): IpcDeps {
     openPath: (path) => shell.openPath(path),
     lampiranDir: () => lokasiData().attachmentsDir,
     lokasiData,
+    // AUD-17: frame pengirim yang sah = renderer build atau dev origin.
+    pengirim: {
+      devUrl: process.env['ELECTRON_RENDERER_URL'],
+      rendererFile: join(__dirname, '../renderer/index.html'),
+    },
   };
 }
 

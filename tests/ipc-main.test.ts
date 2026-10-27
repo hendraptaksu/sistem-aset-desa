@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { registerIpc, type IpcDeps } from '../src/main/ipc.js';
@@ -36,6 +37,11 @@ type Env = {
   openQueue: { canceled: boolean; filePaths: string[] }[];
   openPaths: string[];
   panggil: (channel: string, ...args: any[]) => Promise<JawabanIpc>;
+  panggilDari: (
+    channel: string,
+    event: unknown,
+    ...args: any[]
+  ) => Promise<JawabanIpc>;
   db: () => Database.Database;
   tutup: () => void;
 };
@@ -59,6 +65,8 @@ function buatEnv(): Env {
     attachmentsDir: join(dir, 'attachments'),
     backupsDir: join(dataDir, 'backups'),
   };
+  const rendererFile = join(dir, 'out', 'renderer', 'index.html');
+  const frameSah = { senderFrame: { url: pathToFileURL(rendererFile).href } };
 
   const deps: IpcDeps = {
     handle: (channel, listener) => handlers.set(channel, listener),
@@ -82,6 +90,7 @@ function buatEnv(): Env {
     },
     lampiranDir: () => lokasi.attachmentsDir,
     lokasiData: () => lokasi,
+    pengirim: { rendererFile },
     // Tanggal tetap agar K2 (tutup hanya tahun selesai) deterministik.
     now: () => new Date('2026-10-23T08:00:00.000Z'),
   };
@@ -102,7 +111,12 @@ function buatEnv(): Env {
     panggil: async (channel, ...args) => {
       const handler = handlers.get(channel);
       if (!handler) throw new Error(`Channel ${channel} tidak terdaftar.`);
-      return (await handler({}, ...args)) as JawabanIpc;
+      return (await handler(frameSah, ...args)) as JawabanIpc;
+    },
+    panggilDari: async (channel, event, ...args) => {
+      const handler = handlers.get(channel);
+      if (!handler) throw new Error(`Channel ${channel} tidak terdaftar.`);
+      return (await handler(event, ...args)) as JawabanIpc;
     },
     db: () => db,
     tutup: () => {
@@ -299,6 +313,44 @@ describe('P2-8 — info lokasi & buka folder', () => {
     expect(auto.ok, auto.error).toBe(true);
     expect(auto.data.path).toBe(join(env.dir, 'data', 'backups', 'pura-2025.db'));
     expect(existsSync(auto.data.path)).toBe(true);
+  });
+});
+
+describe('AUD-17 — hardening backup:auto dan pengirim IPC', () => {
+  it('menolak tahun backup yang bukan integer 1900..9999 tanpa membuat path', async () => {
+    const env = buatEnv();
+    for (const tahun of ['../../x', 'NaN', 0, 2026.5, 1899, 10000, NaN, null]) {
+      const hasil = await env.panggil('backup:auto', tahun);
+      expect(hasil.ok, `tahun ${String(tahun)} harus ditolak`).toBe(false);
+      expect(hasil.error).toMatch(/tahun backup tidak valid/i);
+    }
+    expect(existsSync(join(env.dir, 'data', 'backups'))).toBe(false);
+
+    const sah = await env.panggil('backup:auto', 2026);
+    expect(sah.ok, sah.error).toBe(true);
+    expect(sah.data.path).toBe(
+      join(env.dir, 'data', 'backups', 'pura-2026.db'),
+    );
+    expect(existsSync(sah.data.path)).toBe(true);
+  });
+
+  it('menolak event dari frame asing/null dan menerima frame renderer', async () => {
+    const env = buatEnv();
+
+    const sah = await env.panggil('coa:list');
+    expect(sah.ok, sah.error).toBe(true);
+
+    for (const event of [
+      { senderFrame: { url: 'https://jahat.test/' } },
+      { senderFrame: { url: 'about:srcdoc' } },
+      { senderFrame: null },
+      {},
+      null,
+    ]) {
+      const ditolak = await env.panggilDari('coa:list', event);
+      expect(ditolak.ok).toBe(false);
+      expect(ditolak.error).toMatch(/pengirim bukan aplikasi ini/i);
+    }
   });
 });
 

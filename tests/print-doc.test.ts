@@ -585,6 +585,8 @@ describe('P1-16 — pratinjau & PDF memakai HTML yang sama', () => {
       }),
     );
     expect(html).toContain('<iframe');
+    expect(html).toContain('sandbox="allow-same-origin allow-modals"');
+    expect(html).not.toContain('allow-scripts');
     expect(html).toContain('Pratinjau Cetak — Neraca Saldo');
     expect(html).toContain('Halaman 1 dari 3');
     expect(html).toContain('A4 Landscape');

@@ -20,23 +20,30 @@ function direktif(policy: string, nama: string): string | undefined {
 }
 
 describe('CSP renderer (P1-15)', () => {
-  it('produksi: script-src hanya self, tanpa unsafe-inline', () => {
+  it('produksi: script-src hanya self, tanpa unsafe-inline/WebSocket', () => {
     expect(CSP_PRODUKSI).toContain("default-src 'self'");
     expect(direktif(CSP_PRODUKSI, 'script-src')).toBe("script-src 'self'");
     expect(CSP_PRODUKSI).toContain("style-src 'self' 'unsafe-inline'");
     expect(CSP_PRODUKSI).toContain("img-src 'self' data: blob:");
     expect(CSP_PRODUKSI).toContain("font-src 'self' data:");
-    expect(CSP_PRODUKSI).toContain("connect-src 'self' ws: wss:");
+    expect(direktif(CSP_PRODUKSI, 'connect-src')).toBe("connect-src 'self'");
+    expect(CSP_PRODUKSI).not.toContain('ws:');
+    expect(CSP_PRODUKSI).not.toContain('wss:');
     expect(CSP_PRODUKSI).toContain("frame-src 'self' data: blob:");
     expect(CSP_PRODUKSI).toContain("object-src 'none'");
     expect(CSP_PRODUKSI).toContain("base-uri 'none'");
     expect(CSP_PRODUKSI).toContain("form-action 'none'");
   });
 
-  it('dev: inline script diizinkan, produksi tidak ikut longgar', () => {
+  it('dev: inline script + WebSocket diizinkan untuk HMR, produksi tidak', () => {
     expect(direktif(CSP_DEV, 'script-src')).toBe(
       "script-src 'self' 'unsafe-inline'",
     );
+    expect(direktif(CSP_DEV, 'connect-src')).toBe(
+      "connect-src 'self' ws: wss:",
+    );
+    expect(CSP_DEV).toContain('ws:');
+    expect(CSP_DEV).toContain('wss:');
     expect(direktif(CSP_PRODUKSI, 'script-src')).toBe("script-src 'self'");
     expect(cspUntukMode('development')).toBe(CSP_DEV);
     expect(cspUntukMode('production')).toBe(CSP_PRODUKSI);

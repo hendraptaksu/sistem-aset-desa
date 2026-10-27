@@ -34,6 +34,8 @@ describe('PratinjauHtmlModal (P1-15)', () => {
     );
     expect(markup).toContain('Pratinjau Cetak');
     expect(markup).toContain('srcDoc=');
+    expect(markup).toContain('sandbox="allow-same-origin allow-modals"');
+    expect(markup).not.toContain('allow-scripts');
     expect(markup).toContain('Cetak');
     expect(markup).toContain('Tutup');
     expect(markup).not.toContain('window.print()');

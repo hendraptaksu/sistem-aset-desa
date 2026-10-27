@@ -482,7 +482,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test helper + smoke manual + `npm run build`.
   - **Dependency:** —
 
-- [ ] **AUD-17 — Hardening IPC/CSP: `backup:auto`, sender frame, iframe** · P0 · S
+- [x] **AUD-17 — Hardening IPC/CSP: `backup:auto`, sender frame, iframe** · P0 · S (2026-10-27: `backup:auto` menormalkan tahun ke integer 1900..9999 sebelum `join` sehingga `../../x`/`NaN`/`0`/desimal ditolak tanpa membuat path; CSP produksi `connect-src 'self'` dan `ws:`/`wss:` hanya ada di CSP dev HMR; wrapper `registerIpc` memvalidasi `event.senderFrame.url` lewat helper murni `pengirimDiizinkan` (renderer `file:`/dev origin, frame asing & null ditolak); iframe pratinjau cetak/html memakai `sandbox="allow-same-origin allow-modals"` (script/form/popup tetap mati); typecheck/test/build hijau, 503 test total + 4 test; smoke Electron: parent bisa mengakses `contentWindow` dan memanggil `print()`, frame tanpa `allow-modals` ditolak Chromium dengan log “Ignored call to 'print()'…” sehingga izin terbukti minimal)
   - **Konteks:** `backup:auto` menerima `tahun` dari renderer dan langsung
     memasukkannya ke path (`pura-${tahun}.db`). Nilai seperti `../../x` bisa
     keluar folder. CSP produksi juga masih mengizinkan `ws:`/`wss:`.

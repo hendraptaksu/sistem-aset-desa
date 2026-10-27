@@ -46,3 +46,16 @@ export function urlDiizinkan(target: string, ctx: KonteksNavigasi): boolean {
     return false;
   }
 }
+
+/**
+ * AUD-17: frame pengirim IPC harus frame renderer aplikasi sendiri. Frame
+ * null/asing (mis. iframe `srcdoc`, halaman eksternal, atau frame yang sudah
+ * hancur) ditolak agar tidak bisa memanggil handler main.
+ */
+export function pengirimDiizinkan(
+  senderFrame: { url?: string | null } | null | undefined,
+  ctx: KonteksNavigasi,
+): boolean {
+  const url = senderFrame?.url;
+  return typeof url === 'string' && url.length > 0 && urlDiizinkan(url, ctx);
+}

@@ -36,6 +36,9 @@ instance; hentikan dev server lama lebih dulu bila ingin memulai ulang bersih.
 - `setWindowOpenHandler(() => ({ action: 'deny' }))`
 - `will-navigate` hanya mengizinkan origin `ELECTRON_RENDERER_URL` (dev) atau
   file `out/renderer/index.html` (build). URL lain di-`preventDefault()`.
+- Semua handler IPC (`registerIpc`) memvalidasi `event.senderFrame.url` dengan
+  aturan yang sama. Frame asing, iframe `srcdoc`, atau `senderFrame` null
+  ditolak sebelum handler menyentuh DB/dialog.
 
 Cara uji blokir window baru: dari DevTools renderer jalankan
 `window.open('https://example.com')` → harus mengembalikan `null`/tidak membuka
@@ -60,11 +63,17 @@ grep -n "Content-Security-Policy" out/renderer/index.html
 CSP produksi yang diharapkan:
 
 ```text
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'
 ```
 
-Pratinjau cetak memakai iframe `srcDoc`; `frame-src` dan `style-src` di atas
-mengizinkannya. Dokumen cetak tidak memuat inline script/auto-print.
+`ws:`/`wss:` hanya ditambahkan pada CSP dev untuk HMR Vite.
+
+Pratinjau cetak memakai iframe `srcDoc` dengan
+`sandbox="allow-same-origin allow-modals"`: `allow-same-origin` agar parent bisa
+memanggil `contentWindow.print()`, `allow-modals` agar dialog cetak tidak
+diblokir Chromium. Script/form/popup tetap dinonaktifkan. `frame-src` dan
+`style-src` di atas mengizinkan pratinjau; dokumen cetak tidak memuat inline
+script/auto-print.
 
 ## 4. Catatan untuk P2-8 (SOP operator)
 

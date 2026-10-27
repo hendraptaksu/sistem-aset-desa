@@ -55,10 +55,14 @@ export function PratinjauHtmlModal({
         </div>
 
         <div className="mt-3 min-h-0 flex-1 overflow-hidden rounded-lg border border-stone-300 bg-stone-100">
+          {/* AUD-17: iframe disandbox. allow-same-origin agar parent bisa
+              memanggil contentWindow.print(); allow-modals agar dialog cetak
+              tidak diblokir. Script/form/popup tetap dinonaktifkan. */}
           <iframe
             ref={iframeRef}
             title={`Pratinjau cetak ${judul}`}
             srcDoc={html}
+            sandbox="allow-same-origin allow-modals"
             className="h-full w-full bg-white"
           />
         </div>

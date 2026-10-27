@@ -12,7 +12,7 @@ const DIREKTIF_PRODUKSI = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' ws: wss:",
+  "connect-src 'self'",
   "frame-src 'self' data: blob:",
   "object-src 'none'",
   "base-uri 'none'",
@@ -22,11 +22,11 @@ const DIREKTIF_PRODUKSI = [
 /** CSP ketat untuk hasil build/paket. */
 export const CSP_PRODUKSI = DIREKTIF_PRODUKSI.join('; ');
 
-/** CSP dev: sama, tetapi script inline diizinkan untuk react-refresh/Vite. */
+/** CSP dev: script inline untuk react-refresh/Vite + WebSocket untuk HMR. */
 export const CSP_DEV = CSP_PRODUKSI.replace(
   "script-src 'self'",
   "script-src 'self' 'unsafe-inline'",
-);
+).replace("connect-src 'self'", "connect-src 'self' ws: wss:");
 
 const META_CSP_RE = /<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>/i;
 const HEAD_RE = /<head(\s[^>]*)?>/i;

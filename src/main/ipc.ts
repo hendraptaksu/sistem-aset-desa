@@ -164,6 +164,7 @@ import {
 } from './kunci.js';
 import { sudahSetupPin } from '../db/repository.js';
 import type { LokasiData } from './lokasiData.js';
+import { pengirimDiizinkan, type KonteksNavigasi } from './windowSecurity.js';
 
 export type IpcDeps = {
   handle(
@@ -191,6 +192,11 @@ export type IpcDeps = {
   lokasiData(): LokasiData;
   /** Waktu acuan yang bisa dipatok di test; default `new Date()`. */
   now?(): Date;
+  /**
+   * AUD-17: konteks pengirim IPC yang sah. Hanya frame renderer aplikasi
+   * (file build atau dev origin) yang boleh memanggil handler.
+   */
+  pengirim: KonteksNavigasi;
 };
 
 export function registerIpc(deps: IpcDeps): void {
@@ -205,6 +211,24 @@ export function registerIpc(deps: IpcDeps): void {
     perluKonfirmasi,
   });
   const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+  // AUD-17: setiap handler hanya boleh dipanggil frame renderer aplikasi.
+  // Event tanpa senderFrame (frame hancur) atau dari iframe/halaman asing
+  // ditolak sebelum listener menyentuh DB/dialog.
+  const daftarkan = (
+    channel: string,
+    listener: (event: unknown, ...args: any[]) => unknown,
+  ): void => {
+    deps.handle(channel, (event, ...args) => {
+      const frame = (
+        event as { senderFrame?: { url?: string | null } | null } | null
+      )?.senderFrame;
+      if (!pengirimDiizinkan(frame, deps.pengirim)) {
+        return fail('Permintaan ditolak: pengirim bukan aplikasi ini.');
+      }
+      return listener(event, ...args);
+    });
+  };
 
   // Error internal tidak pernah dikirim mentah ke renderer. Pesan bisnis yang
   // sudah berbahasa Indonesia tetap lolos lewat `pesanError`.
@@ -274,35 +298,35 @@ export function registerIpc(deps: IpcDeps): void {
     };
   };
 
-  deps.handle('coa:list', () => ok(COA));
+  daftarkan('coa:list', () => ok(COA));
 
   // Kunci aplikasi: sesi selalu terkunci saat app dibuka (sesi.terbuka=false awal).
-  deps.handle('lock:status', () => ok(statusKunci(deps.db())));
-  deps.handle('lock:setup', (_e, pin: string) => {
+  daftarkan('lock:status', () => ok(statusKunci(deps.db())));
+  daftarkan('lock:setup', (_e, pin: string) => {
     const err = setupPin(deps.db(), String(pin ?? ''));
     return err ? fail(err) : ok({ terbuka: true });
   });
-  deps.handle('lock:unlock', (_e, pin: string) => {
+  daftarkan('lock:unlock', (_e, pin: string) => {
     const err = bukaKunci(deps.db(), String(pin ?? ''));
     return err ? fail(err) : ok({ terbuka: true });
   });
-  deps.handle('lock:lock', () => {
+  daftarkan('lock:lock', () => {
     kunciLagi();
     return ok({ terkunci: true });
   });
-  deps.handle('lock:change', (_e, lama: string, baru: string) => {
+  daftarkan('lock:change', (_e, lama: string, baru: string) => {
     const k = perluBuka();
     if (k) return fail(k);
     const err = ubahPin(deps.db(), String(lama ?? ''), String(baru ?? ''));
     return err ? fail(err) : ok({ diubah: true });
   });
-  deps.handle('lock:idle-set', (_e, menit: number) => {
+  daftarkan('lock:idle-set', (_e, menit: number) => {
     const k = perluBuka();
     if (k) return fail(k);
     const err = aturIdle(deps.db(), Number(menit));
     return err ? fail(err) : ok({ idleMenit: Number(menit) });
   });
-  deps.handle('lock:reset', (_e, kode: string, pinBaru: string) => {
+  daftarkan('lock:reset', (_e, kode: string, pinBaru: string) => {
     const err = resetPaksa(deps.db(), String(kode ?? ''), String(pinBaru ?? ''));
     return err ? fail(err) : ok({ terbuka: true });
   });
@@ -323,7 +347,7 @@ export function registerIpc(deps: IpcDeps): void {
     return lokasi.attachmentsDir;
   };
 
-  deps.handle('app:info-lokasi', () => {
+  daftarkan('app:info-lokasi', () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -333,7 +357,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('app:buka-folder', async (_e, jenis: unknown) => {
+  daftarkan('app:buka-folder', async (_e, jenis: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -358,7 +382,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Pengaturan pembukuan (P1-13) ----
   // Semua perubahan wajib lewat PIN terbuka; repository yang menulis audit
   // sebelum/sesudah dan tidak pernah menyertakan PIN.
-  deps.handle('pengaturan:get', () => {
+  daftarkan('pengaturan:get', () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -368,7 +392,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('pengaturan:simpan', (_e, input: unknown) => {
+  daftarkan('pengaturan:simpan', (_e, input: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -383,7 +407,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Jurnal Umum & koreksi (P0-6) ----
   // Bentuk lama dipertahankan: mengembalikan array tanpa total. Layar baru
   // memakai `jurnal:cari` agar pagination memakai total dari server (P1-11).
-  deps.handle('jurnal:list', (_e, f: JurnalFilter = {}) => {
+  daftarkan('jurnal:list', (_e, f: JurnalFilter = {}) => {
     const k = perluBuka();
     if (k) return fail(k);
     const mulai = validasiTanggalOpsional(f?.mulai);
@@ -409,7 +433,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // P1-11: pencarian + pagination server-side. Limit 1..200 & offset >= 0
   // divalidasi di helper murni (tanpa Electron) agar bisa diuji terpisah.
-  deps.handle('jurnal:cari', (_e, f: unknown = {}) => {
+  daftarkan('jurnal:cari', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -422,7 +446,7 @@ export function registerIpc(deps: IpcDeps): void {
   });
 
   // Saran nomor untuk pratinjau form; penomoran final tetap di insertJurnal.
-  deps.handle('jurnal:nomor-berikutnya', (_e, tanggal: unknown) => {
+  daftarkan('jurnal:nomor-berikutnya', (_e, tanggal: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -438,7 +462,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Laporan Buku Besar & Neraca Saldo + drill-down (P1-8) ----
   // Semua angka dihitung ulang dari jurnal oleh core/reports.ts. Handler hanya
   // menormalkan bentuk filter dan memvalidasi tanggal kalender.
-  deps.handle('laporan:buku-besar', (_e, f: unknown = {}) => {
+  daftarkan('laporan:buku-besar', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -455,7 +479,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('laporan:neraca-saldo', (_e, cutoff: unknown) => {
+  daftarkan('laporan:neraca-saldo', (_e, cutoff: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -467,7 +491,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('laporan:jurnal-akun', (_e, f: unknown = {}) => {
+  daftarkan('laporan:jurnal-akun', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -484,7 +508,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('laporan:jurnal-detail', (_e, id: unknown) => {
+  daftarkan('laporan:jurnal-detail', (_e, id: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -501,7 +525,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Layar Laba Rugi, Neraca, Arus Kas (P1-9) ----
   // Angka tetap 100% dari core/reports.ts. Handler hanya memvalidasi bentuk
   // filter dan tanggal kalender; tidak ada perhitungan ulang di main/renderer.
-  deps.handle('laporan:laba-rugi', (_e, f: unknown = {}) => {
+  daftarkan('laporan:laba-rugi', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -513,7 +537,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('laporan:neraca', (_e, f: unknown = {}) => {
+  daftarkan('laporan:neraca', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -525,7 +549,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('laporan:arus-kas', (_e, f: unknown = {}) => {
+  daftarkan('laporan:arus-kas', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -540,7 +564,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Pagu anggaran & realisasi (P2-1) ----
   // Hanya pagu yang disimpan. Realisasi dihitung ulang dari baris jurnal oleh
   // core/anggaran.ts → labaRugi(); tidak ada angka realisasi tersimpan.
-  deps.handle('anggaran:list', (_e, f: unknown = {}) => {
+  daftarkan('anggaran:list', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -556,7 +580,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('anggaran:simpan', (_e, f: unknown = {}, opsi: unknown = {}) => {
+  daftarkan('anggaran:simpan', (_e, f: unknown = {}, opsi: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -583,7 +607,7 @@ export function registerIpc(deps: IpcDeps): void {
   // bawaan Januari hasilnya tetap 1 Jan–31 Des seperti tiket; bila awal tahun
   // buku diubah (mis. Juli), laporan memakai tahun buku yang sama dengan
   // dashboard agar pagu & realisasi tidak terpotong di tengah periode.
-  deps.handle('laporan:anggaran', (_e, f: unknown = {}) => {
+  daftarkan('laporan:anggaran', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -607,7 +631,7 @@ export function registerIpc(deps: IpcDeps): void {
   // Hanya saldo menurut rekening koran yang disimpan. Saldo buku, selisih,
   // status cocok, dan daftar mutasi selalu dihitung ulang dari jurnal oleh
   // core/rekonsiliasi.ts + core/reports.ts.
-  deps.handle('rekonsiliasi:list', (_e, f: unknown = {}) => {
+  daftarkan('rekonsiliasi:list', (_e, f: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -619,7 +643,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('rekonsiliasi:detail', (_e, id: unknown) => {
+  daftarkan('rekonsiliasi:detail', (_e, id: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -633,7 +657,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('rekonsiliasi:create', (_e, input: unknown) => {
+  daftarkan('rekonsiliasi:create', (_e, input: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -645,7 +669,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('rekonsiliasi:selesai', (_e, id: unknown, opsi: unknown = {}) => {
+  daftarkan('rekonsiliasi:selesai', (_e, id: unknown, opsi: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -662,7 +686,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Simpan jurnal dari form terpandu (P1-1) ----
   // Satu-satunya jalur simpan jurnal baru di luar koreksi. Semua aturan bisnis
   // tetap di posting layer; handler hanya memeriksa bentuk input dari renderer.
-  deps.handle('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) => {
+  daftarkan('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -715,12 +739,12 @@ export function registerIpc(deps: IpcDeps): void {
   // (tanggal + saldo per akun); main menyusun jurnal lewat builder murni yang
   // sama dengan pratinjau UI, lalu adapter DB memeriksa "masih kosong" secara
   // atomik sebelum menulis jurnal + audit SALDO-AWAL.
-  deps.handle('saldo-awal:status', () => {
+  daftarkan('saldo-awal:status', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(statusSaldoAwal(deps.db()));
   });
 
-  deps.handle('saldo-awal:posting', (_e, input: unknown, opsi: unknown = {}) => {
+  daftarkan('saldo-awal:posting', (_e, input: unknown, opsi: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -751,7 +775,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle(
+  daftarkan(
     'jurnal:reverse',
     (
       _e,
@@ -785,7 +809,7 @@ export function registerIpc(deps: IpcDeps): void {
     },
   );
 
-  deps.handle(
+  daftarkan(
     'jurnal:koreksi-isi-ulang',
     (
       _e,
@@ -834,7 +858,7 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Lampiran bukti jurnal (P2-4) ----
   // Renderer hanya mengirim ID jurnal/lampiran, TIDAK PERNAH path absolut.
   // File fisik disimpan di `<userData>/attachments`; DB hanya metadata.
-  deps.handle('lampiran:list', (_e, jurnalId: unknown) => {
+  daftarkan('lampiran:list', (_e, jurnalId: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -846,7 +870,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('lampiran:upload', async (_e, jurnalId: unknown) => {
+  daftarkan('lampiran:upload', async (_e, jurnalId: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -898,7 +922,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('lampiran:preview', (_e, id: unknown) => {
+  daftarkan('lampiran:preview', (_e, id: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -927,7 +951,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('lampiran:open', async (_e, id: unknown) => {
+  daftarkan('lampiran:open', async (_e, id: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -949,7 +973,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('lampiran:delete', (_e, id: unknown) => {
+  daftarkan('lampiran:delete', (_e, id: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -968,19 +992,19 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Piutang & Hutang + master pihak (P1-5) ----
   // Renderer tidak dipercaya: bentuk input dinormalisasi dulu, lalu adapter DB
   // memvalidasi lima alur baku + menyimpan jurnal/pemetaan pihak/audit atomik.
-  deps.handle('pihak:list', () => {
+  daftarkan('pihak:list', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(listPihak(deps.db()));
   });
 
-  deps.handle('pihak:saldo', () => {
+  daftarkan('pihak:saldo', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(saldoPerPihak(deps.db()));
   });
 
   // Rekonsiliasi saldo akun 1050/2050 vs jurnal yang punya pihak. Cutoff
   // opsional (YYYY-MM-DD) dan tidak menyimpan angka apa pun.
-  deps.handle('pihak:rekon', (_e, sampai: unknown) => {
+  daftarkan('pihak:rekon', (_e, sampai: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -992,7 +1016,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('pihak:jurnal', (_e, id: string) => {
+  daftarkan('pihak:jurnal', (_e, id: string) => {
     const k = perluBuka();
     if (k) return fail(k);
     const pihakId = String(id ?? '').trim();
@@ -1000,7 +1024,7 @@ export function registerIpc(deps: IpcDeps): void {
     return ok(daftarJurnalPihak(deps.db(), pihakId));
   });
 
-  deps.handle('pihak:create', (_e, input: unknown) => {
+  daftarkan('pihak:create', (_e, input: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1013,7 +1037,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('pihak:update', (_e, id: string, input: unknown) => {
+  daftarkan('pihak:update', (_e, id: string, input: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1028,7 +1052,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('pihak:delete', (_e, id: string) => {
+  daftarkan('pihak:delete', (_e, id: string) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1041,7 +1065,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('pihak:posting', (_e, req: unknown, opsi: unknown = {}) => {
+  daftarkan('pihak:posting', (_e, req: unknown, opsi: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1086,7 +1110,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
+  daftarkan('transaksi:list', (_e, f: { mulai?: string; sampai?: string } = {}) => {
     const k = perluBuka();
     if (k) return fail(k);
     const bentuk = validasiRentangLaporan(f);
@@ -1094,7 +1118,7 @@ export function registerIpc(deps: IpcDeps): void {
     return ok(listTransaksi(deps.db(), bentuk.input));
   });
 
-  deps.handle('transaksi:create', (_e, input: TransaksiInput, alasan?: string) => {
+  daftarkan('transaksi:create', (_e, input: TransaksiInput, alasan?: string) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1115,14 +1139,14 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
+  daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
     const k = perluBuka();
     if (k) return fail(k);
     const filter = status === 'OPEN' || status === 'CLOSED' ? status : undefined;
     return ok(listPanjarV2(deps.db(), filter));
   });
 
-  deps.handle('panjar:items', (_e, id: string) => {
+  daftarkan('panjar:items', (_e, id: string) => {
     const k = perluBuka();
     if (k) return fail(k);
     if (typeof id !== 'string' || !id.trim())
@@ -1130,7 +1154,7 @@ export function registerIpc(deps: IpcDeps): void {
     return ok(listPanjarItemsV2(deps.db(), id.trim()));
   });
 
-  deps.handle(
+  daftarkan(
     'panjar:create',
     (_e, input: unknown, alasan?: unknown, opsi?: unknown) => {
       try {
@@ -1173,7 +1197,7 @@ export function registerIpc(deps: IpcDeps): void {
     },
   );
 
-  deps.handle(
+  daftarkan(
     'panjar:close',
     (_e, req: unknown, alasan?: unknown) => {
       try {
@@ -1222,12 +1246,12 @@ export function registerIpc(deps: IpcDeps): void {
   );
 
   // ---- Inventaris Aset (non-keuangan, TIDAK kena kunci tutup buku) ----
-  deps.handle('aset:list', (_e, f: { jenis?: string; cari?: string } = {}) => {
+  daftarkan('aset:list', (_e, f: { jenis?: string; cari?: string } = {}) => {
     const k = perluBuka();
     return k ? fail(k) : ok(listAset(deps.db(), f));
   });
 
-  deps.handle('aset:create', (_e, input: AsetInput) => {
+  daftarkan('aset:create', (_e, input: AsetInput) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1258,7 +1282,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('aset:update', (_e, id: string, input: AsetInput) => {
+  daftarkan('aset:update', (_e, id: string, input: AsetInput) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1288,7 +1312,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('aset:delete', (_e, id: string) => {
+  daftarkan('aset:delete', (_e, id: string) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1299,7 +1323,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('tutup:list', () => {
+  daftarkan('tutup:list', () => {
     const k = perluBuka();
     if (k) return fail(k);
     // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
@@ -1312,7 +1336,7 @@ export function registerIpc(deps: IpcDeps): void {
     );
   });
   // P0-9: riwayat audit lengkap + filter tervalidasi (aksi/tanggal/pagination).
-  deps.handle('audit:list', (_e, f: AuditFilter = {}) => {
+  daftarkan('audit:list', (_e, f: AuditFilter = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1344,7 +1368,7 @@ export function registerIpc(deps: IpcDeps): void {
       return fail(pesanError(e, GAGAL_MUAT));
     }
   });
-  deps.handle('tutup:preview', (_e, tahun: number) => {
+  daftarkan('tutup:preview', (_e, tahun: number) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1353,7 +1377,7 @@ export function registerIpc(deps: IpcDeps): void {
       return fail(pesanError(e, GAGAL_MUAT));
     }
   });
-  deps.handle(
+  daftarkan(
     'tutup:create',
     (
       _e,
@@ -1403,7 +1427,7 @@ export function registerIpc(deps: IpcDeps): void {
     },
   );
 
-  deps.handle('saldo:list', (_e, cutoff?: string) => {
+  daftarkan('saldo:list', (_e, cutoff?: string) => {
     const k = perluBuka();
     if (k) return fail(k);
     const tanggal = validasiTanggalOpsional(cutoff);
@@ -1416,7 +1440,7 @@ export function registerIpc(deps: IpcDeps): void {
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
   });
 
-  deps.handle('neraca:get', (_e, cutoff: string) => {
+  daftarkan('neraca:get', (_e, cutoff: string) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1454,7 +1478,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  deps.handle('dashboard:get', (_e, cutoff: unknown) => {
+  daftarkan('dashboard:get', (_e, cutoff: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1481,7 +1505,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // ---- Import jurnal massal dari Excel (P2-9) ----
   // Template dibangun murni di main (renderer-safe) lalu ditulis lewat dialog.
-  deps.handle('import:template', async () => {
+  daftarkan('import:template', async () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1502,7 +1526,7 @@ export function registerIpc(deps: IpcDeps): void {
   // Pratinjau: baca file (opsional path dari pratinjau sebelumnya agar tombol
   // "Muat ulang" tidak membuka dialog lagi), parse, lalu validasi DB.
   // TIDAK menulis jurnal apa pun.
-  deps.handle('import:preview', async (_e, filePath?: unknown) => {
+  daftarkan('import:preview', async (_e, filePath?: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1539,7 +1563,7 @@ export function registerIpc(deps: IpcDeps): void {
   // Proses: pakai path dari pratinjau bila ada, atau buka dialog lagi. File
   // diparse ULANG (jangan percaya hasil preview di renderer), lalu semua grup
   // valid disimpan lewat postingJurnal di adapter DB.
-  deps.handle('import:proses', async (_e, filePath?: unknown, opsi?: unknown) => {
+  daftarkan('import:proses', async (_e, filePath?: unknown, opsi?: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1593,7 +1617,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Simpan buffer (xlsx/html) via save dialog. Renderer bangun buffer murni,
   // main hanya tulis file — sesuai handoff: builder tetap di renderer.
-  deps.handle(
+  daftarkan(
     'file:save-buffer',
     async (_e, req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) => {
       try {
@@ -1614,7 +1638,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Simpan PDF langsung: render HTML laporan di hidden window lalu printToPDF.
   // Renderer mengirim HTML paginator P1-16 (tanpa script, halaman eksplisit).
-  deps.handle(
+  daftarkan(
     'file:save-pdf',
     async (_e, req: { htmlB64: string; defaultName: string; landscape?: boolean }) => {
       try {
@@ -1637,7 +1661,7 @@ export function registerIpc(deps: IpcDeps): void {
   );
 
   // Backup manual .db via save dialog (VACUUM INTO — aman saat WAL terbuka).
-  deps.handle('backup:export', async () => {
+  daftarkan('backup:export', async () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1661,7 +1685,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Backup lengkap: satu folder berisi DB (VACUUM INTO) + semua lampiran +
   // manifest. Folder induk dipilih user; subfolder memakai waktu lokal WITA.
-  deps.handle('backup:lengkap', async () => {
+  daftarkan('backup:lengkap', async () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1706,18 +1730,24 @@ export function registerIpc(deps: IpcDeps): void {
   });
 
   // Auto-backup internal untuk wizard Tutup Buku (tanpa dialog).
-  deps.handle('backup:auto', (_e, tahun: number) => {
+  daftarkan('backup:auto', (_e, tahun: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
+      // AUD-17: tahun dari renderer tidak boleh masuk path mentah. Normalisasi
+      // ke integer 1900..9999 agar `../../x`/NaN/desimal tidak bisa keluar
+      // folder backup.
+      const n = Number(tahun);
+      if (!Number.isInteger(n) || n < 1900 || n > 9999)
+        return fail('Tahun backup tidak valid.');
       const dir = deps.lokasiData().backupsDir;
       mkdirSync(dir, { recursive: true });
-      const dest = join(dir, `pura-${tahun}.db`);
+      const dest = join(dir, `pura-${n}.db`);
       backupVacuumInto(deps.db(), dest);
       catatAudit(deps.db(), {
         aksi: 'BACKUP-AUTO',
-        alasan: `Backup otomatis sebelum tutup buku ${tahun}`,
-        baru: { path: dest, jenis: 'tutup-buku', tahun: Number(tahun) },
+        alasan: `Backup otomatis sebelum tutup buku ${n}`,
+        baru: { path: dest, jenis: 'tutup-buku', tahun: n },
       });
       return ok({ path: dest });
     } catch (e) {
@@ -1726,7 +1756,7 @@ export function registerIpc(deps: IpcDeps): void {
   });
 
   // Status backup otomatis harian terakhir (untuk Dashboard).
-  deps.handle('backup:status', () => {
+  daftarkan('backup:status', () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1739,7 +1769,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Restore .db via open dialog: validasi kandidat → cadangkan DB aktif →
   // tukar file atomik → buka ulang → audit. Kegagalan tidak merusak DB lama.
-  deps.handle('backup:import', async () => {
+  daftarkan('backup:import', async () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
@@ -1780,7 +1810,7 @@ export function registerIpc(deps: IpcDeps): void {
   // AUD-12: restore satu folder backup lengkap (DB + lampiran + manifest).
   // Cadangan DB & folder lampiran lama dibuat sebelum ada yang ditimpa;
   // restoreLengkap mengembalikan keduanya bila salah satu tahap gagal.
-  deps.handle('backup:restore-lengkap', async () => {
+  daftarkan('backup:restore-lengkap', async () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
