@@ -129,7 +129,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
     ```
   - **Dependency:** —
 
-- [ ] **AUD-02 — Helper tanggal lokal `Asia/Makassar` + test** · P0 · S
+- [x] **AUD-02 — Helper tanggal lokal `Asia/Makassar` + test** · P0 · S (2026-10-27: helper `tanggalLokal`/`tahunLokal`/`formatWaktuLokal` via `Intl.formatToParts`; typecheck/test/build hijau, 440 test total + 10 test)
   - **Konteks:** `new Date().toISOString().slice(0, 10)` memakai UTC. Di WITA,
     pukul 00:00–07:59 menghasilkan tanggal kemarin. Ini memengaruhi transaksi,
     cut-off, reversal, tutup buku, nama backup, dan audit.
