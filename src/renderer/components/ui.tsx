@@ -289,6 +289,21 @@ type EntriModal = {
 
 const tumpukanModal: EntriModal[] = [];
 let pendengarModalTerpasang = false;
+/** Elemen terakhir yang benar-benar menerima fokus; dipakai bila pemicu
+ * menjadi disabled/body saat modal dibuka dari proses async. */
+let fokusTerakhir: HTMLElement | null = null;
+
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'focusin',
+    (e) => {
+      if (e.target instanceof HTMLElement && e.target !== document.body) {
+        fokusTerakhir = e.target;
+      }
+    },
+    true,
+  );
+}
 
 function tanganiTombolModal(e: KeyboardEvent): void {
   const atas = tumpukanModal[tumpukanModal.length - 1];
@@ -365,6 +380,8 @@ export type ModalProps = {
   sibuk?: boolean;
   children: ReactNode;
   className?: string;
+  /** Kelas untuk area isi di bawah judul, mis. agar iframe bisa flex-1. */
+  isiClassName?: string;
   /** Lebar panel standar; abaikan bila `maxWidth` diisi. */
   lebar?: keyof typeof LEBAR_MODAL;
   /** Nilai CSS max-width khusus, mis. '42rem'. */
@@ -378,6 +395,7 @@ export function Modal({
   sibuk = false,
   children,
   className,
+  isiClassName,
   lebar = 'lg',
   maxWidth,
 }: ModalProps) {
@@ -385,27 +403,30 @@ export function Modal({
   const idJudul = `${idDasar}-judul`;
   const idDeskripsi = `${idDasar}-deskripsi`;
   const dialogRef = useRef<HTMLDivElement | null>(null);
-  const pemicuRef = useRef<HTMLElement | null>(null);
+  /** Diambil saat render pertama, sebelum autoFocus/commit memindahkan fokus. */
+  const pemicuRef = useRef<HTMLElement | null | undefined>(undefined);
   const sibukRef = useRef(sibuk);
   const tutupRef = useRef(onTutup);
   const kedalaman = useContext(KedalamanModal);
-  const [terpasang, setTerpasang] = useState(false);
 
   sibukRef.current = sibuk;
   tutupRef.current = onTutup;
 
-  useEffect(() => {
-    setTerpasang(true);
-  }, []);
+  if (pemicuRef.current === undefined && typeof document !== 'undefined') {
+    const aktif = document.activeElement;
+    const kandidat =
+      aktif instanceof HTMLElement && aktif !== document.body
+        ? aktif
+        : fokusTerakhir;
+    pemicuRef.current = kandidat?.isConnected ? kandidat : null;
+  }
 
   useEffect(() => {
-    if (!terpasang) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    // Simpan pemicu sebelum fokus dipindahkan; dipulihkan saat modal ditutup.
-    pemicuRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // Nilai pemicu sudah diambil saat render; autoFocus di dalam dialog bisa
+    // lebih dulu memindahkan fokus sebelum effect berjalan.
 
     const entri: EntriModal = {
       dialog,
@@ -416,7 +437,12 @@ export function Modal({
     pastikanPendengarModal();
 
     const fokusable = elemenFokusable(dialog);
-    (fokusable[0] ?? dialog).focus({ preventScroll: true });
+    const fokusAwal =
+      fokusable.find((el) => el.hasAttribute('autofocus')) ??
+      fokusable.find((el) => el.matches('input, select, textarea')) ??
+      fokusable[0] ??
+      dialog;
+    fokusAwal.focus({ preventScroll: true });
 
     return () => {
       const indeks = tumpukanModal.indexOf(entri);
@@ -434,14 +460,12 @@ export function Modal({
         dialog.contains(aktif);
       if (fokusMasihDiModal) pemicu.focus({ preventScroll: true });
     };
-    // Cukup sekali saat modal benar-benar terpasang. Nilai sibuk/onTutup
-    // dibaca lewat ref agar perubahan props tidak memasang ulang tumpukan.
+    // Cukup sekali saat modal terpasang. Nilai sibuk/onTutup dibaca lewat ref
+    // agar perubahan props tidak memasang ulang tumpukan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terpasang]);
+  }, []);
 
-  if (!terpasang || typeof document === 'undefined') return null;
-
-  return createPortal(
+  const isi = (
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/50 p-4"
       style={{ zIndex: 40 + Math.min(kedalaman, 10) }}
@@ -487,13 +511,17 @@ export function Modal({
             <span aria-hidden="true">×</span>
           </button>
         </div>
-        <div className="mt-3">
+        <div className={clsx('mt-3', isiClassName)}>
           <KedalamanModal.Provider value={kedalaman + 1}>{children}</KedalamanModal.Provider>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+
+  // renderToStaticMarkup tidak punya document; tetap tampilkan markup agar
+  // kontrak modal (judul, field, tombol) bisa diuji tanpa DOM.
+  if (typeof document === 'undefined') return isi;
+  return createPortal(isi, document.body);
 }
 
 /** Modal alasan untuk periode terkunci (kunci longgar). */
@@ -506,32 +534,32 @@ export function LockModal({
 }) {
   let alasan = '';
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-        <h3 className="text-lg font-bold">Periode sudah ditutup</h3>
-        <p className="mt-1 text-[15px] text-stone-600">
-          Tanggal ini masuk tahun yang sudah tutup buku. Boleh tetap simpan, tapi wajib isi
-          alasan — tercatat otomatis.
-        </p>
-        <div className="mt-3">
-          <Field label="Alasan (min. 5 karakter)">
-            <TextInput autoFocus onChange={(e) => (alasan = e.target.value)} placeholder="cth: koreksi struk susulan Desember" />
-          </Field>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel}>Batal</Button>
-          <Button onClick={() => alasan.trim().length >= 5 && onSubmit(alasan.trim())}>Tetap simpan</Button>
-        </div>
+    <Modal
+      judul="Periode sudah ditutup"
+      deskripsi="Tanggal ini masuk tahun yang sudah tutup buku. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
+      onTutup={onCancel}
+      lebar="md"
+    >
+      <Field label="Alasan (min. 5 karakter)">
+        <TextInput
+          autoFocus
+          onChange={(e) => (alasan = e.target.value)}
+          placeholder="cth: koreksi struk susulan Desember"
+        />
+      </Field>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>Batal</Button>
+        <Button onClick={() => alasan.trim().length >= 5 && onSubmit(alasan.trim())}>Tetap simpan</Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
 /**
  * Konfirmasi aksi besar (tutup buku, restore, koreksi, hapus).
  *
- * Selalu dirender di atas modal lain (z-30) dan memakai bahasa operator awam:
- * judul singkat, akibat aksi, lalu tombol Batal / Ya, lanjutkan.
+ * Memakai Modal bersama sehingga berada di atas modal lain dan memakai bahasa
+ * operator awam: judul singkat, akibat aksi, lalu tombol Batal / Ya, lanjutkan.
  */
 export function KonfirmasiModal({
   judul,
@@ -553,27 +581,22 @@ export function KonfirmasiModal({
   onKonfirmasi: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="judul-konfirmasi"
+    <Modal
+      judul={judul}
+      deskripsi={<div className="space-y-2 text-[15px] text-stone-700">{deskripsi}</div>}
+      onTutup={onBatal}
+      sibuk={sibuk}
+      lebar="md"
     >
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-        <h3 id="judul-konfirmasi" className="text-lg font-bold">
-          {judul}
-        </h3>
-        <div className="mt-2 space-y-2 text-[15px] text-stone-700">{deskripsi}</div>
-        <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" disabled={sibuk} onClick={onBatal}>
-            {labelBatal}
-          </Button>
-          <Button variant={variant} disabled={sibuk} onClick={onKonfirmasi}>
-            {sibuk ? 'Memproses…' : labelYa}
-          </Button>
-        </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onBatal}>
+          {labelBatal}
+        </Button>
+        <Button variant={variant} disabled={sibuk} onClick={onKonfirmasi}>
+          {sibuk ? 'Memproses…' : labelYa}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -588,14 +611,11 @@ export function DetailModal({
   children: ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-lg">
-        <h3 className="text-lg font-bold">{title}</h3>
-        <div className="mt-3 space-y-1.5 text-[15px]">{children}</div>
-        <div className="mt-4 flex justify-end">
-          <Button variant="ghost" onClick={onClose}>Tutup</Button>
-        </div>
+    <Modal judul={title} onTutup={onClose} lebar="2xl">
+      <div className="space-y-1.5 text-[15px]">{children}</div>
+      <div className="mt-4 flex justify-end">
+        <Button variant="ghost" onClick={onClose}>Tutup</Button>
       </div>
-    </div>
+    </Modal>
   );
 }

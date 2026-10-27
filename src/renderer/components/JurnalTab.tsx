@@ -32,6 +32,7 @@ import {
   ErrorBox,
   Field,
   KonfirmasiModal,
+  Modal,
   Select,
   TextInput,
 } from './ui.js';
@@ -648,19 +649,24 @@ function KoreksiModal({
   }
 
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-5 shadow-lg">
-        <h3 className="text-lg font-bold">Koreksi Jurnal</h3>
-        <p className="mt-1 text-[15px] text-stone-600">
-          Jurnal asli <b>tidak dihapus</b>. Sistem membuat jurnal balik (debit dan kredit
-          ditukar), lalu Anda bisa mengisi ulang data yang benar. Semua koreksi tercatat di
-          riwayat audit.
-        </p>
-        <p className="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-          Jurnal balik mengikuti tanggal asli. Jika periode terkunci, isi alasan minimal{' '}
-          {ALASAN_REVERSAL_MIN} karakter.
-        </p>
-        <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
+    <Modal
+      judul="Koreksi Jurnal"
+      deskripsi={
+        <span className="text-[15px]">
+          Jurnal asli <b>tidak dihapus</b>. Sistem membuat jurnal balik (debit dan
+          kredit ditukar), lalu Anda bisa mengisi ulang data yang benar. Semua
+          koreksi tercatat di riwayat audit.
+        </span>
+      }
+      onTutup={batal}
+      sibuk={busy}
+      lebar="3xl"
+    >
+      <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+        Jurnal balik mengikuti tanggal asli. Jika periode terkunci, isi alasan minimal{' '}
+        {ALASAN_REVERSAL_MIN} karakter.
+      </p>
+      <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
           <p className="font-semibold">{jurnal.keterangan}</p>
           <p className="text-sm text-stone-600">
             {formatTanggal(jurnal.tanggal)} · {jurnal.no_bukti || 'tanpa nomor bukti'} ·{' '}
@@ -959,7 +965,6 @@ function KoreksiModal({
             }}
           />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

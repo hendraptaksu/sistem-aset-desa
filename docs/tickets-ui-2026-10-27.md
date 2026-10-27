@@ -300,7 +300,7 @@
     uji keyboard.
   - **Dependency:** —
 
-- [ ] **UI-10 — Terapkan modal aksesibel ke modal lain** · P1 · S
+- [x] **UI-10 — Terapkan modal aksesibel ke modal lain** · P1 · S (2026-10-27: KonfirmasiModal, Koreksi, JurnalAkun, PratinjauCetak/Html, SaldoAwalWizard, JurnalUmumEditor, LockModal, dan DetailModal kini fokus masuk, Tab terkurung, Escape/backdrop/X menutup kecuali sibuk, dan fokus kembali ke pemicu termasuk modal bertumpuk + 595 test + smoke hijau)
   - **Konteks:** `KonfirmasiModal` sudah punya role tetapi fokus tetap di
     pemicu, Escape tidak menutup, dan Tab keluar setelah 3 stop. Modal
     Koreksi, JurnalAkun, PratinjauCetak, dan SaldoAwalWizard juga belum
