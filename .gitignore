@@ -11,3 +11,11 @@ e2e/artifacts/
 .env.local
 .lavish/
 .opencode/
+
+# Sertifikat/kunci signing — jangan pernah di-commit.
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.b64

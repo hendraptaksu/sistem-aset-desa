@@ -65,10 +65,19 @@
       "**/*.node"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
       ]
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.finance"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office"
     },
     "nsis": {
       "oneClick": false,

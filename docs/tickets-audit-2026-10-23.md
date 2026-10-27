@@ -836,7 +836,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** workflow YAML review + `npm audit`.
   - **Dependency:** —
 
-- [ ] **AUD-33 — Icon aplikasi + konfigurasi signing** · P2 · S
+- [x] **AUD-33 — Icon aplikasi + konfigurasi signing** · P2 · S (2026-10-27: `build/icon.png` 1024×1024, `build/icon.ico` 7 ukuran (16/24/32/48/64/128/256), `build/icon.icns` 16–1024 valid (`file`/`sips` + roundtrip `iconutil`); generator Python murni `build/generate-icons.py` tanpa dependency npm; `package.json` memakai icon untuk win/mac/linux; workflow Windows meneruskan secret `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` ke `CSC_LINK`/`CSC_KEY_PASSWORD` (kosong = unsigned, build tetap jalan); `docs/rilis.md` menjelaskan penggantian icon dan signing sebagai tindakan manual pemilik; `.gitignore` menolak sertifikat; 560 test (48 file), typecheck/build hijau. `npm run dist:win` belum dijalankan pada sesi ini (macOS); artifact Windows divalidasi lewat job CI `build-win`)
   - **Konteks:** Installer belum punya icon kustom dan belum ditandatangani;
     Windows SmartScreen akan memperingatkan user.
   - **Langkah:**

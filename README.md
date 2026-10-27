@@ -163,6 +163,7 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/lampiran-bukti.md` — aturan foto/PDF bukti jurnal.
 - `docs/arah-akuntansi.md` — keputusan arah double-entry.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
+- `docs/rilis.md` — icon aplikasi dan signing installer Windows.
 - `docs/tickets-audit-2026-10-23.md` — daftar pekerjaan hardening.
 - `docs/erd-v1-arsip.md` — **arsip** ERD v1.2.0 (single-entry), bukan acuan aktif.
 

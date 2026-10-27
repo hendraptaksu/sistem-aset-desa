@@ -73,7 +73,16 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run dist:win
+      - name: Build installer Windows (signing opsional)
+        env:
+          # Placeholder signing Windows. Isi repository secret
+          # WIN_CSC_LINK (base64 .pfx atau URL) dan WIN_CSC_KEY_PASSWORD
+          # lewat Settings -> Secrets and variables -> Actions.
+          # Jika keduanya kosong, electron-builder melewati signing dan
+          # installer tetap dibuat (unsigned). Jangan commit sertifikat.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: npm run dist:win
 
       - uses: actions/upload-artifact@v4
         with:
