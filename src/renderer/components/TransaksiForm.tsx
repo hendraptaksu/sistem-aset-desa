@@ -191,9 +191,35 @@ export function FormTransaksiTerpandu({
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
+  // UI-13: penanda agar ringkasan error tetap difokuskan walau pesannya sama.
+  const [errorSeq, setErrorSeq] = useState(0);
   const [info, setInfo] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    tone: 'success' | 'error';
+    pesan: string;
+  } | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  const nominalRef = useRef<HTMLDivElement | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    },
+    [],
+  );
+
+  // Pesan detail tetap di atas form. Saat gagal, pindahkan fokus ke ringkasan
+  // itu agar pengguna yang berada di dekat tombol simpan langsung membacanya.
+  useEffect(() => {
+    if (!err) return;
+    const ringkasan = errorRef.current;
+    if (!ringkasan) return;
+    ringkasan.focus({ preventScroll: true });
+    ringkasan.scrollIntoView({ block: 'center' });
+  }, [err, errorSeq]);
 
   // COA dimuat async oleh TransaksiTab. Isi pilihan awal saat datanya tiba,
   // tanpa menimpa pilihan yang sudah dibuat operator.
@@ -328,6 +354,34 @@ export function FormTransaksiTerpandu({
     return kasDiBarisIni ? kas : lawan;
   };
 
+  function tampilkanToast(berikut: {
+    tone: 'success' | 'error';
+    pesan: string;
+  }): void {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(berikut);
+    if (berikut.tone === 'success') {
+      toastTimerRef.current = setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, 6_000);
+    }
+  }
+
+  // Error tetap ditampilkan lengkap di ringkasan atas; toast hanya penanda
+  // visual singkat (tanpa live-region) agar tidak diumumkan dua kali.
+  function tampilkanError(pesan: string): void {
+    setErr(pesan);
+    setErrorSeq((n) => n + 1);
+    tampilkanToast({
+      tone: 'error',
+      pesan: 'Gagal menyimpan. Lihat detail di atas.',
+    });
+  }
+
   async function simpan(
     opsi: { alasan?: string; konfirmasi?: boolean } = {},
   ): Promise<void> {
@@ -336,9 +390,14 @@ export function FormTransaksiTerpandu({
     setInfo(null);
     setPesanKonfirmasi(null);
     setLockOpen(false);
+    setToast(null);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
 
     if (!formSah) {
-      setErr('Lengkapi tanggal, akun, nominal, dan keterangan terlebih dahulu.');
+      tampilkanError('Lengkapi tanggal, akun, nominal, dan keterangan terlebih dahulu.');
       return;
     }
 
@@ -355,7 +414,7 @@ export function FormTransaksiTerpandu({
         ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
       });
     } catch (e) {
-      setErr(pesanError(e));
+      tampilkanError(pesanError(e));
       return;
     }
 
@@ -370,19 +429,30 @@ export function FormTransaksiTerpandu({
       setInfo(
         `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${nomorTersimpan ? ` (${nomorTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
       );
+      tampilkanToast({
+        tone: 'success',
+        pesan: pindah ? 'Pindah Dana tersimpan.' : 'Transaksi tersimpan.',
+      });
       // Tanggal & akun tetap; hanya isian yang mudah berulang yang dikosongkan.
       setNominal(0);
       setKeterangan('');
       setNoBukti('');
       // UI-07: simpan sukses = tidak ada isian yang perlu diperingatkan.
       setDirty(false);
+      // UI-13: fokuskan Nominal setelah reset ter-commit agar entri berikutnya
+      // bisa langsung diketik. Dua rAF memberi ruang commit React + paint.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          nominalRef.current?.querySelector('input')?.focus();
+        });
+      });
     } catch (e) {
       if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
         setPesanKonfirmasi(pesanError(e));
       } else {
-        setErr(pesanError(e));
+        tampilkanError(pesanError(e));
       }
     } finally {
       busyRef.current = false;
@@ -405,11 +475,18 @@ export function FormTransaksiTerpandu({
         </div>
       </div>
 
-      <div className="mt-3">
+      <div
+        ref={errorRef}
+        tabIndex={-1}
+        className="mt-3 scroll-mt-24 focus:outline-none"
+      >
         <ErrorBox msg={err} />
       </div>
       {info && (
-        <div className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800">
+        <div
+          role="status"
+          className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
+        >
           {info}
         </div>
       )}
@@ -530,13 +607,15 @@ export function FormTransaksiTerpandu({
         )}
 
         <Field label="Nominal">
-          <CurrencyInput
-            value={nominal}
-            onChange={(nilai) => {
-              setNominal(nilai);
-              setDirty(true);
-            }}
-          />
+          <div ref={nominalRef}>
+            <CurrencyInput
+              value={nominal}
+              onChange={(nilai) => {
+                setNominal(nilai);
+                setDirty(true);
+              }}
+            />
+          </div>
         </Field>
 
         <Field label="Keterangan">
@@ -652,6 +731,25 @@ export function FormTransaksiTerpandu({
           Setelah tersimpan, transaksi langsung masuk ke laporan dari jurnal.
         </span>
       </div>
+
+      {/* Toast visual ringkas agar terlihat dari dasar form. Live-region tetap
+          hanya satu: info detail di atas (status) dan ErrorBox (alert). */}
+      {toast && (
+        <div
+          data-testid="transaksi-toast"
+          className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-end px-4"
+        >
+          <div
+            className={`max-w-sm rounded-lg border px-3 py-2 text-[15px] font-semibold shadow-lg ${
+              toast.tone === 'success'
+                ? 'border-green-300 bg-green-50 text-green-800'
+                : 'border-red-300 bg-red-50 text-red-800'
+            }`}
+          >
+            {toast.pesan}
+          </div>
+        </div>
+      )}
 
       {lockOpen && (
         <LockModal

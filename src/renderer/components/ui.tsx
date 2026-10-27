@@ -72,7 +72,14 @@ export function Badge({ children, tone = 'stone' }: { children: ReactNode; tone?
 
 export function ErrorBox({ msg }: { msg: string | null }) {
   if (!msg) return null;
-  return <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800">{msg}</div>;
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+    >
+      {msg}
+    </div>
+  );
 }
 
 /** Input PIN 6 kotak ala m-banking. Keyboard fisik: ketik maju otomatis,

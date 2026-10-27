@@ -358,7 +358,7 @@
     cek accessible name di DevTools/Playwright.
   - **Dependency:** —
 
-- [ ] **UI-13 — Umpan balik sukses/error dekat tombol aksi** · P1 · S
+- [x] **UI-13 — Umpan balik sukses/error dekat tombol aksi** · P1 · S (2026-10-27: toast ringkas fixed terlihat dari posisi bawah, fokus pindah ke Nominal setelah sukses dan ke ringkasan error saat gagal, role status/alert tanpa pengumuman ganda; 595 test + smoke)
   - **Konteks:** Form transaksi ±900 px; pesan sukses/error muncul di atas
     form, tombol simpan di bawah. Bila pengguna berada di bawah, pesan tidak
     terlihat. Sukses tidak punya `role="status"`; `ErrorBox` tidak punya
