@@ -7,12 +7,20 @@ import { openDb } from '../db/database.js';
 import { seedDev } from '../db/seed-dev.js';
 import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
+import { mulaiBackupPeriodik } from './backupPeriodik.js';
 import { tentukanLokasiData, type LokasiData } from './lokasiData.js';
 import { urlDiizinkan } from './windowSecurity.js';
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
 let lokasi: LokasiData | null = null;
+let hentikanBackupPeriodik: (() => void) | null = null;
+
+/** Hentikan interval backup (idempoten); dipanggil saat app quit. */
+function hentikanPenjadwalBackup(): void {
+  hentikanBackupPeriodik?.();
+  hentikanBackupPeriodik = null;
+}
 
 // Dev saja: baca .env di root repo agar PURA_DB bisa di-override.
 // Production: installer memakai userData/data/pura.db; build portable memakai
@@ -190,6 +198,15 @@ function mulaiAplikasi(): void {
     } catch (e) {
       console.warn('[backup-auto] gagal:', String(e));
     }
+    // AUD-13: app yang dibiarkan terbuka tetap backup saat tanggal berganti.
+    // Interval ringan + guard di modul; jangan pernah biarkan timer menahan quit.
+    hentikanPenjadwalBackup();
+    hentikanBackupPeriodik = mulaiBackupPeriodik({
+      db: () => db,
+      dirBackup: () => lokasiData().backupsDir,
+      onBackup: (p) => console.log(`[backup-auto] ${p}`),
+      onError: (e) => console.warn('[backup-auto] gagal:', String(e)),
+    });
     // Dev seeder: isi data dummy bervolume untuk uji laporan multi-halaman.
     // Hanya dev (!isPackaged) + flag .env; seedDev() hanya jalan bila DB kosong.
     if (!app.isPackaged && process.env.PURA_SEED_DEV === 'true') {
@@ -202,6 +219,10 @@ function mulaiAplikasi(): void {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
+
+  // Bersihkan interval backup agar proses main bisa berhenti normal.
+  app.on('before-quit', hentikanPenjadwalBackup);
+  app.on('will-quit', hentikanPenjadwalBackup);
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

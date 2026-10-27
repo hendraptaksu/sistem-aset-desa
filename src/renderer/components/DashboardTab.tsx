@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
+import { pesanBackupBasi, tanggalDariPathBackup, usiaBackupHari } from '../../utils/backup.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
@@ -26,6 +27,23 @@ export type DashboardTabTujuan =
 /** Form terpandu yang langsung dipilih saat membuka tab Transaksi. */
 export type DashboardFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
 
+/** Banner amber AUD-13: backup lebih tua dari 2 hari. Null = tidak tampil. */
+export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
+  const pesan = pesanBackupBasi(usiaHari);
+  if (!pesan) return null;
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900"
+    >
+      <p className="font-semibold">{pesan}</p>
+      <p className="mt-1 text-sm">
+        Gunakan tombol Backup Export .db atau Backup Lengkap di bawah.
+      </p>
+    </div>
+  );
+}
+
 export function DashboardTab({
   onBukaTab,
 }: {
@@ -41,6 +59,13 @@ export function DashboardTab({
   const [konfirmasiRestore, setKonfirmasiRestore] = useState(false);
   const [konfirmasiRestoreLengkap, setKonfirmasiRestoreLengkap] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
+
+  // Data backup bisa tidak tersedia/berformat asing; helper mengembalikan null
+  // sehingga dashboard tidak crash dan banner hanya muncul saat benar-benar basi.
+  const usiaBackup = usiaBackupHari(
+    tanggalDariPathBackup(data?.backupTerakhir),
+    tanggalLokal(),
+  );
 
   /** Muat data tanpa guard; pemanggil yang mengatur status sibuk. */
   async function muatData(c: string): Promise<void> {
@@ -203,6 +228,8 @@ export function DashboardTab({
 
       {data && (
         <>
+          <BannerBackupBasi usiaHari={usiaBackup} />
+
           <div className="grid gap-3 md:grid-cols-2">
             <Card>
               <div className="flex flex-wrap items-start justify-between gap-2">

@@ -404,7 +404,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** test baru + `npm run build`.
   - **Dependency:** AUD-11, AUD-14.
 
-- [ ] **AUD-13 — Backup otomatis periodik + peringatan backup basi** · P0 · S
+- [x] **AUD-13 — Backup otomatis periodik + peringatan backup basi** · P0 · S (2026-10-27: penjadwal 30 menit di main memanggil `autoBackupHarian` hanya saat tanggal lokal berbeda dari backup terakhir, guard boolean anti-tumpang-tindih, timer `unref` + dibersihkan saat `before-quit`/`will-quit`; helper `usiaBackupHari`/`tanggalDariPathBackup` + banner amber “Backup terakhir … hari lalu — buat backup sekarang.” untuk usia > 2 hari dan aman bila data backup tidak tersedia; typecheck/test/build hijau, 491 test total + 9 test, smoke render banner amber 3 hari tampil dan 2 hari tidak tampil)
   - **Konteks:** `autoBackupHarian` hanya dipanggil saat app dibuka. Kalau
     laptop tidak pernah ditutup, backup bisa berhenti berhari-hari.
   - **Langkah:**
