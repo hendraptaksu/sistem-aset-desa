@@ -89,6 +89,12 @@ pertanggungjawabannya.
 4. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
    panjar dipertanggungjawabkan.
 
+**Penting — koreksi panjar:** jurnal serah maupun pertanggungjawaban panjar
+tidak bisa direversal dari **Jurnal Umum**. Sistem menolak agar status panjar
+tidak basi (mis. panjar tetap CLOSED padahal `1040` sudah bersaldo lagi).
+Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
+**Batalkan panjar** masih backlog dan belum tersedia di aplikasi.
+
 ### 2.5 Piutang & Hutang
 
 Buka menu **Piutang & Hutang**. Pilih alur yang paling dekat dengan kejadian:

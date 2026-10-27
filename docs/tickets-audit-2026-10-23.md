@@ -239,7 +239,7 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
   - **Verifikasi:** `npx vitest run tests/reversal.test.ts` + `npm run build`.
   - **Dependency:** AUD-02, AUD-03.
 
-- [ ] **AUD-07 — Blokir reversal jurnal yang terhubung ke panjar** · P0 · S
+- [x] **AUD-07 — Blokir reversal jurnal yang terhubung ke panjar** · P0 · S (2026-10-27: `src/db/reversal.ts` mengecek `panjar.jurnal_open_id`/`jurnal_close_id` sebelum rencana; `reverseJurnal` dan `koreksiDanIsiUlang` menolak dengan pesan “Gunakan modul Panjar”, panduan pengguna/pemeriksaan diperbarui dan “Batalkan panjar” tetap backlog; typecheck/test/build hijau, 454 test total + 4 test)
   - **Konteks:** `panjar` menyimpan `jurnal_open_id`/`jurnal_close_id` dan
     `status`. `reverseJurnal` tidak tahu hubungan itu. Sudah direproduksi:
     close panjar → reverse → status tetap CLOSED, `1040` kembali bersaldo,

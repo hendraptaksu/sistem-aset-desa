@@ -16,7 +16,16 @@ import {
   listJurnalLengkap,
 } from '../src/db/repository.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
-import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
+import {
+  koreksiDanIsiUlang,
+  PESAN_REVERSAL_PANJAR,
+  reverseJurnal,
+} from '../src/db/reversal.js';
+import {
+  closePanjarV2,
+  getPanjar,
+  serahkanPanjar,
+} from '../src/db/panjar.js';
 import { neracaSaldo, labaTahun, saldoAkun } from '../src/core/reports.js';
 import {
   PESAN_REVERSAL,
@@ -599,6 +608,145 @@ describe('P0-6 — koreksi & isi ulang', () => {
         selisih: 0,
         seimbang: true,
       });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AUD-07: jurnal panjar tidak boleh direversal dari Jurnal Umum
+// ---------------------------------------------------------------------------
+
+function siapkanPanjar(db: ReturnType<typeof openDb>): void {
+  modal(db);
+  const hasil = serahkanPanjar(db, {
+    id: 'p1',
+    jurnalId: 'j-p1-open',
+    tanggal: '2026-02-01',
+    penerima: 'Panitia Piodalan',
+    jumlah: RP(100_000),
+    akunKasSumber: '1001',
+    noBukti: 'PNJ-2026-0001',
+  });
+  expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+}
+
+function tutupPanjar(db: ReturnType<typeof openDb>): void {
+  const hasil = closePanjarV2(db, {
+    id: 'p1',
+    tanggalClose: '2026-03-01',
+    jurnalId: 'j-p1-close',
+    items: [{ akun: '5004', nominal: RP(100_000) }],
+  });
+  expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+}
+
+describe('AUD-07 — reversal jurnal yang terhubung ke panjar diblokir', () => {
+  it('menolak reversal jurnal open panjar tanpa menulis jurnal/audit', () => {
+    const db = freshDb();
+    try {
+      siapkanPanjar(db);
+      const sebelum = jumlahJurnal(db);
+
+      const hasil = reverseJurnal(db, 'j-p1-open', 'Koreksi panjar', {
+        id: 'j-balik-p1-open',
+        tanggal: '2026-03-02',
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors).toContain(PESAN_REVERSAL_PANJAR);
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getJurnalDetail(db, 'j-balik-p1-open')).toBeNull();
+      expect(getPanjar(db, 'p1')).toMatchObject({
+        status: 'OPEN',
+        jurnal_open_id: 'j-p1-open',
+        jurnal_close_id: null,
+      });
+      expect(listAuditLog(db).map((a) => a.aksi)).toEqual(['PANJAR-OPEN p1']);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak reversal jurnal close panjar dan status panjar tetap CLOSED', () => {
+    const db = freshDb();
+    try {
+      siapkanPanjar(db);
+      tutupPanjar(db);
+      const sebelum = jumlahJurnal(db);
+
+      const hasil = reverseJurnal(db, 'j-p1-close', 'Koreksi panjar', {
+        id: 'j-balik-p1-close',
+        tanggal: '2026-03-02',
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors).toContain(PESAN_REVERSAL_PANJAR);
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getJurnalDetail(db, 'j-balik-p1-close')).toBeNull();
+      expect(getPanjar(db, 'p1')).toMatchObject({
+        status: 'CLOSED',
+        jurnal_close_id: 'j-p1-close',
+      });
+      // Tanpa reversal, saldo 1040 tetap nol (tidak kembali seperti bug AUD-07).
+      expect(saldoAkun(listBarisJurnal(db), '1040', '2026-12-31')).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak koreksi & isi ulang jurnal panjar', () => {
+    const db = freshDb();
+    try {
+      siapkanPanjar(db);
+      const sebelum = jumlahJurnal(db);
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-p1-open',
+        'Koreksi panjar',
+        {
+          header: {
+            id: 'j-p1-baru',
+            tanggal: '2026-03-02',
+            no_bukti: 'PNJ-2026-0002',
+            keterangan: 'Serah panjar (koreksi)',
+            jenis: 'PANJAR',
+          },
+          baris: pasangan('1040', '1001', RP(100_000)),
+        },
+        { id: 'j-balik-p1-open', tanggal: '2026-03-02' },
+      );
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors).toContain(PESAN_REVERSAL_PANJAR);
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getJurnalDetail(db, 'j-p1-baru')).toBeNull();
+      expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('jurnal biasa yang tidak terhubung panjar tetap bisa direverse', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db);
+
+      const hasil = reverseJurnal(db, 'j-parkir', 'Salah input nominal', {
+        id: 'j-balik-parkir',
+        tanggal: '2026-01-05',
+      });
+
+      expect(hasil.tersimpan).toBe(true);
+      expect(hasil.reversal).toMatchObject({
+        id: 'j-balik-parkir',
+        reversal_of: 'j-parkir',
+        jenis: 'REVERSAL',
+      });
+      expect(saldoAkun(listBarisJurnal(db), '4005', '2026-12-31')).toBe(0);
     } finally {
       db.close();
     }

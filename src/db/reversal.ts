@@ -52,6 +52,11 @@ const idBaru = (prefix: string): string => `${prefix}-${randomUUID()}`;
 
 const hariIni = (): string => tanggalLokal();
 
+/** Pesan saat jurnal merupakan bagian dari dokumen panjar (AUD-07). */
+export const PESAN_REVERSAL_PANJAR =
+  'Jurnal ini terhubung ke dokumen panjar. Reversal dari Jurnal Umum diblokir ' +
+  'agar status panjar tidak basi. Gunakan modul Panjar.';
+
 function hasilGagal(errors: string[]): HasilValidasiJurnal & { tersimpan: false } {
   return { boleh: false, errors, peringatan: [], perluKonfirmasi: false, tersimpan: false };
 }
@@ -59,6 +64,23 @@ function hasilGagal(errors: string[]): HasilValidasiJurnal & { tersimpan: false 
 /** Jurnal balik yang sudah ada untuk `id` (dipakai menolak reversal ganda). */
 function cariReversal(db: Database.Database, id: string): Pick<Jurnal, 'id'>[] {
   return listJurnal(db, { reversal_of: id });
+}
+
+/**
+ * Jurnal serah/pertanggungjawaban panjar tidak boleh direversal dari Jurnal
+ * Umum: status `panjar` akan basi (mis. tetap CLOSED padahal 1040 bersaldo).
+ * Koreksi panjar harus lewat modul Panjar.
+ */
+function terhubungPanjar(db: Database.Database, idJurnal: string): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM panjar
+         WHERE jurnal_open_id = ? OR jurnal_close_id = ?
+         LIMIT 1`,
+      )
+      .get(idJurnal, idJurnal),
+  );
 }
 
 /**
@@ -97,6 +119,11 @@ function rencanaUntuk(
   alasan: string,
   opsi: OpsiReversal,
 ) {
+  // Cek sebelum menyusun rencana agar kedua jalur (reversal & isi ulang)
+  // berhenti tanpa menyentuh jurnal/audit.
+  if (terhubungPanjar(db, idAsli))
+    return { boleh: false, errors: [PESAN_REVERSAL_PANJAR] };
+
   const detail = getJurnalDetail(db, idAsli);
   return rencanaReversal({
     jurnal: detail?.jurnal ?? null,

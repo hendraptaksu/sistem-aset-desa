@@ -223,6 +223,10 @@ Aturan penting:
 
 - Reversal ganda atas jurnal yang sama ditolak.
 - Reversal atas jurnal reversal ditolak.
+- Jurnal yang terhubung ke dokumen panjar (`jurnal_open_id`/`jurnal_close_id`)
+  tidak boleh direversal dari Jurnal Umum. Koreksi panjar belum lewat Jurnal
+  Umum; gunakan modul **Panjar** agar status dokumen tidak basi. Alur
+  **Batalkan panjar** masih backlog (belum tersedia).
 - Koreksi di periode yang sudah ditutup wajib alasan dan tercatat di audit.
 - Koreksi setelah tutup buku tidak boleh membuat Neraca selisih.
 
