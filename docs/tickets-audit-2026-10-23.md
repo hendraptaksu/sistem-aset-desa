@@ -127,6 +127,11 @@ penuh, jurnal penutup + snapshot tutup buku, dan code-splitting ExcelJS.
     # menyalin isi rekening ke issue/chat.
     git log --all --name-only --pretty=format: -- '*.csv' 'src/db/coa.ts' | sort -u
     ```
+  - **Status 2026-10-27:** belum dapat diselesaikan agent. AUD-19 sudah
+    menghapus kode darurat default dari source, `.env.example`, dan docs.
+    Keputusan repo private vs sanitasi nomor rekening, rewrite history git,
+    dan penggantian kode darurat di semua instalasi nyata tetap menunggu
+    tindakan pemilik.
   - **Dependency:** —
 
 - [x] **AUD-02 — Helper tanggal lokal `Asia/Makassar` + test** · P0 · S (2026-10-27: helper `tanggalLokal`/`tahunLokal`/`formatWaktuLokal` via `Intl.formatToParts`; typecheck/test/build hijau, 440 test total + 10 test)
