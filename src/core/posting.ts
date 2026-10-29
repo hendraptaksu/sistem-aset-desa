@@ -62,7 +62,16 @@ export type PostingContext = {
    * Kosong/tidak valid = tidak ada batas (kompatibel data lama).
    */
   tanggalMulaiPembukuan?: string;
+  /**
+   * AKT-14: tanggal acuan "hari ini" (YYYY-MM-DD) untuk menolak jurnal di masa
+   * depan. Kosong/tidak valid = pemeriksaan dilewati (kompatibel pemanggil lama
+   * dan test murni). `buatKonteksPosting` mengisinya dengan `tanggalLokal()`.
+   */
+  sekarang?: string;
 };
+
+/** AKT-14: pesan penolakan tanggal jurnal setelah hari ini. */
+export const PESAN_TANGGAL_MASA_DEPAN = 'Tanggal jurnal tidak boleh di masa depan.';
 
 export type JurnalInput = {
   header: JurnalHeaderInput;
@@ -107,7 +116,7 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  *
  * Urutan aturan:
  * 1. Tanggal kalender nyata, tidak sebelum tanggal mulai pembukuan (kecuali
- *    SALDO_AWAL), keterangan, minimal 2 baris.
+ *    SALDO_AWAL), tidak setelah hari ini (AKT-14), keterangan, minimal 2 baris.
  * 2. Akun ada, aktif, bukan akun legacy 3001/3002, tipe/posisi normal
  *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
@@ -141,6 +150,19 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
     errors.push(
       `Tanggal jurnal sebelum tanggal mulai pembukuan (${tanggalMulai}).`,
     );
+  }
+
+  // AKT-14: tanggal setelah hari ini ditolak. Perbandingan string aman karena
+  // keduanya sudah lolos validasi kalender berformat YYYY-MM-DD. Tanggal hari
+  // ini tetap diterima; ctx.sekarang kosong (pemanggil lama/fungsi murni) tidak
+  // membatasi apa pun.
+  const sekarang = String(ctx.sekarang ?? '').trim();
+  if (
+    tanggalKalenderValid(sekarang) &&
+    tanggalKalenderValid(header.tanggal) &&
+    String(header.tanggal) > sekarang
+  ) {
+    errors.push(PESAN_TANGGAL_MASA_DEPAN);
   }
 
   if (!String(header.keterangan ?? '').trim()) errors.push('Keterangan wajib diisi.');

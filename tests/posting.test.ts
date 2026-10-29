@@ -5,9 +5,14 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { postingJurnal, postingSaldoAwal, validasiJurnalDb } from '../src/db/posting.js';
+import {
+  buatKonteksPosting,
+  postingJurnal,
+  postingSaldoAwal,
+  validasiJurnalDb,
+} from '../src/db/posting.js';
 import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import {
   getJurnalDetail,
@@ -1019,6 +1024,64 @@ describe('AKT-03 — tanggal mulai pembukuan sebagai batas bawah', () => {
       expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('');
     } finally {
       db.close();
+    }
+  });
+});
+
+describe('AKT-14 — tolak tanggal jurnal di masa depan', () => {
+  const SEKARANG = '2026-01-10';
+  const PESAN = 'Tanggal jurnal tidak boleh di masa depan.';
+
+  it('menerima tanggal hari ini dan menolak tanggal besok lewat validasi, posting, dan tanpa menulis audit', () => {
+    const { db } = freshDb();
+    try {
+      const hariIni = {
+        header: header({ id: 'j-hari-ini', tanggal: SEKARANG, no_bukti: 'JU-2026-0400' }),
+        baris: pasangan(),
+      };
+
+      const validasiHariIni = validasiJurnalDb(db, hariIni, { sekarang: SEKARANG });
+      expect(validasiHariIni.boleh, validasiHariIni.errors.join(' ')).toBe(true);
+      expect(validasiHariIni.errors).not.toContain(PESAN);
+
+      const tersimpan = postingJurnal(db, hariIni, { sekarang: SEKARANG });
+      expect(tersimpan.tersimpan, tersimpan.errors.join(' ')).toBe(true);
+      expect(tersimpan.errors).not.toContain(PESAN);
+      expect(jumlahJurnal(db)).toBe(1);
+
+      const besok = {
+        header: header({ id: 'j-besok', tanggal: '2026-01-11', no_bukti: 'JU-2026-0401' }),
+        baris: pasangan(),
+      };
+      const validasiBesok = validasiJurnalDb(db, besok, { sekarang: SEKARANG });
+      expect(validasiBesok.boleh).toBe(false);
+      expect(validasiBesok.errors).toContain(PESAN);
+
+      const auditSebelum = listAuditLog(db).length;
+      const ditolak = postingJurnal(db, besok, { sekarang: SEKARANG });
+      expect(ditolak.tersimpan).toBe(false);
+      expect(ditolak.errors).toContain(PESAN);
+      expect(jumlahJurnal(db)).toBe(1);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('konteks default memakai tanggal lokal WITA, bukan UTC', () => {
+    vi.useFakeTimers();
+    try {
+      // 23:30 UTC = 07:30 WITA tanggal berikutnya.
+      vi.setSystemTime(new Date('2026-10-23T23:30:00Z'));
+      const { db } = freshDb();
+      try {
+        const ctx = buatKonteksPosting(db, header());
+        expect(ctx.sekarang).toBe('2026-10-24');
+      } finally {
+        db.close();
+      }
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

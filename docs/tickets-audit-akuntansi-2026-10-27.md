@@ -32,7 +32,7 @@
 | AKT-11 | P1 | S | Restore menolak backup yang tidak lolos audit integritas | AKT-09 | [x] |
 | AKT-12 | P1 | S | Tutup buku berurutan / cegah lompat tahun | — | [x] |
 | AKT-13 | P1 | S | Laporan anggaran tetap jalan saat akun pagu nonaktif | — | [x] |
-| AKT-14 | P1 | S | Tolak/tandai tanggal jurnal di masa depan | — | [ ] |
+| AKT-14 | P1 | S | Tolak/tandai tanggal jurnal di masa depan | — | [x] |
 | AKT-15 | P1 | S | Default periode Laba Rugi & Arus Kas ke periode berjalan | AKT-14 | [ ] |
 | AKT-16 | P1 | M | Larang jurnal penutup manual P&L → ekuitas | — | [ ] |
 | AKT-17 | P1 | S | Reklasifikasi arus kas pinjaman 1050 ke investasi | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 14/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 15/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -335,7 +335,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-14 — Tolak/tandai tanggal jurnal di masa depan** · P1 · S
+- [x] **AKT-14 — Tolak/tandai tanggal jurnal di masa depan** · P1 · S (2026-10-29: typecheck bersih; 666/666 test hijau (55 file); `PostingContext.sekarang` diisi `buatKonteksPosting` dengan `tanggalLokal()` WITA (bukan `toISOString`); `validasiJurnal` menolak `header.tanggal > ctx.sekarang` dengan pesan `Tanggal jurnal tidak boleh di masa depan.` sementara tanggal hari ini tetap diterima; `OpsiPosting.sekarang` diteruskan `postingJurnal`/`postingSaldoAwal` dan `validasiJurnalDb` menerima opsi `sekarang` tanpa mengubah pemanggil lama; `insertJurnal` tidak diubah (bypass menyusul AKT-25); test dengan `sekarang` eksplisit: 2026-01-10 diterima, 2026-01-11 ditolak lewat `validasiJurnalDb` + `postingJurnal` tanpa jurnal/audit tertulis, plus konteks default terbukti memakai tanggal WITA via fake timer)
   - **Konteks:** `validasiJurnal` tidak menolak tanggal setelah hari ini. P&L/Arus
     Kas tanpa `sampai` bisa memasukkan transaksi 2027, sedangkan Neraca per hari
     ini tidak.

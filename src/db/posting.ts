@@ -19,6 +19,7 @@ import {
   type PostingContext,
 } from '../core/posting.js';
 import type { AuditLog, Jurnal, JurnalBarisInput } from '../core/types.js';
+import { tanggalLokal } from '../utils/tanggal.js';
 
 export type OpsiPosting = {
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
@@ -43,6 +44,12 @@ export type OpsiPosting = {
    * dan nanti operasi lain yang wajib punya jejak audit (P0-9).
    */
   audit?: AuditLog[];
+  /**
+   * AKT-14: tanggal acuan (YYYY-MM-DD) untuk menolak jurnal di masa depan.
+   * Kosong = tanggal lokal WITA saat ini. Disediakan agar test tidak bergantung
+   * tanggal mesin.
+   */
+  sekarang?: string;
 };
 
 export const PESAN_WAJIB_SALDO_AWAL =
@@ -77,7 +84,12 @@ export type HasilPosting = HasilValidasiJurnal & {
 };
 
 /** Ambil konteks DB yang dibutuhkan validator murni. */
-export function buatKonteksPosting(db: Database.Database, header: JurnalInput['header']): PostingContext {
+export function buatKonteksPosting(
+  db: Database.Database,
+  header: JurnalInput['header'],
+  /** AKT-14: override tanggal acuan; default tanggal lokal WITA. */
+  sekarang?: string,
+): PostingContext {
   const tanggal = String(header.tanggal ?? '').trim();
   const noBukti = String(header.no_bukti ?? '').trim();
   // AUD-23: validasi duplikat hanya terhadap nomor di tahun yang sama. Validasi
@@ -153,6 +165,8 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
     // kosong (bukan `tanggalMulaiEfektif` yang jatuh ke hari ini) agar data
     // lama tanpa setting tidak tiba-tiba kehilangan kemampuan backdate.
     tanggalMulaiPembukuan: getPengaturanPembukuan(db).tanggalMulaiPembukuan,
+    // AKT-14: "hari ini" versi bisnis (WITA), bukan toISOString/UTC.
+    sekarang: String(sekarang ?? '').trim() || tanggalLokal(),
   };
 }
 
@@ -160,8 +174,10 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
 export function validasiJurnalDb(
   db: Database.Database,
   input: JurnalInput,
+  /** AKT-14: override tanggal acuan agar test tidak bergantung tanggal mesin. */
+  opsi: Pick<OpsiPosting, 'sekarang'> = {},
 ): HasilValidasiJurnal {
-  return validasiJurnal(input, buatKonteksPosting(db, input.header));
+  return validasiJurnal(input, buatKonteksPosting(db, input.header, opsi.sekarang));
 }
 
 /** Alasan konfirmasi peringatan yang sudah dinormalisasi (trim). */
@@ -202,7 +218,7 @@ function postingJurnalInti(
   opsi: OpsiPosting,
   buatAudit: BuatAuditJurnal,
 ): HasilPosting {
-  const hasil = validasiJurnalDb(db, input);
+  const hasil = validasiJurnalDb(db, input, { sekarang: opsi.sekarang });
   if (hasil.errors.length > 0) return { ...hasil, tersimpan: false };
   if (hasil.peringatan.length > 0 && !opsi.konfirmasiPeringatan)
     return { ...hasil, tersimpan: false };
