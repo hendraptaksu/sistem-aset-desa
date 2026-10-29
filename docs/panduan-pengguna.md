@@ -67,9 +67,9 @@ hanya menawarkan **akun beban** sebagai akun lawan.
 4. Simpan.
 
 **Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`, `1050 PIUTANG`,
-maupun `2050 HUTANG`. Untuk panjar gunakan menu **Buku Panjar**; untuk
-piutang/hutang gunakan menu **Piutang & Hutang**. Jurnal Umum tetap boleh
-memakai akun tersebut untuk koreksi oleh akuntan pendamping.
+`2050 HUTANG LAIN-LAIN`, maupun `2060 HUTANG USAHA`. Untuk panjar gunakan menu
+**Buku Panjar**; untuk piutang/hutang gunakan menu **Piutang & Hutang**. Jurnal
+Umum tetap boleh memakai akun tersebut untuk koreksi oleh akuntan pendamping.
 
 ### 2.3 Pindah Dana
 
@@ -105,23 +105,31 @@ Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
 ### 2.5 Piutang & Hutang
 
 Buka menu **Piutang & Hutang**. Form Bayar terpandu sengaja tidak menawarkan
-akun `1050`/`2050` agar setiap transaksi piutang/hutang memiliki pihak yang
-jelas. Gunakan menu ini untuk semua alur berikut:
+akun `1050`/`2050`/`2060` agar setiap transaksi piutang/hutang memiliki pihak
+yang jelas. Gunakan menu ini untuk semua alur berikut:
 
 | Kejadian | Jurnal yang dibuat sistem |
 |---|---|
 | Memberi pinjaman | Debit `1050 PIUTANG` / Kredit kas |
 | Menerima pelunasan piutang | Debit kas / Kredit `1050 PIUTANG` |
-| Menerima pinjaman | Debit kas / Kredit `2050 HUTANG` |
-| Membayar hutang | Debit `2050 HUTANG` / Kredit kas |
-| Beli/perbaikan barang secara kredit | Debit akun beban / Kredit `2050 HUTANG` |
+| Menerima pinjaman | Debit kas / Kredit `2050 HUTANG LAIN-LAIN` |
+| Membayar pinjaman | Debit `2050 HUTANG LAIN-LAIN` / Kredit kas |
+| Beli/perbaikan barang secara kredit | Debit akun beban / Kredit `2060 HUTANG USAHA` |
+| Membayar utang usaha | Debit `2060 HUTANG USAHA` / Kredit kas |
+
+`2050` dipakai untuk pinjaman dan saldo lama; pembayarannya masuk kelompok
+**Pendanaan**. `2060` dipakai untuk utang usaha (pembelian/perbaikan kredit);
+pembayarannya masuk kelompok **Operasi** di laporan Arus Kas. Saldo utang usaha
+lama yang masih berada di `2050` tetap terbaca sebagai Pendanaan sampai
+akuntan memindahkannya lewat jurnal reklasifikasi; aplikasi tidak pernah
+memindahkan saldo lama secara otomatis.
 
 Pihak (nama orang/lembaga) wajib dipilih untuk piutang dan hutang. Saldo per
 pihak dihitung dari jurnal, bukan diketik manual.
 
 **Penting:** perbaikan gedung yang dibayar belakangan **tidak menambah modal**.
-Yang naik adalah beban (Laba Rugi) dan hutang (Neraca). Modal hanya berubah lewat
-setoran/penarikan modal atau wizard Saldo Awal.
+Yang naik adalah beban (Laba Rugi) dan Utang Usaha `2060` (Neraca). Modal hanya
+berubah lewat setoran/penarikan modal atau wizard Saldo Awal.
 
 ### 2.6 Jurnal Umum (untuk akuntan pendamping)
 

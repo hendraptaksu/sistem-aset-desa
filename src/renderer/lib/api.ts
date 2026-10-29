@@ -431,7 +431,7 @@ export const api = {
   // ---- Piutang & Hutang + master pihak (P1-5) ----
   pihakList: () => call<Pihak[]>('pihak:list'),
   pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),
-  /** Rekonsiliasi saldo akun 1050/2050 vs jurnal yang sudah dipetakan ke pihak. */
+  /** Rekonsiliasi saldo akun 1050/2050/2060 vs jurnal yang sudah dipetakan ke pihak. */
   pihakRekon: (sampai?: string) =>
     call<RekonsiliasiPihak>('pihak:rekon', sampai),
   pihakJurnal: (pihakId: string) =>

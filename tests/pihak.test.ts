@@ -36,6 +36,7 @@ import {
 } from '../src/core/pihak.js';
 import {
   buatJurnalBayarHutang,
+  buatJurnalBayarUtangUsaha,
   buatJurnalBeliKredit,
   buatJurnalBeriPinjaman,
   buatJurnalTerimaPelunasanPiutang,
@@ -127,8 +128,8 @@ const dasar = {
   keterangan: 'Transaksi uji pihak',
 };
 
-describe('P1-5 — lima alur piutang/hutang', () => {
-  it('menghasilkan akun D/K benar dan saldo kas/1050/2050 berubah', () => {
+describe('P1-5/AKT-20 — enam alur piutang/hutang', () => {
+  it('menghasilkan akun D/K benar dan saldo kas/1050/2050/2060 berubah', () => {
     const { db, budi } = dbPihak();
     try {
       // 1. Beri pinjaman: D 1050 / K kas.
@@ -228,7 +229,7 @@ describe('P1-5 — lima alur piutang/hutang', () => {
       expect(saldoAkun(listBarisJurnal(db), '2050')).toBe(RP(1_500_000));
       expect(saldoAkun(listBarisJurnal(db), '1001')).toBe(RP(10_900_000));
 
-      // 5. Beli/perbaikan kredit: D beban / K 2050.
+      // 5. Beli/perbaikan kredit: D beban / K 2060 (utang usaha).
       const kredit = simpan(
         db,
         budi.id,
@@ -246,17 +247,44 @@ describe('P1-5 — lima alur piutang/hutang', () => {
       expect(kredit.alur).toBe('BELI_KREDIT');
       expect(barisJurnal(db, 'j-beli-kredit')).toEqual([
         { akun: '5003', debit: RP(300_000), kredit: 0 },
-        { akun: '2050', debit: 0, kredit: RP(300_000) },
+        { akun: '2060', debit: 0, kredit: RP(300_000) },
       ]);
-      expect(saldoAkun(listBarisJurnal(db), '2050')).toBe(RP(1_800_000));
+      expect(saldoAkun(listBarisJurnal(db), '2050')).toBe(RP(1_500_000));
+      expect(saldoAkun(listBarisJurnal(db), '2060')).toBe(RP(300_000));
       expect(saldoAkun(listBarisJurnal(db), '1001')).toBe(RP(10_900_000)); // kas tidak berubah
 
       const budiAkhir = saldoPerPihak(db).find((p) => p.id === budi.id)!;
       expect(budiAkhir).toMatchObject({
         piutang: RP(600_000),
         hutang: RP(1_800_000),
+        pinjaman: RP(1_500_000),
+        hutangUsaha: RP(300_000),
         neto: RP(-1_200_000),
       });
+
+      // 6. Bayar utang usaha: D 2060 / K kas (arus kas OPERASI).
+      const bayarUtang = simpan(
+        db,
+        budi.id,
+        buatJurnalBayarUtangUsaha({
+          ...dasar,
+          tanggal: '2026-02-28',
+          pihakId: budi.id,
+          akunKas: '1001',
+          nominal: RP(200_000),
+          noBukti: 'P1-5-0006',
+          id: 'j-bayar-utang-usaha',
+        }).input,
+      );
+      expect(bayarUtang.tersimpan, bayarUtang.errors.join(' ')).toBe(true);
+      expect(bayarUtang.alur).toBe('BAYAR_UTANG_USAHA');
+      expect(barisJurnal(db, 'j-bayar-utang-usaha')).toEqual([
+        { akun: '2060', debit: RP(200_000), kredit: 0 },
+        { akun: '1001', debit: 0, kredit: RP(200_000) },
+      ]);
+      expect(saldoAkun(listBarisJurnal(db), '2060')).toBe(RP(100_000));
+      expect(saldoAkun(listBarisJurnal(db), '2050')).toBe(RP(1_500_000));
+      expect(saldoAkun(listBarisJurnal(db), '1001')).toBe(RP(10_700_000));
 
       const ns = neracaSaldo(listBarisJurnal(db));
       expect(ns.selisih).toBe(0);
@@ -269,9 +297,145 @@ describe('P1-5 — lima alur piutang/hutang', () => {
         'HUTANG-TERIMA-PINJAMAN',
         'HUTANG-BAYAR',
         'HUTANG-BELI-KREDIT',
+        'HUTANG-USAHA-BAYAR',
       ]) {
         expect(listAuditLog(db, { aksi }), `audit ${aksi}`).toHaveLength(1);
       }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AKT-20: pemilihan akun form benar (2060 utang usaha, 2050 pinjaman)', () => {
+    const kredit = buatJurnalBeliKredit({
+      ...dasar,
+      pihakId: 'p-budi',
+      akunBeban: '5003',
+      nominal: RP(300_000),
+    });
+    expect(kredit.input.baris).toEqual([
+      { akun_kode: '5003', debit: RP(300_000), kredit: 0 },
+      { akun_kode: '2060', debit: 0, kredit: RP(300_000) },
+    ]);
+
+    const bayarUsaha = buatJurnalBayarUtangUsaha({
+      ...dasar,
+      pihakId: 'p-budi',
+      akunKas: '1001',
+      nominal: RP(200_000),
+    });
+    expect(bayarUsaha.input.header.jenis).toBe('HUTANG');
+    expect(bayarUsaha.input.baris).toEqual([
+      { akun_kode: '2060', debit: RP(200_000), kredit: 0 },
+      { akun_kode: '1001', debit: 0, kredit: RP(200_000) },
+    ]);
+
+    const terima = buatJurnalTerimaPinjaman({
+      ...dasar,
+      pihakId: 'p-budi',
+      akunKas: '1001',
+      nominal: RP(500_000),
+    });
+    expect(terima.input.baris[1]?.akun_kode).toBe('2050');
+
+    const bayarPinjaman = buatJurnalBayarHutang({
+      ...dasar,
+      pihakId: 'p-budi',
+      akunKas: '1001',
+      nominal: RP(500_000),
+    });
+    expect(bayarPinjaman.input.baris[0]?.akun_kode).toBe('2050');
+  });
+
+  it('AKT-20: overbalance dibandingkan per akun, bukan total hutang', () => {
+    const { db, budi } = dbPihak();
+    try {
+      // Pinjaman 2050 dan utang usaha 2060 masing-masing Rp100.000.
+      expect(
+        simpan(
+          db,
+          budi.id,
+          buatJurnalTerimaPinjaman({
+            ...dasar,
+            pihakId: budi.id,
+            akunKas: '1001',
+            nominal: RP(100_000),
+            id: 'j-pinjam-100',
+          }).input,
+        ).tersimpan,
+      ).toBe(true);
+      expect(
+        simpan(
+          db,
+          budi.id,
+          buatJurnalBeliKredit({
+            ...dasar,
+            pihakId: budi.id,
+            akunBeban: '5003',
+            nominal: RP(100_000),
+            id: 'j-usaha-100',
+          }).input,
+        ).tersimpan,
+      ).toBe(true);
+
+      const bayar = buatJurnalBayarUtangUsaha({
+        ...dasar,
+        pihakId: budi.id,
+        akunKas: '1001',
+        nominal: RP(150_000),
+        id: 'j-bayar-usaha-lebih',
+      }).input;
+      const belum = simpan(db, budi.id, bayar);
+      // Total hutang Rp200.000, tetapi saldo 2060 hanya Rp100.000.
+      expect(belum.tersimpan).toBe(false);
+      expect(belum.perluKonfirmasi).toBe(true);
+      expect(belum.peringatan.join(' ')).toMatch(/melebihi saldo utang usaha/i);
+
+      const lanjut = simpan(db, budi.id, bayar, {
+        konfirmasiSaldo: true,
+        alasanSaldo: 'Pembayaran utang usaha disetujui',
+      });
+      expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
+      expect(lanjut.saldoSesudah?.hutangUsaha).toBe(RP(-50_000));
+      expect(lanjut.saldoSesudah?.pinjaman).toBe(RP(100_000));
+      expect(lanjut.saldoSesudah?.hutang).toBe(RP(50_000));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AKT-20: reversal jurnal 2060 menyalin pemetaan pihak dan mengembalikan saldo', () => {
+    const { db, budi } = dbPihak();
+    try {
+      const beli = simpan(
+        db,
+        budi.id,
+        buatJurnalBeliKredit({
+          ...dasar,
+          pihakId: budi.id,
+          akunBeban: '5003',
+          nominal: RP(400_000),
+          id: 'j-usaha-reversal',
+        }).input,
+      );
+      expect(beli.tersimpan, beli.errors.join(' ')).toBe(true);
+      expect(saldoPerPihak(db).find((p) => p.id === budi.id)?.hutangUsaha).toBe(
+        RP(400_000),
+      );
+
+      const balik = reverseJurnal(db, 'j-usaha-reversal', 'Koreksi beli kredit', {
+        id: 'j-usaha-reversal-balik',
+        tanggal: '2026-02-02',
+      });
+      expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
+      expect(saldoPerPihak(db).find((p) => p.id === budi.id)?.hutangUsaha).toBe(0);
+      expect(
+        db
+          .prepare(
+            "SELECT akun_kode FROM jurnal_pihak WHERE jurnal_id = 'j-usaha-reversal-balik'",
+          )
+          .all(),
+      ).toEqual([{ akun_kode: '2060' }]);
     } finally {
       db.close();
     }
@@ -442,7 +606,7 @@ describe('P1-5 — peringatan saldo dan validasi pihak', () => {
     }
   });
 
-  it('pembayaran hutang melebihi saldo: perlu konfirmasi lalu bisa disimpan', () => {
+  it('pembayaran pinjaman melebihi saldo: perlu konfirmasi lalu bisa disimpan', () => {
     const { db, budi } = dbPihak();
     try {
       expect(
@@ -470,7 +634,7 @@ describe('P1-5 — peringatan saldo dan validasi pihak', () => {
       const belum = simpan(db, budi.id, bayar);
       expect(belum.tersimpan).toBe(false);
       expect(belum.perluKonfirmasi).toBe(true);
-      expect(belum.peringatan.join(' ')).toMatch(/melebihi saldo hutang/i);
+      expect(belum.peringatan.join(' ')).toMatch(/melebihi saldo pinjaman/i);
 
       const tanpaAlasan = simpan(db, budi.id, bayar, { konfirmasiSaldo: true });
       expect(tanpaAlasan.tersimpan).toBe(false);
@@ -641,8 +805,8 @@ describe('P1-5 — peringatan saldo dan validasi pihak', () => {
   });
 });
 
-describe('P1-5 — kasus feedback: perbaikan gedung kredit', () => {
-  it('D 5003 / K 2050: Laba Rugi turun, hutang naik, modal 3000 tetap', () => {
+describe('P1-5/AKT-20 — kasus feedback: perbaikan gedung kredit', () => {
+  it('D 5003 / K 2060: Laba Rugi turun, utang usaha naik, modal 3000 tetap', () => {
     const { db, budi } = dbPihak();
     try {
       const sebelum = listBarisJurnal(db);
@@ -671,7 +835,7 @@ describe('P1-5 — kasus feedback: perbaikan gedung kredit', () => {
       expect(hasil.alur).toBe('BELI_KREDIT');
       expect(barisJurnal(db, 'j-perbaikan')).toEqual([
         { akun: '5003', debit: RP(1_200_000), kredit: 0 },
-        { akun: '2050', debit: 0, kredit: RP(1_200_000) },
+        { akun: '2060', debit: 0, kredit: RP(1_200_000) },
       ]);
 
       const sesudah = listBarisJurnal(db);
@@ -844,7 +1008,7 @@ describe('P1-5 — skema v5 idempoten', () => {
       const db = openDb(path);
       try {
         expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(9);
+        expect(SCHEMA_VERSION).toBe(10);
         const tabel = (
           db
             .prepare(
@@ -898,18 +1062,19 @@ describe('P1-5 — skema v5 idempoten', () => {
 });
 
 describe('P1-5 — layar Piutang & Hutang', () => {
-  it('merender lima alur, penjelasan modal, dan master pihak', () => {
+  it('merender enam alur, penjelasan modal, dan master pihak', () => {
     const html = renderToStaticMarkup(createElement(PihakTab));
 
     expect(html).toContain('Piutang &amp; Hutang');
     expect(html).toContain('Daftar Pihak');
-    expect(html).toContain('Rekonsiliasi 1050/2050');
+    expect(html).toContain('Rekonsiliasi 1050/2050/2060');
     for (const label of [
       'Beri Pinjaman',
       'Terima Pelunasan Piutang',
       'Terima Pinjaman',
-      'Bayar Hutang',
+      'Bayar Pinjaman',
       'Beli / Perbaikan Barang Kredit',
+      'Bayar Utang Usaha',
     ]) {
       expect(html).toContain(label);
     }
@@ -1120,10 +1285,13 @@ describe('AUD-09 — rekonsiliasi pihak vs saldo 1050/2050', () => {
         rekon: {
           piutangAkun: RP(1_500_000),
           hutangAkun: RP(1_000_000),
+          hutangUsahaAkun: RP(250_000),
           piutangTeralokasi: RP(1_000_000),
           hutangTeralokasi: RP(700_000),
+          hutangUsahaTeralokasi: RP(250_000),
           piutangBelum: RP(500_000),
           hutangBelum: RP(300_000),
+          hutangUsahaBelum: 0,
           jurnalBelum: [
             {
               jurnal_id: 'j-tampil',
@@ -1138,7 +1306,7 @@ describe('AUD-09 — rekonsiliasi pihak vs saldo 1050/2050', () => {
       }),
     );
 
-    expect(html).toContain('Rekonsiliasi 1050/2050');
+    expect(html).toContain('Rekonsiliasi 1050/2050/2060');
     expect(html).toContain('Ada jurnal belum teralokasi');
     expect(html).toContain('Rp 1.500.000,00');
     expect(html).toContain('Rp 500.000,00');

@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Building2,
   HandCoins,
+  Receipt,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -12,6 +13,7 @@ import type { Coa } from '../../db/coa.js';
 import { isAkunKas } from '../../db/coa.js';
 import {
   buatJurnalBayarHutang,
+  buatJurnalBayarUtangUsaha,
   buatJurnalBeliKredit,
   buatJurnalBeriPinjaman,
   buatJurnalTerimaPelunasanPiutang,
@@ -100,40 +102,53 @@ const ALUR_INFO: Record<AlurPihak, InfoAlur> = {
     judul: 'Terima Pinjaman',
     ringkas: 'Kita meminjam uang dari pihak',
     deskripsi:
-      'Uang masuk ke kas/bank dan menjadi Hutang (2050) kepada pihak. ' +
+      'Uang masuk ke kas/bank dan menjadi Pinjaman (2050) kepada pihak. ' +
       'Ini menambah kewajiban, bukan pendapatan — modal tidak berubah.',
     labelKas: 'Uang pinjaman masuk ke',
     labelNominal: 'Jumlah pinjaman diterima',
     placeholder: 'cth: Pinjaman dari LPD untuk perbaikan',
     pesanSukses:
-      'Kas bertambah dan Hutang (2050) bertambah. Modal tidak berubah.',
+      'Kas bertambah dan Pinjaman (2050) bertambah. Modal tidak berubah.',
     Icon: Users,
   },
   BAYAR_HUTANG: {
-    judul: 'Bayar Hutang',
+    judul: 'Bayar Pinjaman',
     ringkas: 'Kita melunasi pinjaman ke pihak',
     deskripsi:
-      'Kas/bank berkurang dan Hutang (2050) berkurang. ' +
-      'Bila pembayaran melebihi saldo hutang pihak, sistem hanya memberi peringatan.',
+      'Kas/bank berkurang dan Pinjaman (2050) berkurang. ' +
+      'Bila pembayaran melebihi saldo pinjaman pihak, sistem hanya memberi peringatan.',
     labelKas: 'Uang pembayaran keluar dari',
     labelNominal: 'Jumlah yang dibayar',
-    placeholder: 'cth: Bayar hutang perbaikan gedung tahap 1',
+    placeholder: 'cth: Bayar angsuran pinjaman LPD',
     pesanSukses:
-      'Kas berkurang dan Hutang (2050) berkurang. Modal tidak berubah.',
+      'Kas berkurang dan Pinjaman (2050) berkurang. Modal tidak berubah.',
     Icon: ArrowUpRight,
   },
   BELI_KREDIT: {
     judul: 'Beli / Perbaikan Barang Kredit',
     ringkas: 'Barang/perbaikan dibayar belakangan',
     deskripsi:
-      'Kasus perbaikan gedung: beban langsung masuk Laba Rugi, dan Hutang (2050) ' +
-      'bertambah. Modal (3000) TIDAK tersentuh — hutang dilunasi lewat alur Bayar Hutang.',
+      'Kasus perbaikan gedung: beban langsung masuk Laba Rugi, dan Utang Usaha (2060) ' +
+      'bertambah. Modal (3000) TIDAK tersentuh — utang dilunasi lewat alur Bayar Utang Usaha.',
     labelKas: '',
     labelNominal: 'Nilai barang / perbaikan',
     placeholder: 'cth: Perbaikan gedung — bahan dan tukang, dibayar bulan depan',
     pesanSukses:
-      'Beban bertambah (Laba Rugi turun) dan Hutang (2050) bertambah. Modal tidak berubah.',
+      'Beban bertambah (Laba Rugi turun) dan Utang Usaha (2060) bertambah. Modal tidak berubah.',
     Icon: Building2,
+  },
+  BAYAR_UTANG_USAHA: {
+    judul: 'Bayar Utang Usaha',
+    ringkas: 'Kita melunasi pembelian/perbaikan kredit',
+    deskripsi:
+      'Kas/bank berkurang dan Utang Usaha (2060) berkurang. Pembayaran ini ' +
+      'masuk arus kas Operasi, berbeda dari pembayaran pinjaman (Pendanaan).',
+    labelKas: 'Uang pembayaran keluar dari',
+    labelNominal: 'Jumlah yang dibayar',
+    placeholder: 'cth: Bayar utang bahan bangunan toko',
+    pesanSukses:
+      'Kas berkurang dan Utang Usaha (2060) berkurang. Modal tidak berubah.',
+    Icon: Receipt,
   },
 };
 
@@ -143,6 +158,7 @@ const URUTAN_ALUR: AlurPihak[] = [
   'TERIMA_PINJAMAN',
   'BAYAR_HUTANG',
   'BELI_KREDIT',
+  'BAYAR_UTANG_USAHA',
 ];
 
 function TabelPratinjau({
@@ -191,7 +207,7 @@ function TabelPratinjau({
 }
 
 /**
- * Kartu rekonsiliasi saldo akun 1050/2050 vs pemetaan pihak (AUD-09).
+ * Kartu rekonsiliasi saldo akun 1050/2050/2060 vs pemetaan pihak (AUD-09/AKT-20).
  * Diekspor terpisah agar bisa di-smoke-test tanpa memuat IPC/Electron.
  */
 export function KartuRekonsiliasiPihak({
@@ -200,7 +216,10 @@ export function KartuRekonsiliasiPihak({
   rekon: RekonsiliasiPihak | null;
 }) {
   const adaBelum = Boolean(
-    rekon && (rekon.piutangBelum !== 0 || rekon.hutangBelum !== 0),
+    rekon &&
+      (rekon.piutangBelum !== 0 ||
+        rekon.hutangBelum !== 0 ||
+        rekon.hutangUsahaBelum !== 0),
   );
   const baris = rekon
     ? [
@@ -211,10 +230,16 @@ export function KartuRekonsiliasiPihak({
           belum: rekon.piutangBelum,
         },
         {
-          label: 'Hutang (2050)',
+          label: 'Pinjaman (2050)',
           akun: rekon.hutangAkun,
           teralokasi: rekon.hutangTeralokasi,
           belum: rekon.hutangBelum,
+        },
+        {
+          label: 'Utang Usaha (2060)',
+          akun: rekon.hutangUsahaAkun,
+          teralokasi: rekon.hutangUsahaTeralokasi,
+          belum: rekon.hutangUsahaBelum,
         },
       ]
     : [];
@@ -224,7 +249,7 @@ export function KartuRekonsiliasiPihak({
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold">Rekonsiliasi 1050/2050</h2>
+          <h2 className="text-lg font-bold">Rekonsiliasi 1050/2050/2060</h2>
           <p className="mt-1 max-w-3xl text-sm text-stone-600">
             Saldo akun dari jurnal dibandingkan dengan jurnal yang sudah punya
             pihak. Selisih di bawah adalah jurnal yang belum teralokasi (mis. dari
@@ -278,7 +303,7 @@ export function KartuRekonsiliasiPihak({
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
               <p className="text-[15px] font-semibold">Jurnal belum teralokasi</p>
               <p className="mt-1 text-sm">
-                Jurnal berikut menyentuh 1050/2050 tanpa pemetaan pihak. Koreksi
+                Jurnal berikut menyentuh 1050/2050/2060 tanpa pemetaan pihak. Koreksi
                 lewat jurnal balik, atau catat ulang lewat menu Piutang &amp;
                 Hutang bila perlu.
               </p>
@@ -461,11 +486,27 @@ export function PihakTab() {
   const saldoRelevan =
     alur === 'BERI_PINJAMAN' || alur === 'TERIMA_PELUNASAN'
       ? (saldoTerpilih?.piutang ?? 0)
-      : (saldoTerpilih?.hutang ?? 0);
+      : alur === 'BELI_KREDIT' || alur === 'BAYAR_UTANG_USAHA'
+        ? (saldoTerpilih?.hutangUsaha ?? 0)
+        : (saldoTerpilih?.pinjaman ?? 0);
+  const labelSaldoRelevan =
+    alur === 'BERI_PINJAMAN' || alur === 'TERIMA_PELUNASAN'
+      ? 'piutang 1050'
+      : alur === 'BELI_KREDIT' || alur === 'BAYAR_UTANG_USAHA'
+        ? 'utang usaha 2060'
+        : 'pinjaman 2050';
+  const labelSaldoPesan =
+    alur === 'TERIMA_PELUNASAN'
+      ? 'piutang'
+      : alur === 'BAYAR_UTANG_USAHA'
+        ? 'utang usaha'
+        : 'pinjaman';
 
   const lebihSaldo =
-    (alur === 'TERIMA_PELUNASAN' && nominal > saldoRelevan) ||
-    (alur === 'BAYAR_HUTANG' && nominal > saldoRelevan);
+    (alur === 'TERIMA_PELUNASAN' ||
+      alur === 'BAYAR_HUTANG' ||
+      alur === 'BAYAR_UTANG_USAHA') &&
+    nominal > saldoRelevan;
   const selisihLebih = lebihSaldo ? nominal - saldoRelevan : 0;
 
   const saldoSesudah =
@@ -498,7 +539,9 @@ export function PihakTab() {
             ? buatJurnalTerimaPelunasanPiutang
             : alur === 'TERIMA_PINJAMAN'
               ? buatJurnalTerimaPinjaman
-              : buatJurnalBayarHutang;
+              : alur === 'BAYAR_UTANG_USAHA'
+                ? buatJurnalBayarUtangUsaha
+                : buatJurnalBayarHutang;
       return { hasil: buat({ ...dasar, akunKas }), error: null };
     } catch (e) {
       return { hasil: null, error: pesanError(e) };
@@ -517,7 +560,8 @@ export function PihakTab() {
   const labelBaris = (akun: string, debit: number, kredit: number): string => {
     const tambah = debit > 0;
     if (akun === '1050') return `Piutang (1050) — ${tambah ? 'bertambah' : 'berkurang'}`;
-    if (akun === '2050') return `Hutang (2050) — ${tambah ? 'berkurang' : 'bertambah'}`;
+    if (akun === '2050') return `Pinjaman (2050) — ${tambah ? 'berkurang' : 'bertambah'}`;
+    if (akun === '2060') return `Utang Usaha (2060) — ${tambah ? 'berkurang' : 'bertambah'}`;
     if (isAkunKas(akun))
       return `Kas/Bank — ${labelAkun(akun)} ${tambah ? 'bertambah' : 'berkurang'}`;
     return `Beban — ${labelAkun(akun)} ${tambah ? 'bertambah' : 'berkurang'}`;
@@ -548,6 +592,8 @@ export function PihakTab() {
     if (alur === 'TERIMA_PELUNASAN')
       return buatJurnalTerimaPelunasanPiutang({ ...dasar, akunKas });
     if (alur === 'TERIMA_PINJAMAN') return buatJurnalTerimaPinjaman({ ...dasar, akunKas });
+    if (alur === 'BAYAR_UTANG_USAHA')
+      return buatJurnalBayarUtangUsaha({ ...dasar, akunKas });
     return buatJurnalBayarHutang({ ...dasar, akunKas });
   }
 
@@ -580,7 +626,7 @@ export function PihakTab() {
     }
 
     const labelAksi = alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran';
-    const labelSaldo = alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang';
+    const labelSaldo = labelSaldoPesan;
     if (lebihSaldo && opsi.konfirmasi !== true) {
       setPesanKonfirmasi(
         `${labelAksi} melebihi saldo ${labelSaldo} sebesar ${formatRp(selisihLebih)}. ` +
@@ -836,7 +882,7 @@ export function PihakTab() {
         <h2 className="text-lg font-bold">Daftar Pihak</h2>
         <p className="mt-1 text-sm text-stone-600">
           Pihak wajib dipilih untuk setiap transaksi piutang/hutang. Saldo di bawah
-          dihitung dari jurnal 1050/2050, bukan angka yang diketik manual.
+          dihitung dari jurnal 1050/2050/2060, bukan angka yang diketik manual.
         </p>
 
         <div className="mt-3 grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_1.3fr_auto]">
@@ -874,7 +920,8 @@ export function PihakTab() {
                 <th className="py-2 pr-3">Nama</th>
                 <th className="py-2 pr-3">Catatan</th>
                 <th className="py-2 pr-3 text-right">Piutang (1050)</th>
-                <th className="py-2 pr-3 text-right">Hutang (2050)</th>
+                <th className="py-2 pr-3 text-right">Pinjaman (2050)</th>
+                <th className="py-2 pr-3 text-right">Utang Usaha (2060)</th>
                 <th className="py-2">Tindakan</th>
               </tr>
             </thead>
@@ -924,7 +971,10 @@ export function PihakTab() {
                       {formatRp(s?.piutang ?? 0)}
                     </td>
                     <td className="py-2 pr-3 text-right whitespace-nowrap">
-                      {formatRp(s?.hutang ?? 0)}
+                      {formatRp(s?.pinjaman ?? 0)}
+                    </td>
+                    <td className="py-2 pr-3 text-right whitespace-nowrap">
+                      {formatRp(s?.hutangUsaha ?? 0)}
                     </td>
                     <td className="py-2">
                       <div className="flex flex-wrap gap-2">
@@ -968,7 +1018,7 @@ export function PihakTab() {
               })}
               {pihak.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-stone-500">
+                  <td colSpan={6} className="py-4 text-center text-stone-500">
                     Belum ada pihak. Tambahkan nama pihak terlebih dahulu.
                   </td>
                 </tr>
@@ -1053,7 +1103,7 @@ export function PihakTab() {
           muncul sebelum disimpan. Operator tidak perlu menghitung debit/kredit.
         </p>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {URUTAN_ALUR.map((id) => {
             const info = ALUR_INFO[id];
             const aktif = alur === id;
@@ -1094,7 +1144,7 @@ export function PihakTab() {
           <p className="mt-1 max-w-3xl text-sm text-stone-700">{infoAlur.deskripsi}</p>
           <p className="mt-1 text-helper font-semibold text-emerald-800">
             {alur === 'BELI_KREDIT'
-              ? 'D Beban / K Hutang (2050) — bukan D Modal. Modal hanya berubah lewat setoran/penarikan modal atau Saldo Awal.'
+              ? 'D Beban / K Utang Usaha (2060) — bukan D Modal. Modal hanya berubah lewat setoran/penarikan modal atau Saldo Awal.'
               : 'Piutang/hutang selalu punya pihak. Jurnal otomatis seimbang dan bisa diperiksa di Jurnal Umum.'}
           </p>
         </div>
@@ -1138,8 +1188,9 @@ export function PihakTab() {
                 const s = saldo.find((x) => x.id === p.id);
                 return (
                   <option key={p.id} value={p.id}>
-                    {p.nama} — piutang {formatRp(s?.piutang ?? 0)} / hutang{' '}
-                    {formatRp(s?.hutang ?? 0)}
+                    {p.nama} — piutang {formatRp(s?.piutang ?? 0)} / pinjaman{' '}
+                    {formatRp(s?.pinjaman ?? 0)} / utang usaha{' '}
+                    {formatRp(s?.hutangUsaha ?? 0)}
                   </option>
                 );
               })}
@@ -1188,7 +1239,7 @@ export function PihakTab() {
               </Select>
               <span className="mt-1 block text-helper text-stone-500">
                 Contoh perbaikan gedung: 5003 BAGA WEWANGUNAN. Tidak ada uang kas yang
-                keluar sekarang; hutang bertambah.
+                keluar sekarang; Utang Usaha (2060) bertambah.
               </span>
             </Field>
           )}
@@ -1239,7 +1290,7 @@ export function PihakTab() {
               Saldo pihak saat ini:{' '}
               <b>{formatRp(saldoRelevan)}</b>{' '}
               <span className="text-helper text-stone-500">
-                ({alur === 'BERI_PINJAMAN' || alur === 'TERIMA_PELUNASAN' ? 'piutang 1050' : 'hutang 2050'})
+                ({labelSaldoRelevan})
               </span>
             </div>
             <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
@@ -1258,7 +1309,7 @@ export function PihakTab() {
             <p className="text-[15px] font-semibold">Perhatian: melebihi saldo pihak</p>
             <p className="mt-1 text-[15px]">
               {alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} melebihi saldo{' '}
-              {alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang'} sebesar{' '}
+              {labelSaldoPesan} sebesar{' '}
               <b>{formatRp(selisihLebih)}</b>. Saldo setelah transaksi menjadi{' '}
               <b>{formatRp(saldoSesudah)}</b>. Sistem tidak memblokir, tetapi saat
               menyimpan Anda wajib menulis alasan minimal {MIN_ALASAN_PERINGATAN}{' '}

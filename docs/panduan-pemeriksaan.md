@@ -50,11 +50,12 @@ transaksi aslinya.
   - pindah dana → tujuan di debit, asal di kredit (total kas tetap);
   - panjar → `1040` di debit saat serah; beban/sisa kas di debit dan `1040` di
     kredit saat pertanggungjawaban;
-  - piutang/hutang → `1050`/`2050` sesuai arah, bukan akun beban.
+  - piutang/hutang → `1050` (piutang), `2050` (pinjaman), atau `2060` (utang
+    usaha) sesuai arah, bukan akun beban.
   - form terpandu **Bayar** hanya menawarkan akun **BEBAN**; pembayaran panjar,
-    pemberian piutang, atau pembayaran hutang harus lewat menu **Buku Panjar**
-    atau **Piutang & Hutang**. Jurnal Umum tetap boleh memakai `1040`/`1050`/
-    `2050` untuk koreksi akuntan.
+    pemberian piutang, pembayaran pinjaman, atau pembayaran utang usaha harus
+    lewat menu **Buku Panjar** atau **Piutang & Hutang**. Jurnal Umum tetap boleh
+    memakai `1040`/`1050`/`2050`/`2060` untuk koreksi akuntan.
 - **Lampiran bukti** ada untuk transaksi material (foto kuitansi/PDF). Lampiran
   tidak mengubah angka; hanya bukti pendukung.
 
@@ -86,8 +87,11 @@ Akun yang paling sering diperiksa:
 
 - `1001 KAS`, akun LPD (1010–1036), dan `1029 BANK BPD UBUD`.
 - `1040 UANG PANJAR` — harus nol bila semua panjar sudah ditutup.
-- `1050 PIUTANG LAIN-LAIN` dan `2050 HUTANG LAIN-LAIN` — cocokkan dengan saldo
-  per pihak di menu **Piutang & Hutang**.
+- `1050 PIUTANG LAIN-LAIN`, `2050 HUTANG LAIN-LAIN` (pinjaman/legacy), dan
+  `2060 HUTANG USAHA` — cocokkan dengan saldo per pihak di menu **Piutang &
+  Hutang**. Pembayaran `2060` masuk Arus Kas Operasi; `2050` tetap Pendanaan.
+  Saldo utang usaha lama yang masih di `2050` juga tetap Pendanaan sampai
+  direklasifikasi lewat jurnal yang diaudit.
 - `3000 MODAL` — hanya berubah karena setoran/penarikan modal atau Saldo Awal.
 - `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun legacy yang hanya
   dibaca dari laporan; keduanya tidak bisa dipilih/diposting lewat Jurnal Umum
@@ -157,7 +161,7 @@ periode berjalan langsung mengubah Laba Rugi saat dibuka ulang.
 Buka **Neraca** dan pilih cut-off.
 
 - **Aset** = saldo akun AKTIVA (kas/bank, piutang, panjar, aset lain).
-- **Kewajiban** = saldo akun KEWAJIBAN (mis. `2050`).
+- **Kewajiban** = saldo akun KEWAJIBAN (mis. `2050` pinjaman dan `2060` utang usaha).
 - **Ekuitas** = modal + laba ditahan + laba berjalan (dihitung dari jurnal).
 - **Aset = Kewajiban + Ekuitas**. Bila tidak sama, lihat status **Neraca Saldo**
   dan jangan tutup buku.

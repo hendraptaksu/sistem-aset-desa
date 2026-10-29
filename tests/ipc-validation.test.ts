@@ -155,13 +155,37 @@ describe('P0-4 — akun & jenis akun', () => {
     ).toMatch(/1050 PIUTANG/);
     expect(
       pesan(jalankan({ header: { jenis: 'HUTANG' }, baris: pasangan('1001', '4005') })),
-    ).toMatch(/2050 HUTANG/);
+    ).toMatch(/2050 HUTANG LAIN-LAIN.*2060 HUTANG USAHA/);
 
     // Pasangan yang benar untuk tiap jenis tidak menghasilkan error jenis.
     expect(jalankan({ header: { jenis: 'TRANSFER' }, baris: pasangan('1029', '1001') }).boleh).toBe(true);
     expect(jalankan({ header: { jenis: 'PANJAR' }, baris: pasangan('1040', '1001') }).boleh).toBe(true);
     expect(jalankan({ header: { jenis: 'PIUTANG' }, baris: pasangan('1050', '1001') }).boleh).toBe(true);
     expect(jalankan({ header: { jenis: 'HUTANG' }, baris: pasangan('1001', '2050') }).boleh).toBe(true);
+    expect(jalankan({ header: { jenis: 'HUTANG' }, baris: pasangan('1001', '2060') }).boleh).toBe(true);
+  });
+
+  it('menolak jurnal ber-kas yang memuat 2050 dan 2060 sekaligus, tetapi reklasifikasi non-kas boleh', () => {
+    const campuran = jalankan({
+      header: { jenis: 'UMUM' },
+      baris: [
+        { akun_kode: '2050', debit: 100_000, kredit: 0 },
+        { akun_kode: '2060', debit: 0, kredit: 50_000 },
+        { akun_kode: '1001', debit: 0, kredit: 50_000 },
+      ],
+    });
+    expect(pesan(campuran)).toMatch(/Pisahkan pembayaran utang usaha dan pinjaman/);
+
+    // Reklasifikasi D 2050 / K 2060 tanpa kas tetap sah.
+    const reklas = jalankan({
+      header: { jenis: 'UMUM' },
+      baris: [
+        { akun_kode: '2050', debit: 100_000, kredit: 0 },
+        { akun_kode: '2060', debit: 0, kredit: 100_000 },
+      ],
+    });
+    expect(reklas.errors).toEqual([]);
+    expect(reklas.boleh).toBe(true);
   });
 
   it('mengenal seluruh jenis jurnal dan menolak jenis asing', () => {

@@ -1,11 +1,14 @@
 // SUMBER KEBENARAN: KODE AKUN.csv (dokumen resmi client, 2026-09-04),
-// ditambah 1040 UANG PANJAR (KAS DI MUKA) sesuai arah double-entry 2026-10-04.
+// ditambah 1040 UANG PANJAR (KAS DI MUKA) sesuai arah double-entry 2026-10-04
+// dan 2060 HUTANG USAHA (AKT-20) untuk memisahkan utang usaha dari pinjaman.
 // Catatan:
 // - Tidak ada kode 1000. Kas tunai = 1001 KAS.
 // - Kode tidak berurutan rapat (cth. tidak ada 4006). JANGAN asumsikan rentang —
 //   semua logika memakai `tipe` + `posisi_normal`, bukan rentang kode.
 // - 1040 UANG PANJAR = aktiva non-kas (kas di muka), BUKAN dompet.
 // - 1050 PIUTANG = aktiva non-kas. BUKAN dompet (isAkunKas('1050') = false).
+// - 2050 HUTANG LAIN-LAIN = pinjaman/legacy; 2060 HUTANG USAHA = pembelian kredit.
+// - 2060 adalah ekstensi sistem di luar CSV, seperti 1040. CSV resmi tetap 48 akun.
 // - 3001 berlaku "MULAI 10 MARET 2018" (jangkar awal pembukuan).
 // - Nama disalin persis dari CSV termasuk singkatan (SHUTLE, PEDAPATAN).
 
@@ -33,6 +36,11 @@ export const POSISI_NORMAL: Record<CoaTipe, PosisiNormal> = {
 export const AKUN_PANJAR = '1040';
 export const AKUN_PIUTANG = '1050';
 export const AKUN_HUTANG = '2050';
+/**
+ * Utang usaha (pembelian/perbaikan kredit) — AKT-20. Terpisah dari 2050 agar
+ * pembayarannya masuk OPERASI, sedangkan pinjaman 2050 tetap PENDANAAN.
+ */
+export const AKUN_HUTANG_USAHA = '2060';
 export const AKUN_MODAL = '3000';
 
 /**
@@ -84,6 +92,7 @@ export const COA: Coa[] = [
   akunBaru(AKUN_PIUTANG, 'PIUTANG LAIN LAIN', 'AKTIVA'),
   // Hutang
   akunBaru(AKUN_HUTANG, 'HUTANG LAIN-LAIN', 'KEWAJIBAN'),
+  akunBaru(AKUN_HUTANG_USAHA, 'HUTANG USAHA', 'KEWAJIBAN'),
   // Modal / ekuitas
   akunBaru(AKUN_MODAL, 'MODAL', 'EKUITAS'),
   akunBaru('3001', 'SALDO KUMULATIF MULAI 10 MARET 2018', 'EKUITAS'),
@@ -167,4 +176,9 @@ export const isAktiva = (kode: string): boolean => akun(kode)?.tipe === 'AKTIVA'
 export const isKewajiban = (kode: string): boolean => akun(kode)?.tipe === 'KEWAJIBAN';
 export const isEkuitas = (kode: string): boolean => akun(kode)?.tipe === 'EKUITAS';
 export const isPiutang = (kode: string): boolean => kode === AKUN_PIUTANG;
-export const isHutang = (kode: string): boolean => kode === AKUN_HUTANG;
+/** Semua akun hutang: 2050 pinjaman/legacy dan 2060 utang usaha. */
+export const isHutang = (kode: string): boolean =>
+  kode === AKUN_HUTANG || kode === AKUN_HUTANG_USAHA;
+export const isHutangPinjaman = (kode: string): boolean => kode === AKUN_HUTANG;
+export const isHutangUsaha = (kode: string): boolean => kode === AKUN_HUTANG_USAHA;
+export const HUTANG_KODES = COA.filter((c) => c.tipe === 'KEWAJIBAN').map((c) => c.kode);

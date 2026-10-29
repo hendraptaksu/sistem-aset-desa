@@ -25,9 +25,9 @@ const KELOMPOK: {
   label: string;
   keterangan: string;
 }[] = [
-  { kunci: 'operasi', label: 'Operasi', keterangan: 'Pendapatan, beban, piutang, panjar' },
+  { kunci: 'operasi', label: 'Operasi', keterangan: 'Pendapatan, beban, piutang, panjar, utang usaha' },
   { kunci: 'investasi', label: 'Investasi', keterangan: 'Perpindahan aset non-kas' },
-  { kunci: 'pendanaan', label: 'Pendanaan', keterangan: 'Hutang dan modal' },
+  { kunci: 'pendanaan', label: 'Pendanaan', keterangan: 'Pinjaman dan modal' },
   { kunci: 'transfer', label: 'Transfer', keterangan: 'Pindah dana antar dompet (neto 0)' },
 ];
 

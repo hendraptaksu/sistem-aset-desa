@@ -283,10 +283,10 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
     expect(validasi.boleh).toBe(true);
   });
 
-  it('menolak lawan panjar 1040, piutang 1050, dan hutang 2050 di form Bayar', () => {
+  it('menolak lawan panjar 1040, piutang 1050, hutang 2050, dan utang usaha 2060 di form Bayar', () => {
     // Akun-akun ini punya alur/dokumen sendiri; form Bayar terpandu tidak boleh
     // membuat jurnal tanpa dokumen panjar atau tanpa pihak.
-    for (const akun of ['1040', '1050', '2050']) {
+    for (const akun of ['1040', '1050', '2050', '2060']) {
       expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
         /tidak bisa dipakai di form Bayar terpandu/,
       );

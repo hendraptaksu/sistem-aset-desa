@@ -7,6 +7,8 @@
 // - Peringatan = boleh disimpan, tetapi operator wajib konfirmasi (mis. kas minus).
 
 import {
+  AKUN_HUTANG,
+  AKUN_HUTANG_USAHA,
   PESAN_AKUN_LEGACY,
   POSISI_NORMAL,
   akunBolehDiposting,
@@ -124,8 +126,11 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  * 2. Akun ada, aktif, bukan akun legacy 3001/3002, tipe/posisi normal
  *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
- *    PIUTANG 1050; HUTANG 2050).
+ *    PIUTANG 1050; HUTANG 2050 pinjaman atau 2060 utang usaha).
  * 4. Jurnal penutup manual (P&L + ekuitas) ditolak, kecuali SALDO_AWAL.
+ * 4b. Jurnal ber-kas yang memuat 2050 dan 2060 sekaligus ditolak agar tidak
+ *    ada satu jurnal dengan dua kelompok arus kas; reklasifikasi non-kas tetap
+ *    diperbolehkan (AKT-20).
  * 5. Total debit = total kredit dan > 0.
  * 6. Periode terkunci wajib alasan >= 5 karakter.
  * 7. Kas/bank akan minus -> peringatan (bukan error).
@@ -251,8 +256,29 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
       errors.push('Jurnal Panjar wajib memakai akun 1040 UANG PANJAR (KAS DI MUKA).');
     if (jenis === 'PIUTANG' && !kodeSah.includes('1050'))
       errors.push('Jurnal Piutang wajib memakai akun 1050 PIUTANG LAIN LAIN.');
-    if (jenis === 'HUTANG' && !kodeSah.includes('2050'))
-      errors.push('Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN.');
+    if (jenis === 'HUTANG' && !kodeSah.includes(AKUN_HUTANG) && !kodeSah.includes(AKUN_HUTANG_USAHA))
+      errors.push(
+        'Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN (pinjaman) atau 2060 HUTANG USAHA (utang usaha).',
+      );
+  }
+
+  // ---- 3a. Jurnal campuran 2050 + 2060 (AKT-20) ----
+  // Satu jurnal ber-kas tidak boleh memuat dua kelompok arus kas sekaligus.
+  // Jurnal reklasifikasi D 2050 / K 2060 tanpa kas tetap diperbolehkan.
+  if (jenis !== 'SALDO_AWAL') {
+    const kodeSah = baris
+      .map((b) => String(b.akun_kode ?? '').trim())
+      .filter((kode) => petaAkun.has(kode));
+    const adaKas = kodeSah.some((kode) => isAkunKas(kode));
+    if (
+      adaKas &&
+      kodeSah.includes(AKUN_HUTANG) &&
+      kodeSah.includes(AKUN_HUTANG_USAHA)
+    )
+      errors.push(
+        'Satu jurnal tidak boleh memuat 2050 (pinjaman) dan 2060 (utang usaha) sekaligus bila ada kas. ' +
+          'Pisahkan pembayaran utang usaha dan pinjaman ke jurnal terpisah.',
+      );
   }
 
   // ---- 3b. Larangan jurnal penutup manual (AKT-16) ----

@@ -10,6 +10,7 @@
 // drill-down/tampilan. Nominal selalu integer SEN.
 
 import {
+  AKUN_HUTANG_USAHA,
   AKUN_PANJAR,
   AKUN_PIUTANG,
   COA,
@@ -772,9 +773,9 @@ function tambahKelompok(k: ArusKasKelompok, masuk: number, keluar: number): void
 /**
  * Arus Kas metode langsung: setiap mutasi akun kas/bank dalam periode menjadi
  * satu baris, dikelompokkan menurut akun lawan:
- * - pendapatan/beban/panjar → OPERASI
+ * - pendapatan/beban/panjar/utang usaha (2060) → OPERASI
  * - piutang (1050, AKTIVA non-kas) → INVESTASI
- * - kewajiban/modal → PENDANAAN
+ * - kewajiban pinjaman/modal (2050/ekuitas) → PENDANAAN
  * - perpindahan antar dompet kas (tanpa akun lawan non-kas) → TRANSFER,
  *   tidak dihitung sebagai arus masuk/keluar (neto 0) agar total tidak dobel.
  * - jurnal campuran (kas masuk dan keluar sekaligus dengan akun non-kas)
@@ -850,6 +851,7 @@ export function arusKas(
 
     const kelompok: KelompokArusKas = jenisLawan.some(
       (a) =>
+        a.kode === AKUN_HUTANG_USAHA ||
         a.tipe === 'PENDAPATAN' ||
         a.tipe === 'BEBAN' ||
         a.kode === AKUN_PANJAR,

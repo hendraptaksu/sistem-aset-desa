@@ -1247,6 +1247,83 @@ describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
   });
 });
 
+describe('AKT-20 — IPC pihak mencatat utang usaha 2060 dan pinjaman 2050', () => {
+  it('menyimpan beli kredit + bayar utang usaha + pinjaman dengan audit yang benar', async () => {
+    const env = buatEnv();
+    expect(
+      (
+        await env.panggil('saldo-awal:posting', {
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal AKT-20',
+          saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
+        })
+      ).ok,
+    ).toBe(true);
+
+    const pihak = await env.panggil('pihak:create', { nama: 'Toko AKT-20' });
+    expect(pihak.ok, pihak.error).toBe(true);
+    const pihakId = pihak.data.id as string;
+
+    const kredit = await env.panggil('pihak:posting', {
+      pihakId,
+      input: {
+        header: {
+          id: 'j-akt20-kredit',
+          tanggal: '2026-01-02',
+          keterangan: 'Beli bahan kredit AKT-20',
+          jenis: 'HUTANG',
+        },
+        baris: [D('5003', 300_000), K('2060', 300_000)],
+      },
+    });
+    expect(kredit.ok, kredit.error).toBe(true);
+    expect(kredit.data.alur).toBe('BELI_KREDIT');
+    expect(kredit.data.akunPihak).toBe('2060');
+
+    const bayar = await env.panggil('pihak:posting', {
+      pihakId,
+      input: {
+        header: {
+          id: 'j-akt20-bayar-usaha',
+          tanggal: '2026-01-03',
+          keterangan: 'Bayar utang usaha AKT-20',
+          jenis: 'HUTANG',
+        },
+        baris: [D('2060', 200_000), K('1001', 200_000)],
+      },
+    });
+    expect(bayar.ok, bayar.error).toBe(true);
+    expect(bayar.data.alur).toBe('BAYAR_UTANG_USAHA');
+    expect(bayar.data.akunPihak).toBe('2060');
+
+    const pinjam = await env.panggil('pihak:posting', {
+      pihakId,
+      input: {
+        header: {
+          id: 'j-akt20-pinjam',
+          tanggal: '2026-01-04',
+          keterangan: 'Terima pinjaman AKT-20',
+          jenis: 'HUTANG',
+        },
+        baris: [D('1001', 500_000), K('2050', 500_000)],
+      },
+    });
+    expect(pinjam.ok, pinjam.error).toBe(true);
+    expect(pinjam.data.alur).toBe('TERIMA_PINJAMAN');
+    expect(pinjam.data.akunPihak).toBe('2050');
+
+    const auditBaru = await env.panggil('audit:list', { aksi: 'HUTANG-USAHA-BAYAR' });
+    expect(auditBaru.ok, auditBaru.error).toBe(true);
+    expect(auditBaru.data.total).toBe(1);
+    const data = JSON.parse(auditBaru.data.rows[0].data_baru_json) as {
+      akun_kode: string;
+      alur: string;
+    };
+    expect(data.akun_kode).toBe('2060');
+    expect(data.alur).toBe('BAYAR_UTANG_USAHA');
+  });
+});
+
 describe('AUD-19 — kode darurat per-install lewat IPC', () => {
   const POLA_KODE = /^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/;
 

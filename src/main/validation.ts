@@ -623,7 +623,7 @@ export function validasiBentukPihak(nilai: unknown): HasilBentuk<BentukPihak> {
 /**
  * Bentuk request posting pihak: `{ pihakId, input }`. Jurnal memakai
  * validator bentuk jurnal yang sama dengan form terpandu lain; alur ketat
- * 1050/2050 diperiksa lagi oleh adapter DB (klasifikasiAlurPihak).
+ * 1050/2050/2060 diperiksa lagi oleh adapter DB (klasifikasiAlurPihak).
  */
 export function validasiBentukPostingPihak(
   nilai: unknown,

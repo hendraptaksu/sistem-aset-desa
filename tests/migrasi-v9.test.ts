@@ -4,7 +4,9 @@
 // - DB menolak baris jurnal dengan debit & kredit sekaligus.
 // - Jurnal/baris jurnal tidak bisa di-UPDATE/DELETE langsung (koreksi = reversal).
 // - no_bukti unik PER TAHUN (case-insensitive), bukan global.
-// - DB v8 lama (termasuk lewat restore) termigrasi ke v9 secara idempoten.
+// - DB v8 lama (termasuk lewat restore) termigrasi ke versi skema saat ini
+//   secara idempoten (sejak AKT-20: v10; aturan v9 tetap berlaku).
+// - AKT-20 juga menguji DB v9 → v10 di tests/migrasi-v10.test.ts.
 
 import Database from 'better-sqlite3';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -151,8 +153,8 @@ describe('AUD-23 — skema v9 & trigger integritas', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(9);
-      expect(versi(db)).toBe(9);
+      expect(SCHEMA_VERSION).toBe(10);
+      expect(versi(db)).toBe(10);
 
       const indeks = indeksNoBukti(db);
       expect(indeks.map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
@@ -174,7 +176,7 @@ describe('AUD-23 — skema v9 & trigger integritas', () => {
     // Buka ulang: tidak ada trigger/index dobel.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(9);
+      expect(versi(db2)).toBe(10);
       expect(indeksNoBukti(db2).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(db2).map((t) => t.name)).toEqual([...TRIGGER_V9]);
     } finally {
@@ -328,7 +330,7 @@ describe('AUD-23 — nomor bukti unik per tahun', () => {
   });
 });
 
-describe('AUD-23 — migrasi/restore DB v8 → v9', () => {
+describe('AUD-23 — migrasi/restore DB v8 → v10', () => {
   it('openDb memigrasikan fixture v8, mempertahankan data, dan membuat backup pra-upgrade', () => {
     const dir = tmpDir('pura-v9-upgrade-');
     const path = join(dir, 'pura.db');
@@ -340,7 +342,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v9', () => {
 
     const db = openDb(path);
     try {
-      expect(versi(db)).toBe(9);
+      expect(versi(db)).toBe(10);
       expect(indeksNoBukti(db).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(db).map((t) => t.name)).toEqual([...TRIGGER_V9]);
       expect(listJurnal(db).map((j) => j.id)).toEqual(['j-v8-2025', 'j-v8-2026']);
@@ -371,7 +373,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v9', () => {
     // Buka ulang: migrasi idempoten, trigger/index tidak dobel.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(9);
+      expect(versi(db2)).toBe(10);
       expect(indeksNoBukti(db2).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(db2)).toHaveLength(TRIGGER_V9.length);
       expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v9-2025', 'j-v8-2025', 'j-v8-2026']);
@@ -404,7 +406,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v9', () => {
       if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
 
-      expect(versi(aktif)).toBe(9);
+      expect(versi(aktif)).toBe(10);
       expect(indeksNoBukti(aktif).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(aktif).map((t) => t.name)).toEqual([...TRIGGER_V9]);
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v8-2025', 'j-v8-2026']);

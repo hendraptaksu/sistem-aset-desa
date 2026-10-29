@@ -10,6 +10,7 @@
 
 import {
   AKUN_HUTANG,
+  AKUN_HUTANG_USAHA,
   AKUN_MODAL,
   AKUN_PANJAR,
   AKUN_PIUTANG,
@@ -178,8 +179,9 @@ export function buatJurnalTerimaUang(form: FormTerimaUang): JurnalInput {
 /**
  * Bayar/beban: **D akun lawan / K akun kas**.
  * Form terpandu ini hanya menerima akun BEBAN. Panjar (1040), piutang (1050),
- * dan hutang (2050) wajib lewat menu khusus agar dokumen/pihaknya tercatat.
- * Jurnal Umum tetap boleh memakai akun-akun tersebut lewat jalur akuntan.
+ * hutang pinjaman (2050), dan utang usaha (2060) wajib lewat menu khusus agar
+ * dokumen/pihaknya tercatat. Jurnal Umum tetap boleh memakai akun-akun tersebut
+ * lewat jalur akuntan.
  */
 export function buatJurnalBayar(form: FormBayar): JurnalInput {
   const nominal = wajibNominal(form.nominal);
@@ -192,7 +194,8 @@ export function buatJurnalBayar(form: FormBayar): JurnalInput {
   if (
     lawanData.kode === AKUN_PANJAR ||
     lawanData.kode === AKUN_PIUTANG ||
-    lawanData.kode === AKUN_HUTANG
+    lawanData.kode === AKUN_HUTANG ||
+    lawanData.kode === AKUN_HUTANG_USAHA
   )
     throw new Error(
       `Akun lawan Bayar ${lawanData.kode} — ${lawanData.nama} tidak bisa dipakai di form Bayar terpandu. ` +
@@ -231,9 +234,10 @@ export function buatJurnalPanjarSerah(form: FormPanjarSerah): JurnalInput {
 // ---------------------------------------------------------------------------
 // Form Piutang & Hutang + pihak (P1-5)
 // ---------------------------------------------------------------------------
-// Lima alur baku. Semua builder mengembalikan `{ input, pihakId }`; adapter DB
-// yang menyimpan penghubung jurnal → pihak. Builder hanya memastikan jurnal
-// seimbang dan akun yang dipakai sesuai alur.
+// Enam alur baku (AKT-20): pinjaman memakai 2050, utang usaha memakai 2060.
+// Semua builder mengembalikan `{ input, pihakId }`; adapter DB yang menyimpan
+// penghubung jurnal → pihak. Builder hanya memastikan jurnal seimbang dan akun
+// yang dipakai sesuai alur.
 
 export type DasarFormPihak = DasarFormJurnal & {
   /** Pihak (orang/lembaga) penerima pinjaman / pemberi pinjaman. WAJIB. */
@@ -250,20 +254,27 @@ export type FormTerimaPelunasanPiutang = DasarFormPihak & {
   akunKas: string;
 };
 
-/** 3. Terima pinjaman: D kas / K 2050. */
+/** 3. Terima pinjaman: D kas / K 2050 (pinjaman/legacy). */
 export type FormTerimaPinjaman = DasarFormPihak & {
   akunKas: string;
 };
 
-/** 4. Bayar hutang: D 2050 / K kas. */
+/** 4. Bayar pinjaman: D 2050 / K kas. Alias lama `FormBayarHutang` dipertahankan. */
 export type FormBayarHutang = DasarFormPihak & {
   akunKas: string;
 };
 
-/** 5. Beli/perbaikan barang secara kredit: D BEBAN / K 2050. */
+export type FormBayarPinjaman = FormBayarHutang;
+
+/** 5. Beli/perbaikan barang secara kredit: D BEBAN / K 2060. */
 export type FormBeliKredit = DasarFormPihak & {
   /** Akun BEBAN, mis. 5003 BAGA WEWANGUNAN. */
   akunBeban: string;
+};
+
+/** 6. Bayar utang usaha: D 2060 / K kas. */
+export type FormBayarUtangUsaha = DasarFormPihak & {
+  akunKas: string;
 };
 
 export type HasilJurnalPihak = {
@@ -308,7 +319,7 @@ export function buatJurnalTerimaPelunasanPiutang(
   ]);
 }
 
-/** 3. Terima pinjaman dari pihak: **D kas / K 2050 HUTANG**. */
+/** 3. Terima pinjaman dari pihak: **D kas / K 2050 HUTANG LAIN-LAIN**. */
 export function buatJurnalTerimaPinjaman(form: FormTerimaPinjaman): HasilJurnalPihak {
   const nominal = wajibNominal(form.nominal);
   const kas = akunKas(form.akunKas, 'Akun kas penerima', form.daftarAkun);
@@ -318,7 +329,7 @@ export function buatJurnalTerimaPinjaman(form: FormTerimaPinjaman): HasilJurnalP
   ]);
 }
 
-/** 4. Bayar hutang kepada pihak: **D 2050 HUTANG / K kas**. */
+/** 4. Bayar pinjaman kepada pihak: **D 2050 HUTANG LAIN-LAIN / K kas**. */
 export function buatJurnalBayarHutang(form: FormBayarHutang): HasilJurnalPihak {
   const nominal = wajibNominal(form.nominal);
   const kas = akunKas(form.akunKas, 'Akun kas sumber', form.daftarAkun);
@@ -329,8 +340,9 @@ export function buatJurnalBayarHutang(form: FormBayarHutang): HasilJurnalPihak {
 }
 
 /**
- * 5. Beli/perbaikan barang secara kredit (kasus feedback): **D BEBAN / K 2050**.
- * Beban masuk Laba Rugi, hutang masuk Neraca, modal (3000) TIDAK berubah.
+ * 5. Beli/perbaikan barang secara kredit (kasus feedback): **D BEBAN / K 2060**.
+ * Beban masuk Laba Rugi, utang usaha masuk Neraca, modal (3000) TIDAK berubah.
+ * Pembayaran berikutnya memakai alur Bayar Utang Usaha agar arus kas OPERASI.
  */
 export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
   const nominal = wajibNominal(form.nominal);
@@ -339,7 +351,11 @@ export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
     throw new Error(
       `Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban, mis. 5003 BAGA WEWANGUNAN.`,
     );
-  if (beban.kode === AKUN_PIUTANG || beban.kode === AKUN_HUTANG)
+  if (
+    beban.kode === AKUN_PIUTANG ||
+    beban.kode === AKUN_HUTANG ||
+    beban.kode === AKUN_HUTANG_USAHA
+  )
     throw new Error(`Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban untuk pembelian kredit.`);
   if (beban.tipe !== 'BEBAN')
     throw new Error(
@@ -347,7 +363,19 @@ export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
     );
   return hasilPihak(form, 'HUTANG', [
     debit(beban.kode, nominal),
-    kredit(AKUN_HUTANG, nominal),
+    kredit(AKUN_HUTANG_USAHA, nominal),
+  ]);
+}
+
+/** 6. Bayar utang usaha kepada pihak: **D 2060 HUTANG USAHA / K kas**. */
+export function buatJurnalBayarUtangUsaha(
+  form: FormBayarUtangUsaha,
+): HasilJurnalPihak {
+  const nominal = wajibNominal(form.nominal);
+  const kas = akunKas(form.akunKas, 'Akun kas sumber', form.daftarAkun);
+  return hasilPihak(form, 'HUTANG', [
+    debit(AKUN_HUTANG_USAHA, nominal),
+    kredit(kas, nominal),
   ]);
 }
 
@@ -360,7 +388,7 @@ export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
 // tidak ada tabel saldo atau angka turunan yang disimpan.
 
 export type BarisSaldoAwal = {
-  /** Akun AKTIVA (kas/bank, 1040, 1050, ...) atau KEWAJIBAN (2050, ...). */
+  /** Akun AKTIVA (kas/bank, 1040, 1050, ...) atau KEWAJIBAN (2050/2060, ...). */
   akun_kode: string;
   /** Nominal dalam sen; bilangan bulat >= 0. Baris 0 diabaikan. */
   nominal: number;

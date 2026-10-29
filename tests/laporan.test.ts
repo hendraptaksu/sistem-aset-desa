@@ -570,6 +570,119 @@ describe('AKT-17 — pinjaman 1050 diklasifikasikan sebagai INVESTASI', () => {
   });
 });
 
+describe('AKT-20 — utang usaha 2060 OPERASI vs pinjaman 2050 PENDANAAN', () => {
+  const periode = { mulai: '2026-01-01', sampai: '2026-12-31' } as const;
+  const modalAwal = jurnal('akt20-modal', '2026-01-01', 'Modal awal', [
+    ['1001', RP(10_000_000), 0],
+    ['3000', 0, RP(10_000_000)],
+  ]);
+
+  it('D 2060 / K kas masuk OPERASI; D 2050 / K kas tetap PENDANAAN; total kas tidak berubah', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt20-kredit', '2026-02-01', 'Beli kredit', [
+        ['5003', RP(1_000_000), 0],
+        ['2060', 0, RP(1_000_000)],
+      ]),
+      ...jurnal('akt20-bayar-usaha', '2026-02-10', 'Bayar utang usaha', [
+        ['2060', RP(600_000), 0],
+        ['1001', 0, RP(600_000)],
+      ]),
+      ...jurnal('akt20-pinjam', '2026-02-15', 'Terima pinjaman', [
+        ['1001', RP(2_000_000), 0],
+        ['2050', 0, RP(2_000_000)],
+      ]),
+      ...jurnal('akt20-bayar-pinjam', '2026-02-20', 'Bayar pinjaman', [
+        ['2050', RP(500_000), 0],
+        ['1001', 0, RP(500_000)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.rows.find((r) => r.jurnal_id === 'akt20-bayar-usaha')).toMatchObject({
+      akun_kode: '1001',
+      lawan: ['2060'],
+      kelompok: 'OPERASI',
+      masuk: 0,
+      keluar: RP(600_000),
+    });
+    expect(ak.rows.find((r) => r.jurnal_id === 'akt20-pinjam')).toMatchObject({
+      akun_kode: '1001',
+      lawan: ['2050'],
+      kelompok: 'PENDANAAN',
+      masuk: RP(2_000_000),
+    });
+    expect(ak.rows.find((r) => r.jurnal_id === 'akt20-bayar-pinjam')).toMatchObject({
+      akun_kode: '1001',
+      lawan: ['2050'],
+      kelompok: 'PENDANAAN',
+      keluar: RP(500_000),
+    });
+    // Beli kredit tidak menghasilkan baris arus kas.
+    expect(ak.rows.some((r) => r.jurnal_id === 'akt20-kredit')).toBe(false);
+
+    expect(ak.operasi).toMatchObject({
+      masuk: 0,
+      keluar: RP(600_000),
+      neto: RP(-600_000),
+    });
+    expect(ak.pendanaan).toMatchObject({
+      masuk: RP(12_000_000),
+      keluar: RP(500_000),
+      neto: RP(11_500_000),
+    });
+    expect(ak.investasi.neto).toBe(0);
+
+    // Klasifikasi hanya memindahkan baris antar kelompok; total kas tetap.
+    expect(ak.totalMasuk).toBe(RP(12_000_000));
+    expect(ak.totalKeluar).toBe(RP(1_100_000));
+    expect(ak.kenaikan).toBe(RP(10_900_000));
+    expect(ak.saldoAwal).toBe(0);
+    expect(ak.saldoAkhir).toBe(RP(10_900_000));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('data lama 2050 tanpa 2060 tetap PENDANAAN (fallback)', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt20-lama', '2026-03-01', 'Bayar hutang lama', [
+        ['2050', RP(300_000), 0],
+        ['1001', 0, RP(300_000)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.rows.find((r) => r.jurnal_id === 'akt20-lama')).toMatchObject({
+      lawan: ['2050'],
+      kelompok: 'PENDANAAN',
+      keluar: RP(300_000),
+    });
+    expect(ak.operasi.keluar).toBe(0);
+    expect(ak.totalKeluar).toBe(RP(300_000));
+    expect(ak.saldoAkhir).toBe(RP(9_700_000));
+  });
+
+  it('jurnal reklasifikasi D 2050 / K 2060 tanpa kas tidak menghasilkan arus kas', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt20-reklas', '2026-04-01', 'Reklasifikasi utang usaha', [
+        ['2050', RP(400_000), 0],
+        ['2060', 0, RP(400_000)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.rows.some((r) => r.jurnal_id === 'akt20-reklas')).toBe(false);
+    expect(ak.rows.every((r) => r.jurnal_id === 'akt20-modal')).toBe(true);
+    expect(ak.totalMasuk).toBe(RP(10_000_000));
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.kenaikan).toBe(RP(10_000_000));
+    expect(ak.saldoAwal).toBe(0);
+    expect(ak.saldoAkhir).toBe(RP(10_000_000));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+});
+
 describe('AKT-18 — transfer dan biaya pada jurnal kas gabungan', () => {
   const modalAwal = jurnal('akt18-modal', '2025-12-31', 'Modal awal', [
     ['1001', RP(1_000), 0],

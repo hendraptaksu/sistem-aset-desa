@@ -824,8 +824,9 @@ export function registerIpc(deps: IpcDeps): void {
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
       const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
-      // AUD-09: Jurnal Umum tidak punya metadata pihak. Beri peringatan (bukan
-      // error) agar akuntan sadar jurnal 1050/2050 akan tampil belum teralokasi.
+      // AUD-09/AKT-20: Jurnal Umum tidak punya metadata pihak. Beri peringatan
+      // (bukan error) agar akuntan sadar jurnal 1050/2050/2060 akan tampil belum
+      // teralokasi.
       // Hanya dicek saat belum dikonfirmasi dan tidak ada error lain, sehingga
       // pesan validasi asli tetap diutamakan.
       const peringatanPihak = peringatanPihakTanpaMapping(bentuk.input);
@@ -1153,7 +1154,7 @@ export function registerIpc(deps: IpcDeps): void {
     return k ? fail(k) : ok(saldoPerPihak(deps.db()));
   });
 
-  // Rekonsiliasi saldo akun 1050/2050 vs jurnal yang punya pihak. Cutoff
+  // Rekonsiliasi saldo akun 1050/2050/2060 vs jurnal yang punya pihak. Cutoff
   // opsional (YYYY-MM-DD) dan tidak menyimpan angka apa pun.
   daftarkan('pihak:rekon', (_e, sampai: unknown) => {
     try {

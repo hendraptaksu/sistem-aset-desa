@@ -2,10 +2,12 @@
 //
 // Prinsip:
 // - `pihak` hanya master nama; `jurnal_pihak` hanya metadata penghubung.
-// - Saldo per pihak TIDAK disimpan — dihitung dari baris jurnal 1050/2050.
+// - Saldo per pihak TIDAK disimpan — dihitung dari baris jurnal 1050/2050/2060.
 // - Jurnal baru + pemetaan pihak + audit ditulis atomik lewat satu transaksi.
 // - Pelunasan/pembayaran melebihi saldo pihak hanya PERINGATAN (bisa
 //   dikonfirmasi dengan alasan ≥5 karakter), bukan blokir.
+// - AKT-20: overbalance dibandingkan dengan saldo akun yang dipakai alur
+//   (2050 pinjaman vs 2060 utang usaha), bukan total hutang.
 
 import type Database from 'better-sqlite3';
 import {
@@ -71,6 +73,7 @@ const AKSI_AUDIT: Record<AlurPihak, string> = {
   TERIMA_PINJAMAN: 'HUTANG-TERIMA-PINJAMAN',
   BAYAR_HUTANG: 'HUTANG-BAYAR',
   BELI_KREDIT: 'HUTANG-BELI-KREDIT',
+  BAYAR_UTANG_USAHA: 'HUTANG-USAHA-BAYAR',
 };
 
 function uid(prefix: string): string {
@@ -244,7 +247,7 @@ export function saldoPerPihak(db: Database.Database): PihakSaldo[] {
 }
 
 /**
- * Rekonsiliasi saldo akun 1050/2050 vs jurnal yang sudah dipetakan ke pihak.
+ * Rekonsiliasi saldo akun 1050/2050/2060 vs jurnal yang sudah dipetakan ke pihak.
  * Hanya membaca jurnal + `jurnal_pihak`; selisih tidak pernah disimpan.
  */
 export function rekonsiliasiPihakDb(
@@ -309,7 +312,7 @@ function gagal(
  *
  * Alur:
  * 1. Pihak wajib ada.
- * 2. Jurnal harus tepat salah satu dari lima alur baku (klasifikasi ketat).
+ * 2. Jurnal harus tepat salah satu dari enam alur baku (klasifikasi ketat).
  * 3. Validasi posting layer (tanggal, keseimbangan, kas minus, kunci periode).
  * 4. Pelunasan/pembayaran melebihi saldo pihak → `perluKonfirmasi` (tidak blokir).
  * 5. Tulis jurnal + `jurnal_pihak` + audit dalam satu transaksi.
@@ -345,22 +348,33 @@ export function postingPihak(
   const peringatan = [...validasi.peringatan];
   const alasanSaldo = String(input.alasanSaldo ?? '').trim();
   const alasanPeringatan = String(input.alasanPeringatan ?? '').trim();
+  const alurButuhSaldo =
+    klasifikasi.alur === 'TERIMA_PELUNASAN' ||
+    klasifikasi.alur === 'BAYAR_HUTANG' ||
+    klasifikasi.alur === 'BAYAR_UTANG_USAHA';
+  const labelSaldo =
+    klasifikasi.alur === 'TERIMA_PELUNASAN'
+      ? 'piutang'
+      : klasifikasi.alur === 'BAYAR_UTANG_USAHA'
+        ? 'utang usaha'
+        : 'pinjaman';
+  const saldoRelevan =
+    klasifikasi.alur === 'TERIMA_PELUNASAN'
+      ? saldoSebelum.piutang
+      : klasifikasi.alur === 'BAYAR_UTANG_USAHA'
+        ? saldoSebelum.hutangUsaha
+        : saldoSebelum.pinjaman;
   let melebihiSaldo = false;
   let nominalLebih = 0;
-  if (klasifikasi.alur === 'TERIMA_PELUNASAN' || klasifikasi.alur === 'BAYAR_HUTANG') {
-    const saldoRelevan =
-      klasifikasi.alur === 'TERIMA_PELUNASAN' ? saldoSebelum.piutang : saldoSebelum.hutang;
-    if (klasifikasi.nominal > saldoRelevan) {
-      melebihiSaldo = true;
-      nominalLebih = klasifikasi.nominal - saldoRelevan;
-      const label = klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'saldo piutang' : 'saldo hutang';
-      peringatan.push(
-        `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
-          `melebihi ${label} ${pihak.nama} sebesar ${formatRp(nominalLebih)}. ` +
-          `Saldo saat ini ${formatRp(saldoRelevan)}; setelah transaksi menjadi minus. ` +
-          'Periksa kembali — boleh lanjut dengan konfirmasi.',
-      );
-    }
+  if (alurButuhSaldo && klasifikasi.nominal > saldoRelevan) {
+    melebihiSaldo = true;
+    nominalLebih = klasifikasi.nominal - saldoRelevan;
+    peringatan.push(
+      `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
+        `melebihi saldo ${labelSaldo} ${pihak.nama} sebesar ${formatRp(nominalLebih)}. ` +
+        `Saldo saat ini ${formatRp(saldoRelevan)}; setelah transaksi menjadi minus. ` +
+        'Periksa kembali — boleh lanjut dengan konfirmasi.',
+    );
   }
 
   const saldoDikonfirmasi = input.konfirmasiSaldo === true || input.konfirmasi === true;
@@ -382,12 +396,11 @@ export function postingPihak(
   // AKT-08: overbalance adalah aturan adapter, bukan `validasiJurnal`. Alasan
   // wajib ada SEBELUM transaksi tulis agar jurnal + audit tidak tersimpan.
   if (melebihiSaldo && saldoDikonfirmasi && alasanSaldo.length < 5) {
-    const label = klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang';
     return {
       ...validasi,
       errors: [
         `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
-          `melebihi saldo ${label} sebesar ${formatRp(nominalLebih)}. ` +
+          `melebihi saldo ${labelSaldo} sebesar ${formatRp(nominalLebih)}. ` +
           'Konfirmasi overbalance wajib disertai alasan minimal 5 karakter.',
       ],
       peringatan,

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   AKUN_HUTANG,
+  AKUN_HUTANG_USAHA,
   AKUN_LEGACY_TIDAK_DIPOSTING,
   AKUN_MODAL,
   AKUN_PANJAR,
@@ -23,6 +24,7 @@ import {
   isAktiva,
   isBeban,
   isEkuitas,
+  isHutang,
   isKewajiban,
   isPendapatan,
 } from '../src/db/coa.js';
@@ -74,9 +76,10 @@ describe('COA P0-1', () => {
     for (const { kode, nama } of csv) {
       expect(akun(kode), `akun ${kode} hilang`).toMatchObject({ kode, nama });
     }
-    // CSV + 1040 UANG PANJAR (tambahan yang disetujui).
-    expect(COA).toHaveLength(csv.length + 1);
+    // CSV + 1040 UANG PANJAR + 2060 HUTANG USAHA (ekstensi sistem AKT-20).
+    expect(COA).toHaveLength(csv.length + 2);
     expect(COA.map((c) => c.kode)).toContain(AKUN_PANJAR);
+    expect(COA.map((c) => c.kode)).toContain(AKUN_HUTANG_USAHA);
   });
 
   it('memakai tipe akuntansi baku + posisi normal yang benar', () => {
@@ -95,6 +98,12 @@ describe('COA P0-1', () => {
     expect(akun('1001')).toMatchObject({ tipe: 'AKTIVA', posisi_normal: 'DEBIT' });
     expect(akun('1050')).toMatchObject({ tipe: 'AKTIVA', posisi_normal: 'DEBIT' });
     expect(akun('2050')).toMatchObject({ tipe: 'KEWAJIBAN', posisi_normal: 'KREDIT' });
+    expect(akun('2060')).toMatchObject({
+      kode: '2060',
+      nama: 'HUTANG USAHA',
+      tipe: 'KEWAJIBAN',
+      posisi_normal: 'KREDIT',
+    });
     expect(akun('3000')).toMatchObject({ tipe: 'EKUITAS', posisi_normal: 'KREDIT' });
     expect(akun('4005')).toMatchObject({ tipe: 'PENDAPATAN', posisi_normal: 'KREDIT' });
     expect(akun('5003')).toMatchObject({ tipe: 'BEBAN', posisi_normal: 'DEBIT' });
@@ -141,6 +150,10 @@ describe('COA P0-1', () => {
     expect(isAktiva('1001')).toBe(true);
     expect(isAktiva('1040')).toBe(true);
     expect(isKewajiban('2050')).toBe(true);
+    expect(isKewajiban('2060')).toBe(true);
+    expect(isHutang('2050')).toBe(true);
+    expect(isHutang('2060')).toBe(true);
+    expect(isHutang('1050')).toBe(false);
     expect(isEkuitas('3000')).toBe(true);
     expect(isPendapatan('9999')).toBe(false);
     expect(isBeban('PANJAR')).toBe(false);
@@ -179,6 +192,13 @@ describe('COA P0-1', () => {
         nama: 'UANG PANJAR (KAS DI MUKA)',
         tipe: 'AKTIVA',
         posisi_normal: 'DEBIT',
+        aktif: true,
+      });
+      expect(getAkun(db, '2060')).toMatchObject({
+        kode: '2060',
+        nama: 'HUTANG USAHA',
+        tipe: 'KEWAJIBAN',
+        posisi_normal: 'KREDIT',
         aktif: true,
       });
 

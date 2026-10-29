@@ -5,7 +5,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { COA } from './coa.js';
+import { AKUN_HUTANG_USAHA, COA } from './coa.js';
 
 /**
  * Versi skema di `PRAGMA user_version`.
@@ -28,8 +28,11 @@ import { COA } from './coa.js';
  * - 9    = integritas jurnal (AUD-23): trigger menolak baris debit+kredit
  *          sekaligus dan menolak update/delete jurnal; nomor bukti unik per
  *          tahun (bukan global).
+ * - 10   = pemisahan akun utang usaha (AKT-20): COA statis 2060 HUTANG USAHA
+ *          di-seed idempoten (tanpa DDL baru); 2050 tetap pinjaman/legacy.
+ *          Versi ini juga mencegah aplikasi v9 membuka backup v10.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * DDL dasar v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung
@@ -329,10 +332,30 @@ function terapkanAturanV9(db: Database.Database): void {
 }
 
 /**
+ * AKT-20 — kontrak COA v10. Tidak ada DDL baru: cukup memastikan akun
+ * `2060 HUTANG USAHA` tersedia saat DB lama dibuka. Upsert idempoten agar
+ * membuka DB berulang tidak menggandakan baris dan DB v9 tetap utuh.
+ * Seed lengkap tetap dilakukan `openDb` setelah migrasi.
+ */
+function terapkanKontrakV10(db: Database.Database): void {
+  const akun = COA.find((a) => a.kode === AKUN_HUTANG_USAHA);
+  if (!akun) throw new Error('COA 2060 HUTANG USAHA tidak ditemukan.');
+  db.prepare(
+    `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
+     VALUES (?, ?, ?, ?, 1)
+     ON CONFLICT(kode) DO UPDATE SET
+       nama = excluded.nama,
+       tipe = excluded.tipe,
+       posisi_normal = excluded.posisi_normal`,
+  ).run(akun.kode, akun.nama, akun.tipe, akun.posisi_normal);
+}
+
+/**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
  * - Selalu membersihkan tabel single-entry lama (P0-3).
  * - Membuat seluruh DDL v2 bila belum ada.
  * - Menerapkan aturan integritas v9 (trigger + unique index per tahun).
+ * - Menerapkan kontrak COA v10 (akun 2060 idempoten, tanpa DDL).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -346,6 +369,7 @@ export function migrasi(db: Database.Database): number {
       db.exec("ALTER TABLE audit_log ADD COLUMN data_baru_json TEXT NOT NULL DEFAULT ''");
     }
     terapkanAturanV9(db);
+    terapkanKontrakV10(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }
