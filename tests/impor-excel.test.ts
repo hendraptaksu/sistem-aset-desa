@@ -12,6 +12,7 @@ import { openDb } from '../src/db/database.js';
 import {
   imporJurnalDariExcel,
   validasiImporDariExcel,
+  PESAN_NOMOR_BUKTI_DIPAKAI,
 } from '../src/db/impor.js';
 import { postingJurnal } from '../src/db/posting.js';
 import {
@@ -28,6 +29,7 @@ import {
 import {
   BATAS_BARIS_IMPOR,
   BATAS_UKURAN_IMPOR,
+  PESAN_NO_BUKTI_IMPOR_WAJIB,
   parseImporExcel,
   parseNominalImpor,
   validasiBatasImpor,
@@ -76,7 +78,7 @@ function grup(
   return baris.map((b, i) => ({
     grup: nama,
     tanggal: i === 0 ? tanggal : '',
-    no_bukti: '',
+    no_bukti: `BUKTI-${nama}`,
     keterangan: i === 0 ? keterangan : '',
     catatan: '',
     ...extra,
@@ -139,6 +141,28 @@ describe('P2-9 — template Excel', () => {
     expect(kode.has('1001')).toBe(true);
     expect(kode.has('4005')).toBe(true);
     expect(kode.size).toBe(COA.length);
+  });
+
+  it('menandai no_bukti wajib dan mengisi contoh nomor di setiap grup', () => {
+    const wb = buatTemplateImpor();
+    const jurnal = wb.getWorksheet('Jurnal')!;
+    const header = jurnal.getRow(1).values as unknown[];
+    const kolomNoBukti = header.indexOf('no_bukti');
+    expect(kolomNoBukti).toBeGreaterThan(0);
+    expect(String(jurnal.getCell(1, kolomNoBukti).note)).toMatch(/wajib/i);
+
+    const contoh = new Map<string, string>();
+    jurnal.eachRow((row, n) => {
+      if (n === 1) return;
+      const nama = String(row.getCell(1).value ?? '').trim();
+      const noBukti = String(row.getCell(kolomNoBukti).value ?? '').trim();
+      if (nama && !contoh.has(nama)) contoh.set(nama, noBukti);
+    });
+    expect([...contoh.keys()]).toEqual(['CONTOH-1', 'CONTOH-2', 'CONTOH-3']);
+    for (const [nama, noBukti] of contoh) {
+      expect(noBukti, `contoh ${nama} harus punya no_bukti`).not.toBe('');
+    }
+    expect(new Set(contoh.values()).size).toBe(3);
   });
 });
 
@@ -311,14 +335,52 @@ describe('P2-9 — parser multi-baris', () => {
     expect(alasanSemua(hasil)).toMatch(/dipakai lebih dari satu grup/i);
   });
 
+  it('mengizinkan nomor bukti sama dalam satu file bila tahunnya berbeda', async () => {
+    const hasil = await parse([
+      ...grup('G-2025', '2025-04-01', 'Tahun 2025', [D('1001', 10_000), K('4005', 10_000)], {
+        no_bukti: 'JU-LINTAS-0002',
+      }),
+      ...grup('G-2026', '2026-04-01', 'Tahun 2026', [D('1001', 20_000), K('4005', 20_000)], {
+        no_bukti: 'ju-lintas-0002',
+      }),
+    ]);
+    expect(hasil.ringkasan.grupValid).toBe(2);
+    expect(hasil.ringkasan.grupGagal).toBe(0);
+  });
+
+  it('menolak grup tanpa no_bukti dengan pesan wajib yang jelas', async () => {
+    const hasil = await parse(
+      grup('G-TANPA-BUKTI', '2026-04-03', 'Tanpa nomor bukti', [
+        D('1001', 10_000),
+        K('4005', 10_000),
+      ], { no_bukti: '' }),
+    );
+    expect(hasil.ringkasan.grupValid).toBe(0);
+    expect(hasil.grup[0]!.status).toBe('GAGAL');
+    expect(hasil.grup[0]!.alasan).toBe(PESAN_NO_BUKTI_IMPOR_WAJIB);
+    expect(hasil.baris.every((b) => b.status === 'GAGAL')).toBe(true);
+    expect(hasil.baris.every((b) => b.alasan.includes(PESAN_NO_BUKTI_IMPOR_WAJIB))).toBe(true);
+  });
+
+  it('menolak bentuk sederhana tanpa no_bukti', async () => {
+    const buffer = await bufferDari(
+      [{ tanggal: '2026-05-02', keterangan: 'Tanpa bukti', akun_debit: '1001', akun_kredit: '4041', nominal: 75_000 }],
+      ['tanggal', 'keterangan', 'akun_debit', 'akun_kredit', 'nominal'],
+    );
+    const hasil = await parseImporExcel(buffer);
+    expect(hasil.ringkasan.grupValid).toBe(0);
+    expect(alasanSemua(hasil)).toContain(PESAN_NO_BUKTI_IMPOR_WAJIB);
+  });
+
   it('mendukung bentuk sederhana per baris (satu baris = satu jurnal)', async () => {
     const buffer = await bufferDari(
-      [{ tanggal: '2026-05-01', keterangan: 'Terima sesari', akun_debit: '1001', akun_kredit: '4041', nominal: 75_000 }],
-      ['tanggal', 'keterangan', 'akun_debit', 'akun_kredit', 'nominal'],
+      [{ tanggal: '2026-05-01', no_bukti: 'JU-SIMPLE-0001', keterangan: 'Terima sesari', akun_debit: '1001', akun_kredit: '4041', nominal: 75_000 }],
+      ['tanggal', 'no_bukti', 'keterangan', 'akun_debit', 'akun_kredit', 'nominal'],
     );
     const hasil = await parseImporExcel(buffer);
     expect(hasil.errors).toEqual([]);
     expect(hasil.ringkasan.grupValid).toBe(1);
+    expect(hasil.grup[0]!.no_bukti).toBe('JU-SIMPLE-0001');
     expect(hasil.baris).toHaveLength(2);
     expect(hasil.baris.map((b) => b.sisi)).toEqual(['DEBIT', 'KREDIT']);
     expect(hasil.baris[0]).toMatchObject({ akun: '1001', debit: 7_500_000, status: 'OK' });
@@ -347,11 +409,15 @@ describe('P2-9 — batas aman file & baris', () => {
 });
 
 describe('P2-9 — impor ke DB lewat posting layer', () => {
-  it('2 grup valid tersimpan, grup tidak seimbang tidak tersimpan, nomor JU otomatis, audit IMPORT-EXCEL ada', () => {
+  it('2 grup valid tersimpan, grup tidak seimbang tidak tersimpan, memakai nomor bukti file, audit IMPORT-EXCEL ada', () => {
     const { db } = buatDb();
     const rows = [
-      ...grup('G1', '2026-01-05', 'Terima parkir', [D('1001', 150_000), K('4005', 150_000)]),
-      ...grup('G2', '2026-01-06', 'Bayar listrik', [D('5010', 200_000), K('1001', 200_000)]),
+      ...grup('G1', '2026-01-05', 'Terima parkir', [D('1001', 150_000), K('4005', 150_000)], {
+        no_bukti: 'JU-2026-0101',
+      }),
+      ...grup('G2', '2026-01-06', 'Bayar listrik', [D('5010', 200_000), K('1001', 200_000)], {
+        no_bukti: 'JU-2026-0102',
+      }),
       ...grup('G-SALAH', '2026-01-07', 'Tidak seimbang', [D('1001', 50_000), K('4005', 40_000)]),
     ];
 
@@ -366,13 +432,13 @@ describe('P2-9 — impor ke DB lewat posting layer', () => {
       expect(impor.ringkasan.jurnalDibuat).toBe(2);
       expect(impor.ringkasan.grupBerhasil).toBe(2);
       expect(impor.ringkasan.grupGagal).toBe(1);
-      expect(impor.ringkasan.noBuktiDibuat).toEqual(['JU-2026-0001', 'JU-2026-0002']);
+      expect(impor.ringkasan.noBuktiDibuat).toEqual(['JU-2026-0101', 'JU-2026-0102']);
       expect(impor.ringkasan.totalDebit).toBe(35_000_000);
       expect(impor.ringkasan.seimbang).toBe(true);
 
       const jurnal = listJurnal(db);
       expect(jurnal).toHaveLength(2);
-      expect(jurnal.map((j) => j.no_bukti)).toEqual(['JU-2026-0001', 'JU-2026-0002']);
+      expect(jurnal.map((j) => j.no_bukti)).toEqual(['JU-2026-0101', 'JU-2026-0102']);
       expect(jurnal.every((j) => j.jenis === 'UMUM')).toBe(true);
       expect(listJurnalBaris(db, jurnal[0]!.id)).toHaveLength(2);
       expect(listJurnalBaris(db, jurnal[1]!.id)).toHaveLength(2);
@@ -413,13 +479,14 @@ describe('P2-9 — impor ke DB lewat posting layer', () => {
     );
     const preview = validasiImporDariExcel(db, hasil);
     expect(preview.grup[0]!.status).toBe('GAGAL');
-    expect(preview.grup[0]!.alasan).toMatch(/sudah dipakai/i);
+    expect(preview.grup[0]!.alasan).toContain(PESAN_NOMOR_BUKTI_DIPAKAI);
+    expect(preview.grup[0]!.alasan).toMatch(/JU-2026-0500/);
     expect(preview.baris.every((b) => b.status === 'GAGAL')).toBe(true);
     expect(listJurnal(db)).toHaveLength(1);
     expect(listAuditLog(db, { aksi: 'IMPORT-EXCEL' })).toHaveLength(0);
   });
 
-  it('menolak duplikat no_bukti saat impor dan tidak menambah jurnal', async () => {
+  it('menolak duplikat no_bukti (tanpa beda huruf besar/kecil) saat impor dan tidak menambah jurnal', async () => {
     const { db } = buatDb();
     postingJurnal(db, {
       header: {
@@ -435,14 +502,69 @@ describe('P2-9 — impor ke DB lewat posting layer', () => {
     });
     const hasil = await parse(
       grup('G1', '2026-02-01', 'Nomor sama', [D('1001', 10_000), K('4005', 10_000)], {
-        no_bukti: 'JU-2026-0500',
+        no_bukti: 'ju-2026-0500',
       }),
     );
     const impor = imporJurnalDariExcel(db, hasil, { namaFile: 'duplikat.xlsx' });
     expect(impor.ringkasan.jurnalDibuat).toBe(0);
     expect(impor.grup[0]!.status).toBe('GAGAL');
-    expect(impor.grup[0]!.alasan).toMatch(/sudah dipakai/i);
+    expect(impor.grup[0]!.alasan).toContain(PESAN_NOMOR_BUKTI_DIPAKAI);
     expect(listJurnal(db)).toHaveLength(1);
+  });
+
+  it('impor ulang file yang sama gagal pada pratinjau dan tidak menggandakan jurnal', async () => {
+    const { db } = buatDb();
+    const buffer = await bufferDari(
+      grup('G-REIMPOR', '2026-03-10', 'Impor ulang', [D('1001', 10_000), K('4005', 10_000)], {
+        no_bukti: 'JU-2026-0200',
+      }),
+    );
+
+    const pertama = await parseImporExcel(buffer, { namaFile: 'sama.xlsx' });
+    const imporPertama = imporJurnalDariExcel(db, pertama, { namaFile: 'sama.xlsx' });
+    expect(imporPertama.ringkasan.jurnalDibuat).toBe(1);
+    expect(listJurnal(db)).toHaveLength(1);
+    expect(listJurnal(db)[0]!.no_bukti).toBe('JU-2026-0200');
+
+    const kedua = await parseImporExcel(buffer, { namaFile: 'sama.xlsx' });
+    const preview = validasiImporDariExcel(db, kedua);
+    expect(preview.grup[0]!.status).toBe('GAGAL');
+    expect(preview.grup[0]!.alasan).toContain(PESAN_NOMOR_BUKTI_DIPAKAI);
+    expect(preview.baris.every((b) => b.status === 'GAGAL')).toBe(true);
+
+    const imporKedua = imporJurnalDariExcel(db, preview, { namaFile: 'sama.xlsx' });
+    expect(imporKedua.ringkasan.jurnalDibuat).toBe(0);
+    expect(imporKedua.ringkasan.grupBerhasil).toBe(0);
+    expect(imporKedua.grup[0]!.status).toBe('GAGAL');
+    expect(imporKedua.grup[0]!.alasan).toContain(PESAN_NOMOR_BUKTI_DIPAKAI);
+    expect(listJurnal(db)).toHaveLength(1);
+  });
+
+  it('mengizinkan nomor bukti yang sama di tahun berbeda', async () => {
+    const { db } = buatDb();
+    const tahun2025 = await parse(
+      grup('G-2025', '2025-06-01', 'Tahun 2025', [D('1001', 10_000), K('4005', 10_000)], {
+        no_bukti: 'JU-LINTAS-0001',
+      }),
+    );
+    const impor2025 = imporJurnalDariExcel(db, tahun2025, { namaFile: '2025.xlsx' });
+    expect(impor2025.ringkasan.jurnalDibuat).toBe(1);
+
+    const tahun2026 = await parse(
+      grup('G-2026', '2026-06-01', 'Tahun 2026', [D('1001', 10_000), K('4005', 10_000)], {
+        no_bukti: 'JU-LINTAS-0001',
+      }),
+    );
+    const preview2026 = validasiImporDariExcel(db, tahun2026);
+    expect(preview2026.grup[0]!.status).toBe('OK');
+
+    const impor2026 = imporJurnalDariExcel(db, preview2026, { namaFile: '2026.xlsx' });
+    expect(impor2026.ringkasan.jurnalDibuat).toBe(1);
+    expect(listJurnal(db)).toHaveLength(2);
+    expect(listJurnal(db).map((j) => j.no_bukti)).toEqual([
+      'JU-LINTAS-0001',
+      'JU-LINTAS-0001',
+    ]);
   });
 
   it('menolak grup pada periode terkunci dengan alasan yang jelas', async () => {

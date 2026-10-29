@@ -25,6 +25,14 @@ import { formatRp } from '../../utils/format.js';
 export const BATAS_UKURAN_IMPOR = 10 * 1024 * 1024; // 10 MB
 export const BATAS_BARIS_IMPOR = 5000;
 
+/**
+ * AKT-24: nomor bukti wajib di setiap grup impor. Nomor otomatis hanya untuk
+ * form jurnal biasa; impor harus memakai nomor dari file agar impor ulang bisa
+ * ditolak sebagai duplikat.
+ */
+export const PESAN_NO_BUKTI_IMPOR_WAJIB =
+  'Nomor bukti wajib diisi pada impor agar tidak duplikat.';
+
 const SHEET_JURNAL = 'Jurnal';
 
 export type StatusImpor = 'OK' | 'GAGAL';
@@ -681,11 +689,15 @@ function parseBentukMultiBaris(
     });
   }
 
-  // Validasi tingkat grup + duplikat nomor bukti antar grup.
+  // Validasi tingkat grup + duplikat nomor bukti antar grup. Sama seperti
+  // jurnal biasa, nomor hanya unik dalam tahun yang sama.
   const hitungNoBukti = new Map<string, number>();
   for (const g of grupKerja) {
     const no = g.no_bukti.trim().toLowerCase();
-    if (no) hitungNoBukti.set(no, (hitungNoBukti.get(no) ?? 0) + 1);
+    if (no) {
+      const kunci = `${g.tanggal.slice(0, 4)}|${no}`;
+      hitungNoBukti.set(kunci, (hitungNoBukti.get(kunci) ?? 0) + 1);
+    }
   }
 
   const grup: HasilGrupImpor[] = [];
@@ -703,6 +715,10 @@ function parseBentukMultiBaris(
     if (!g.keterangan) {
       if (!errors.includes('Keterangan wajib diisi pada baris pertama grup.'))
         errors.push('Keterangan wajib diisi pada baris pertama grup.');
+    }
+    if (!g.no_bukti.trim()) {
+      if (!errors.includes(PESAN_NO_BUKTI_IMPOR_WAJIB))
+        errors.push(PESAN_NO_BUKTI_IMPOR_WAJIB);
     }
 
     const totalDebit = g.baris.reduce((s, r) => s + (Number.isFinite(r.debit) ? r.debit : 0), 0);
@@ -729,7 +745,11 @@ function parseBentukMultiBaris(
         errors.push('Total jurnal harus lebih dari 0.');
       }
     }
-    if (g.no_bukti && (hitungNoBukti.get(g.no_bukti.trim().toLowerCase()) ?? 0) > 1) {
+    if (
+      g.no_bukti &&
+      (hitungNoBukti.get(`${g.tanggal.slice(0, 4)}|${g.no_bukti.trim().toLowerCase()}`) ?? 0) >
+        1
+    ) {
       errors.push(`Nomor bukti ${g.no_bukti} dipakai lebih dari satu grup.`);
     }
 
@@ -805,11 +825,15 @@ function parseBentukSederhana(
   const baris: HasilBarisImpor[] = [];
   let nomor = 0;
 
-  // Nomor bukti unik antar baris.
+  // Nomor bukti unik antar baris dalam tahun yang sama.
   const hitungNoBukti = new Map<string, number>();
   for (const b of mentah) {
     const no = b.no_bukti.trim().toLowerCase();
-    if (no) hitungNoBukti.set(no, (hitungNoBukti.get(no) ?? 0) + 1);
+    if (no) {
+      const tahun = parseTanggalImpor(b.tanggal).iso.slice(0, 4);
+      const kunci = `${tahun}|${no}`;
+      hitungNoBukti.set(kunci, (hitungNoBukti.get(kunci) ?? 0) + 1);
+    }
   }
 
   for (const b of mentah) {
@@ -819,6 +843,7 @@ function parseBentukSederhana(
     if (tanggal.error) errors.push(tanggal.error);
     else if (!tanggal.iso) errors.push('Tanggal wajib diisi.');
     if (!b.keterangan) errors.push('Keterangan wajib diisi.');
+    if (!b.no_bukti.trim()) errors.push(PESAN_NO_BUKTI_IMPOR_WAJIB);
 
     const akunDebit = String(b.akun_debit ?? '').trim();
     const akunKredit = String(b.akun_kredit ?? '').trim();
@@ -832,8 +857,12 @@ function parseBentukSederhana(
     const nominal = parseNominalImpor(b.nominal);
     if (nominal.error) errors.push(`Nominal: ${nominal.error}`);
     else if (nominal.sen <= 0) errors.push('Nominal wajib lebih dari 0.');
-    if (b.no_bukti && (hitungNoBukti.get(b.no_bukti.trim().toLowerCase()) ?? 0) > 1)
-      errors.push(`Nomor bukti ${b.no_bukti} dipakai lebih dari satu baris.`);
+    if (b.no_bukti) {
+      const tahun = tanggal.iso.slice(0, 4);
+      const kunci = `${tahun}|${b.no_bukti.trim().toLowerCase()}`;
+      if ((hitungNoBukti.get(kunci) ?? 0) > 1)
+        errors.push(`Nomor bukti ${b.no_bukti} dipakai lebih dari satu baris.`);
+    }
 
     const status: StatusImpor = errors.length === 0 ? 'OK' : 'GAGAL';
     const alasan = errors.join(' ');

@@ -17,12 +17,19 @@ import { postingJurnal, validasiJurnalDb } from './posting.js';
 import { peringatanPihakTanpaMapping } from '../core/pihak.js';
 import type { JurnalInput } from '../core/posting.js';
 import {
+  PESAN_NO_BUKTI_IMPOR_WAJIB,
   hitungRingkasanImpor,
   type HasilBarisImpor,
   type HasilGrupImpor,
   type HasilParseImpor,
   type RingkasanImpor,
 } from '../features/import/parser.js';
+
+/**
+ * AKT-24: alasan baku saat nomor bukti dari file sudah dipakai pada tahun yang
+ * sama. Jangan menyimpan grup ini; impor ulang file yang sama harus aman.
+ */
+export const PESAN_NOMOR_BUKTI_DIPAKAI = 'GAGAL: nomor bukti sudah dipakai';
 
 export type OpsiImporExcel = {
   /** Operator sudah menyetujui jurnal yang membuat kas/bank minus. */
@@ -66,6 +73,27 @@ function unikAlasan(daftar: readonly string[]): string[] {
     hasil.push(bersih);
   }
   return hasil;
+}
+
+/** Nomor bukti sudah dipakai pada tahun yang sama (case-insensitive). */
+function nomorBuktiSudahDipakai(
+  db: Database.Database,
+  noBukti: string,
+  tanggal: string,
+): boolean {
+  const nomor = String(noBukti ?? '').trim();
+  const tahun = String(tanggal ?? '').trim().slice(0, 4);
+  if (!nomor || !/^\d{4}$/.test(tahun)) return false;
+  const row = db
+    .prepare(
+      `SELECT id FROM jurnal
+       WHERE no_bukti <> ''
+         AND substr(tanggal, 1, 4) = ?
+         AND no_bukti = ? COLLATE NOCASE
+       LIMIT 1`,
+    )
+    .get(tahun, nomor) as { id: string } | undefined;
+  return Boolean(row);
 }
 
 /** Baris-baris Excel milik satu grup (aman untuk bentuk sederhana). */
@@ -115,6 +143,22 @@ export function validasiImporDariExcel(
     };
 
     if (g.status !== 'OK' || !g.input) return dasar;
+
+    const noBukti = String(g.no_bukti || g.input.header.no_bukti || '').trim();
+    if (!noBukti) {
+      return {
+        ...dasar,
+        status: 'GAGAL',
+        alasan: unikAlasan([dasar.alasan, PESAN_NO_BUKTI_IMPOR_WAJIB]).join(' '),
+      };
+    }
+    if (nomorBuktiSudahDipakai(db, noBukti, g.tanggal)) {
+      return {
+        ...dasar,
+        status: 'GAGAL',
+        alasan: `${PESAN_NOMOR_BUKTI_DIPAKAI} (${noBukti}).`,
+      };
+    }
 
     const input: JurnalInput = {
       header: {
@@ -204,10 +248,29 @@ export function imporJurnalDariExcel(
       return;
     }
 
+    const noBukti = String(g.no_bukti || g.input.header.no_bukti || '').trim();
+    if (!noBukti) {
+      const alasan = PESAN_NO_BUKTI_IMPOR_WAJIB;
+      grup.push({ ...g, status: 'GAGAL', alasan });
+      tandaiBaris(baris, g, 'GAGAL', alasan);
+      return;
+    }
+
+    // AKT-24: impor tidak boleh membuat nomor otomatis. Nomor dari file yang
+    // sudah ada pada tahun yang sama ditolak sebelum posting, sehingga impor
+    // ulang file yang sama tidak menambah jurnal baru.
+    if (nomorBuktiSudahDipakai(db, noBukti, g.tanggal)) {
+      const alasan = `${PESAN_NOMOR_BUKTI_DIPAKAI} (${noBukti}).`;
+      grup.push({ ...g, status: 'GAGAL', alasan });
+      tandaiBaris(baris, g, 'GAGAL', alasan);
+      return;
+    }
+
     const id = opsi.buatId?.(g, i) ?? buatIdImpor(now, i);
     const input: JurnalInput = {
       header: {
         ...g.input.header,
+        no_bukti: noBukti,
         id,
         jenis: 'UMUM',
         created_at: now.toISOString(),

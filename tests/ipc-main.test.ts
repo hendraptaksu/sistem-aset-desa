@@ -645,7 +645,7 @@ describe('P2-9 — import Excel lewat IPC', () => {
     const daftar = (await env.panggil('jurnal:list', {})).data;
     expect(daftar).toHaveLength(3);
     expect(daftar.map((j: { no_bukti: string }) => j.no_bukti)).toEqual(
-      expect.arrayContaining(['JU-2026-0001', 'JU-2026-0002', 'JU-2026-0099']),
+      expect.arrayContaining(['JU-2026-0101', 'JU-2026-0102', 'JU-2026-0099']),
     );
     const audit = await env.panggil('audit:list', { aksi: 'IMPORT-EXCEL' });
     expect(audit.data.total).toBe(1);

@@ -12,7 +12,8 @@
 //   tanggal Excel.
 // - `debit`/`kredit` adalah ANGKA RUPIAH (bukan sen); parser mengubahnya ke sen.
 // - `akun` berisi kode akun COA, mis. 1001.
-// - `no_bukti` opsional; kosong = sistem membuat `JU-<tahun>-<urut>`.
+// - `no_bukti` WAJIB diisi untuk setiap grup (AKT-24). Impor tidak memakai
+//   nomor otomatis; nomor dari file adalah penjaga duplikat saat impor ulang.
 
 import ExcelJS from 'exceljs';
 import { COA, type Coa } from '../../db/coa.js';
@@ -54,7 +55,7 @@ const CONTOH: ContohBaris[] = [
   {
     grup: 'CONTOH-1',
     tanggal: '2026-01-05',
-    no_bukti: '',
+    no_bukti: 'JU-2026-0101',
     keterangan: 'Penerimaan parkir bulan Januari',
     akun: '1001',
     debit: 150_000,
@@ -74,7 +75,7 @@ const CONTOH: ContohBaris[] = [
   {
     grup: 'CONTOH-2',
     tanggal: '2026-01-10',
-    no_bukti: '',
+    no_bukti: 'JU-2026-0102',
     keterangan: 'Bayar listrik dan administrasi bank',
     akun: '5010',
     debit: 200_000,
@@ -146,6 +147,10 @@ export function buatTemplateImpor(daftarAkun: readonly Coa[] = COA): ExcelJS.Wor
   // ---- Sheet Jurnal ----
   const jurnal = wb.addWorksheet(SHEET_JURNAL_IMPOR);
   tulisHeader(jurnal, [...KOLOM_TEMPLATE_IMPOR], [14, 14, 16, 38, 10, 14, 14, 38]);
+  // AKT-24: kolom no_bukti wajib; beri penanda visual + catatan sel.
+  const selNoBukti = jurnal.getCell(1, KOLOM_TEMPLATE_IMPOR.indexOf('no_bukti') + 1);
+  selNoBukti.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB91C1C' } };
+  selNoBukti.note = 'Wajib diisi untuk setiap grup. Nomor bukti mencegah impor ganda.';
   for (const contoh of CONTOH) {
     const row = jurnal.addRow([
       contoh.grup,
@@ -178,11 +183,11 @@ export function buatTemplateImpor(daftarAkun: readonly Coa[] = COA): ExcelJS.Wor
   const langkah: string[] = [
     '1. Isi sheet "Jurnal". Satu grup (kolom grup) = satu jurnal. Beberapa baris dengan grup yang sama akan digabung.',
     '2. Kolom tanggal: tulis YYYY-MM-DD (contoh 2026-01-31) atau DD/MM/YYYY (contoh 31/01/2026). Tanggal 31 Feb akan ditolak.',
-    '3. Tanggal, keterangan, dan no_bukti boleh hanya diisi di baris pertama grup; baris berikutnya boleh kosong (otomatis mengikuti).',
+    '3. Tanggal, keterangan, dan no_bukti boleh hanya diisi di baris pertama grup; baris berikutnya boleh kosong (otomatis mengikuti). No_bukti tetap wajib ada di setiap grup.',
     '4. Kolom akun: isi KODE AKUN (bukan nama), mis. 1001. Lihat daftar di sheet "Akun".',
     '5. Kolom debit dan kredit: isi ANGKA RUPIAH pada SALAH SATU kolom saja. Jangan menulis "Rp" atau titik ribuan.',
     '6. Setiap grup minimal 2 baris dan total debit harus sama dengan total kredit. Grup yang tidak seimbang ditolak seluruhnya.',
-    '7. Kolom no_bukti opsional. Bila kosong, sistem membuat nomor otomatis JU-<tahun>-<urut>. Bila diisi, nomor harus unik.',
+    '7. Kolom no_bukti WAJIB diisi untuk setiap grup (contoh JU-2026-0101). Impor tidak membuat nomor otomatis. Nomor yang sudah dipakai pada tahun yang sama akan ditolak, sehingga impor ulang file yang sama tidak menggandakan jurnal. Nomor yang sama boleh dipakai di tahun berbeda.',
     '8. Kolom catatan opsional: keterangan singkat untuk baris jurnal tersebut.',
     '9. Setelah diisi, simpan file .xlsx, lalu buka aplikasi → menu "Import Excel" → "Pilih & Pratinjau".',
     '10. Periksa hasil pratinjau per baris. Hanya grup yang valid yang bisa diimpor. Jurnal tersimpan tidak bisa diedit; koreksi lewat jurnal balik.',

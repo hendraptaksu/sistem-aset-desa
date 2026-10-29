@@ -262,7 +262,8 @@ export function ImportExcelTab() {
           <div className="rounded-lg border border-stone-200 p-3">
             <div className="text-sm font-bold text-emerald-800">4. Impor yang valid</div>
             <p className="mt-1 text-sm text-stone-600">
-              Hanya grup valid yang disimpan. Nomor bukti kosong dibuat otomatis.
+              Hanya grup valid yang disimpan. Nomor bukti wajib diisi dan tidak
+              boleh sudah dipakai pada tahun yang sama.
             </p>
           </div>
         </div>

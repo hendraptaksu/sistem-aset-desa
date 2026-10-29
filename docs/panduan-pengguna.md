@@ -179,23 +179,29 @@ sekaligus. Alurnya empat langkah:
    - `debit` dan `kredit` berisi **angka rupiah** pada salah satu kolom saja,
      bukan sen dan tanpa tulisan `Rp`.
    - `tanggal`, `keterangan`, dan `no_bukti` boleh hanya diisi di baris pertama
-     grup; baris berikutnya otomatis mengikuti.
+     grup; baris berikutnya otomatis mengikuti. `no_bukti` tetap **wajib** ada
+     pada setiap grup.
    - Setiap grup minimal 2 baris dan **total debit harus sama dengan total
      kredit**. Grup yang tidak seimbang ditolak seluruhnya.
-   - `no_bukti` opsional. Kosong = sistem membuat `JU-<tahun>-<urut>`.
+   - `no_bukti` **wajib diisi** dan tidak boleh kosong. Impor tidak membuat
+     nomor otomatis. Nomor bukti yang sudah dipakai pada **tahun yang sama**
+     (tanpa membedakan huruf besar/kecil) akan ditolak, sehingga impor ulang
+     file yang sama tidak menggandakan jurnal. Nomor yang sama boleh dipakai
+     lagi di tahun berbeda.
 3. **Pilih & Pratinjau** → pilih file `.xlsx`. Sistem menampilkan ringkasan dan
    hasil **per baris** (baris Excel, grup, tanggal, keterangan, akun, debit,
-   kredit, status, alasan). Tahap ini **belum menyimpan apa pun**.
+   kredit, status, alasan). Tahap ini **belum menyimpan apa pun**. Grup tanpa
+   `no_bukti` atau dengan nomor yang sudah dipakai akan tampil **GAGAL**.
 4. **Impor N Jurnal Valid** → konfirmasi. Hanya grup valid yang disimpan. Bila
    ada peringatan kas/bank minus, centang izin khusus setelah memeriksa saldo;
    tanpa centang, grup tersebut tidak diimpor. Setelah selesai, nomor bukti yang
-   dibuat ditampilkan dan jurnal bisa dilihat di **Jurnal Umum**.
+   tersimpan ditampilkan dan jurnal bisa dilihat di **Jurnal Umum**.
 
 Bentuk sederhana juga didukung: satu baris Excel dengan kolom `tanggal`,
-`keterangan`, `akun_debit`, `akun_kredit`, `nominal` menjadi satu jurnal dua
-baris. Batas aman: file maksimal **10 MB** dan maksimal **5.000 baris** data.
-Jurnal yang sudah diimpor tetap permanen; koreksi dilakukan lewat jurnal balik,
-bukan edit/hapus.
+`keterangan`, `akun_debit`, `akun_kredit`, `nominal`, dan `no_bukti` (wajib)
+menjadi satu jurnal dua baris. Batas aman: file maksimal **10 MB** dan maksimal
+**5.000 baris** data. Jurnal yang sudah diimpor tetap permanen; koreksi
+dilakukan lewat jurnal balik, bukan edit/hapus.
 
 ### 2.9 Daftar Akun (tambah/ubah/nonaktifkan akun)
 
