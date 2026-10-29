@@ -81,9 +81,20 @@ function objek(nilai: unknown): nilai is Record<string, unknown> {
   return typeof nilai === 'object' && nilai !== null && !Array.isArray(nilai);
 }
 
+/** Opsi validasi pagu; `izinkanNonaktif` hanya untuk membaca pagu tersimpan. */
+export type OpsiValidasiBarisAnggaran = {
+  /**
+   * Default false (input form): akun nonaktif ditolak.
+   * true dipakai saat memuat pagu tersimpan di laporan: akun yang sudah
+   * dinonaktifkan tetap harus menghasilkan laporan, selama kodenya masih
+   * dikenal di COA, tipenya benar, dan nominalnya valid.
+   */
+  izinkanNonaktif?: boolean;
+};
+
 /**
  * Validasi semantik baris pagu:
- * - akun ada di master & aktif;
+ * - akun ada di master & aktif (kecuali `izinkanNonaktif` untuk pagu tersimpan);
  * - hanya akun PENDAPATAN/BEBAN;
  * - nominal integer SEN >= 0;
  * - akun tidak boleh duplikat dalam satu request.
@@ -94,6 +105,7 @@ function objek(nilai: unknown): nilai is Record<string, unknown> {
 export function validasiBarisAnggaran(
   baris: unknown,
   daftarAkun: readonly AkunAnggaran[] = COA,
+  opsi: OpsiValidasiBarisAnggaran = {},
 ): AnggaranBarisInput[] {
   if (!Array.isArray(baris)) {
     throw new Error('Daftar pagu anggaran tidak lengkap.');
@@ -121,7 +133,9 @@ export function validasiBarisAnggaran(
 
     const akun = petaAkun.get(kode);
     if (!akun) throw new Error(`Akun ${kode} tidak dikenal.`);
-    if (akun.aktif === false) throw new Error(`Akun ${kode} tidak aktif.`);
+    if (opsi.izinkanNonaktif !== true && akun.aktif === false) {
+      throw new Error(`Akun ${kode} tidak aktif.`);
+    }
     if (akun.tipe !== 'PENDAPATAN' && akun.tipe !== 'BEBAN') {
       throw new Error(
         `Akun ${kode} bukan akun pendapatan/beban; anggaran hanya untuk pendapatan dan beban.`,
@@ -172,6 +186,9 @@ export function hitungRealisasiAnggaran(
     validasiBarisAnggaran(
       anggaran.map((a) => ({ akun_kode: a.akun_kode, nominal: a.nominal })),
       daftarAkun,
+      // Pagu tersimpan tetap dibaca walau akunnya sudah dinonaktifkan.
+      // Kode harus dikenal, tipe harus PENDAPATAN/BEBAN, nominal tetap valid.
+      { izinkanNonaktif: true },
     ).map((a) => [a.akun_kode, a.nominal]),
   );
 

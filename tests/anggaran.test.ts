@@ -29,7 +29,7 @@ import {
   listAnggaran,
   simpanAnggaran,
 } from '../src/db/anggaran.js';
-import { insertJurnal, listAkun, listAuditLog } from '../src/db/repository.js';
+import { insertJurnal, listAkun, listAuditLog, setAkunAktif, tambahAkun } from '../src/db/repository.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { labaRugi, saldoAkun, type BarisJurnalSumber } from '../src/core/reports.js';
 import {
@@ -261,6 +261,99 @@ describe('P2-1 — validasi pagu', () => {
     ).toThrow(/tidak aktif/);
   });
 
+  it('opsi izinkanNonaktif hanya melonggarkan status aktif, aturan lain tetap', () => {
+    const akun5011 = {
+      kode: '5011',
+      nama: 'Beban contoh nonaktif',
+      tipe: 'BEBAN',
+      posisi_normal: 'DEBIT',
+      aktif: false,
+    } as const;
+    const daftar = [akun5011];
+
+    // Mode pagu tersimpan: akun nonaktif diterima dan dinormalisasi.
+    expect(
+      validasiBarisAnggaran(
+        [{ akun_kode: ' 5011 ', nominal: 100 }],
+        daftar,
+        { izinkanNonaktif: true },
+      ),
+    ).toEqual([{ akun_kode: '5011', nominal: 100 }]);
+
+    // Default (input form) tetap menolak akun nonaktif.
+    expect(() =>
+      validasiBarisAnggaran([{ akun_kode: '5011', nominal: 100 }], daftar),
+    ).toThrow(/tidak aktif/);
+
+    // Kode harus tetap dikenal, tipe tetap PENDAPATAN/BEBAN, nominal tetap valid.
+    expect(() =>
+      validasiBarisAnggaran(
+        [{ akun_kode: '5099', nominal: 100 }],
+        daftar,
+        { izinkanNonaktif: true },
+      ),
+    ).toThrow(/tidak dikenal/);
+    expect(() =>
+      validasiBarisAnggaran(
+        [{ akun_kode: '5011', nominal: -1 }],
+        daftar,
+        { izinkanNonaktif: true },
+      ),
+    ).toThrow(/bilangan bulat/);
+    expect(() =>
+      validasiBarisAnggaran(
+        [{ akun_kode: '5011', nominal: 100 }],
+        [{ ...akun5011, tipe: 'AKTIVA', posisi_normal: 'DEBIT' }],
+        { izinkanNonaktif: true },
+      ),
+    ).toThrow(/bukan akun pendapatan\/beban/);
+  });
+
+  it('hitungRealisasiAnggaran tetap membaca pagu akun nonaktif tanpa mengubah rumus', () => {
+    const akun5011 = {
+      kode: '5011',
+      nama: 'Beban contoh nonaktif',
+      tipe: 'BEBAN',
+      posisi_normal: 'DEBIT',
+      aktif: false,
+    } as const;
+    const baris = jurnal('j-5011', '2026-05-01', 'Beban nonaktif', [
+      ['5011', RP(300_000), 0],
+      ['1001', 0, RP(300_000)],
+    ]);
+
+    const hasil = hitungRealisasiAnggaran(
+      [{ tahun: 2026, akun_kode: '5011', nominal: RP(500_000) }],
+      baris,
+      RENTANG_2026,
+      [akun5011],
+    );
+    expect(cari(hasil.beban, '5011')).toMatchObject({
+      anggaran: RP(500_000),
+      realisasi: RP(300_000),
+      sisa: RP(200_000),
+      persen: 60,
+      lebih: false,
+    });
+    expect(hasil.totalBeban).toMatchObject({
+      anggaran: RP(500_000),
+      realisasi: RP(300_000),
+      sisa: RP(200_000),
+      persen: 60,
+      lebih: false,
+    });
+
+    // Pagu tersimpan yang nominalnya rusak tetap ditolak, walau akun nonaktif.
+    expect(() =>
+      hitungRealisasiAnggaran(
+        [{ tahun: 2026, akun_kode: '5011', nominal: -1 }],
+        baris,
+        RENTANG_2026,
+        [akun5011],
+      ),
+    ).toThrow(/bilangan bulat/);
+  });
+
   it('menolak nominal negatif, pecahan, dan bukan angka', () => {
     for (const nominal of [-1, 1.5, Number.NaN, '100' as unknown as number]) {
       expect(() =>
@@ -474,6 +567,57 @@ describe('P2-1 — realisasi dari jurnal tersimpan', () => {
 
       const daftarAkun = listAkun(db);
       expect(daftarAkun.some((a) => a.kode === '4005' && a.tipe === 'PENDAPATAN')).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('akun 5011 dinonaktifkan: laporan tetap terbuka dengan realisasi, pagu baru ditolak', () => {
+    const db = openDb(':memory:');
+    try {
+      tambahAkun(db, {
+        kode: '5011',
+        nama: 'Beban contoh yang dinonaktifkan',
+        tipe: 'BEBAN',
+      });
+      insertJurnal(
+        db,
+        { id: 'j-5011', tanggal: '2026-05-01', no_bukti: 'JU-2026-5011', keterangan: 'Beban 5011' },
+        [
+          { akun_kode: '5011', debit: RP(300_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(300_000) },
+        ],
+      );
+      simpanAnggaran(db, 2026, [{ akun_kode: '5011', nominal: RP(500_000) }]);
+
+      const sebelum = laporanRealisasiAnggaran(db, { tahun: 2026 });
+      setAkunAktif(db, '5011', false);
+
+      // DoD: laporan tidak error dan angka realisasi tetap sama setelah nonaktif.
+      const sesudah = laporanRealisasiAnggaran(db, { tahun: 2026 });
+      expect(sesudah.beban).toEqual(sebelum.beban);
+      expect(cari(sesudah.beban, '5011')).toMatchObject({
+        anggaran: RP(500_000),
+        realisasi: RP(300_000),
+        sisa: RP(200_000),
+        persen: 60,
+        lebih: false,
+      });
+      expect(sesudah.totalBeban).toMatchObject({
+        anggaran: RP(500_000),
+        realisasi: RP(300_000),
+        sisa: RP(200_000),
+      });
+
+      // Jalur input form tetap menolak akun nonaktif dan tidak mengubah pagu/audit.
+      const auditSebelum = listAuditLog(db).length;
+      expect(() =>
+        simpanAnggaran(db, 2026, [{ akun_kode: '5011', nominal: RP(600_000) }]),
+      ).toThrow(/tidak aktif/);
+      expect(listAnggaran(db, 2026)).toMatchObject([
+        { akun_kode: '5011', nominal: RP(500_000) },
+      ]);
+      expect(listAuditLog(db).length).toBe(auditSebelum);
     } finally {
       db.close();
     }
