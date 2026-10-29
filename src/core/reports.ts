@@ -42,6 +42,24 @@ export type BarisJurnalSumber = {
 const petaAkun = (daftar: readonly Coa[]): Map<string, Coa> =>
   new Map(daftar.map((a) => [a.kode, a]));
 
+/**
+ * Pastikan setiap baris memakai akun yang ada di master COA.
+ *
+ * Laporan tidak boleh diam-diam membuang baris berakun asing: total bisa
+ * tampak seimbang padahal ada saldo yang tidak masuk laporan.
+ */
+function pastikanAkunDikenal(
+  baris: readonly BarisJurnalSumber[],
+  daftarAkun: readonly Coa[],
+): void {
+  const peta = petaAkun(daftarAkun);
+  for (const b of baris) {
+    if (!peta.has(b.akun_kode)) {
+      throw new Error(`Akun ${b.akun_kode} pada jurnal tidak dikenal di COA.`);
+    }
+  }
+}
+
 function cariAkun(kode: string, daftar: readonly Coa[]): Coa {
   const a = daftar.find((x) => x.kode === kode);
   if (!a) throw new Error(`Akun ${kode} tidak dikenal di COA.`);
@@ -163,6 +181,7 @@ export function bukuBesar(
   opsi: BukuBesarOpsi = {},
   daftarAkun: readonly Coa[] = COA,
 ): BukuBesarHasil {
+  pastikanAkunDikenal(baris, daftarAkun);
   const a = resolveAkun(akun, daftarAkun);
   const { mulai, sampai } = opsi;
   const arah = a.posisi_normal === 'DEBIT' ? 1 : -1;
@@ -270,6 +289,8 @@ export function neracaSaldo(
   const opsi: NeracaSaldoOpsi =
     typeof cutoffAtauOpsi === 'string' ? { cutoff: cutoffAtauOpsi } : cutoffAtauOpsi;
   const { cutoff, hanyaAdaSaldo = false } = opsi;
+
+  pastikanAkunDikenal(baris, daftarAkun);
 
   const debitMentah = new Map<string, number>();
   const kreditMentah = new Map<string, number>();
@@ -526,6 +547,7 @@ export function labaRugi(
   rentang: RentangLaporan = {},
   daftarAkun: readonly Coa[] = COA,
 ): LabaRugiHasil {
+  pastikanAkunDikenal(baris, daftarAkun);
   const { mulai, sampai } = rentang;
   const pendapatan: LabaRugiBaris[] = [];
   const beban: LabaRugiBaris[] = [];
@@ -790,6 +812,7 @@ export function arusKas(
   opsi: ArusKasOpsi = {},
   daftarAkun: readonly Coa[] = COA,
 ): ArusKasHasil {
+  pastikanAkunDikenal(baris, daftarAkun);
   const { mulai, sampai, kasKodes = KAS_KODES } = opsi;
   const peta = petaAkun(daftarAkun);
   const kodeKas = new Set(kasKodes);

@@ -317,6 +317,15 @@ describe('P2-1 — validasi pagu', () => {
       posisi_normal: 'DEBIT',
       aktif: false,
     } as const;
+    // COA uji harus memuat semua akun yang dipakai jurnal; labaRugi() kini
+    // menolak baris berakun asing, bukan mengabaikannya diam-diam (AKT-23).
+    const akun1001 = {
+      kode: '1001',
+      nama: 'Kas tunai',
+      tipe: 'AKTIVA',
+      posisi_normal: 'DEBIT',
+      aktif: true,
+    } as const;
     const baris = jurnal('j-5011', '2026-05-01', 'Beban nonaktif', [
       ['5011', RP(300_000), 0],
       ['1001', 0, RP(300_000)],
@@ -326,7 +335,7 @@ describe('P2-1 — validasi pagu', () => {
       [{ tahun: 2026, akun_kode: '5011', nominal: RP(500_000) }],
       baris,
       RENTANG_2026,
-      [akun5011],
+      [akun5011, akun1001],
     );
     expect(cari(hasil.beban, '5011')).toMatchObject({
       anggaran: RP(500_000),

@@ -993,3 +993,43 @@ describe('P2-1 — realisasi anggaran konsisten dengan labaRugi', () => {
     expect(hasil.beban.find((b) => b.kode === '5010')?.realisasi).toBe(RP(200_000));
   });
 });
+
+describe('AKT-23 — akun asing ditolak di semua laporan', () => {
+  const pesanAkun = (kode: string): RegExp =>
+    new RegExp(`^Akun ${kode} pada jurnal tidak dikenal di COA\\.$`);
+
+  const denganAkunAsing = (kode: string): BarisJurnalSumber[] => [
+    ...BARIS,
+    ...jurnal(`akt23-${kode}`, '2026-04-01', 'Jurnal akun asing', [
+      [kode, RP(100), 0],
+      ['1001', 0, RP(100)],
+    ]),
+  ];
+
+  const semuaLaporan = (baris: BarisJurnalSumber[]): Array<() => unknown> => [
+    () => neracaSaldo(baris, '2026-12-31'),
+    () => labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' }),
+    () => arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' }),
+    () => bukuBesar(baris, '1001'),
+  ];
+
+  it('neracaSaldo, labaRugi, arusKas, dan bukuBesar menolak akun 9999', () => {
+    for (const laporan of semuaLaporan(denganAkunAsing('9999'))) {
+      expect(laporan).toThrow(pesanAkun('9999'));
+    }
+  });
+
+  it('pesan menyebut kode akun asing yang benar (9998), bukan kode lain', () => {
+    for (const laporan of semuaLaporan(denganAkunAsing('9998'))) {
+      expect(laporan).toThrow(pesanAkun('9998'));
+    }
+  });
+
+  it('laporan normal tanpa akun asing tetap berjalan', () => {
+    const periode = { mulai: '2026-01-01', sampai: '2026-12-31' };
+    expect(() => neracaSaldo(BARIS, '2026-12-31')).not.toThrow();
+    expect(() => labaRugi(BARIS, periode)).not.toThrow();
+    expect(() => arusKas(BARIS, periode)).not.toThrow();
+    expect(() => bukuBesar(BARIS, '1001')).not.toThrow();
+  });
+});

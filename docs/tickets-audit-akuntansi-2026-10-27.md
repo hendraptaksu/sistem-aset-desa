@@ -41,7 +41,7 @@
 | AKT-20 | P1 | M | Implementasi klasifikasi arus kas 2050 | AKT-19 | [x] |
 | AKT-21 | P2 | S | Wajib alasan saat menandai rekonsiliasi dengan selisih | — | [x] |
 | AKT-22 | P2 | S | Validasi input koreksi & isi ulang | — | [x] |
-| AKT-23 | P2 | S | Cek akun asing di semua laporan | — | [ ] |
+| AKT-23 | P2 | S | Cek akun asing di semua laporan | — | [x] |
 | AKT-24 | P2 | M | Anti-duplikat import Excel | — | [ ] |
 | AKT-25 | P2 | M | Guard `insertJurnal` / jadikan internal | — | [ ] |
 | AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 23/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 24/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 10 (AKT-20). Tiket yang menambah
@@ -495,7 +495,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-23 — Cek akun asing di semua laporan** · P2 · S
+- [x] **AKT-23 — Cek akun asing di semua laporan** · P2 · S (2026-10-29: helper `pastikanAkunDikenal` menolak akun di luar COA dengan pesan `Akun X pada jurnal tidak dikenal di COA.` dan dipanggil di awal `neracaSaldo`, `labaRugi`, `arusKas`, `bukuBesar`; `neraca`/`neracaSaldoPeriode` tidak diubah; test `tests/laporan.test.ts` mencakup akun 9999 dan 9998 di keempat laporan; fixture COA parsial `tests/anggaran.test.ts` dilengkapi akun kas; typecheck bersih; 713/713 test hijau (57 file))
   - **Konteks:** `neracaSaldo` dan `labaRugi` diam-diam mengabaikan baris dengan
     akun yang tidak ada di COA; `neraca` melempar error. Saya reproduksi
     `neracaSaldo` “seimbang” padahal akun 9998/9999 tidak dikenal.
