@@ -306,7 +306,9 @@ describe('AUD-09 — peringatan jurnal 1050/2050 tanpa pihak', () => {
       baris: [D('1050', 100_000), K('3000', 100_000)],
     };
 
-    const belum = await env.panggil('jurnal:posting', input);
+    const belum = await env.panggil('jurnal:posting', input, {
+      konfirmasiTanpaSaldoAwal: true,
+    });
     expect(belum.ok).toBe(false);
     expect(belum.error).toMatch(/belum teralokasi di Piutang & Hutang/i);
     expect(belum.perluKonfirmasi).toBe(true);
@@ -314,6 +316,7 @@ describe('AUD-09 — peringatan jurnal 1050/2050 tanpa pihak', () => {
 
     const lanjut = await env.panggil('jurnal:posting', input, {
       konfirmasiPeringatan: true,
+      konfirmasiTanpaSaldoAwal: true,
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
 
@@ -425,14 +428,18 @@ describe('AUD-17 — hardening backup:auto dan pengirim IPC', () => {
 describe('AUD-11 — IPC backup lengkap (DB + lampiran)', () => {
   it('membuat subfolder bertanggal, menyalin lampiran, dan menulis audit', async () => {
     const env = buatEnv();
-    await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-aud11',
-        tanggal: '2026-10-23',
-        keterangan: 'Jurnal sebelum backup lengkap',
+    await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-aud11',
+          tanggal: '2026-10-23',
+          keterangan: 'Jurnal sebelum backup lengkap',
+        },
+        baris: [D('1001', 75_000), K('4005', 75_000)],
       },
-      baris: [D('1001', 75_000), K('4005', 75_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
 
     const attachments = join(env.dir, 'attachments');
     mkdirSync(attachments, { recursive: true });
@@ -476,14 +483,18 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
     const env = buatEnv();
     expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
 
-    const postingLama = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-aud12-lama',
-        tanggal: '2026-10-23',
-        keterangan: 'Jurnal sebelum backup lengkap',
+    const postingLama = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-aud12-lama',
+          tanggal: '2026-10-23',
+          keterangan: 'Jurnal sebelum backup lengkap',
+        },
+        baris: [D('1001', 80_000), K('4005', 80_000)],
       },
-      baris: [D('1001', 80_000), K('4005', 80_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(postingLama.ok, postingLama.error).toBe(true);
 
     const attachments = join(env.dir, 'attachments');
@@ -499,14 +510,18 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
     expect(backup.data.saved).toBe(true);
 
     // Data aktif berubah setelah backup: jurnal tambahan + lampiran berbeda.
-    const postingBaru = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-aud12-baru',
-        tanggal: '2026-10-23',
-        keterangan: 'Jurnal setelah backup lengkap',
+    const postingBaru = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-aud12-baru',
+          tanggal: '2026-10-23',
+          keterangan: 'Jurnal setelah backup lengkap',
+        },
+        baris: [D('1001', 20_000), K('4005', 20_000)],
       },
-      baris: [D('1001', 20_000), K('4005', 20_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(postingBaru.ok, postingBaru.error).toBe(true);
     writeFileSync(join(attachments, 'foto.jpg'), 'setelah-backup');
     writeFileSync(join(attachments, 'baru.jpg'), 'lampiran-ekstra');
@@ -632,14 +647,18 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
     const env = buatEnv();
 
     // 1. Posting jurnal: nomor bukti otomatis.
-    const posting = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-parkir-2026',
-        tanggal: '2026-01-02',
-        keterangan: 'Penerimaan parkir uji',
+    const posting = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-parkir-2026',
+          tanggal: '2026-01-02',
+          keterangan: 'Penerimaan parkir uji',
+        },
+        baris: [D('1001', 100_000), K('4005', 100_000)],
       },
-      baris: [D('1001', 100_000), K('4005', 100_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(posting.ok, posting.error).toBe(true);
     expect(posting.data.jurnal).toMatchObject({
       id: 'j-parkir-2026',
@@ -672,15 +691,19 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
 
     // 3. Tutup buku tahun lalu (2025): preview + create + audit.
-    const posting2025 = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-pendapatan-2025',
-        tanggal: '2025-03-01',
-        keterangan: 'Pendapatan tahun 2025',
-        jenis: 'TERIMA',
+    const posting2025 = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-pendapatan-2025',
+          tanggal: '2025-03-01',
+          keterangan: 'Pendapatan tahun 2025',
+          jenis: 'TERIMA',
+        },
+        baris: [D('1001', 5_000_000), K('4005', 5_000_000)],
       },
-      baris: [D('1001', 5_000_000), K('4005', 5_000_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(posting2025.ok, posting2025.error).toBe(true);
     expect(posting2025.data.jurnal.no_bukti).toBe('JU-2025-0001');
 
@@ -771,24 +794,32 @@ describe('AUD-21b — IPC Neraca Saldo per mode', () => {
   it('default tahun, kumulatif eksplisit, dan pemanggil string lama tetap jalan', async () => {
     const env = buatEnv();
 
-    const pendapatan2025 = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-aud21b-2025',
-        tanggal: '2025-03-01',
-        keterangan: 'Pendapatan 2025',
+    const pendapatan2025 = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-aud21b-2025',
+          tanggal: '2025-03-01',
+          keterangan: 'Pendapatan 2025',
+        },
+        baris: [D('1001', 5_000_000), K('4005', 5_000_000)],
       },
-      baris: [D('1001', 5_000_000), K('4005', 5_000_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(pendapatan2025.ok, pendapatan2025.error).toBe(true);
 
-    const beban2026 = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-aud21b-2026',
-        tanggal: '2026-02-01',
-        keterangan: 'Beban 2026',
+    const beban2026 = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-aud21b-2026',
+          tanggal: '2026-02-01',
+          keterangan: 'Beban 2026',
+        },
+        baris: [D('5004', 1_000_000), K('1001', 1_000_000)],
       },
-      baris: [D('5004', 1_000_000), K('1001', 1_000_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(beban2026.ok, beban2026.error).toBe(true);
 
     // Tanpa mode = default aman tahun berjalan.
@@ -844,14 +875,18 @@ describe('AUD-21b — IPC Neraca Saldo per mode', () => {
 describe('P2-7 — error handling IPC', () => {
   it('menolak jurnal tidak seimbang sebagai {ok:false}, bukan throw', async () => {
     const env = buatEnv();
-    const hasil = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-tidak-seimbang',
-        tanggal: '2026-01-02',
-        keterangan: 'Uji jurnal tidak seimbang',
+    const hasil = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-tidak-seimbang',
+          tanggal: '2026-01-02',
+          keterangan: 'Uji jurnal tidak seimbang',
+        },
+        baris: [D('1001', 100_000), K('4005', 90_000)],
       },
-      baris: [D('1001', 100_000), K('4005', 90_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
 
     expect(hasil.ok).toBe(false);
     expect(hasil.error).toMatch(/tidak seimbang/i);
@@ -860,14 +895,18 @@ describe('P2-7 — error handling IPC', () => {
 
   it('menolak kandidat backup sampah dan tetap memakai DB lama', async () => {
     const env = buatEnv();
-    const valid = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-aman',
-        tanggal: '2026-01-02',
-        keterangan: 'Jurnal sebelum restore gagal',
+    const valid = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-aman',
+          tanggal: '2026-01-02',
+          keterangan: 'Jurnal sebelum restore gagal',
+        },
+        baris: [D('1001', 50_000), K('4005', 50_000)],
       },
-      baris: [D('1001', 50_000), K('4005', 50_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(valid.ok, valid.error).toBe(true);
 
     const dbLama = env.db();
@@ -886,16 +925,61 @@ describe('P2-7 — error handling IPC', () => {
     const daftar = await env.panggil('jurnal:list', {});
     expect(daftar.data.map((j: { id: string }) => j.id)).toEqual(['j-aman']);
 
-    const lanjut = await env.panggil('jurnal:posting', {
-      header: {
-        id: 'j-setelah-gagal',
-        tanggal: '2026-01-03',
-        keterangan: 'Masih bisa menulis setelah restore gagal',
+    const lanjut = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-setelah-gagal',
+          tanggal: '2026-01-03',
+          keterangan: 'Masih bisa menulis setelah restore gagal',
+        },
+        baris: [D('1001', 25_000), K('4005', 25_000)],
       },
-      baris: [D('1001', 25_000), K('4005', 25_000)],
-    });
+      { konfirmasiTanpaSaldoAwal: true },
+    );
     expect(lanjut.ok, lanjut.error).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+  });
+});
+
+describe('AKT-01 — jurnal:posting mewajibkan saldo awal pertama', () => {
+  it('menolak jurnal pertama tanpa konfirmasi dan tidak menulis jurnal/audit', async () => {
+    const env = buatEnv();
+    const hasil = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-pertama',
+        tanggal: '2026-01-02',
+        keterangan: 'Jurnal pertama tanpa saldo awal',
+      },
+      baris: [D('1001', 100_000), K('4005', 100_000)],
+    });
+
+    expect(hasil.ok).toBe(false);
+    expect(hasil.error).toBe(
+      'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.',
+    );
+    expect(hasil.perluKonfirmasi).toBe(false);
+    expect((await env.panggil('jurnal:list', {})).data).toEqual([]);
+    expect((await env.panggil('audit:list', {})).data.rows).toEqual([]);
+  });
+
+  it('menyimpan jurnal pertama setelah operator mengonfirmasi mulai tanpa saldo awal', async () => {
+    const env = buatEnv();
+    const hasil = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-pertama',
+          tanggal: '2026-01-02',
+          keterangan: 'Jurnal pertama tanpa saldo awal',
+        },
+        baris: [D('1001', 100_000), K('4005', 100_000)],
+      },
+      { konfirmasiTanpaSaldoAwal: true },
+    );
+
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
   });
 });
 

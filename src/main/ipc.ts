@@ -803,6 +803,11 @@ export function registerIpc(deps: IpcDeps): void {
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+      const konfirmasiTanpaSaldoAwal =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiTanpaSaldoAwal?: unknown }).konfirmasiTanpaSaldoAwal === true;
 
       // AUD-09: Jurnal Umum tidak punya metadata pihak. Beri peringatan (bukan
       // error) agar akuntan sadar jurnal 1050/2050 akan tampil belum teralokasi.
@@ -820,7 +825,13 @@ export function registerIpc(deps: IpcDeps): void {
         }
       }
 
-      const hasil = postingJurnal(deps.db(), bentuk.input, { konfirmasiPeringatan });
+      const hasil = postingJurnal(deps.db(), bentuk.input, {
+        konfirmasiPeringatan,
+        // AKT-01: form transaksi/jurnal umum wajib punya saldo awal, kecuali
+        // operator sudah menekan "mulai tanpa saldo awal" (diteruskan UI AKT-02).
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal,
+      });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
           pesanValidasi(hasil.errors) ||

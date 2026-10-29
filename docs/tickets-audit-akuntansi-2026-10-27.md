@@ -19,7 +19,7 @@
 | ID | P | Ukuran | Judul | Dependency | Status |
 |---|---|---|---|---|---|
 | AKT-00 | — | S | Baseline audit & reproduksi | — | [x] |
-| AKT-01 | P1 | M | Guard backend: jurnal pertama wajib saldo awal / konfirmasi | — | [ ] |
+| AKT-01 | P1 | M | Guard backend: jurnal pertama wajib saldo awal / konfirmasi | — | [x] |
 | AKT-02 | P1 | M | UI konfirmasi "mulai tanpa saldo awal" | AKT-01 | [ ] |
 | AKT-03 | P1 | M | Tegakkan tanggal mulai pembukuan sebagai batas bawah | AKT-01 | [ ] |
 | AKT-04 | P1 | M | Peringatan kas minus untuk tanggal setelah jurnal | — | [ ] |
@@ -49,8 +49,8 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 1/30 (baseline).** Kerjakan berurutan; jangan mencentang tiket tanpa
-bukti test.
+**Status: 2/30 (AKT-00, AKT-01 selesai).** Kerjakan berurutan; jangan mencentang
+tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
 > kolom/trigger wajib menaikkan versi satu langkah dan memperbarui test migrasi.
@@ -63,7 +63,7 @@ bukti test.
 
 - [x] **AKT-00 — Baseline audit & reproduksi** · — · S (2026-10-27: typecheck bersih; 604/604 test hijau; 10 temuan P1 direproduksi, lihat `docs/tickets-audit-akuntansi-2026-10-27.md`)
 
-- [ ] **AKT-01 — Guard backend: jurnal pertama wajib saldo awal / konfirmasi** · P1 · M
+- [x] **AKT-01 — Guard backend: jurnal pertama wajib saldo awal / konfirmasi** · P1 · M (2026-10-29: typecheck bersih; 609/609 test hijau (53 file); guard `wajibSaldoAwal` dicek di dalam transaksi sebelum insert + audit, IPC `jurnal:posting` meneruskan `wajibSaldoAwal: true`/`konfirmasiTanpaSaldoAwal`, saldo awal dikecualikan)
   - **Konteks:** `statusSaldoAwal()` hanya melihat `COUNT(*) FROM jurnal = 0`
     (`src/db/saldoAwal.ts`). Setelah satu jurnal apa pun—termasuk reversal—wizard
     saldo awal terkunci permanen. Saat ini tidak ada guard di jalur posting, jadi

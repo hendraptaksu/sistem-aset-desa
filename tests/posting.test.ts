@@ -7,8 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { postingJurnal, validasiJurnalDb } from '../src/db/posting.js';
-import { getJurnalDetail, insertJurnal, listJurnal } from '../src/db/repository.js';
+import { postingJurnal, postingSaldoAwal, validasiJurnalDb } from '../src/db/posting.js';
+import {
+  getJurnalDetail,
+  insertJurnal,
+  listAuditLog,
+  listJurnal,
+} from '../src/db/repository.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
 
 const dirs: string[] = [];
@@ -352,6 +357,82 @@ describe('AUD-10 — peringatan kas minus memakai saldo per tanggal jurnal', () 
       });
       expect(hasil.boleh).toBe(true);
       expect(hasil.peringatan.join(' ')).toMatch(/Kas\/Bank 1001/);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AKT-01 — jurnal pertama wajib saldo awal / konfirmasi', () => {
+  const PESAN_WAJIB_SALDO_AWAL =
+    'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.';
+
+  it('menolak jurnal normal pertama tanpa konfirmasi dan tidak menulis jurnal/audit', () => {
+    const { db } = freshDb();
+    try {
+      const hasil = postingJurnal(
+        db,
+        { header: header(), baris: pasangan() },
+        { wajibSaldoAwal: true },
+      );
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors).toEqual([PESAN_WAJIB_SALDO_AWAL]);
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS c FROM jurnal_baris').get()).toEqual({ c: 0 });
+      // Guard berjalan di transaksi yang sama; gagal berarti audit pun tidak ditulis.
+      expect(listAuditLog(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menyimpan jurnal pertama bila operator memilih mulai tanpa saldo awal', () => {
+    const { db } = freshDb();
+    try {
+      const hasil = postingJurnal(
+        db,
+        { header: header(), baris: pasangan() },
+        { wajibSaldoAwal: true, konfirmasiTanpaSaldoAwal: true },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(jumlahJurnal(db)).toBe(1);
+      expect(listAuditLog(db)).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengizinkan jurnal berikutnya setelah saldo awal, dan saldo awal sendiri tidak terkena guard', () => {
+    const { db } = freshDb();
+    try {
+      const saldoAwal = postingSaldoAwal(
+        db,
+        {
+          header: header({
+            id: 'j-saldo-awal',
+            tanggal: '2026-01-01',
+            no_bukti: 'SA-2026-0001',
+            keterangan: 'Saldo awal pembukuan',
+            jenis: 'SALDO_AWAL',
+          }),
+          baris: pasangan('1001', '3000', 1_000_000),
+        },
+        { wajibSaldoAwal: true },
+      );
+      expect(saldoAwal.tersimpan, saldoAwal.errors.join(' ')).toBe(true);
+
+      const berikutnya = postingJurnal(
+        db,
+        {
+          header: header({ id: 'j-setelah-saldo-awal', no_bukti: 'JU-2026-0001' }),
+          baris: pasangan('1029', '4005'),
+        },
+        { wajibSaldoAwal: true },
+      );
+      expect(berikutnya.tersimpan, berikutnya.errors.join(' ')).toBe(true);
+      expect(jumlahJurnal(db)).toBe(2);
     } finally {
       db.close();
     }

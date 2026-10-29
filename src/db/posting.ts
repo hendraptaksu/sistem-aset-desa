@@ -18,11 +18,22 @@ export type OpsiPosting = {
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
   konfirmasiPeringatan?: boolean;
   /**
+   * Pintu input yang mewajibkan saldo awal lebih dulu (AKT-01). Jurnal pertama
+   * non-SALDO_AWAL ditolak selama belum ada jurnal sama sekali, kecuali operator
+   * sudah memilih "mulai tanpa saldo awal".
+   */
+  wajibSaldoAwal?: boolean;
+  /** Operator sudah mengonfirmasi memulai pembukuan tanpa saldo awal. */
+  konfirmasiTanpaSaldoAwal?: boolean;
+  /**
    * Baris audit yang ditulis ATOMIK bersama jurnal. Dipakai reversal (P0-6)
    * dan nanti operasi lain yang wajib punya jejak audit (P0-9).
    */
   audit?: AuditLog[];
 };
+
+export const PESAN_WAJIB_SALDO_AWAL =
+  'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.';
 
 export type HasilPosting = HasilValidasiJurnal & {
   tersimpan: boolean;
@@ -104,6 +115,18 @@ export function postingJurnal(
 
   try {
     const simpan = db.transaction(() => {
+      // AKT-01: cek dan tulis berada di transaksi yang sama agar dua posting
+      // pertama tidak bisa sama-sama lolos. Saldo awal sendiri dikecualikan.
+      if (
+        opsi.wajibSaldoAwal === true &&
+        opsi.konfirmasiTanpaSaldoAwal !== true &&
+        input.header.jenis !== 'SALDO_AWAL'
+      ) {
+        const row = db.prepare('SELECT COUNT(*) AS total FROM jurnal').get() as {
+          total: number;
+        };
+        if (Number(row.total) === 0) throw new Error(PESAN_WAJIB_SALDO_AWAL);
+      }
       const jurnal = insertJurnal(db, input.header, input.baris);
       // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
       // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.
