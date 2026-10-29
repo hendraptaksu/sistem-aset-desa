@@ -45,14 +45,15 @@ export const AKUN_MODAL = '3000';
 
 /**
  * Akun ekuitas legacy yang tetap ada di COA untuk membaca saldo/laporan lama,
- * tetapi tidak boleh dipakai sebagai baris jurnal baru. Nilainya turunan
- * (kumulatif dari tutup buku & surplus periode), bukan hasil posting manual.
+ * tetapi tidak boleh dipakai sebagai baris jurnal baru. Saldo akun ini hanya
+ * berasal dari baris jurnal data lama; v2 tidak menghitungnya dari tutup buku
+ * atau surplus periode.
  */
 export const AKUN_LEGACY_TIDAK_DIPOSTING: ReadonlySet<string> = new Set(['3001', '3002']);
 
 /** Pesan seragam untuk penolakan akun legacy di UI/posting/import. */
 export const PESAN_AKUN_LEGACY =
-  'adalah akun legacy 3001/3002 (saldo turunan) dan tidak boleh diposting; akun ini hanya untuk laporan.';
+  'adalah akun legacy 3001/3002: saldonya hanya berasal dari data lama dan tidak boleh diposting; akun ini hanya untuk laporan.';
 
 /** Dompet kas/bank (AKTIVA yang boleh dipakai sebagai akun kas). BUKAN 1040/1050. */
 const KODE_KAS = new Set([
