@@ -31,7 +31,7 @@ import {
 export type OpsiReversal = {
   /** ID jurnal balik; default dibuat otomatis. */
   id?: string;
-  /** Tanggal jurnal balik; default hari ini (koreksi tidak mengubah periode lama). */
+  /** Tanggal jurnal balik; default tanggal jurnal asli agar periode tidak bergeser. */
   tanggal?: string;
   /** Nomor bukti jurnal balik; opsional dan wajib unik bila diisi. */
   no_bukti?: string;
@@ -119,18 +119,24 @@ function rencanaUntuk(
   alasan: string,
   opsi: OpsiReversal,
 ) {
+  // Ambil detail lebih dulu: tanggal default reversal mengikuti tanggal jurnal
+  // asli supaya koreksi tidak menggeser laba ke tahun berjalan.
+  const detail = getJurnalDetail(db, idAsli);
+
   // Cek sebelum menyusun rencana agar kedua jalur (reversal & isi ulang)
   // berhenti tanpa menyentuh jurnal/audit.
   if (terhubungPanjar(db, idAsli))
     return { boleh: false, errors: [PESAN_REVERSAL_PANJAR] };
 
-  const detail = getJurnalDetail(db, idAsli);
   return rencanaReversal({
     jurnal: detail?.jurnal ?? null,
     baris: detail?.baris ?? [],
     reversalAda: cariReversal(db, idAsli),
     id: String(opsi.id ?? '').trim() || idBaru('rev'),
-    tanggal: String(opsi.tanggal ?? '').trim() || hariIni(),
+    // Tanggal eksplisit tetap menang (termasuk lintas tahun); tanpa tanggal,
+    // pakai tanggal jurnal asli. `hariIni()` hanya cadangan bila jurnal tidak
+    // ditemukan — rencana akan tetap ditolak oleh validasi.
+    tanggal: String(opsi.tanggal ?? '').trim() || detail?.jurnal.tanggal || hariIni(),
     alasan,
     no_bukti: opsi.no_bukti,
   });

@@ -23,7 +23,7 @@
 | AKT-02 | P1 | M | UI konfirmasi "mulai tanpa saldo awal" | AKT-01 | [x] |
 | AKT-03 | P1 | M | Tegakkan tanggal mulai pembukuan sebagai batas bawah | AKT-01 | [x] |
 | AKT-04 | P1 | M | Peringatan kas minus untuk tanggal setelah jurnal | — | [x] |
-| AKT-05 | P1 | S | Default tanggal reversal = tanggal jurnal asli | — | [ ] |
+| AKT-05 | P1 | S | Default tanggal reversal = tanggal jurnal asli | — | [x] |
 | AKT-06 | P1 | M | Audit override: peringatan + konfirmasi + alasan | — | [ ] |
 | AKT-07 | P1 | M | UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal | AKT-06 | [ ] |
 | AKT-08 | P1 | M | UI/API alasan overbalance Pihak & overrun Panjar | AKT-06 | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 5/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 6/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -164,7 +164,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-05 — Default tanggal reversal = tanggal jurnal asli** · P1 · S
+- [x] **AKT-05 — Default tanggal reversal = tanggal jurnal asli** · P1 · S (2026-10-29: typecheck bersih; 629/629 test hijau (53 file); `rencanaUntuk` mengambil detail jurnal sebelum menyusun rencana dan default `tanggal` = `detail.jurnal.tanggal`; `opsi.tanggal` eksplisit tetap menang termasuk lintas tahun; test reversal 2025 tanpa tanggal menjaga laba 2025 kembali nol dan laba 2026 tidak berubah, plus test tanggal eksplisit lintas tahun)
   - **Konteks:** `reverseJurnal` memakai `hariIni()` bila `opsi.tanggal` kosong
     (`src/db/reversal.ts`), sedangkan UI dan dokumentasi memakai tanggal asli.
     Koreksi jurnal 2025 lewat API bisa menggeser laba ke 2026.

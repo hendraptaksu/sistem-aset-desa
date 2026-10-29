@@ -235,6 +235,67 @@ describe('P0-6 — reversal di database', () => {
     }
   });
 
+  it('tanpa tanggal eksplisit, reversal memakai tanggal jurnal asli (tidak menggeser laba)', () => {
+    const db = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-pendapatan-2025',
+          tanggal: '2025-06-15',
+          no_bukti: 'JU-2025-0100',
+          keterangan: 'Pendapatan 2025',
+          jenis: 'TERIMA',
+        },
+        pasangan('1001', '4005', RP(100)),
+      );
+
+      const sebelum = listBarisJurnal(db);
+      expect(labaTahun(sebelum, 2025)).toBe(RP(100));
+      expect(labaTahun(sebelum, 2026)).toBe(0);
+
+      const hasil = reverseJurnal(db, 'j-pendapatan-2025', 'Salah input pendapatan');
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal?.tanggal).toBe('2025-06-15');
+
+      // Balik di tahun yang sama: laba 2025 kembali nol, 2026 tidak berubah.
+      const sesudah = listBarisJurnal(db);
+      expect(labaTahun(sesudah, 2025)).toBe(0);
+      expect(labaTahun(sesudah, 2026)).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tanggal reversal eksplisit tetap dihormati walau berbeda tahun dari jurnal asli', () => {
+    const db = freshDb();
+    try {
+      insertJurnal(
+        db,
+        {
+          id: 'j-pendapatan-2025',
+          tanggal: '2025-06-15',
+          no_bukti: 'JU-2025-0100',
+          keterangan: 'Pendapatan 2025',
+          jenis: 'TERIMA',
+        },
+        pasangan('1001', '4005', RP(100)),
+      );
+
+      const hasil = reverseJurnal(db, 'j-pendapatan-2025', 'Koreksi lintas tahun', {
+        tanggal: '2026-01-10',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal?.tanggal).toBe('2026-01-10');
+
+      const sesudah = listBarisJurnal(db);
+      expect(labaTahun(sesudah, 2025)).toBe(RP(100));
+      expect(labaTahun(sesudah, 2026)).toBe(-RP(100));
+    } finally {
+      db.close();
+    }
+  });
+
   it('menolak reversal ganda dan reversal atas jurnal balik (repository & service)', () => {
     const db = freshDb();
     try {
