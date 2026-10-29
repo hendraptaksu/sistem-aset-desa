@@ -777,6 +777,9 @@ function tambahKelompok(k: ArusKasKelompok, masuk: number, keluar: number): void
  * - kewajiban/modal → PENDANAAN
  * - perpindahan antar dompet kas (tanpa akun lawan non-kas) → TRANSFER,
  *   tidak dihitung sebagai arus masuk/keluar (neto 0) agar total tidak dobel.
+ * - jurnal campuran (kas masuk dan keluar sekaligus dengan akun non-kas)
+ *   dipecah: porsi `min(kas masuk, kas keluar)` menjadi TRANSFER, sisanya
+ *   masuk kelompok sesuai sifat akun non-kas.
  *
  * `saldoAwal`/`saldoAkhir` adalah total seluruh dompet kas/bank, sehingga
  * `saldoAkhir = saldoAwal + kenaikan` konsisten dengan Buku Besar.
@@ -858,7 +861,19 @@ export function arusKas(
           ? 'INVESTASI'
           : 'OPERASI';
 
-    // Satu baris per dompet: neto debit−kredit dalam jurnal tersebut.
+    // Satu jurnal bisa memuat perpindahan antar dompet sekaligus arus nyata.
+    // Contoh: D bank 100 / D beban 5 / K kas 105 berisi transfer bank→kas 100
+    // dan biaya operasi 5, bukan operasi masuk 100 + keluar 105.
+    //
+    // Neto per dompet dihitung lebih dulu (debit−kredit). Porsi transfer adalah
+    // min(total neto masuk, total neto keluar); sisanya adalah arus nyata yang
+    // dikelompokkan menurut sifat akun non-kas.
+    //
+    // Alokasi porsi transfer dilakukan berurutan (FIFO) mengikuti urutan baris
+    // jurnal: dompet masuk pertama menyerap porsi transfer lebih dulu, begitu
+    // pula dompet keluar. Sisa alokasi tiap arah dihitung terpisah agar kedua
+    // sisi transfer selalu sama besar. Konsekuensinya deterministik, tanpa
+    // pecahan, dan transfer tiap dompet tidak pernah melebihi neto kasnya.
     const perKas = new Map<string, { masuk: number; keluar: number; pertama: BarisJurnalSumber }>();
     for (const { b } of kas) {
       const cur = perKas.get(b.akun_kode) ?? { masuk: 0, keluar: 0, pertama: b };
@@ -866,31 +881,88 @@ export function arusKas(
       cur.keluar += b.kredit;
       perKas.set(b.akun_kode, cur);
     }
+
+    let totalNetoMasuk = 0;
+    let totalNetoKeluar = 0;
+    for (const v of perKas.values()) {
+      const neto = v.masuk - v.keluar;
+      if (neto > 0) totalNetoMasuk += neto;
+      else if (neto < 0) totalNetoKeluar -= neto;
+    }
+    const porsiTransfer = Math.min(totalNetoMasuk, totalNetoKeluar);
+    let sisaTransferMasuk = porsiTransfer;
+    let sisaTransferKeluar = porsiTransfer;
+
+    type AlokasiKas = {
+      pertama: BarisJurnalSumber;
+      /** Arus nyata (bukan transfer) per dompet. */
+      masuk: number;
+      keluar: number;
+      transferMasuk: number;
+      transferKeluar: number;
+    };
+    const alokasi = new Map<string, AlokasiKas>();
     for (const [kode, v] of perKas) {
       const neto = v.masuk - v.keluar;
-      if (neto === 0) continue;
+      const isi: AlokasiKas = {
+        pertama: v.pertama,
+        masuk: 0,
+        keluar: 0,
+        transferMasuk: 0,
+        transferKeluar: 0,
+      };
+      if (neto > 0) {
+        isi.transferMasuk = Math.min(sisaTransferMasuk, neto);
+        sisaTransferMasuk -= isi.transferMasuk;
+        isi.masuk = neto - isi.transferMasuk;
+      } else if (neto < 0) {
+        const bruto = -neto;
+        isi.transferKeluar = Math.min(sisaTransferKeluar, bruto);
+        sisaTransferKeluar -= isi.transferKeluar;
+        isi.keluar = bruto - isi.transferKeluar;
+      }
+      alokasi.set(kode, isi);
+    }
+    const kodeTransfer = [...alokasi]
+      .filter(([, v]) => v.transferMasuk > 0 || v.transferKeluar > 0)
+      .map(([kode]) => kode);
+
+    for (const [kode, v] of alokasi) {
       const a = peta.get(kode);
-      const masuk = neto > 0 ? neto : 0;
-      const keluar = neto < 0 ? -neto : 0;
-      rows.push({
+      const dasar = {
         tanggal: v.pertama.tanggal,
         jurnal_id: v.pertama.jurnal_id ?? '',
         no_bukti: v.pertama.no_bukti ?? '',
         keterangan: v.pertama.keterangan_baris || v.pertama.keterangan || '',
         akun_kode: kode,
         akun_nama: a?.nama ?? kode,
-        masuk,
-        keluar,
-        lawan,
-        kelompok,
-      });
-      const target =
-        kelompok === 'PENDANAAN'
-          ? pendanaan
-          : kelompok === 'INVESTASI'
-            ? investasi
-            : operasi;
-      tambahKelompok(target, masuk, keluar);
+      };
+      if (v.transferMasuk > 0 || v.transferKeluar > 0) {
+        rows.push({
+          ...dasar,
+          masuk: v.transferMasuk,
+          keluar: v.transferKeluar,
+          lawan: kodeTransfer.filter((x) => x !== kode),
+          kelompok: 'TRANSFER',
+        });
+        tambahKelompok(transfer, v.transferMasuk, v.transferKeluar);
+      }
+      if (v.masuk > 0 || v.keluar > 0) {
+        rows.push({
+          ...dasar,
+          masuk: v.masuk,
+          keluar: v.keluar,
+          lawan,
+          kelompok,
+        });
+        const target =
+          kelompok === 'PENDANAAN'
+            ? pendanaan
+            : kelompok === 'INVESTASI'
+              ? investasi
+              : operasi;
+        tambahKelompok(target, v.masuk, v.keluar);
+      }
     }
   }
 

@@ -570,6 +570,168 @@ describe('AKT-17 — pinjaman 1050 diklasifikasikan sebagai INVESTASI', () => {
   });
 });
 
+describe('AKT-18 — transfer dan biaya pada jurnal kas gabungan', () => {
+  const modalAwal = jurnal('akt18-modal', '2025-12-31', 'Modal awal', [
+    ['1001', RP(1_000), 0],
+    ['3000', 0, RP(1_000)],
+  ]);
+  const periode = { mulai: '2026-01-01', sampai: '2026-12-31' } as const;
+
+  it('kas keluar > kas masuk: transfer 100 + operasi keluar 5, bukan operasi 100/105', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt18-keluar', '2026-01-10', 'Pindah dana + biaya', [
+        ['1029', RP(100), 0],
+        ['5003', RP(5), 0],
+        ['1001', 0, RP(105)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.transfer).toMatchObject({ masuk: RP(100), keluar: RP(100), neto: 0 });
+    expect(ak.operasi).toMatchObject({ masuk: 0, keluar: RP(5), neto: RP(-5) });
+    expect(ak.investasi.neto).toBe(0);
+    expect(ak.pendanaan.neto).toBe(0);
+
+    const transferRows = ak.rows.filter((r) => r.kelompok === 'TRANSFER');
+    expect(transferRows).toHaveLength(2);
+    expect(transferRows.find((r) => r.akun_kode === '1029')).toMatchObject({
+      masuk: RP(100),
+      keluar: 0,
+      lawan: ['1001'],
+    });
+    expect(transferRows.find((r) => r.akun_kode === '1001')).toMatchObject({
+      masuk: 0,
+      keluar: RP(100),
+      lawan: ['1029'],
+    });
+    expect(ak.rows.filter((r) => r.kelompok === 'OPERASI')).toEqual([
+      expect.objectContaining({ akun_kode: '1001', masuk: 0, keluar: RP(5), lawan: ['5003'] }),
+    ]);
+
+    // Transfer tidak masuk total arus; saldo akhir tetap mengikuti mutasi kas.
+    expect(ak.totalMasuk).toBe(0);
+    expect(ak.totalKeluar).toBe(RP(5));
+    expect(ak.kenaikan).toBe(RP(-5));
+    expect(ak.saldoAwal).toBe(RP(1_000));
+    expect(ak.saldoAkhir).toBe(RP(995));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('kas masuk > kas keluar: transfer 100 + operasi masuk 5', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt18-masuk', '2026-02-10', 'Pindah dana + pendapatan', [
+        ['1029', RP(105), 0],
+        ['1001', 0, RP(100)],
+        ['4005', 0, RP(5)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.transfer).toMatchObject({ masuk: RP(100), keluar: RP(100), neto: 0 });
+    expect(ak.operasi).toMatchObject({ masuk: RP(5), keluar: 0, neto: RP(5) });
+    expect(ak.rows.find((r) => r.kelompok === 'OPERASI')).toMatchObject({
+      akun_kode: '1029',
+      masuk: RP(5),
+      keluar: 0,
+      lawan: ['4005'],
+    });
+
+    expect(ak.totalMasuk).toBe(RP(5));
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.kenaikan).toBe(RP(5));
+    expect(ak.saldoAwal).toBe(RP(1_000));
+    expect(ak.saldoAkhir).toBe(RP(1_005));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('tanpa akun non-kas tetap transfer murni dan tidak masuk total arus', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt18-murni', '2026-03-10', 'Pindah dana', [
+        ['1029', RP(100), 0],
+        ['1001', 0, RP(100)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.transfer).toMatchObject({ masuk: RP(100), keluar: RP(100), neto: 0 });
+    expect(ak.rows.filter((r) => r.kelompok === 'TRANSFER')).toHaveLength(2);
+    expect(ak.rows.some((r) => r.kelompok === 'OPERASI')).toBe(false);
+    expect(ak.totalMasuk).toBe(0);
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.kenaikan).toBe(0);
+    expect(ak.saldoAwal).toBe(RP(1_000));
+    expect(ak.saldoAkhir).toBe(RP(1_000));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('banyak akun kas dan non-kas: alokasi FIFO tidak melebihi arus sebenarnya', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt18-banyak', '2026-04-10', 'Konsolidasi beberapa dompet', [
+        ['1029', RP(100), 0],
+        ['1001', RP(40), 0],
+        ['1015', 0, RP(120)],
+        ['2050', 0, RP(10)],
+        ['4005', 0, RP(10)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    // Neto: bank +100, kas +40, tunai −120 → porsi transfer = 120.
+    expect(ak.transfer).toMatchObject({ masuk: RP(120), keluar: RP(120), neto: 0 });
+    expect(ak.operasi).toMatchObject({ masuk: RP(20), keluar: 0, neto: RP(20) });
+
+    const transferRows = ak.rows.filter((r) => r.kelompok === 'TRANSFER');
+    expect(transferRows).toHaveLength(3);
+    expect(transferRows.find((r) => r.akun_kode === '1029')).toMatchObject({ masuk: RP(100), keluar: 0 });
+    expect(transferRows.find((r) => r.akun_kode === '1001')).toMatchObject({ masuk: RP(20), keluar: 0 });
+    expect(transferRows.find((r) => r.akun_kode === '1015')).toMatchObject({ masuk: 0, keluar: RP(120) });
+    // Setiap baris transfer tidak boleh melebihi neto dompet pada jurnal itu.
+    for (const r of transferRows) {
+      expect(r.masuk + r.keluar).toBeLessThanOrEqual(RP(120));
+    }
+
+    expect(ak.totalMasuk).toBe(RP(20));
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.kenaikan).toBe(RP(20));
+    expect(ak.saldoAwal).toBe(RP(1_000));
+    expect(ak.saldoAkhir).toBe(RP(1_020));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('sisa jurnal campuran mengikuti sifat akun non-kas: piutang → INVESTASI', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt18-investasi', '2026-05-10', 'Pindah dana + pelunasan pinjaman', [
+        ['1029', RP(105), 0],
+        ['1001', 0, RP(100)],
+        ['1050', 0, RP(5)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.transfer).toMatchObject({ masuk: RP(100), keluar: RP(100), neto: 0 });
+    expect(ak.investasi).toMatchObject({ masuk: RP(5), keluar: 0, neto: RP(5) });
+    expect(ak.operasi.neto).toBe(0);
+    expect(ak.rows.find((r) => r.kelompok === 'INVESTASI')).toMatchObject({
+      akun_kode: '1029',
+      masuk: RP(5),
+      keluar: 0,
+      lawan: ['1050'],
+    });
+
+    expect(ak.totalMasuk).toBe(RP(5));
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.kenaikan).toBe(RP(5));
+    expect(ak.saldoAwal).toBe(RP(1_000));
+    expect(ak.saldoAkhir).toBe(RP(1_005));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+});
+
 describe('P0-5 — dashboard dari jurnal', () => {
   it('kas tunai, total LPD, dan badge BALANCE dihitung dari baris jurnal', () => {
     const d = buildDashboardJurnal(BARIS, [{ tahun: 2025 }], '2026-12-31');
