@@ -52,6 +52,12 @@ export type PostingContext = {
   /** Saldo kas/bank saat ini dalam sen, per kode akun. */
   saldoKas?: Readonly<Record<string, number>>;
   /**
+   * AKT-04: minimum cumulative sum (≤ 0) mutasi kas pada tanggal SETELAH
+   * tanggal jurnal, per kode akun kas. Menunjukkan tambahan terburuk yang bisa
+   * menimpa saldo pada tanggal jurnal (mis. pengeluaran backdate). Kosong = 0.
+   */
+  kasMinimumSetelah?: Record<string, number>;
+  /**
    * AKT-03: batas bawah tanggal jurnal (YYYY-MM-DD) dari pengaturan pembukuan.
    * Kosong/tidak valid = tidak ada batas (kompatibel data lama).
    */
@@ -238,14 +244,18 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   }
 
   // ---- 6. Kas/bank minus: peringatan, bukan error ----
+  // AKT-04: yang dinilai adalah saldo TERBURUK, yaitu saldo pada tanggal jurnal
+  // ditambah minimum cumulative sum mutasi setelah tanggal itu. Dengan begitu
+  // jurnal backdate tetap diperingatkan bila membuat kas minus di tanggal
+  // berikutnya, dan hanya ada satu pesan per akun (nominal minus terburuk).
   if (ctx.saldoKas) {
     for (const [kode, delta] of deltaKas) {
       const saldoAwal = ctx.saldoKas[kode];
       if (saldoAwal === undefined || delta === 0) continue;
-      const saldoAkhir = saldoAwal + delta;
-      if (saldoAkhir < 0) {
+      const saldoTerburuk = saldoAwal + delta + (ctx.kasMinimumSetelah?.[kode] ?? 0);
+      if (saldoTerburuk < 0) {
         peringatan.push(
-          `Kas/Bank ${labelAkun(petaAkun.get(kode), kode)} akan minus ${formatRp(-saldoAkhir)}. Periksa kembali — boleh lanjut dengan konfirmasi.`,
+          `Kas/Bank ${labelAkun(petaAkun.get(kode), kode)} akan minus ${formatRp(-saldoTerburuk)}. Periksa kembali — boleh lanjut dengan konfirmasi.`,
         );
       }
     }

@@ -366,6 +366,235 @@ describe('AUD-10 — peringatan kas minus memakai saldo per tanggal jurnal', () 
   });
 });
 
+describe('AKT-04 — peringatan kas minus untuk tanggal setelah jurnal', () => {
+  it('memperingatkan backdate yang membuat kas minus di tanggal setelahnya', () => {
+    const { db } = freshDb();
+    try {
+      // 1 Jan kas Rp 1.000.
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-awal',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0100',
+            keterangan: 'Saldo awal kas',
+            jenis: 'SALDO_AWAL',
+          }),
+          baris: pasangan('1001', '3000', 100_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      // 10 Jan keluar Rp 800 -> kas tersisa Rp 200.
+      const keluar10 = postingJurnal(db, {
+        header: header({
+          id: 'j-10',
+          tanggal: '2026-01-10',
+          no_bukti: 'JU-2026-0101',
+          keterangan: 'Bayar 10 Januari',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 80_000),
+      });
+      expect(keluar10.tersimpan).toBe(true);
+      expect(keluar10.peringatan).toEqual([]);
+
+      // Backdate 5 Jan keluar Rp 300: saldo pada 5 Jan masih Rp 700 (positif),
+      // tetapi setelah pengeluaran 10 Jan kas menjadi minus Rp 100.
+      const backdate = {
+        header: header({
+          id: 'j-05',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0102',
+          keterangan: 'Bayar backdate 5 Januari',
+          jenis: 'BAYAR' as const,
+        }),
+        baris: pasangan('5000', '1001', 30_000),
+      };
+
+      const validasi = validasiJurnalDb(db, backdate);
+      expect(validasi.boleh).toBe(true);
+      expect(validasi.perluKonfirmasi).toBe(true);
+      expect(validasi.peringatan).toHaveLength(1);
+      expect(validasi.peringatan[0]).toMatch(/Kas\/Bank 1001/);
+      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 100,00/);
+
+      const belum = postingJurnal(db, backdate);
+      expect(belum.tersimpan).toBe(false);
+      expect(belum.perluKonfirmasi).toBe(true);
+      expect(jumlahJurnal(db)).toBe(2);
+
+      const lanjut = postingJurnal(db, backdate, { konfirmasiPeringatan: true });
+      expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
+      expect(jumlahJurnal(db)).toBe(3);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tidak memperingatkan bila kas cukup sampai tanggal setelahnya', () => {
+    const { db } = freshDb();
+    try {
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-awal',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0110',
+            keterangan: 'Saldo awal kas',
+            jenis: 'SALDO_AWAL',
+          }),
+          baris: pasangan('1001', '3000', 200_000),
+        }).tersimpan,
+      ).toBe(true);
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-10',
+            tanggal: '2026-01-10',
+            no_bukti: 'JU-2026-0111',
+            keterangan: 'Bayar 10 Januari',
+            jenis: 'BAYAR',
+          }),
+          baris: pasangan('5000', '1001', 80_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      // Rp 2.000 - Rp 300 - Rp 800 = Rp 900, tetap positif.
+      const validasi = validasiJurnalDb(db, {
+        header: header({
+          id: 'j-05',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0112',
+          keterangan: 'Bayar backdate 5 Januari',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 30_000),
+      });
+      expect(validasi.boleh).toBe(true);
+      expect(validasi.peringatan).toEqual([]);
+      expect(validasi.perluKonfirmasi).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tetap tanpa peringatan saat tidak ada mutasi setelahnya dan saldo cukup', () => {
+    const { db } = freshDb();
+    try {
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-awal',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0120',
+            keterangan: 'Saldo awal kas',
+            jenis: 'SALDO_AWAL',
+          }),
+          baris: pasangan('1001', '3000', 100_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      const validasi = validasiJurnalDb(db, {
+        header: header({
+          id: 'j-05',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0121',
+          keterangan: 'Bayar 5 Januari',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 30_000),
+      });
+      expect(validasi.boleh).toBe(true);
+      expect(validasi.peringatan).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mempertahankan perilaku lama saat tidak ada mutasi setelahnya dan saldo minus', () => {
+    const { db } = freshDb();
+    try {
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-awal',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0130',
+            keterangan: 'Saldo awal kas',
+            jenis: 'SALDO_AWAL',
+          }),
+          baris: pasangan('1001', '3000', 100_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      const validasi = validasiJurnalDb(db, {
+        header: header({
+          id: 'j-05',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0131',
+          keterangan: 'Bayar 5 Januari',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 120_000),
+      });
+      expect(validasi.boleh).toBe(true);
+      expect(validasi.peringatan).toHaveLength(1);
+      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 200,00/);
+      expect(validasi.perluKonfirmasi).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('hanya satu peringatan dengan nominal minus terburuk bila tanggal jurnal sudah minus', () => {
+    const { db } = freshDb();
+    try {
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-awal',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0140',
+            keterangan: 'Saldo awal kas',
+            jenis: 'SALDO_AWAL',
+          }),
+          baris: pasangan('1001', '3000', 100_000),
+        }).tersimpan,
+      ).toBe(true);
+      expect(
+        postingJurnal(db, {
+          header: header({
+            id: 'j-10',
+            tanggal: '2026-01-10',
+            no_bukti: 'JU-2026-0141',
+            keterangan: 'Bayar 10 Januari',
+            jenis: 'BAYAR',
+          }),
+          baris: pasangan('5000', '1001', 80_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      // Di tanggal jurnal: Rp 1.000 - Rp 1.200 = minus Rp 200.
+      // Setelah 10 Jan: minus Rp 200 - Rp 800 = minus Rp 1.000 (terburuk).
+      const validasi = validasiJurnalDb(db, {
+        header: header({
+          id: 'j-05',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0142',
+          keterangan: 'Bayar backdate 5 Januari',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 120_000),
+      });
+      expect(validasi.peringatan).toHaveLength(1);
+      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 1\.000,00/);
+      expect(validasi.peringatan[0]).not.toMatch(/Rp 200,00/);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('AKT-01 — jurnal pertama wajib saldo awal / konfirmasi', () => {
   const PESAN_WAJIB_SALDO_AWAL =
     'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.';

@@ -100,6 +100,32 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
     if (isAkunKas(r.akun_kode)) saldoKas[String(r.akun_kode)] = Number(r.saldo);
   }
 
+  // AKT-04: backdate tidak boleh lolos hanya karena saldo pada tanggal jurnal
+  // masih positif. Hitung minimum cumulative sum mutasi kas SETELAH tanggal
+  // jurnal (mulai dari 0), per akun kas. Jurnal di tanggal yang sama sudah
+  // termasuk `saldoKas`, jadi di sini hanya `j.tanggal > tanggal`. Agregasi per
+  // jurnal (bukan per baris) agar debit/kredit dalam satu jurnal tidak sempat
+  // menghasilkan minus semu; urutan tanggal + id menjaga determinisme.
+  const kasMinimumSetelah: Record<string, number> = {};
+  for (const kode of KAS_KODES) kasMinimumSetelah[kode] = 0;
+  const setelahRows = db
+    .prepare(
+      `SELECT b.akun_kode, COALESCE(SUM(b.debit - b.kredit), 0) AS delta
+       FROM jurnal_baris b JOIN jurnal j ON j.id = b.jurnal_id
+       WHERE j.tanggal > ?
+       GROUP BY b.akun_kode, j.id, j.tanggal
+       ORDER BY j.tanggal ASC, j.id ASC`,
+    )
+    .all(tanggal) as { akun_kode: string; delta: number }[];
+  const kumulatifSetelah = new Map<string, number>();
+  for (const r of setelahRows) {
+    const kode = String(r.akun_kode);
+    if (!isAkunKas(kode)) continue;
+    const kumulatif = (kumulatifSetelah.get(kode) ?? 0) + Number(r.delta);
+    kumulatifSetelah.set(kode, kumulatif);
+    kasMinimumSetelah[kode] = Math.min(kasMinimumSetelah[kode] ?? 0, kumulatif);
+  }
+
   return {
     akun: listAkun(db).map((a) => ({
       kode: a.kode,
@@ -111,6 +137,7 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
     tutupBuku: listTutupBuku(db).map((t) => ({ tahun: Number(t.tahun) })),
     noBuktiTerpakai,
     saldoKas,
+    kasMinimumSetelah,
     // AKT-03: batas bawah pembukuan dibaca dari pengaturan. Nilai kosong tetap
     // kosong (bukan `tanggalMulaiEfektif` yang jatuh ke hari ini) agar data
     // lama tanpa setting tidak tiba-tiba kehilangan kemampuan backdate.
