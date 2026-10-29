@@ -27,7 +27,7 @@
 | AKT-06 | P1 | M | Audit override: peringatan + konfirmasi + alasan | — | [x] |
 | AKT-07 | P1 | M | UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal | AKT-06 | [x] |
 | AKT-08 | P1 | M | UI/API alasan overbalance Pihak & overrun Panjar | AKT-06 | [x] |
-| AKT-09 | P1 | M | Modul audit integritas akuntansi | — | [ ] |
+| AKT-09 | P1 | M | Modul audit integritas akuntansi | — | [x] |
 | AKT-10 | P1 | S | Tutup buku menolak jika audit integritas gagal | AKT-09 | [ ] |
 | AKT-11 | P1 | S | Restore menolak backup yang tidak lolos audit integritas | AKT-09 | [ ] |
 | AKT-12 | P1 | S | Tutup buku berurutan / cegah lompat tahun | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 9/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 10/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -244,7 +244,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** AKT-06.
 
-- [ ] **AKT-09 — Modul audit integritas akuntansi** · P1 · M
+- [x] **AKT-09 — Modul audit integritas akuntansi** · P1 · M (2026-10-29: typecheck bersih; 652/652 test hijau (55 file); `src/db/integritas.ts` mendeteksi jurnal tidak seimbang, jurnal <2 baris, akun asing, baris orphan, pelanggaran `PRAGMA foreign_key_check`, nomor bukti duplikat per tahun, panjar CLOSED tidak lengkap, dan panjar OPEN yang punya `jurnal_close_id`; DB bersih → `ok:true`; saldo kas negatif tidak dijadikan hard failure)
   - **Konteks:** Trigger v9 hanya menjaga satu baris dan immutability; tidak ada
     yang menjamin total debit = total kredit per jurnal di DB. Backup/restore
     juga belum memeriksa integritas akuntansi.
