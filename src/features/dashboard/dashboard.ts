@@ -9,6 +9,7 @@
 import { COA, LPD_KODES, type Coa } from '../../db/coa.js';
 import { rentangTahunBuku } from '../../core/pengaturan.js';
 import { formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import {
   labaRugi,
   namaAkun,
@@ -59,7 +60,7 @@ export type DashboardPeriode = {
   tahunTerkunci: number[];
   /** Tahun terbesar yang boleh ditutup (tahun lalu menurut tanggal acuan). */
   batasTahun: number;
-  /** Tahun berjalan yang masih terbuka pada cut-off. */
+  /** Tahun berjalan yang masih terbuka menurut tahun acuan hari ini. */
   tahunBerjalan: number;
   /** cth. "2025 terkunci · 2026 terbuka". */
   status: string;
@@ -99,7 +100,7 @@ export type DashboardHasil = {
 export type DashboardOpsi = {
   /** Bulan awal tahun buku 1–12 (dari pengaturan pembukuan). */
   awalTahunBuku?: number;
-  /** Tanggal acuan batas tutup buku; default = cutoff (mudah diuji). */
+  /** Tanggal acuan status periode/tutup buku; default = hari ini (lokal). */
   sekarang?: string;
   /** Master akun dari DB (termasuk akun tambahan); default COA statis. */
   daftarAkun?: readonly Coa[];
@@ -223,9 +224,17 @@ function susunPeriode(
   const tahunTerkunci = tahunTutupUnik(tutup);
   const tahunTerakhirDitutup =
     tahunTerkunci.length > 0 ? tahunTerkunci[tahunTerkunci.length - 1]! : null;
-  const tahunBerjalan = Number(cutoff.slice(0, 4));
-  const tahunAcuan = Number(sekarang.slice(0, 4));
-  const batasTahun = (Number.isInteger(tahunAcuan) ? tahunAcuan : tahunBerjalan) - 1;
+
+  // Status "terbuka" mengikuti tahun acuan hari ini, bukan tahun cut-off
+  // laporan. Cut-off historis yang sudah ditutup tidak boleh tampil sebagai
+  // "2025 terkunci · 2025 terbuka".
+  const tahunCutoff = Number(cutoff.slice(0, 4));
+  const tahunSekarang = Number(sekarang.slice(0, 4));
+  const tahunAcuan = Number.isInteger(tahunSekarang) ? tahunSekarang : tahunCutoff;
+  let tahunBerjalan = tahunAcuan;
+  while (tahunTerkunci.includes(tahunBerjalan)) tahunBerjalan += 1;
+
+  const batasTahun = tahunAcuan - 1;
   const status =
     tahunTerkunci.length === 0
       ? `Belum ada periode terkunci · ${tahunBerjalan} terbuka`
@@ -284,7 +293,7 @@ export function buildDashboardJurnal(
   };
 
   const n = neraca(baris, { cutoff, tutup }, coa);
-  const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? cutoff);
+  const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? tanggalLokal());
 
   return {
     cutoff,

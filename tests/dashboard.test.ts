@@ -99,7 +99,7 @@ const TUTUP = [{ tahun: 2025 }];
 
 describe('P1-14 — dashboard akuntan dari jurnal', () => {
   it('kas/bank, laba berjalan, dan neraca saldo sama dengan mesin laporan', () => {
-    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
 
     // Manual: 1001 15,5jt + 1010 2jt + 1029 1jt = 18,5jt.
     expect(d.kasBank.total).toBe(RP(18_500_000));
@@ -144,7 +144,7 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
   });
 
   it('periode menampilkan 2025 terkunci & 2026 terbuka', () => {
-    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
     expect(d.periode.tahunTerakhirDitutup).toBe(2025);
     expect(d.periode.tahunTerkunci).toEqual([2025]);
     expect(d.periode.tahunBerjalan).toBe(2026);
@@ -152,8 +152,26 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
     expect(d.periode.batasTahun).toBe(2025);
   });
 
+  it('cut-off historis yang terkunci tidak tampil terbuka pada tahun yang sama', () => {
+    const d = buildDashboardJurnal(BARIS, TUTUP, '2025-12-31', {
+      sekarang: '2026-10-29',
+    });
+    expect(d.periode.tahunBerjalan).toBe(2026);
+    expect(d.periode.status).toBe('2025 terkunci · 2026 terbuka');
+    expect(d.periode.status).not.toContain('2025 terbuka');
+    expect(d.periode.batasTahun).toBe(2025);
+  });
+
+  it('status terbuka melewati tahun acuan yang sudah terkunci', () => {
+    const d = buildDashboardJurnal(BARIS, [{ tahun: 2025 }, { tahun: 2026 }], CUTOFF, {
+      sekarang: '2026-10-29',
+    });
+    expect(d.periode.tahunBerjalan).toBe(2027);
+    expect(d.periode.status).toBe('2025, 2026 terkunci · 2027 terbuka');
+  });
+
   it('jurnal terakhir = tanggal terbaru; tanggal sama pakai input terakhir', () => {
-    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
     expect(d.jurnalTerakhir).toEqual({
       id: 'j-2026-05',
       tanggal: '2026-05-01',
@@ -217,7 +235,7 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
   });
 
   it('path backup terakhir ditempelkan main tanpa mengubah hasil builder', () => {
-    const dasar = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const dasar = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
     const path = '/data/backups/auto-2026-10-23.db';
     const hasil = denganBackupTerakhir(dasar, path);
     expect(hasil.backupTerakhir).toBe(path);

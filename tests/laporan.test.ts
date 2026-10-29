@@ -988,7 +988,6 @@ describe('P2-1 — realisasi anggaran konsisten dengan labaRugi', () => {
 
     expect(hasil.totalPendapatan.realisasi).toBe(lr.totalPendapatan);
     expect(hasil.totalBeban.realisasi).toBe(lr.totalBeban);
-    expect(hasil.total.realisasi).toBe(lr.totalPendapatan + lr.totalBeban);
     expect(hasil.pendapatan.find((b) => b.kode === '4005')?.realisasi).toBe(RP(700_000));
     expect(hasil.beban.find((b) => b.kode === '5010')?.realisasi).toBe(RP(200_000));
   });

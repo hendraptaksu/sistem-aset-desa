@@ -423,8 +423,9 @@ const statusAnggaranCetak = (lebih: boolean): string => (lebih ? 'Lebih' : 'Sesu
 
 /**
  * Anggaran & realisasi (P2-1) — portrait, satu tabel dengan seksi
- * PENDAPATAN/BEBAN, subtotal per seksi, dan total gabungan. Semua angka
- * diambil dari hasil core/anggaran.ts (tidak ada perhitungan ulang).
+ * PENDAPATAN/BEBAN dan subtotal per seksi. Tidak ada total gabungan karena
+ * pagu/sisa pendapatan dan beban tidak sejenis. Semua angka diambil dari hasil
+ * core/anggaran.ts (tidak ada perhitungan ulang).
  */
 export function anggaranPrintDoc(
   hasil: RealisasiAnggaranHasil,
@@ -487,30 +488,7 @@ export function anggaranPrintDoc(
       { label: 'Status', width: 10, align: 'center' },
     ],
     baris: rows,
-    footer: [
-      baris(
-        [
-          '',
-          'TOTAL ANGGARAN & REALISASI',
-          formatRp(hasil.total.anggaran),
-          formatRp(hasil.total.realisasi),
-          formatRp(hasil.total.sisa),
-          formatPersen(hasil.total.persen),
-          statusAnggaranCetak(hasil.total.lebih),
-        ],
-        [
-          null,
-          null,
-          hasil.total.anggaran,
-          hasil.total.realisasi,
-          hasil.total.sisa,
-          hasil.total.persen,
-          null,
-        ],
-        'total',
-        true,
-      ),
-    ],
+    footer: [],
   };
 
   return {

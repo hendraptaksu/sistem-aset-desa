@@ -46,10 +46,10 @@
 | AKT-25 | P2 | M | Guard `insertJurnal` / jadikan internal | — | [x] |
 | AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [x] |
 | AKT-27 | P2 | S | Perbaiki dokumentasi 3001/3002, closing, reversal | AKT-05, AKT-16 | [x] |
-| AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
+| AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [x] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 28/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25, AKT-26, AKT-27 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 29/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25, AKT-26, AKT-27, AKT-28 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 11 (AKT-26). Tiket yang menambah
@@ -581,7 +581,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** AKT-05, AKT-16.
 
-- [ ] **AKT-28 — Rapikan total saldo export, total anggaran, status dashboard** · P2 · S
+- [x] **AKT-28 — Rapikan total saldo export, total anggaran, status dashboard** · P2 · S (2026-10-29: typecheck bersih; 732/732 test hijau (58 file); `npm run build` electron-vite hijau; export Neraca Saldo tidak lagi menulis Saldo TOTAL = 0 palsu—kolom Saldo TOTAL dikosongkan dan baris SELISIH memuat `ns.selisih`; total anggaran ditampilkan terpisah Pendapatan/Beban dan total gabungan dihapus dari `core/anggaran.ts`, XLSX, print, serta RealisasiTab; status dashboard memakai tahun acuan hari ini sehingga cut-off historis tidak menampilkan “2025 terkunci · 2025 terbuka”)
   - **Konteks:** Tiga presentasi yang bisa menyesatkan:
     - `neracaSaldoToWorkbook` menulis total kolom Saldo = 0, padahal kolom itu
       saldo normal, bukan selisih (`src/features/export/workbooks.ts`);

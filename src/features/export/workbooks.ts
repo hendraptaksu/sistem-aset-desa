@@ -544,19 +544,18 @@ export async function neracaSaldoToWorkbook(
   const total = ws.addRow(['TOTAL', '', '', null, null, null]);
   selRp(total, 4, ns.totalDebit);
   selRp(total, 5, ns.totalKredit);
-  selRp(total, 6, 0);
+  // Kolom Saldo sengaja dikosongkan: isinya saldo normal per akun, bukan
+  // selisih. Angka selisih hanya ditulis di baris SELISIH di bawah.
   styleHeader(total);
 
   const status = ws.addRow([
-    'STATUS',
-    ns.seimbang ? 'Seimbang' : 'Selisih',
+    'SELISIH',
+    ns.seimbang ? 'Seimbang' : 'Tidak seimbang',
     '',
     null,
     null,
     null,
   ]);
-  selRp(status, 4, 0);
-  selRp(status, 5, 0);
   selRp(status, 6, ns.selisih);
   styleHeader(status);
 
@@ -689,20 +688,9 @@ export async function anggaranToWorkbook(
   tulisBagian('PENDAPATAN', hasil.pendapatan, hasil.totalPendapatan);
   tulisBagian('BEBAN', hasil.beban, hasil.totalBeban);
 
-  const total = ws.addRow([
-    '',
-    'TOTAL ANGGARAN & REALISASI',
-    null,
-    null,
-    null,
-    null,
-    statusAnggaran(hasil.total.lebih),
-  ]);
-  selRp(total, 3, hasil.total.anggaran);
-  selRp(total, 4, hasil.total.realisasi);
-  selRp(total, 5, hasil.total.sisa);
-  selPersen(total, 6, hasil.total.persen / 100);
-  styleHeader(total);
+  // Tidak ada baris "TOTAL ANGGARAN & REALISASI": pagu/sisa pendapatan dan
+  // beban tidak sejenis, sehingga total gabungan menyesatkan. Total yang sah
+  // adalah total per bagian di atas.
 
   ws.getColumn(1).width = 12;
   ws.getColumn(2).width = 44;
@@ -1206,8 +1194,8 @@ export function neracaSaldoToHtml(
 <thead><tr><th>Kode</th><th>Nama Akun</th><th>Tipe</th><th>Debit</th><th>Kredit</th><th>Saldo</th></tr></thead>
 <tbody>${rows}</tbody>
 <tfoot>
-<tr><th colspan="3">TOTAL</th><th style="text-align:right">${formatRp(ns.totalDebit)}</th><th style="text-align:right">${formatRp(ns.totalKredit)}</th><th style="text-align:right">${formatRp(0)}</th></tr>
-<tr><th colspan="3">STATUS</th><th colspan="2">${ns.seimbang ? 'Seimbang' : 'Selisih'}</th><th style="text-align:right">${formatRp(ns.selisih)}</th></tr>
+<tr><th colspan="3">TOTAL</th><th style="text-align:right">${formatRp(ns.totalDebit)}</th><th style="text-align:right">${formatRp(ns.totalKredit)}</th><th></th></tr>
+<tr><th colspan="3">SELISIH</th><th colspan="2">${ns.seimbang ? 'Seimbang' : 'Tidak seimbang'}</th><th style="text-align:right">${formatRp(ns.selisih)}</th></tr>
 </tfoot></table>`;
 }
 

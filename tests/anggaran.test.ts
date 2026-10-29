@@ -177,7 +177,7 @@ describe('P2-1 — hitung realisasi: pagu 0, tepat, kurang, lebih', () => {
     });
   });
 
-  it('total pendapatan/beban/gabungan konsisten dengan labaRugi', () => {
+  it('total pendapatan dan beban dihitung terpisah, konsisten dengan labaRugi', () => {
     const lr = labaRugi(BARIS, RENTANG_2026);
     expect(HASIL.totalPendapatan).toMatchObject({
       anggaran: RP(13_000_000),
@@ -193,13 +193,9 @@ describe('P2-1 — hitung realisasi: pagu 0, tepat, kurang, lebih', () => {
       lebih: true,
     });
     expect(HASIL.totalBeban.realisasi).toBe(RP(5_300_000));
-    expect(HASIL.total).toMatchObject({
-      anggaran: RP(18_000_000),
-      realisasi: RP(11_300_000),
-      sisa: RP(6_700_000),
-      lebih: false,
-    });
-    expect(HASIL.total.persen).toBeCloseTo((11_300_000 / 18_000_000) * 100, 10);
+    expect(HASIL.totalBeban.persen).toBeCloseTo((5_300_000 / 5_000_000) * 100, 10);
+    // Hasil tidak lagi menyediakan total gabungan pendapatan + beban.
+    expect('total' in HASIL).toBe(false);
   });
 
   it('realisasi per akun sama dengan selisih saldoAkun dalam periode', () => {
@@ -641,7 +637,7 @@ function cariBaris(ws: ExcelJS.Worksheet, kolom: number, teks: string): number {
 }
 
 describe('P2-1 — export XLSX & print', () => {
-  it('workbook: nominal NUMBER + numFmt Rp, persen NUMBER fraksi + total', async () => {
+  it('workbook: nominal NUMBER + numFmt Rp, persen NUMBER fraksi + total per bagian', async () => {
     const wb = await anggaranToWorkbook(HASIL);
     const ws = wb.worksheets[0]!;
     expect(ws.getRow(1).getCell(1).value).toBe(KOP_ORG_NAMA);
@@ -671,11 +667,20 @@ describe('P2-1 — export XLSX & print', () => {
     expect(ws.getRow(row5003).getCell(6).value).toBe(1.2);
     expect(ws.getRow(row5003).getCell(7).value).toBe('Lebih');
 
-    const total = cariBaris(ws, 2, 'TOTAL ANGGARAN & REALISASI');
-    expect(total).toBeGreaterThan(0);
-    expect(ws.getRow(total).getCell(3).value).toBe(18_000_000);
-    expect(ws.getRow(total).getCell(4).value).toBe(11_300_000);
-    expect(ws.getRow(total).getCell(5).value).toBe(6_700_000);
+    const totalPendapatan = cariBaris(ws, 2, 'Total Pendapatan');
+    expect(totalPendapatan).toBeGreaterThan(0);
+    expect(ws.getRow(totalPendapatan).getCell(3).value).toBe(13_000_000);
+    expect(ws.getRow(totalPendapatan).getCell(4).value).toBe(6_000_000);
+    expect(ws.getRow(totalPendapatan).getCell(5).value).toBe(7_000_000);
+
+    const totalBeban = cariBaris(ws, 2, 'Total Beban');
+    expect(totalBeban).toBeGreaterThan(0);
+    expect(ws.getRow(totalBeban).getCell(3).value).toBe(5_000_000);
+    expect(ws.getRow(totalBeban).getCell(4).value).toBe(5_300_000);
+    expect(ws.getRow(totalBeban).getCell(5).value).toBe(-300_000);
+
+    // Tidak ada lagi baris total gabungan yang mencampur pendapatan dan beban.
+    expect(cariBaris(ws, 2, 'TOTAL ANGGARAN & REALISASI')).toBe(0);
 
     // Round-trip: file benar-benar bisa dibaca ExcelJS dan tetap numerik.
     const buf = await workbookToBuffer(wb);
@@ -710,7 +715,7 @@ describe('P2-1 — export XLSX & print', () => {
     expect(html).toContain(KOP_ORG_NAMA);
     expect(html).toContain('Total Pendapatan');
     expect(html).toContain('Total Beban');
-    expect(html).toContain('TOTAL ANGGARAN');
+    expect(html).not.toContain('TOTAL ANGGARAN & REALISASI');
     expect(html).toContain('Rp 6.000.000,00');
   });
 });

@@ -460,9 +460,27 @@ describe('P1-10 — builder XLSX numerik', () => {
     const total = cariBaris(ws, 1, 'TOTAL');
     expect(ws.getRow(total).getCell(4).value).toBe(ns.totalDebit / 100);
     expect(ws.getRow(total).getCell(5).value).toBe(ns.totalKredit / 100);
-    const status = cariBaris(ws, 1, 'STATUS');
+    // Kolom Saldo pada baris TOTAL tidak diisi 0 palsu.
+    expect(ws.getRow(total).getCell(6).value).toBeNull();
+    const status = cariBaris(ws, 1, 'SELISIH');
     expect(ws.getRow(status).getCell(2).value).toBe('Seimbang');
     expect(ws.getRow(status).getCell(6).value).toBe(0);
+  });
+
+  it('Neraca Saldo tidak seimbang: baris SELISIH memuat angka nyata', async () => {
+    const nsSelisih = { ...ns, selisih: RP(1_234), seimbang: false };
+    const wb = await neracaSaldoToWorkbook(nsSelisih);
+    const ws = wb.worksheets[0]!;
+    const total = cariBaris(ws, 1, 'TOTAL');
+    expect(ws.getRow(total).getCell(6).value).toBeNull();
+    const status = cariBaris(ws, 1, 'SELISIH');
+    expect(ws.getRow(status).getCell(2).value).toBe('Tidak seimbang');
+    expect(ws.getRow(status).getCell(6).value).toBe(1234);
+
+    const html = neracaSaldoToHtml(nsSelisih);
+    expect(html).toContain('SELISIH');
+    expect(html).toContain('Tidak seimbang');
+    expect(html).toContain('Rp 1.234,00');
   });
 
   it('Neraca Saldo mode tahun: periode tahun buku + baris laba ditahan', async () => {
@@ -484,7 +502,8 @@ describe('P1-10 — builder XLSX numerik', () => {
     const total = cariBaris(ws, 1, 'TOTAL');
     expect(ws.getRow(total).getCell(4).value).toBe(nsTahun.totalDebit / 100);
     expect(ws.getRow(total).getCell(5).value).toBe(nsTahun.totalKredit / 100);
-    const status = cariBaris(ws, 1, 'STATUS');
+    expect(ws.getRow(total).getCell(6).value).toBeNull();
+    const status = cariBaris(ws, 1, 'SELISIH');
     expect(ws.getRow(status).getCell(2).value).toBe('Seimbang');
 
     // Kontrak lama tanpa mode & tanpa cutoff tetap memakai label kumulatif.
@@ -574,7 +593,7 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(cariBaris(ws, 2, 'Belum ada rincian pertanggungjawaban')).toBeGreaterThan(0);
   });
 
-  it('Anggaran: pagu/realisasi/sisa number, persen fraksi, total gabungan', async () => {
+  it('Anggaran: pagu/realisasi/sisa number, persen fraksi, total per bagian', async () => {
     const wb = await anggaranToWorkbook(anggaranHasil);
     const ws = wb.worksheets[0]!;
     const header = cariBaris(ws, 1, 'Kode');
@@ -592,14 +611,32 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(ws.getRow(lebih).getCell(5).value).toBe(-100_000);
     expect(ws.getRow(lebih).getCell(7).value).toBe('Lebih');
 
-    const total = cariBaris(ws, 2, 'TOTAL ANGGARAN & REALISASI');
-    expect(ws.getRow(total).getCell(3).value).toBe(anggaranHasil.total.anggaran / 100);
-    expect(ws.getRow(total).getCell(4).value).toBe(anggaranHasil.total.realisasi / 100);
-    expect(ws.getRow(total).getCell(5).value).toBe(anggaranHasil.total.sisa / 100);
-    expect(ws.getRow(total).getCell(6).value).toBeCloseTo(
-      anggaranHasil.total.persen / 100,
-      10,
+    const totalPendapatan = cariBaris(ws, 2, 'Total Pendapatan');
+    expect(totalPendapatan).toBeGreaterThan(0);
+    expect(ws.getRow(totalPendapatan).getCell(3).value).toBe(
+      anggaranHasil.totalPendapatan.anggaran / 100,
     );
+    expect(ws.getRow(totalPendapatan).getCell(4).value).toBe(
+      anggaranHasil.totalPendapatan.realisasi / 100,
+    );
+    expect(ws.getRow(totalPendapatan).getCell(5).value).toBe(
+      anggaranHasil.totalPendapatan.sisa / 100,
+    );
+
+    const totalBeban = cariBaris(ws, 2, 'Total Beban');
+    expect(totalBeban).toBeGreaterThan(0);
+    expect(ws.getRow(totalBeban).getCell(3).value).toBe(
+      anggaranHasil.totalBeban.anggaran / 100,
+    );
+    expect(ws.getRow(totalBeban).getCell(4).value).toBe(
+      anggaranHasil.totalBeban.realisasi / 100,
+    );
+    expect(ws.getRow(totalBeban).getCell(5).value).toBe(
+      anggaranHasil.totalBeban.sisa / 100,
+    );
+
+    // Tidak ada angka gabungan pendapatan + beban.
+    expect(cariBaris(ws, 2, 'TOTAL ANGGARAN & REALISASI')).toBe(0);
   });
 
   it('semua workbook bisa dibaca ulang ExcelJS dan tetap numerik (round-trip)', async () => {
@@ -678,6 +715,7 @@ describe('P1-10 — HTML print semua laporan', () => {
     expect(jurnalDaftarToHtml(jurnal, COA)).toContain('TOTAL KESELURUHAN');
     expect(bukuBesarToHtml(bb)).toContain('107.900.000,00');
     expect(neracaSaldoToHtml(ns)).toContain('Seimbang');
+    expect(neracaSaldoToHtml(ns)).toContain('SELISIH');
     expect(neracaSaldoToHtml(nsTahun)).toContain('Laba ditahan sebelum periode');
     expect(neracaSaldoToHtml(nsTanpaCutoff)).toContain('SEMUA PERIODE');
     expect(labaRugiToHtml(lr)).toContain('Total Pendapatan');

@@ -62,10 +62,12 @@ export type RealisasiAnggaranHasil = {
   sampai?: string;
   pendapatan: RealisasiAnggaranBaris[];
   beban: RealisasiAnggaranBaris[];
+  /**
+   * Total per kelompok, bukan gabungan pendapatan + beban: pagu/sisa
+   * pendapatan dan beban tidak sejenis sehingga angka gabungan menyesatkan.
+   */
   totalPendapatan: TotalRealisasiAnggaran;
   totalBeban: TotalRealisasiAnggaran;
-  /** Gabungan pendapatan + beban. */
-  total: TotalRealisasiAnggaran;
 };
 
 /** Validasi tahun anggaran; melempar Error berbahasa Indonesia. */
@@ -220,6 +222,5 @@ export function hitungRealisasiAnggaran(
     beban,
     totalPendapatan: totalDari(pendapatan),
     totalBeban: totalDari(beban),
-    total: totalDari([...pendapatan, ...beban]),
   };
 }

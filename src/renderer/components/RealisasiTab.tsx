@@ -88,6 +88,30 @@ function BarisTotal({
   );
 }
 
+function RingkasanTotal({
+  label,
+  total,
+}: {
+  label: string;
+  total: TotalRealisasiAnggaran;
+}) {
+  return (
+    <div className="rounded-lg border border-stone-300 bg-stone-50 px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[15px] font-bold">
+        <span>{label}</span>
+        <Badge tone={total.lebih ? 'red' : 'green'}>{statusAnggaran(total.lebih)}</Badge>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-3 text-[15px]">
+        <span>Pagu: {formatRp(total.anggaran)}</span>
+        <span>Realisasi: {formatRp(total.realisasi)}</span>
+        <span className={total.sisa < 0 ? 'font-semibold text-red-700' : ''}>
+          Sisa: {formatRp(total.sisa)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function TabelBagian({
   judul,
   rows,
@@ -351,21 +375,14 @@ export function RealisasiTab() {
               total={hasil.totalPendapatan}
             />
             <TabelBagian judul="Beban" rows={hasil.beban} total={hasil.totalBeban} />
-            <div className="mt-4 rounded-lg border border-stone-300 bg-stone-50 px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[15px] font-bold">
-                <span>Total Anggaran & Realisasi</span>
-                <span className="flex flex-wrap items-center gap-3 font-normal">
-                  <span>Pagu: {formatRp(hasil.total.anggaran)}</span>
-                  <span>Realisasi: {formatRp(hasil.total.realisasi)}</span>
-                  <span className={hasil.total.sisa < 0 ? 'font-semibold text-red-700' : ''}>
-                    Sisa: {formatRp(hasil.total.sisa)}
-                  </span>
-                  <Badge tone={hasil.total.lebih ? 'red' : 'green'}>
-                    {statusAnggaran(hasil.total.lebih)}
-                  </Badge>
-                </span>
-              </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <RingkasanTotal label="Total Pendapatan" total={hasil.totalPendapatan} />
+              <RingkasanTotal label="Total Beban" total={hasil.totalBeban} />
             </div>
+            <p className="mt-2 text-sm text-stone-600">
+              Pagu dan sisa tidak digabung antara pendapatan dan beban karena tidak
+              sejenis.
+            </p>
           </>
         )}
       </Card>
