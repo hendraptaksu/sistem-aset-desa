@@ -35,7 +35,7 @@
 | AKT-14 | P1 | S | Tolak/tandai tanggal jurnal di masa depan | — | [x] |
 | AKT-15 | P1 | S | Default periode Laba Rugi & Arus Kas ke periode berjalan | AKT-14 | [x] |
 | AKT-16 | P1 | M | Larang jurnal penutup manual P&L → ekuitas | — | [x] |
-| AKT-17 | P1 | S | Reklasifikasi arus kas pinjaman 1050 ke investasi | — | [ ] |
+| AKT-17 | P1 | S | Reklasifikasi arus kas pinjaman 1050 ke investasi | — | [x] |
 | AKT-18 | P1 | M | Pisahkan transfer dan biaya pada jurnal kas gabungan | — | [ ] |
 | AKT-19 | P1 | S | Desain pemisahan utang usaha vs pinjaman (2050) | — | [ ] |
 | AKT-20 | P1 | M | Implementasi klasifikasi arus kas 2050 | AKT-19 | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 17/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 18/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -389,7 +389,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-17 — Reklasifikasi arus kas pinjaman 1050 ke investasi** · P1 · S
+- [x] **AKT-17 — Reklasifikasi arus kas pinjaman 1050 ke investasi** · P1 · S (2026-10-29: typecheck bersih; 682/682 test hijau (56 file); `arusKas` tidak lagi memasukkan `AKUN_PIUTANG` ke kondisi OPERASI; lawan 1050 (AKTIVA non-kas) masuk INVESTASI sehingga beri pinjaman = INVESTASI keluar dan pelunasan = INVESTASI masuk; 1040 panjar tetap OPERASI; total masuk/keluar/kenaikan/saldo akhir tidak berubah; test tiga skenario di `tests/laporan.test.ts`)
   - **Konteks:** `arusKas` memasukkan `1050` ke OPERASI. Pemberian pinjaman
     kepada pihak lain umumnya arus kas INVESTASI.
   - **Langkah:**

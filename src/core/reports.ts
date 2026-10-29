@@ -772,7 +772,8 @@ function tambahKelompok(k: ArusKasKelompok, masuk: number, keluar: number): void
 /**
  * Arus Kas metode langsung: setiap mutasi akun kas/bank dalam periode menjadi
  * satu baris, dikelompokkan menurut akun lawan:
- * - pendapatan/beban/piutang/panjar → OPERASI
+ * - pendapatan/beban/panjar → OPERASI
+ * - piutang (1050, AKTIVA non-kas) → INVESTASI
  * - kewajiban/modal → PENDANAAN
  * - perpindahan antar dompet kas (tanpa akun lawan non-kas) → TRANSFER,
  *   tidak dihitung sebagai arus masuk/keluar (neto 0) agar total tidak dobel.
@@ -848,13 +849,12 @@ export function arusKas(
       (a) =>
         a.tipe === 'PENDAPATAN' ||
         a.tipe === 'BEBAN' ||
-        a.kode === AKUN_PIUTANG ||
         a.kode === AKUN_PANJAR,
     )
       ? 'OPERASI'
       : jenisLawan.some((a) => a.tipe === 'KEWAJIBAN' || a.tipe === 'EKUITAS')
         ? 'PENDANAAN'
-        : jenisLawan.some((a) => a.tipe === 'AKTIVA')
+        : jenisLawan.some((a) => a.tipe === 'AKTIVA' || a.kode === AKUN_PIUTANG)
           ? 'INVESTASI'
           : 'OPERASI';
 
