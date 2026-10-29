@@ -439,6 +439,10 @@ export const api = {
     opsi: {
       konfirmasiPeringatan?: boolean;
       konfirmasiSaldo?: boolean;
+      /** AKT-08: alasan operasi saat pelunasan/pembayaran melebihi saldo pihak. */
+      alasanSaldo?: string;
+      /** AKT-08: alasan saat peringatan kas dari posting layer dikonfirmasi. */
+      alasanPeringatan?: string;
       wajibSaldoAwal?: boolean;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
@@ -482,6 +486,10 @@ export const api = {
       items: { kategori_baga: string; nominal: number }[];
       konfirmasiKurang?: boolean;
       konfirmasiPeringatan?: boolean;
+      /** AKT-08: alasan operator saat realisasi melebihi panjar. */
+      alasanKurang?: string;
+      /** AKT-08: alasan saat peringatan kas dari posting layer dikonfirmasi. */
+      alasanPeringatan?: string;
       wajibSaldoAwal?: boolean;
       konfirmasiTanpaSaldoAwal?: boolean;
     },

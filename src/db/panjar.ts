@@ -64,6 +64,10 @@ export type ClosePanjarInput = {
   alasan?: string;
   /** Operator sudah menyetujui kekurangan dibayar dari kas sumber. */
   konfirmasiKurang?: boolean;
+  /** AKT-08: alasan operator saat realisasi melebihi panjar. */
+  alasanKurang?: string;
+  /** AKT-08: alasan operator saat peringatan posting (mis. kas minus) dikonfirmasi. */
+  alasanPeringatan?: string;
   /** Operator sudah menyetujui peringatan posting (mis. kas akan minus). */
   konfirmasiPeringatan?: boolean;
   /** AKT-02: pintu input mewajibkan saldo awal untuk jurnal pertama. */
@@ -276,6 +280,8 @@ export function closePanjarV2(
     return gagal(e instanceof Error ? e.message : String(e));
   }
 
+  const alasanKurang = String(input.alasanKurang ?? '').trim();
+  const alasanPeringatan = String(input.alasanPeringatan ?? '').trim();
   if (rencana.kurang > 0 && input.konfirmasiKurang !== true) {
     const pesan =
       `Realisasi melebihi panjar sebesar ${formatRp(rencana.kurang)}. ` +
@@ -283,6 +289,28 @@ export function closePanjarV2(
     return {
       boleh: true,
       errors: [],
+      peringatan: [pesan],
+      perluKonfirmasi: true,
+      tersimpan: false,
+      totalRealisasi: rencana.totalRealisasi,
+      sisa: rencana.sisa,
+      kurang: rencana.kurang,
+    };
+  }
+
+  // AKT-08: overrun adalah aturan adapter, bukan `validasiJurnal`. Alasan wajib
+  // ada sebelum transaksi tulis agar jurnal + audit tidak tersimpan.
+  if (
+    rencana.kurang > 0 &&
+    input.konfirmasiKurang === true &&
+    alasanKurang.length < 5
+  ) {
+    const pesan =
+      `Realisasi melebihi panjar sebesar ${formatRp(rencana.kurang)}. ` +
+      'Konfirmasi kekurangan wajib disertai alasan minimal 5 karakter.';
+    return {
+      boleh: false,
+      errors: [pesan],
       peringatan: [pesan],
       perluKonfirmasi: true,
       tersimpan: false,
@@ -319,6 +347,10 @@ export function closePanjarV2(
       totalRealisasi: rencana.totalRealisasi,
       sisa: rencana.sisa,
       kurang: rencana.kurang,
+      ...(rencana.kurang > 0
+        ? { nominalKurang: rencana.kurang, alasanKurang }
+        : {}),
+      ...(alasanPeringatan ? { alasanPeringatan } : {}),
     },
   );
 
@@ -326,6 +358,10 @@ export function closePanjarV2(
     const simpan = db.transaction(() => {
       const hasil = postingJurnal(db, rencana.input, {
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        // AKT-08: peringatan kas dari posting layer wajib alasan, diteruskan
+        // dari input panjar dan dicatat di audit.
+        alasanPeringatan,
+        wajibAlasanPeringatan: true,
         wajibSaldoAwal: input.wajibSaldoAwal === true,
         konfirmasiTanpaSaldoAwal: input.konfirmasiTanpaSaldoAwal === true,
         audit: [audit],

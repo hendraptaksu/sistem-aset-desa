@@ -105,13 +105,20 @@ function simpan(
   db: Database.Database,
   pihakId: string,
   input: JurnalInput,
-  opsi: { konfirmasiSaldo?: boolean; konfirmasiPeringatan?: boolean } = {},
+  opsi: {
+    konfirmasiSaldo?: boolean;
+    konfirmasiPeringatan?: boolean;
+    alasanSaldo?: string;
+    alasanPeringatan?: string;
+  } = {},
 ) {
   return postingPihak(db, {
     pihakId,
     input,
     konfirmasiSaldo: opsi.konfirmasiSaldo,
     konfirmasiPeringatan: opsi.konfirmasiPeringatan,
+    alasanSaldo: opsi.alasanSaldo,
+    alasanPeringatan: opsi.alasanPeringatan,
   });
 }
 
@@ -399,10 +406,37 @@ describe('P1-5 — peringatan saldo dan validasi pihak', () => {
         RP(1_000_000),
       );
 
-      const lanjut = simpan(db, budi.id, lunas, { konfirmasiSaldo: true });
+      // AKT-08: konfirmasi overbalance tanpa alasan ditolak sebelum menulis
+      // jurnal maupun audit.
+      const auditSebelum = listAuditLog(db, { aksi: 'PIUTANG-PELUNASAN' }).length;
+      const tanpaAlasan = simpan(db, budi.id, lunas, {
+        konfirmasiSaldo: true,
+      });
+      expect(tanpaAlasan.tersimpan).toBe(false);
+      expect(tanpaAlasan.errors.join(' ')).toMatch(/melebihi saldo piutang/i);
+      expect(tanpaAlasan.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(listJurnal(db)).toHaveLength(sebelum);
+      expect(listAuditLog(db, { aksi: 'PIUTANG-PELUNASAN' })).toHaveLength(
+        auditSebelum,
+      );
+
+      const alasan = 'Koreksi pelunasan disetujui pemilik';
+      const lanjut = simpan(db, budi.id, lunas, {
+        konfirmasiSaldo: true,
+        alasanSaldo: alasan,
+      });
       expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
       expect(lanjut.saldoSesudah?.piutang).toBe(RP(-500_000));
       expect(listJurnal(db)).toHaveLength(sebelum + 1);
+
+      const audit = listAuditLog(db, { aksi: 'PIUTANG-PELUNASAN' });
+      expect(audit).toHaveLength(auditSebelum + 1);
+      const data = JSON.parse(audit[0]!.data_baru_json) as {
+        nominalLebih: number;
+        alasanSaldo: string;
+      };
+      expect(data.nominalLebih).toBe(RP(500_000));
+      expect(data.alasanSaldo).toBe(alasan);
     } finally {
       db.close();
     }
@@ -438,11 +472,75 @@ describe('P1-5 — peringatan saldo dan validasi pihak', () => {
       expect(belum.perluKonfirmasi).toBe(true);
       expect(belum.peringatan.join(' ')).toMatch(/melebihi saldo hutang/i);
 
-      const lanjut = simpan(db, budi.id, bayar, { konfirmasiSaldo: true });
+      const tanpaAlasan = simpan(db, budi.id, bayar, { konfirmasiSaldo: true });
+      expect(tanpaAlasan.tersimpan).toBe(false);
+      expect(tanpaAlasan.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(listJurnal(db)).toHaveLength(2); // awal + pinjaman masuk
+
+      const alasan = 'Pembayaran sisa hutang disetujui';
+      const lanjut = simpan(db, budi.id, bayar, {
+        konfirmasiSaldo: true,
+        alasanSaldo: alasan,
+      });
       expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
       expect(lanjut.saldoSesudah?.hutang).toBe(RP(-300_000));
       // Kas cukup: peringatan saldo tidak otomatis menjadi error.
       expect(lanjut.errors).toEqual([]);
+
+      const audit = listAuditLog(db, { aksi: 'HUTANG-BAYAR' });
+      const data = JSON.parse(audit[0]!.data_baru_json) as {
+        nominalLebih: number;
+        alasanSaldo: string;
+      };
+      expect(data.nominalLebih).toBe(RP(300_000));
+      expect(data.alasanSaldo).toBe(alasan);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('peringatan kas dari posting layer di jalur pihak wajib alasan', () => {
+    const db = openDb(':memory:');
+    try {
+      const awal = postingJurnal(db, {
+        header: {
+          id: 'awal-kas-tipis',
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal kas tipis',
+          jenis: 'SALDO_AWAL',
+        },
+        baris: [D('1001', RP(100_000)), K(AKUN_MODAL, RP(100_000))],
+      });
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+      const pihak = createPihak(db, { id: 'p-kas-tipis', nama: 'Pihak Kas Tipis' });
+      const pinjam = buatJurnalBeriPinjaman({
+        ...dasar,
+        pihakId: pihak.id,
+        akunKas: '1001',
+        nominal: RP(500_000),
+        id: 'j-kas-tipis',
+      }).input;
+
+      const tanpaAlasan = simpan(db, pihak.id, pinjam, {
+        konfirmasiPeringatan: true,
+      });
+      expect(tanpaAlasan.tersimpan).toBe(false);
+      expect(tanpaAlasan.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(listJurnal(db)).toHaveLength(1);
+
+      const alasan = 'Kas minus disetujui pemilik';
+      const tersimpan = simpan(db, pihak.id, pinjam, {
+        konfirmasiPeringatan: true,
+        alasanPeringatan: alasan,
+      });
+      expect(tersimpan.tersimpan, tersimpan.errors.join(' ')).toBe(true);
+      expect(listJurnal(db)).toHaveLength(2);
+
+      const audit = listAuditLog(db, { aksi: 'PIUTANG-BERI-PINJAMAN' });
+      const data = JSON.parse(audit[0]!.data_baru_json) as {
+        alasanPeringatan: string;
+      };
+      expect(data.alasanPeringatan).toBe(alasan);
     } finally {
       db.close();
     }
@@ -818,6 +916,10 @@ describe('P1-5 — layar Piutang & Hutang', () => {
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
     expect(html).toContain('modal (3000) tidak berubah');
     expect(html).toContain('Pihak (wajib)');
+    // AKT-08: konfirmasi overbalance tidak lagi berupa checkbox tanpa alasan.
+    expect(html).not.toContain('Saya sudah memeriksa');
+    expect(html).not.toContain('Centang pernyataan');
+    expect(html).toContain('sistem akan meminta alasan minimal 5 karakter');
   });
 });
 

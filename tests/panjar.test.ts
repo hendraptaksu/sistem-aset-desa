@@ -13,6 +13,8 @@ import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import {
@@ -37,6 +39,7 @@ import {
 import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
 import { AKUN_MODAL, KAS_KODES } from '../src/db/coa.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
+import { PanjarTab } from '../src/renderer/components/PanjarTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -277,11 +280,32 @@ describe('P1-4 — pertanggungjawaban panjar', () => {
       expect(listJurnal(db)).toHaveLength(jurnalSebelum);
       expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
 
+      // AKT-08: konfirmasi overrun tanpa alasan ditolak sebelum menulis
+      // jurnal, item, maupun audit.
+      const auditSebelum = listAuditLog(db, { aksi: 'PANJAR-CLOSE' }).length;
+      const tanpaAlasan = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-03-10',
+        items: [{ kategori_baga: '5004', nominal: RP(1_200_000) }],
+        konfirmasiKurang: true,
+      });
+      expect(tanpaAlasan.tersimpan).toBe(false);
+      expect(tanpaAlasan.errors.join(' ')).toMatch(/melebihi panjar sebesar/i);
+      expect(tanpaAlasan.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(listJurnal(db)).toHaveLength(jurnalSebelum);
+      expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
+      expect(listPanjarItemsV2(db, 'p1')).toHaveLength(0);
+      expect(listAuditLog(db, { aksi: 'PANJAR-CLOSE' })).toHaveLength(
+        auditSebelum,
+      );
+
+      const alasan = 'Kekurangan disetujui panitia';
       const hasil = closePanjarV2(db, {
         id: 'p1',
         tanggalClose: '2026-03-10',
         items: [{ kategori_baga: '5004', nominal: RP(1_200_000) }],
         konfirmasiKurang: true,
+        alasanKurang: alasan,
       });
       expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
       expect(hasil.kurang).toBe(RP(200_000));
@@ -298,6 +322,15 @@ describe('P1-4 — pertanggungjawaban panjar', () => {
       expect(saldoAkun(baris, '1001')).toBe(RP(8_800_000));
       expect(saldoAkun(baris, '5004')).toBe(RP(1_200_000));
       expect(totalKas(baris, KAS_KODES)).toBe(RP(8_800_000));
+
+      const audit = listAuditLog(db, { aksi: 'PANJAR-CLOSE' });
+      expect(audit).toHaveLength(auditSebelum + 1);
+      const data = JSON.parse(audit[0]!.data_baru_json) as {
+        kurang: number;
+        alasanKurang: string;
+      };
+      expect(data.kurang).toBe(RP(200_000));
+      expect(data.alasanKurang).toBe(alasan);
     } finally {
       db.close();
     }
@@ -356,6 +389,7 @@ describe('P1-4 — pertanggungjawaban panjar', () => {
           tanggalClose: '2026-03-02',
           items: [{ kategori_baga: '5010', nominal: RP(900_000) }],
           konfirmasiKurang: true,
+          alasanKurang: 'Kekurangan belanja disetujui',
         }).tersimpan,
       ).toBe(true);
 
@@ -621,5 +655,16 @@ describe('AKT-02 — close panjar menghormati guard saldo awal', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('AKT-08 — UI konfirmasi overrun tanpa checkbox', () => {
+  it('mengganti centang setuju dengan permintaan alasan minimal 5 karakter', () => {
+    const html = renderToStaticMarkup(createElement(PanjarTab));
+
+    expect(html).toContain('Pertanggungjawaban Panjar');
+    expect(html).not.toContain('Saya setuju kekurangan');
+    expect(html).not.toContain('Centang persetujuan');
+    expect(html).toContain('sistem akan meminta alasan minimal 5 karakter');
   });
 });

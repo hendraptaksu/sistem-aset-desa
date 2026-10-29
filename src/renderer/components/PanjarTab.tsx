@@ -18,6 +18,12 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
+  MIN_ALASAN_PERINGATAN,
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
   adalahErrorSaldoAwal,
   opsiSaldoAwal,
   tandaiMulaiTanpaSaldoAwal,
@@ -31,6 +37,7 @@ import {
   ErrorBox,
   Field,
   LockModal,
+  PeringatanModal,
   Select,
   TextInput,
 } from './ui.js';
@@ -127,10 +134,10 @@ export function PanjarTab() {
   const [closeId, setCloseId] = useState('');
   const [tanggalClose, setTanggalClose] = useState(tanggalLokal());
   const [items, setItems] = useState<ItemRow[]>([{ kategori_baga: '5004', nominal: 0 }]);
-  const [setujuKurang, setSetujuKurang] = useState(false);
   const [busyClose, setBusyClose] = useState(false);
   const busyCloseRef = useRef(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const alasanCloseRef = useRef('');
 
   // Rincian item di daftar
@@ -336,6 +343,9 @@ export function PanjarTab() {
     alasan?: string,
     opsi: {
       konfirmasiPeringatan?: boolean;
+      konfirmasiKurang?: boolean;
+      alasanKurang?: string;
+      alasanPeringatan?: string;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
   ): Promise<void> {
@@ -343,7 +353,14 @@ export function PanjarTab() {
     setErrClose(null);
     setInfoClose(null);
     setLockRetry(null);
-    setPesanKonfirmasi(null);
+    const konfirmasi =
+      opsi.konfirmasiPeringatan === true || opsi.konfirmasiKurang === true;
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (!konfirmasi) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     setSaldoAwalOpen(false);
 
     if (!closeTarget) {
@@ -358,11 +375,21 @@ export function PanjarTab() {
       );
       return;
     }
-    if (kurang > 0 && !setujuKurang) {
-      setErrClose(
-        `Realisasi melebihi panjar sebesar ${formatRp(kurang)}. Centang persetujuan ` +
-          'bahwa kekurangan dibayar dari kas sumber sebelum menyimpan.',
+    if (kurang > 0 && opsi.konfirmasiKurang !== true) {
+      setPesanKonfirmasi(
+        `Realisasi melebihi panjar sebesar ${formatRp(kurang)}. Tulis alasan minimal ` +
+          `${MIN_ALASAN_PERINGATAN} karakter untuk tetap menyimpan.`,
       );
+      setErrorKonfirmasi(null);
+      return;
+    }
+
+    const alasanKonfirmasi = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? opsi.alasanKurang,
+    );
+    if (konfirmasi && !alasanPeringatanCukup(alasanKonfirmasi)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
       return;
     }
 
@@ -379,16 +406,23 @@ export function PanjarTab() {
           id: closeTarget.id,
           tanggalClose,
           items,
-          konfirmasiKurang: kurang > 0 && setujuKurang,
+          konfirmasiKurang: opsi.konfirmasiKurang === true,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          ...(konfirmasi
+            ? {
+                alasanKurang: alasanKonfirmasi,
+                alasanPeringatan: alasanKonfirmasi,
+              }
+            : {}),
           ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
         },
         alasanPakai,
       );
       alasanCloseRef.current = '';
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
       setCloseId('');
       setItems([{ kategori_baga: '5004', nominal: 0 }]);
-      setSetujuKurang(false);
       setDetailId('');
       setDetailItems({});
       setCloseDirty(false);
@@ -402,9 +436,14 @@ export function PanjarTab() {
       if (adalahErrorSaldoAwal(e)) {
         setSaldoAwalOpen(true);
       } else if (isPerluAlasan(e)) {
-        setLockRetry(() => (a: string) => submitClose(a));
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
-        setPesanKonfirmasi(pesanError(e));
+        // Alasan kunci periode terpisah; opsi konfirmasi (termasuk alasan
+        // overrun/peringatan) dipertahankan agar tidak diminta ulang.
+        const opsiLanjut = { ...opsi };
+        setLockRetry(() => (a: string) => submitClose(a, opsiLanjut));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        setErrorKonfirmasi(konfirmasi ? pesan : null);
       } else {
         setErrClose(pesanError(e));
       }
@@ -418,8 +457,8 @@ export function PanjarTab() {
     setCloseId(p.id);
     setTanggalClose(tanggalLokal() < p.tanggal ? p.tanggal : tanggalLokal());
     setItems([{ kategori_baga: '5004', nominal: 0 }]);
-    setSetujuKurang(false);
     setPesanKonfirmasi(null);
+    setErrorKonfirmasi(null);
     setErrClose(null);
     setInfoClose(null);
     // Prefill terprogram (bukan ketikan operator) tidak menandai form kotor.
@@ -792,22 +831,14 @@ export function PanjarTab() {
         )}
 
         {kurang > 0 && (
-          <label className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={setujuKurang}
-              disabled={busyClose}
-              onChange={(e) => {
-                setSetujuKurang(e.target.checked);
-                setCloseDirty(true);
-              }}
-            />
-            <span>
-              Saya setuju kekurangan <b>{formatRp(kurang)}</b> dibayar dari kas sumber{' '}
-              <b>{labelAkun(closeTarget?.akun_kas_sumber ?? '')}</b>.
-            </span>
-          </label>
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900">
+            <p>
+              Kekurangan <b>{formatRp(kurang)}</b> akan dibayar dari kas sumber{' '}
+              <b>{labelAkun(closeTarget?.akun_kas_sumber ?? '')}</b>. Sistem tidak
+              memblokir, tetapi saat menyimpan Anda wajib menulis alasan minimal{' '}
+              {MIN_ALASAN_PERINGATAN} karakter dan alasan itu tercatat di audit.
+            </p>
+          </div>
         )}
 
         <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
@@ -828,25 +859,23 @@ export function PanjarTab() {
         </div>
 
         {pesanKonfirmasi && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                disabled={busyClose}
-                onClick={() => void submitClose(undefined, { konfirmasiPeringatan: true })}
-              >
-                Ya, tetap simpan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busyClose}
-                onClick={() => setPesanKonfirmasi(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasi}
+            pesanError={errorKonfirmasi}
+            sibuk={busyClose}
+            onCancel={() => {
+              setPesanKonfirmasi(null);
+              setErrorKonfirmasi(null);
+            }}
+            onSubmit={(alasan) => {
+              void submitClose(undefined, {
+                konfirmasiKurang: true,
+                konfirmasiPeringatan: true,
+                alasanKurang: alasan,
+                alasanPeringatan: alasan,
+              });
+            }}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -854,7 +883,8 @@ export function PanjarTab() {
             {busyClose ? 'Menyimpan…' : 'Simpan Pertanggungjawaban'}
           </Button>
           <span className="text-sm text-stone-500">
-            Setelah disimpan, 1040 untuk panjar ini kembali nol.
+            Setelah disimpan, 1040 untuk panjar ini kembali nol. Bila realisasi melebihi
+            panjar, sistem akan meminta alasan minimal {MIN_ALASAN_PERINGATAN} karakter.
           </span>
         </div>
       </Card>

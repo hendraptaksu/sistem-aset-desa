@@ -1233,6 +1233,10 @@ export function registerIpc(deps: IpcDeps): void {
         konfirmasiSaldo:
           (opts as { konfirmasiSaldo?: unknown }).konfirmasiSaldo === true ||
           (opts as { konfirmasi?: unknown }).konfirmasi === true,
+        // AKT-08: alasan override overbalance dan peringatan kas diteruskan ke
+        // adapter; adapter yang mewajibkan minimal 5 karakter.
+        alasanSaldo: bacaTeksOpsi(opsi, 'alasanSaldo'),
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
         // AKT-02: pintu Piutang/Hutang ikut mewajibkan saldo awal pertama.
         wajibSaldoAwal: true,
         konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
@@ -1246,8 +1250,14 @@ export function registerIpc(deps: IpcDeps): void {
         const perluAlasan = hasil.errors.some((m) =>
           m.includes('Periode sudah ditutup'),
         );
+        // AKT-08: penolakan "alasan kurang" tetap meminta konfirmasi ulang agar
+        // modal alasan di UI bisa menampilkan pesan dan operator memperbaikinya.
         const perluKonfirmasi =
-          hasil.errors.length === 0 && hasil.perluKonfirmasi;
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) =>
+              m.includes('wajib disertai alasan minimal 5 karakter'),
+            ));
         return fail(pesan, perluAlasan, perluKonfirmasi);
       }
 
@@ -1338,6 +1348,8 @@ export function registerIpc(deps: IpcDeps): void {
         const opsi = req as {
           konfirmasiKurang?: unknown;
           konfirmasiPeringatan?: unknown;
+          alasanKurang?: unknown;
+          alasanPeringatan?: unknown;
         };
 
         const hasil = closePanjarV2(deps.db(), {
@@ -1347,6 +1359,9 @@ export function registerIpc(deps: IpcDeps): void {
           ...(alasanTeks ? { alasan: alasanTeks } : {}),
           konfirmasiKurang: opsi.konfirmasiKurang === true,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          // AKT-08: alasan overrun dan peringatan kas diteruskan ke adapter.
+          alasanKurang: bacaTeksOpsi(req, 'alasanKurang'),
+          alasanPeringatan: bacaTeksOpsi(req, 'alasanPeringatan'),
           // AKT-02: pertanggungjawaban panjar juga menerima flag sesi yang sama.
           wajibSaldoAwal: true,
           konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(req),
@@ -1359,8 +1374,13 @@ export function registerIpc(deps: IpcDeps): void {
           const perluAlasan = hasil.errors.some((m) =>
             m.includes('Periode sudah ditutup'),
           );
+          // AKT-08: alasan overrun yang kurang tetap meminta konfirmasi ulang.
           const perluKonfirmasi =
-            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+            hasil.perluKonfirmasi &&
+            (hasil.errors.length === 0 ||
+              hasil.errors.every((m) =>
+                m.includes('wajib disertai alasan minimal 5 karakter'),
+              ));
           return fail(pesan, perluAlasan, perluKonfirmasi);
         }
         return ok({

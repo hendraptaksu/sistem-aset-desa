@@ -27,7 +27,7 @@ export type OpsiPosting = {
   alasanPeringatan?: string;
   /**
    * AKT-06: pintu input yang mewajibkan alasan ≥5 karakter saat konfirmasi
-   * peringatan. Jalur Pihak/Panjar belum memakai ini (AKT-08).
+   * peringatan. Sejak AKT-08 jalur Pihak/Panjar juga memakai ini.
    */
   wajibAlasanPeringatan?: boolean;
   /**

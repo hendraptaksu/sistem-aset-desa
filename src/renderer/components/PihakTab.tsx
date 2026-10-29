@@ -25,6 +25,12 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
+  MIN_ALASAN_PERINGATAN,
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
   adalahErrorSaldoAwal,
   opsiSaldoAwal,
   tandaiMulaiTanpaSaldoAwal,
@@ -39,6 +45,7 @@ import {
   Field,
   KonfirmasiModal,
   LockModal,
+  PeringatanModal,
   RING_FOKUS,
   Select,
   TextInput,
@@ -358,7 +365,6 @@ export function PihakTab() {
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
   const [noBukti, setNoBukti] = useState('');
-  const [setujuLebih, setSetujuLebih] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const alasanRef = useRef('');
@@ -366,10 +372,13 @@ export function PihakTab() {
   const [infoForm, setInfoForm] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
   const saldoAwalPendingRef = useRef<{
     alasan?: string;
     konfirmasi?: boolean;
+    alasanSaldo?: string;
+    alasanPeringatan?: string;
   }>({});
 
   // UI-08: tiga form (transaksi, tambah pihak, ubah pihak) berbagi satu guard.
@@ -517,10 +526,10 @@ export function PihakTab() {
   function pilihAlur(baru: AlurPihak): void {
     setAlur(baru);
     setPesanKonfirmasi(null);
+    setErrorKonfirmasi(null);
     setErrForm(null);
     setInfoForm(null);
     setLockOpen(false);
-    setSetujuLebih(false);
     alasanRef.current = '';
   }
 
@@ -546,13 +555,20 @@ export function PihakTab() {
     opsi: {
       alasan?: string;
       konfirmasi?: boolean;
+      alasanSaldo?: string;
+      alasanPeringatan?: string;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErrForm(null);
     setInfoForm(null);
-    setPesanKonfirmasi(null);
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (opsi.konfirmasi !== true) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     setLockOpen(false);
     setSaldoAwalOpen(false);
 
@@ -562,11 +578,24 @@ export function PihakTab() {
       );
       return;
     }
-    if (lebihSaldo && !setujuLebih) {
-      setErrForm(
-        `Nominal melebihi saldo ${alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang'} ` +
-          `sebesar ${formatRp(selisihLebih)}. Centang pernyataan konfirmasi di bawah bila memang benar.`,
+
+    const labelAksi = alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran';
+    const labelSaldo = alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang';
+    if (lebihSaldo && opsi.konfirmasi !== true) {
+      setPesanKonfirmasi(
+        `${labelAksi} melebihi saldo ${labelSaldo} sebesar ${formatRp(selisihLebih)}. ` +
+          `Tulis alasan minimal ${MIN_ALASAN_PERINGATAN} karakter untuk tetap menyimpan.`,
       );
+      setErrorKonfirmasi(null);
+      return;
+    }
+
+    const alasanKonfirmasi = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? opsi.alasanSaldo,
+    );
+    if (opsi.konfirmasi === true && !alasanPeringatanCukup(alasanKonfirmasi)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
       return;
     }
 
@@ -583,7 +612,13 @@ export function PihakTab() {
 
     saldoAwalPendingRef.current = {
       ...(alasan ? { alasan } : {}),
-      ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+      ...(opsi.konfirmasi
+        ? {
+            konfirmasi: true,
+            alasanSaldo: alasanKonfirmasi,
+            alasanPeringatan: alasanKonfirmasi,
+          }
+        : {}),
     };
     busyRef.current = true;
     setBusy(true);
@@ -593,14 +628,21 @@ export function PihakTab() {
         {
           konfirmasiPeringatan: opsi.konfirmasi === true,
           konfirmasiSaldo: opsi.konfirmasi === true,
+          ...(opsi.konfirmasi === true
+            ? {
+                alasanSaldo: alasanKonfirmasi,
+                alasanPeringatan: alasanKonfirmasi,
+              }
+            : {}),
           ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
         },
       );
       alasanRef.current = '';
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
       setNominal(0);
       setKeterangan('');
       setNoBukti('');
-      setSetujuLebih(false);
       setTransaksiDirty(false);
       await muat();
       setInfoForm(
@@ -614,8 +656,12 @@ export function PihakTab() {
         setSaldoAwalOpen(true);
       } else if (isPerluAlasan(e)) {
         setLockOpen(true);
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        // Penolakan alasan kurang ditampilkan di dalam modal agar operator bisa
+        // memperbaiki isian yang sama.
+        setErrorKonfirmasi(opsi.konfirmasi === true ? pesan : null);
       } else {
         setErrForm(pesanError(e));
       }
@@ -1081,8 +1127,8 @@ export function PihakTab() {
               disabled={busy || memuat}
               onChange={(e) => {
                 setPihakId(e.target.value);
-                setSetujuLebih(false);
                 setPesanKonfirmasi(null);
+                setErrorKonfirmasi(null);
                 setErrForm(null);
                 setTransaksiDirty(true);
               }}
@@ -1152,7 +1198,8 @@ export function PihakTab() {
               value={nominal}
               onChange={(n) => {
                 setNominal(n);
-                setSetujuLebih(false);
+                setPesanKonfirmasi(null);
+                setErrorKonfirmasi(null);
                 setTransaksiDirty(true);
               }}
             />
@@ -1213,24 +1260,10 @@ export function PihakTab() {
               {alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} melebihi saldo{' '}
               {alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang'} sebesar{' '}
               <b>{formatRp(selisihLebih)}</b>. Saldo setelah transaksi menjadi{' '}
-              <b>{formatRp(saldoSesudah)}</b>. Sistem tidak memblokir, tetapi periksa
-              kembali bila ini bukan koreksi.
+              <b>{formatRp(saldoSesudah)}</b>. Sistem tidak memblokir, tetapi saat
+              menyimpan Anda wajib menulis alasan minimal {MIN_ALASAN_PERINGATAN}{' '}
+              karakter dan alasan itu tercatat di audit.
             </p>
-            <label className="mt-2 flex items-start gap-2 text-[15px]">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={setujuLebih}
-                disabled={busy}
-                onChange={(e) => {
-                  setSetujuLebih(e.target.checked);
-                  setTransaksiDirty(true);
-                }}
-              />
-              <span>
-                Saya sudah memeriksa dan tetap ingin menyimpan transaksi ini.
-              </span>
-            </label>
           </div>
         )}
 
@@ -1257,28 +1290,22 @@ export function PihakTab() {
         </div>
 
         {pesanKonfirmasi && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  setSetujuLebih(true);
-                  void simpan({ konfirmasi: true });
-                }}
-              >
-                Ya, tetap simpan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setPesanKonfirmasi(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasi}
+            pesanError={errorKonfirmasi}
+            sibuk={busy}
+            onCancel={() => {
+              setPesanKonfirmasi(null);
+              setErrorKonfirmasi(null);
+            }}
+            onSubmit={(alasan) => {
+              void simpan({
+                konfirmasi: true,
+                alasanSaldo: alasan,
+                alasanPeringatan: alasan,
+              });
+            }}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1287,7 +1314,8 @@ export function PihakTab() {
           </Button>
           <span className="text-sm text-stone-500">
             Setelah tersimpan, laporan langsung berubah dan jurnal bisa diperiksa di tab
-            Jurnal Umum.
+            Jurnal Umum. Bila nominal melebihi saldo pihak, sistem akan meminta alasan
+            minimal {MIN_ALASAN_PERINGATAN} karakter.
           </span>
         </div>
 

@@ -1113,6 +1113,140 @@ describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan
   });
 });
 
+describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
+  it('menolak tanpa alasan, menerima dengan alasan, dan audit memuat nominal', async () => {
+    const env = buatEnv();
+    expect(
+      (
+        await env.panggil(
+          'saldo-awal:posting',
+          {
+            tanggal: '2026-01-01',
+            keterangan: 'Saldo awal AKT-08',
+            saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
+          },
+          {},
+        )
+      ).ok,
+    ).toBe(true);
+
+    const pihak = await env.panggil('pihak:create', { nama: 'Pihak AKT-08' });
+    expect(pihak.ok, pihak.error).toBe(true);
+    const pihakId = pihak.data.id as string;
+
+    const pinjam = await env.panggil('pihak:posting', {
+      pihakId,
+      input: {
+        header: {
+          id: 'j-akt08-pinjam',
+          tanggal: '2026-01-02',
+          keterangan: 'Beri pinjaman AKT-08',
+          jenis: 'PIUTANG',
+        },
+        baris: [D('1050', 400_000), K('1001', 400_000)],
+      },
+    });
+    expect(pinjam.ok, pinjam.error).toBe(true);
+
+    const lunas = {
+      pihakId,
+      input: {
+        header: {
+          id: 'j-akt08-lunas',
+          tanggal: '2026-01-03',
+          keterangan: 'Pelunasan melebihi saldo AKT-08',
+          jenis: 'PIUTANG',
+        },
+        baris: [D('1001', 600_000), K('1050', 600_000)],
+      },
+    };
+
+    const tanpa = await env.panggil('pihak:posting', lunas, {
+      konfirmasiSaldo: true,
+    });
+    expect(tanpa.ok).toBe(false);
+    expect(tanpa.error).toMatch(/melebihi saldo piutang/i);
+    expect(tanpa.error).toMatch(/alasan minimal 5 karakter/i);
+    expect(tanpa.perluKonfirmasi).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+
+    const alasan = 'Overbalance disetujui pemilik';
+    const lanjut = await env.panggil('pihak:posting', lunas, {
+      konfirmasiSaldo: true,
+      alasanSaldo: alasan,
+    });
+    expect(lanjut.ok, lanjut.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(3);
+
+    const audit = await env.panggil('audit:list', { aksi: 'PIUTANG-PELUNASAN' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    const data = JSON.parse(audit.data.rows[0].data_baru_json) as {
+      nominalLebih: number;
+      alasanSaldo: string;
+    };
+    expect(data.nominalLebih).toBe(200_000);
+    expect(data.alasanSaldo).toBe(alasan);
+  });
+
+  it('panjar:close menolak overrun tanpa alasan dan audit memuat alasanKurang', async () => {
+    const env = buatEnv();
+    expect(
+      (
+        await env.panggil(
+          'saldo-awal:posting',
+          {
+            tanggal: '2026-01-01',
+            keterangan: 'Saldo awal AKT-08 panjar',
+            saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
+          },
+          {},
+        )
+      ).ok,
+    ).toBe(true);
+
+    const buat = await env.panggil('panjar:create', {
+      tanggal: '2026-01-02',
+      penerima: 'Panitia AKT-08',
+      jumlah: 200_000,
+      akunKasSumber: '1001',
+    });
+    expect(buat.ok, buat.error).toBe(true);
+    const id = buat.data.id as string;
+    const close = {
+      id,
+      tanggalClose: '2026-01-03',
+      items: [{ kategori_baga: '5004', nominal: 300_000 }],
+      konfirmasiKurang: true,
+    };
+
+    const tanpa = await env.panggil('panjar:close', close);
+    expect(tanpa.ok).toBe(false);
+    expect(tanpa.error).toMatch(/melebihi panjar sebesar/i);
+    expect(tanpa.error).toMatch(/alasan minimal 5 karakter/i);
+    expect(tanpa.perluKonfirmasi).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+
+    const alasan = 'Kekurangan panjar disetujui';
+    const lanjut = await env.panggil('panjar:close', {
+      ...close,
+      alasanKurang: alasan,
+    });
+    expect(lanjut.ok, lanjut.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(3);
+
+    const audit = await env.panggil('audit:list', { aksi: 'PANJAR-CLOSE' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    const data = JSON.parse(audit.data.rows[0].data_baru_json) as {
+      nominalKurang: number;
+      alasanKurang: string;
+    };
+    expect(data.nominalKurang).toBe(100_000);
+    expect(data.alasanKurang).toBe(alasan);
+  });
+});
+
 describe('AUD-19 — kode darurat per-install lewat IPC', () => {
   const POLA_KODE = /^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/;
 

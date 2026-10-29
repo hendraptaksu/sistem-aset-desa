@@ -5,7 +5,7 @@
 // - Saldo per pihak TIDAK disimpan — dihitung dari baris jurnal 1050/2050.
 // - Jurnal baru + pemetaan pihak + audit ditulis atomik lewat satu transaksi.
 // - Pelunasan/pembayaran melebihi saldo pihak hanya PERINGATAN (bisa
-//   dikonfirmasi), bukan blokir.
+//   dikonfirmasi dengan alasan ≥5 karakter), bukan blokir.
 
 import type Database from 'better-sqlite3';
 import {
@@ -45,6 +45,10 @@ export type PostingPihakInput = {
   konfirmasiSaldo?: boolean;
   /** Alias ringkas untuk `konfirmasiSaldo` (dipakai sebagian test/pemanggil). */
   konfirmasi?: boolean;
+  /** AKT-08: alasan operator saat pelunasan/pembayaran melebihi saldo pihak. */
+  alasanSaldo?: string;
+  /** AKT-08: alasan operator saat peringatan posting (mis. kas minus) dikonfirmasi. */
+  alasanPeringatan?: string;
   /** AKT-02: pintu input mewajibkan saldo awal untuk jurnal pertama. */
   wajibSaldoAwal?: boolean;
   /** Operator sudah memilih "mulai tanpa saldo awal" pada sesi ini. */
@@ -339,29 +343,53 @@ export function postingPihak(
   );
 
   const peringatan = [...validasi.peringatan];
+  const alasanSaldo = String(input.alasanSaldo ?? '').trim();
+  const alasanPeringatan = String(input.alasanPeringatan ?? '').trim();
   let melebihiSaldo = false;
+  let nominalLebih = 0;
   if (klasifikasi.alur === 'TERIMA_PELUNASAN' || klasifikasi.alur === 'BAYAR_HUTANG') {
     const saldoRelevan =
       klasifikasi.alur === 'TERIMA_PELUNASAN' ? saldoSebelum.piutang : saldoSebelum.hutang;
     if (klasifikasi.nominal > saldoRelevan) {
       melebihiSaldo = true;
-      const lebih = klasifikasi.nominal - saldoRelevan;
+      nominalLebih = klasifikasi.nominal - saldoRelevan;
       const label = klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'saldo piutang' : 'saldo hutang';
       peringatan.push(
         `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
-          `melebihi ${label} ${pihak.nama} sebesar ${formatRp(lebih)}. ` +
+          `melebihi ${label} ${pihak.nama} sebesar ${formatRp(nominalLebih)}. ` +
           `Saldo saat ini ${formatRp(saldoRelevan)}; setelah transaksi menjadi minus. ` +
           'Periksa kembali — boleh lanjut dengan konfirmasi.',
       );
     }
   }
 
-  const perluSaldo =
-    melebihiSaldo && input.konfirmasiSaldo !== true && input.konfirmasi !== true;
+  const saldoDikonfirmasi = input.konfirmasiSaldo === true || input.konfirmasi === true;
+  const perluSaldo = melebihiSaldo && !saldoDikonfirmasi;
   const perluKas = validasi.peringatan.length > 0 && input.konfirmasiPeringatan !== true;
   if (perluSaldo || perluKas) {
     return {
       ...validasi,
+      peringatan,
+      perluKonfirmasi: true,
+      tersimpan: false,
+      pihak,
+      alur: klasifikasi.alur,
+      akunPihak: klasifikasi.akunPihak,
+      saldoSebelum,
+    };
+  }
+
+  // AKT-08: overbalance adalah aturan adapter, bukan `validasiJurnal`. Alasan
+  // wajib ada SEBELUM transaksi tulis agar jurnal + audit tidak tersimpan.
+  if (melebihiSaldo && saldoDikonfirmasi && alasanSaldo.length < 5) {
+    const label = klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'piutang' : 'hutang';
+    return {
+      ...validasi,
+      errors: [
+        `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
+          `melebihi saldo ${label} sebesar ${formatRp(nominalLebih)}. ` +
+          'Konfirmasi overbalance wajib disertai alasan minimal 5 karakter.',
+      ],
       peringatan,
       perluKonfirmasi: true,
       tersimpan: false,
@@ -379,6 +407,10 @@ export function postingPihak(
       // pemetaan pihak agar data "sesudah" memuat saldo yang benar.
       const hasil = postingJurnal(db, input.input, {
         konfirmasiPeringatan: true,
+        // AKT-08: peringatan kas dari posting layer juga wajib alasan, sama
+        // seperti pintu input lain (AKT-06/AKT-07).
+        alasanPeringatan,
+        wajibAlasanPeringatan: true,
         wajibSaldoAwal: input.wajibSaldoAwal === true,
         konfirmasiTanpaSaldoAwal: input.konfirmasiTanpaSaldoAwal === true,
         audit: [],
@@ -416,6 +448,10 @@ export function postingPihak(
             jurnal: hasil.jurnal,
             baris: input.input.baris,
             saldo: saldoSesudah,
+            ...(melebihiSaldo
+              ? { nominalLebih, alasanSaldo }
+              : {}),
+            ...(alasanPeringatan ? { alasanPeringatan } : {}),
           },
         ),
       );
