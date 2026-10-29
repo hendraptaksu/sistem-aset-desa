@@ -366,6 +366,10 @@ export const api = {
     input: JurnalInput,
     opsi: {
       konfirmasiPeringatan?: boolean;
+      /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
+      alasanPeringatan?: string;
+      /** AKT-07: backend wajib menolak alasan <5 karakter. */
+      wajibAlasanPeringatan?: boolean;
       /** AKT-02: semua pintu input UI mengirim true. */
       wajibSaldoAwal?: boolean;
       /** Operator memilih "mulai tanpa saldo awal" pada sesi ini. */
@@ -380,6 +384,10 @@ export const api = {
     input: FormSaldoAwal,
     opsi: {
       konfirmasiPeringatan?: boolean;
+      /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
+      alasanPeringatan?: string;
+      /** AKT-07: backend wajib menolak alasan <5 karakter. */
+      wajibAlasanPeringatan?: boolean;
       wajibSaldoAwal?: boolean;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},

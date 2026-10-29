@@ -11,6 +11,12 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  opsiPeringatanApi,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
   adalahErrorSaldoAwal,
   opsiSaldoAwal,
   tandaiMulaiTanpaSaldoAwal,
@@ -24,6 +30,7 @@ import {
   ErrorBox,
   Field,
   LockModal,
+  PeringatanModal,
   Select,
   TextInput,
 } from './ui.js';
@@ -209,9 +216,12 @@ export function FormTransaksiTerpandu({
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
+  /** Alasan kunci periode dan alasan peringatan sengaja dipisah (AKT-07). */
+  const alasanPeriodeRef = useRef('');
+  const alasanPeringatanRef = useRef('');
   const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
   const saldoAwalPendingRef = useRef<{
-    alasan?: string;
     konfirmasi?: boolean;
   }>({});
 
@@ -396,6 +406,7 @@ export function FormTransaksiTerpandu({
   async function simpan(
     opsi: {
       alasan?: string;
+      alasanPeringatan?: string;
       konfirmasi?: boolean;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
@@ -403,7 +414,12 @@ export function FormTransaksiTerpandu({
     if (busyRef.current) return;
     setErr(null);
     setInfo(null);
-    setPesanKonfirmasi(null);
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (opsi.konfirmasi !== true) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     setLockOpen(false);
     setSaldoAwalOpen(false);
     setToast(null);
@@ -417,6 +433,23 @@ export function FormTransaksiTerpandu({
       return;
     }
 
+    // Alasan kunci periode (`alasan`) dan alasan peringatan (`alasanPeringatan`)
+    // adalah dua hal berbeda; keduanya dipertahankan selama retry.
+    const alasanPeriode = rapikanAlasanPeringatan(
+      opsi.alasan ?? alasanPeriodeRef.current,
+    );
+    if (opsi.alasan) alasanPeriodeRef.current = opsi.alasan;
+    const alasanPeringatan = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? alasanPeringatanRef.current,
+    );
+    if (opsi.alasanPeringatan) alasanPeringatanRef.current = opsi.alasanPeringatan;
+
+    if (opsi.konfirmasi === true && !alasanPeringatanCukup(alasanPeringatan)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
+      return;
+    }
+
     let input: JurnalInput;
     try {
       input = susunJurnal({
@@ -427,7 +460,7 @@ export function FormTransaksiTerpandu({
         nominal,
         keterangan: keterangan.trim(),
         noBukti: noBukti.trim(),
-        ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
+        ...(alasanPeriode ? { alasan: alasanPeriode } : {}),
       });
     } catch (e) {
       tampilkanError(pesanError(e));
@@ -436,7 +469,6 @@ export function FormTransaksiTerpandu({
 
     const nominalTersimpan = nominal;
     saldoAwalPendingRef.current = {
-      ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
       ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
     };
     busyRef.current = true;
@@ -444,8 +476,18 @@ export function FormTransaksiTerpandu({
     try {
       const hasil = await api.jurnalPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        ...opsiPeringatanApi(
+          opsi.konfirmasi === true ? alasanPeringatan : undefined,
+        ),
         ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
       });
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+      // Alasan kunci/peringatan hanya untuk percobaan ini; transaksi berikutnya
+      // pada tanggal yang sama harus meminta alasan baru bila perlu.
+      alasanPeriodeRef.current = '';
+      alasanPeringatanRef.current = '';
+      saldoAwalPendingRef.current = {};
       const nomorTersimpan = hasil.jurnal.no_bukti;
       setInfo(
         `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${nomorTersimpan ? ` (${nomorTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
@@ -469,12 +511,22 @@ export function FormTransaksiTerpandu({
       });
     } catch (e) {
       if (adalahErrorSaldoAwal(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setSaldoAwalOpen(true);
       } else if (isPerluAlasan(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setLockOpen(true);
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        // Penolakan "alasan kurang" ditampilkan di dalam modal agar operator
+        // bisa langsung memperbaiki isian yang sama.
+        setErrorKonfirmasi(opsi.konfirmasi === true ? pesan : null);
       } else {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         tampilkanError(pesanError(e));
       }
     } finally {
@@ -537,6 +589,8 @@ export function FormTransaksiTerpandu({
             disabled={busy}
             onChange={(e) => {
               setTanggal(e.target.value);
+              // Alasan kunci periode terikat tanggal; tanggal baru = sesi baru.
+              alasanPeriodeRef.current = '';
               setDirty(true);
             }}
           />
@@ -743,22 +797,18 @@ export function FormTransaksiTerpandu({
       </div>
 
       {pesanKonfirmasi && (
-        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-          <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-          <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={() => void simpan({ konfirmasi: true })}>
-              Ya, tetap simpan
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setPesanKonfirmasi(null)}
-            >
-              Batal
-            </Button>
-          </div>
-        </div>
+        <PeringatanModal
+          pesan={pesanKonfirmasi}
+          pesanError={errorKonfirmasi}
+          sibuk={busy}
+          onCancel={() => {
+            setPesanKonfirmasi(null);
+            setErrorKonfirmasi(null);
+          }}
+          onSubmit={(alasan) => {
+            void simpan({ konfirmasi: true, alasanPeringatan: alasan });
+          }}
+        />
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">

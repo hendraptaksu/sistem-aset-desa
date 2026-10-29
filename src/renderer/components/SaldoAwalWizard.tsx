@@ -7,6 +7,12 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  opsiPeringatanApi,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
   Badge,
   Button,
   CurrencyInput,
@@ -14,6 +20,7 @@ import {
   Field,
   LockModal,
   Modal,
+  PeringatanModal,
   Select,
   TextInput,
 } from './ui.js';
@@ -73,7 +80,12 @@ export function SaldoAwalWizard({
   const busyRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
+  /** AKT-07: alasan kunci periode dan alasan peringatan dipisah. */
+  const alasanPeriodeRef = useRef('');
+  const alasanPeringatanRef = useRef('');
+  const konfirmasiPendingRef = useRef<{ konfirmasi?: boolean }>({});
 
   // COA dimuat async oleh TransaksiTab; isi baris pertama bila baru tiba.
   useEffect(() => {
@@ -150,11 +162,20 @@ export function SaldoAwalWizard({
   }
 
   async function simpan(
-    opsi: { alasan?: string; konfirmasi?: boolean } = {},
+    opsi: {
+      alasan?: string;
+      alasanPeringatan?: string;
+      konfirmasi?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErr(null);
-    setPesanKonfirmasi(null);
+    // Modal konfirmasi tetap terbuka saat mengirim alasan agar penolakan
+    // backend dapat ditampilkan dan diperbaiki tanpa mengulang dari awal.
+    if (opsi.konfirmasi !== true) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     setLockOpen(false);
 
     if (!formSah || !hasil.data) {
@@ -164,33 +185,64 @@ export function SaldoAwalWizard({
       return;
     }
 
+    // AKT-07: dua alasan berbeda — kunci periode (`alasan`) dan peringatan
+    // (`alasanPeringatan`) — dipertahankan bersama selama retry.
+    const alasanPeriode = rapikanAlasanPeringatan(
+      opsi.alasan ?? alasanPeriodeRef.current,
+    );
+    if (opsi.alasan) alasanPeriodeRef.current = opsi.alasan;
+    const alasanPeringatan = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? alasanPeringatanRef.current,
+    );
+    if (opsi.alasanPeringatan) alasanPeringatanRef.current = opsi.alasanPeringatan;
+
+    if (opsi.konfirmasi === true && !alasanPeringatanCukup(alasanPeringatan)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
+      return;
+    }
+
     const form: FormSaldoAwal = {
       tanggal,
       saldo: rows.map((r) => ({ akun_kode: r.akun, nominal: r.nominal })),
       ...(keterangan.trim() ? { keterangan: keterangan.trim() } : {}),
       ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
-      ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
+      ...(alasanPeriode ? { alasan: alasanPeriode } : {}),
     };
     const total = hasil.data.input.baris.reduce((s, b) => s + b.debit, 0);
 
+    konfirmasiPendingRef.current = {
+      ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+    };
     busyRef.current = true;
     setBusy(true);
     try {
       const res = await api.saldoAwalPosting(form, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        ...opsiPeringatanApi(
+          opsi.konfirmasi === true ? alasanPeringatan : undefined,
+        ),
         // AKT-02: opsi ini konsisten dengan pintu input lain; jenis SALDO_AWAL
         // tetap dikecualikan dari guard sehingga wizard bisa menjadi jurnal pertama.
         wajibSaldoAwal: true,
       });
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
       onSukses(
         `Saldo awal ${formatTanggal(tanggal)} tersimpan — satu jurnal seimbang ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}).`,
       );
     } catch (e) {
       if (isPerluAlasan(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setLockOpen(true);
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        setErrorKonfirmasi(opsi.konfirmasi === true ? pesan : null);
       } else {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setErr(pesanError(e));
       }
     } finally {
@@ -417,22 +469,18 @@ export function SaldoAwalWizard({
         </div>
 
         {pesanKonfirmasi && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button disabled={busy} onClick={() => void simpan({ konfirmasi: true })}>
-                Ya, tetap simpan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setPesanKonfirmasi(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasi}
+            pesanError={errorKonfirmasi}
+            sibuk={busy}
+            onCancel={() => {
+              setPesanKonfirmasi(null);
+              setErrorKonfirmasi(null);
+            }}
+            onSubmit={(alasan) => {
+              void simpan({ konfirmasi: true, alasanPeringatan: alasan });
+            }}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -452,7 +500,7 @@ export function SaldoAwalWizard({
             onCancel={() => setLockOpen(false)}
             onSubmit={(alasan) => {
               setLockOpen(false);
-              void simpan({ alasan });
+              void simpan({ ...konfirmasiPendingRef.current, alasan });
             }}
           />
         )}

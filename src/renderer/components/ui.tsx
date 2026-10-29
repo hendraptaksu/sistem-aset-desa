@@ -10,6 +10,11 @@ import {
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { parseRupiahToSen } from '../../utils/format.js';
+import {
+  MIN_ALASAN_PERINGATAN,
+  alasanPeringatanCukup,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={clsx('rounded-xl border bg-white p-5 shadow-sm', className)}>{children}</div>;
@@ -576,6 +581,88 @@ export function LockModal({
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>Batal</Button>
         <Button onClick={() => alasan.trim().length >= 5 && onSubmit(alasan.trim())}>Tetap simpan</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * AKT-07: modal alasan saat operator tetap menyimpan meski ada peringatan
+ * (mis. kas minus). Terpisah dari `LockModal` yang meminta alasan kunci
+ * periode; alasan di sini dikirim sebagai `alasanPeringatan` ke audit.
+ */
+export function PeringatanModal({
+  pesan,
+  pesanError,
+  sibuk = false,
+  onCancel,
+  onSubmit,
+}: {
+  /** Ringkasan peringatan dari backend (mis. saldo kas akan minus). */
+  pesan: ReactNode;
+  /** Penolakan backend karena alasan kurang; ditampilkan agar bisa diperbaiki. */
+  pesanError?: string | null;
+  sibuk?: boolean;
+  onCancel: () => void;
+  onSubmit: (alasan: string) => void;
+}) {
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasanPeringatanCukup(alasan);
+
+  return (
+    <Modal
+      judul="Konfirmasi peringatan"
+      deskripsi={
+        <div className="space-y-2 text-[15px] text-stone-700">
+          <p>{pesan}</p>
+          <p>
+            Anda boleh tetap menyimpan, tetapi wajib menuliskan alasan minimal{' '}
+            {MIN_ALASAN_PERINGATAN} karakter. Alasan ini tercatat di audit.
+          </p>
+        </div>
+      }
+      onTutup={onCancel}
+      sibuk={sibuk}
+      lebar="md"
+    >
+      <Field
+        label={`Alasan tetap menyimpan (min. ${MIN_ALASAN_PERINGATAN} karakter)`}
+      >
+        <TextInput
+          autoFocus
+          value={alasan}
+          disabled={sibuk}
+          onChange={(e) => setAlasan(e.target.value)}
+          placeholder="cth: kas minus disetujui pemilik"
+        />
+      </Field>
+      {pesanError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+        >
+          {pesanError}
+        </p>
+      )}
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">
+          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
+          dan akhir diabaikan.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
+        <Button
+          disabled={sibuk || !cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(rapikanAlasanPeringatan(alasan));
+          }}
+        >
+          Ya, tetap simpan
+        </Button>
       </div>
     </Modal>
   );

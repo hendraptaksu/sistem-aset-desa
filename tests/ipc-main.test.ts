@@ -1082,6 +1082,15 @@ describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan
     expect(tanpa.perluKonfirmasi).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
 
+    const pendek = await env.panggil('jurnal:posting', bayar, {
+      konfirmasiPeringatan: true,
+      alasanPeringatan: 'ok',
+    });
+    expect(pendek.ok).toBe(false);
+    expect(pendek.error).toMatch(/alasan minimal 5 karakter/i);
+    expect(pendek.perluKonfirmasi).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+
     const tersimpan = await env.panggil('jurnal:posting', bayar, {
       konfirmasiPeringatan: true,
       alasanPeringatan: 'Kas minus disetujui pemilik',

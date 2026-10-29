@@ -25,7 +25,7 @@
 | AKT-04 | P1 | M | Peringatan kas minus untuk tanggal setelah jurnal | — | [x] |
 | AKT-05 | P1 | S | Default tanggal reversal = tanggal jurnal asli | — | [x] |
 | AKT-06 | P1 | M | Audit override: peringatan + konfirmasi + alasan | — | [x] |
-| AKT-07 | P1 | M | UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal | AKT-06 | [ ] |
+| AKT-07 | P1 | M | UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal | AKT-06 | [x] |
 | AKT-08 | P1 | M | UI/API alasan overbalance Pihak & overrun Panjar | AKT-06 | [ ] |
 | AKT-09 | P1 | M | Modul audit integritas akuntansi | — | [ ] |
 | AKT-10 | P1 | S | Tutup buku menolak jika audit integritas gagal | AKT-09 | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 7/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 8/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -206,7 +206,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-07 — UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal** · P1 · M
+- [x] **AKT-07 — UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal** · P1 · M (2026-10-29: typecheck bersih; 639/639 test hijau (54 file); `PeringatanModal` mewajibkan alasan ≥5 karakter dan menonaktifkan tombol "Ya, tetap simpan" sampai cukup; `FormTransaksiTerpandu`, `JurnalUmumEditor`, dan `SaldoAwalWizard` mengirim `alasanPeringatan` + `wajibAlasanPeringatan: true` lewat `jurnalPosting`/`saldoAwalPosting`; alasan kunci periode tetap terpisah di `LockModal` dan dipertahankan saat retry; penolakan backend ditampilkan di modal agar bisa diperbaiki; build sukses)
   - **Konteks:** Setelah AKT-06, tombol "Ya, tetap simpan" tanpa field alasan
     akan selalu gagal.
   - **Langkah:**
