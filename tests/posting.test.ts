@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { postingJurnal, postingSaldoAwal, validasiJurnalDb } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import {
   getJurnalDetail,
   getPengaturanPembukuan,
@@ -253,6 +254,174 @@ describe('P0-4 — peringatan kas minus', () => {
       expect(dikonfirmasi.tersimpan).toBe(true);
       expect(dikonfirmasi.peringatan).toHaveLength(1);
       expect(jumlahJurnal(db)).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AKT-06 — audit override peringatan + alasan', () => {
+  /** Kas 1001 Rp1.000; pengeluaran Rp1.500 memicu peringatan kas minus. */
+  function siapkanKasMinus(db: ReturnType<typeof openDb>) {
+    const awal = postingJurnal(db, {
+      header: header({
+        id: 'j-modal-akt06',
+        tanggal: '2026-01-01',
+        no_bukti: 'JU-2026-0300',
+        keterangan: 'Saldo awal kas AKT-06',
+        jenis: 'SALDO_AWAL',
+      }),
+      baris: pasangan('1001', '3000', 100_000),
+    });
+    expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+    return {
+      header: header({
+        id: 'j-minus-akt06',
+        tanggal: '2026-01-02',
+        no_bukti: 'JU-2026-0301',
+        keterangan: 'Bayar listrik melebihi kas',
+        jenis: 'BAYAR' as const,
+      }),
+      baris: pasangan('5000', '1001', 150_000),
+    };
+  }
+
+  it('menolak konfirmasi kas minus tanpa alasan dan tidak menulis jurnal/audit', () => {
+    const { db } = freshDb();
+    try {
+      const bayar = siapkanKasMinus(db);
+      const auditSebelum = listAuditLog(db).length;
+
+      const tanpa = postingJurnal(db, bayar, {
+        konfirmasiPeringatan: true,
+        wajibAlasanPeringatan: true,
+      });
+      expect(tanpa.tersimpan).toBe(false);
+      expect(tanpa.perluKonfirmasi).toBe(true);
+      expect(tanpa.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(tanpa.peringatan.join(' ')).toMatch(/akan minus/);
+      expect(jumlahJurnal(db)).toBe(1);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+
+      const pendek = postingJurnal(db, bayar, {
+        konfirmasiPeringatan: true,
+        wajibAlasanPeringatan: true,
+        alasanPeringatan: 'ok',
+      });
+      expect(pendek.tersimpan).toBe(false);
+      expect(pendek.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(jumlahJurnal(db)).toBe(1);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menyimpan dengan alasan ≥5 karakter dan audit memuat peringatan + alasan', () => {
+    const { db } = freshDb();
+    try {
+      const bayar = siapkanKasMinus(db);
+
+      const hasil = postingJurnal(db, bayar, {
+        konfirmasiPeringatan: true,
+        wajibAlasanPeringatan: true,
+        alasanPeringatan: '  Kas minus disetujui pemilik  ',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.peringatan).toHaveLength(1);
+      expect(jumlahJurnal(db)).toBe(2);
+
+      const audit = listAuditLog(db, { aksi: 'CREATE j-minus-akt06' });
+      expect(audit).toHaveLength(1);
+      const data = JSON.parse(audit[0]!.data_baru_json) as {
+        jurnal: { id: string };
+        baris: unknown[];
+        peringatan: string[];
+        konfirmasiPeringatan: boolean;
+        alasanPeringatan: string;
+      };
+      expect(data.jurnal.id).toBe('j-minus-akt06');
+      expect(data.baris).toHaveLength(2);
+      expect(data.peringatan).toEqual(hasil.peringatan);
+      expect(data.peringatan.join(' ')).toMatch(/akan minus/);
+      expect(data.konfirmasiPeringatan).toBe(true);
+      expect(data.alasanPeringatan).toBe('Kas minus disetujui pemilik');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('audit CREATE jurnal tanpa peringatan tetap berbentuk generik', () => {
+    const { db } = freshDb();
+    try {
+      const hasil = postingJurnal(db, {
+        header: header({ id: 'j-tanpa-peringatan', no_bukti: 'JU-2026-0310' }),
+        baris: pasangan('1001', '4005'),
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.peringatan).toEqual([]);
+
+      const audit = listAuditLog(db, { aksi: 'CREATE j-tanpa-peringatan' });
+      expect(audit).toHaveLength(1);
+      const data = JSON.parse(audit[0]!.data_baru_json) as Record<string, unknown>;
+      expect(Object.keys(data).sort()).toEqual(['baris', 'jurnal']);
+      expect(data).not.toHaveProperty('peringatan');
+      expect(data).not.toHaveProperty('konfirmasiPeringatan');
+      expect(data).not.toHaveProperty('alasanPeringatan');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('saldo awal meneruskan alasan lewat adapter dan mencatat override di audit', () => {
+    const { db } = freshDb();
+    try {
+      const input = {
+        header: header({
+          id: 'sa-minus-akt06',
+          tanggal: '2026-01-01',
+          no_bukti: 'SA-2026-0001',
+          keterangan: 'Saldo awal dengan kas minus',
+          jenis: 'SALDO_AWAL' as const,
+        }),
+        baris: [
+          { akun_kode: '5000', debit: 150_000, kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: 150_000 },
+        ],
+      };
+
+      const ditolak = simpanSaldoAwal(db, input, {
+        konfirmasiPeringatan: true,
+        wajibAlasanPeringatan: true,
+      });
+      expect(ditolak.tersimpan).toBe(false);
+      expect(ditolak.perluKonfirmasi).toBe(true);
+      expect(ditolak.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(listAuditLog(db)).toEqual([]);
+
+      const tersimpan = simpanSaldoAwal(db, input, {
+        konfirmasiPeringatan: true,
+        wajibAlasanPeringatan: true,
+        alasanPeringatan: 'Saldo awal minus disetujui',
+      });
+      expect(tersimpan.tersimpan, tersimpan.errors.join(' ')).toBe(true);
+      expect(tersimpan.peringatan).toHaveLength(1);
+      expect(jumlahJurnal(db)).toBe(1);
+
+      const audit = listAuditLog(db, { aksi: 'SALDO-AWAL sa-minus-akt06' });
+      expect(audit).toHaveLength(1);
+      const data = JSON.parse(audit[0]!.data_baru_json) as {
+        jurnal: { id: string; jenis: string };
+        peringatan: string[];
+        konfirmasiPeringatan: boolean;
+        alasanPeringatan: string;
+      };
+      expect(data.jurnal.id).toBe('sa-minus-akt06');
+      expect(data.jurnal.jenis).toBe('SALDO_AWAL');
+      expect(data.peringatan).toEqual(tersimpan.peringatan);
+      expect(data.konfirmasiPeringatan).toBe(true);
+      expect(data.alasanPeringatan).toBe('Saldo awal minus disetujui');
     } finally {
       db.close();
     }

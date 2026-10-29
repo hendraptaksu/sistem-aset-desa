@@ -18,11 +18,18 @@ import {
   type JurnalInput,
   type PostingContext,
 } from '../core/posting.js';
-import type { AuditLog, Jurnal } from '../core/types.js';
+import type { AuditLog, Jurnal, JurnalBarisInput } from '../core/types.js';
 
 export type OpsiPosting = {
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
   konfirmasiPeringatan?: boolean;
+  /** AKT-06: alasan operator melanjutkan meski ada peringatan. */
+  alasanPeringatan?: string;
+  /**
+   * AKT-06: pintu input yang mewajibkan alasan ≥5 karakter saat konfirmasi
+   * peringatan. Jalur Pihak/Panjar belum memakai ini (AKT-08).
+   */
+  wajibAlasanPeringatan?: boolean;
   /**
    * Pintu input yang mewajibkan saldo awal lebih dulu (AKT-01). Jurnal pertama
    * non-SALDO_AWAL ditolak selama belum ada jurnal sama sekali, kecuali operator
@@ -40,6 +47,10 @@ export type OpsiPosting = {
 
 export const PESAN_WAJIB_SALDO_AWAL =
   'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.';
+
+/** AKT-06: pesan saat konfirmasi peringatan tidak disertai alasan yang cukup. */
+export const PESAN_WAJIB_ALASAN_PERINGATAN =
+  'Konfirmasi peringatan wajib disertai alasan minimal 5 karakter.';
 
 /**
  * Guard jurnal pertama (AKT-01/AKT-02). Dipanggil DI DALAM transaksi tulis agar
@@ -153,21 +164,65 @@ export function validasiJurnalDb(
   return validasiJurnal(input, buatKonteksPosting(db, input.header));
 }
 
+/** Alasan konfirmasi peringatan yang sudah dinormalisasi (trim). */
+function alasanPeringatanBersih(opsi: OpsiPosting): string {
+  return String(opsi.alasanPeringatan ?? '').trim();
+}
+
 /**
- * Validasi + simpan jurnal dalam satu pintu.
- * - Error -> `tersimpan: false`, tidak ada baris yang ditulis.
- * - Peringatan + belum dikonfirmasi -> `tersimpan: false`, `perluKonfirmasi: true`.
- * - Peringatan + `konfirmasiPeringatan` -> tetap disimpan.
+ * AKT-06: data audit jurnal. Jurnal tanpa peringatan tetap memakai bentuk lama
+ * `{ jurnal, baris }`; saat ada peringatan, override ikut tercatat.
  */
-export function postingJurnal(
+function dataAuditJurnal(
+  jurnal: Jurnal,
+  baris: JurnalBarisInput[],
+  peringatan: string[],
+  opsi: OpsiPosting,
+): Record<string, unknown> {
+  if (peringatan.length === 0) return { jurnal, baris };
+  return {
+    jurnal,
+    baris,
+    peringatan: [...peringatan],
+    konfirmasiPeringatan: true,
+    alasanPeringatan: alasanPeringatanBersih(opsi),
+  };
+}
+
+type BuatAuditJurnal = (jurnal: Jurnal, hasil: HasilValidasiJurnal) => AuditLog;
+
+/**
+ * Inti `postingJurnal`/`postingSaldoAwal`: validasi, guard konfirmasi, lalu
+ * tulis jurnal + audit dalam satu transaksi. `buatAudit` hanya dipakai bila
+ * pemanggil tidak mengirim `opsi.audit` sendiri (mis. reversal).
+ */
+function postingJurnalInti(
   db: Database.Database,
   input: JurnalInput,
-  opsi: OpsiPosting = {},
+  opsi: OpsiPosting,
+  buatAudit: BuatAuditJurnal,
 ): HasilPosting {
   const hasil = validasiJurnalDb(db, input);
   if (hasil.errors.length > 0) return { ...hasil, tersimpan: false };
   if (hasil.peringatan.length > 0 && !opsi.konfirmasiPeringatan)
     return { ...hasil, tersimpan: false };
+
+  // AKT-06: peringatan yang dikonfirmasi lewat pintu input tertentu wajib
+  // punya alasan. Ditolak sebelum transaksi sehingga jurnal & audit tidak
+  // tertulis sama sekali.
+  if (
+    hasil.peringatan.length > 0 &&
+    opsi.konfirmasiPeringatan === true &&
+    opsi.wajibAlasanPeringatan === true &&
+    alasanPeringatanBersih(opsi).length < 5
+  ) {
+    return {
+      ...hasil,
+      tersimpan: false,
+      errors: [...hasil.errors, PESAN_WAJIB_ALASAN_PERINGATAN],
+      perluKonfirmasi: true,
+    };
+  }
 
   try {
     const simpan = db.transaction(() => {
@@ -177,17 +232,7 @@ export function postingJurnal(
       const jurnal = insertJurnal(db, input.header, input.baris);
       // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
       // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.
-      const audit =
-        opsi.audit === undefined
-          ? [
-              buatAuditLog(
-                `CREATE ${jurnal.id}`,
-                String(input.alasan ?? '').trim(),
-                undefined,
-                { jurnal, baris: input.baris },
-              ),
-            ]
-          : opsi.audit;
+      const audit = opsi.audit === undefined ? [buatAudit(jurnal, hasil)] : opsi.audit;
       for (const a of audit) insertAuditLog(db, a);
       return jurnal;
     });
@@ -203,6 +248,28 @@ export function postingJurnal(
 }
 
 /**
+ * Validasi + simpan jurnal dalam satu pintu.
+ * - Error -> `tersimpan: false`, tidak ada baris yang ditulis.
+ * - Peringatan + belum dikonfirmasi -> `tersimpan: false`, `perluKonfirmasi: true`.
+ * - Peringatan + `konfirmasiPeringatan` -> tetap disimpan; bila
+ *   `wajibAlasanPeringatan` aktif, alasan ≥5 karakter wajib diisi (AKT-06).
+ */
+export function postingJurnal(
+  db: Database.Database,
+  input: JurnalInput,
+  opsi: OpsiPosting = {},
+): HasilPosting {
+  return postingJurnalInti(db, input, opsi, (jurnal, hasil) =>
+    buatAuditLog(
+      `CREATE ${jurnal.id}`,
+      String(input.alasan ?? '').trim(),
+      undefined,
+      dataAuditJurnal(jurnal, input.baris, hasil.peringatan, opsi),
+    ),
+  );
+}
+
+/**
  * Helper pemakaian nanti untuk Saldo Awal (belum ada endpoint/UI di P0-9).
  * Sama seperti `postingJurnal`, tetapi memaksa jenis SALDO_AWAL dan memberi
  * aksi audit khusus `SALDO-AWAL` agar mudah dibedakan dari jurnal biasa.
@@ -213,15 +280,12 @@ export function postingSaldoAwal(
   opsi: OpsiPosting = {},
 ): HasilPosting {
   const header = { ...input.header, jenis: 'SALDO_AWAL' as const };
-  const audit =
-    opsi.audit ??
-    [
-      buatAuditLog(
-        `SALDO-AWAL ${header.id}`,
-        String(input.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
-        undefined,
-        { jurnal: header, baris: input.baris },
-      ),
-    ];
-  return postingJurnal(db, { ...input, header }, { ...opsi, audit });
+  return postingJurnalInti(db, { ...input, header }, opsi, (jurnal, hasil) =>
+    buatAuditLog(
+      `SALDO-AWAL ${header.id}`,
+      String(input.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
+      undefined,
+      dataAuditJurnal(jurnal, input.baris, hasil.peringatan, opsi),
+    ),
+  );
 }

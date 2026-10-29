@@ -1049,6 +1049,61 @@ describe('AKT-02 — IPC pihak/panjar ikut mewajibkan saldo awal pertama', () =>
   });
 });
 
+describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan', () => {
+  it('menolak tanpa alasan, menerima dengan alasan, dan audit memuat override', async () => {
+    const env = buatEnv();
+
+    const awal = await env.panggil(
+      'saldo-awal:posting',
+      {
+        tanggal: '2026-01-01',
+        keterangan: 'Saldo awal AKT-06',
+        saldo: [{ akun_kode: '1001', nominal: 100_000 }],
+      },
+      {},
+    );
+    expect(awal.ok, awal.error).toBe(true);
+
+    const bayar = {
+      header: {
+        id: 'j-akt06-bayar',
+        tanggal: '2026-01-02',
+        keterangan: 'Bayar listrik melebihi kas',
+        jenis: 'BAYAR',
+      },
+      baris: [D('5000', 150_000), K('1001', 150_000)],
+    };
+
+    const tanpa = await env.panggil('jurnal:posting', bayar, {
+      konfirmasiPeringatan: true,
+    });
+    expect(tanpa.ok).toBe(false);
+    expect(tanpa.error).toMatch(/alasan minimal 5 karakter/i);
+    expect(tanpa.perluKonfirmasi).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+
+    const tersimpan = await env.panggil('jurnal:posting', bayar, {
+      konfirmasiPeringatan: true,
+      alasanPeringatan: 'Kas minus disetujui pemilik',
+    });
+    expect(tersimpan.ok, tersimpan.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+
+    const audit = await env.panggil('audit:list', { aksi: 'CREATE j-akt06-bayar' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    const data = JSON.parse(audit.data.rows[0].data_baru_json) as {
+      peringatan: string[];
+      konfirmasiPeringatan: boolean;
+      alasanPeringatan: string;
+    };
+    expect(data.peringatan).toHaveLength(1);
+    expect(data.peringatan.join(' ')).toMatch(/akan minus/);
+    expect(data.konfirmasiPeringatan).toBe(true);
+    expect(data.alasanPeringatan).toBe('Kas minus disetujui pemilik');
+  });
+});
+
 describe('AUD-19 — kode darurat per-install lewat IPC', () => {
   const POLA_KODE = /^(?:[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}-){3}[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/;
 

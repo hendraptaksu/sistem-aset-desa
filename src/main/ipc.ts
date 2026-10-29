@@ -35,6 +35,7 @@ import {
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
 import {
+  PESAN_WAJIB_ALASAN_PERINGATAN,
   PESAN_WAJIB_SALDO_AWAL,
   pastikanWajibSaldoAwal,
   postingJurnal,
@@ -235,6 +236,12 @@ export function registerIpc(deps: IpcDeps): void {
     opsi !== null &&
     !Array.isArray(opsi) &&
     (opsi as { konfirmasiTanpaSaldoAwal?: unknown }).konfirmasiTanpaSaldoAwal === true;
+  /** AKT-06: hanya string dari renderer yang diteruskan sebagai alasan. */
+  const bacaTeksOpsi = (opsi: unknown, kunci: string): string | undefined => {
+    if (typeof opsi !== 'object' || opsi === null || Array.isArray(opsi)) return undefined;
+    const nilai = (opsi as Record<string, unknown>)[kunci];
+    return typeof nilai === 'string' ? nilai : undefined;
+  };
 
   // AUD-17: setiap handler hanya boleh dipanggil frame renderer aplikasi.
   // Event tanpa senderFrame (frame hancur) atau dari iframe/halaman asing
@@ -835,6 +842,10 @@ export function registerIpc(deps: IpcDeps): void {
 
       const hasil = postingJurnal(deps.db(), bentuk.input, {
         konfirmasiPeringatan,
+        // AKT-06: jurnal yang tetap disimpan meski ada peringatan wajib
+        // menyertakan alasan; diteruskan ke audit data_baru_json.
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        wajibAlasanPeringatan: true,
         // AKT-01: form transaksi/jurnal umum wajib punya saldo awal, kecuali
         // operator sudah menekan "mulai tanpa saldo awal" (diteruskan UI AKT-02).
         wajibSaldoAwal: true,
@@ -847,8 +858,12 @@ export function registerIpc(deps: IpcDeps): void {
           'Jurnal gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
         // Konfirmasi hanya untuk peringatan murni (mis. kas minus), bukan saat
-        // masih ada error yang harus diperbaiki.
-        const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        // masih ada error yang harus diperbaiki. AKT-06: alasan peringatan yang
+        // kurang tetap minta konfirmasi ulang.
+        const perluKonfirmasi =
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) => m === PESAN_WAJIB_ALASAN_PERINGATAN));
         return fail(pesan, perluAlasan, perluKonfirmasi);
       }
       return ok({ jurnal: hasil.jurnal });
@@ -885,6 +900,9 @@ export function registerIpc(deps: IpcDeps): void {
 
       const hasil = simpanSaldoAwal(deps.db(), jurnalInput, {
         konfirmasiPeringatan,
+        // AKT-06: alasan konfirmasi peringatan ikut melewati adapter saldo awal.
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        wajibAlasanPeringatan: true,
         // AKT-02: opsi diteruskan konsisten; jenis SALDO_AWAL selalu dikecualikan
         // dari guard sehingga wizard tetap bisa menjadi jurnal pertama.
         wajibSaldoAwal: true,
@@ -896,7 +914,10 @@ export function registerIpc(deps: IpcDeps): void {
           pesanValidasi(hasil.peringatan) ||
           'Saldo awal gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
-        const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        const perluKonfirmasi =
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) => m === PESAN_WAJIB_ALASAN_PERINGATAN));
         return fail(pesan, perluAlasan, perluKonfirmasi);
       }
       return ok({ jurnal: hasil.jurnal });

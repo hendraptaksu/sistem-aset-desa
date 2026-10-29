@@ -24,7 +24,7 @@
 | AKT-03 | P1 | M | Tegakkan tanggal mulai pembukuan sebagai batas bawah | AKT-01 | [x] |
 | AKT-04 | P1 | M | Peringatan kas minus untuk tanggal setelah jurnal | — | [x] |
 | AKT-05 | P1 | S | Default tanggal reversal = tanggal jurnal asli | — | [x] |
-| AKT-06 | P1 | M | Audit override: peringatan + konfirmasi + alasan | — | [ ] |
+| AKT-06 | P1 | M | Audit override: peringatan + konfirmasi + alasan | — | [x] |
 | AKT-07 | P1 | M | UI alasan konfirmasi Transaksi/Jurnal Umum/Saldo Awal | AKT-06 | [ ] |
 | AKT-08 | P1 | M | UI/API alasan overbalance Pihak & overrun Panjar | AKT-06 | [ ] |
 | AKT-09 | P1 | M | Modul audit integritas akuntansi | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 6/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 7/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -181,7 +181,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-06 — Audit override: peringatan + konfirmasi + alasan** · P1 · M
+- [x] **AKT-06 — Audit override: peringatan + konfirmasi + alasan** · P1 · M (2026-10-29: typecheck bersih; 634/634 test hijau (53 file); `OpsiPosting`/`OpsiSimpanSaldoAwal` menerima `alasanPeringatan` + `wajibAlasanPeringatan`, konfirmasi peringatan tanpa alasan ≥5 karakter ditolak sebelum tulis jurnal/audit; audit `CREATE`/`SALDO-AWAL` dengan peringatan memuat `peringatan`, `konfirmasiPeringatan`, `alasanPeringatan`, sedangkan jurnal tanpa peringatan tetap `{ jurnal, baris }`; `jurnal:posting` & `saldo-awal:posting` meneruskan opsi ini sementara Pihak/Panjar tetap kompatibel)
   - **Konteks:** `postingJurnal` menyimpan audit `CREATE` dengan alasan dari
     `input.alasan` saja. Konfirmasi kas minus/peringatan lain tidak punya alasan
     dan tidak tercatat sebagai override.
