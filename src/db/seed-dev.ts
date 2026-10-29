@@ -6,7 +6,7 @@
 import type Database from 'better-sqlite3';
 import { akun } from './coa.js';
 import { createPihak, postingPihak } from './pihak.js';
-import { insertJurnal } from './repository.js';
+import { insertJurnalTervalidasi } from './repository.js';
 import type { JurnalBarisInput, JurnalJenis } from '../core/types.js';
 
 /** Jumlah jurnal (bukan baris) yang dihasilkan seed. */
@@ -143,7 +143,7 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
       }
       return;
     }
-    insertJurnal(db, header, baris);
+    insertJurnalTervalidasi(db, header, baris);
   };
 
   const namaAkun = (kode: string): string => akun(kode)?.nama ?? kode;

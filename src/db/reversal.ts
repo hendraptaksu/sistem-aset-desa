@@ -19,7 +19,7 @@ import { tanggalLokal } from '../utils/tanggal.js';
 import {
   getJurnalDetail,
   insertAuditLog,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listJurnal,
 } from './repository.js';
 import {
@@ -307,11 +307,11 @@ export function koreksiDanIsiUlang(
       let reversal: Jurnal;
       let jurnalBaru: Jurnal;
       if (penggantiDulu) {
-        jurnalBaru = insertJurnal(db, headerBaru, baru.baris);
-        reversal = insertJurnal(db, rencana.input!.header, rencana.input!.baris);
+        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris);
+        reversal = insertJurnalTervalidasi(db, rencana.input!.header, rencana.input!.baris);
       } else {
-        reversal = insertJurnal(db, rencana.input!.header, rencana.input!.baris);
-        jurnalBaru = insertJurnal(db, headerBaru, baru.baris);
+        reversal = insertJurnalTervalidasi(db, rencana.input!.header, rencana.input!.baris);
+        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris);
       }
       // Metadata pihak ikut ke jurnal balik & pengganti (bila akunnya masih ada),
       // supaya saldo per pihak tetap mencerminkan koreksi.

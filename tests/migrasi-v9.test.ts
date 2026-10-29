@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { COA } from '../src/db/coa.js';
 import { DDL, SCHEMA_VERSION, openDb } from '../src/db/database.js';
-import { getJurnal, listJurnal, listJurnalBaris, insertJurnal } from '../src/db/repository.js';
+import { getJurnal, listJurnal, listJurnalBaris, insertJurnalTervalidasi } from '../src/db/repository.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { backupPraUpgrade, restoreDbAman } from '../src/features/export/export.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
@@ -188,7 +188,7 @@ describe('AUD-23 — skema v9 & trigger integritas', () => {
     const path = join(tmpDir('pura-v9-dua-sisi-'), 'pura.db');
     const db = openDb(path);
     try {
-      const jurnal = insertJurnal(db, header(), pasangan());
+      const jurnal = insertJurnalTervalidasi(db, header(), pasangan());
       const baris = listJurnalBaris(db, jurnal.id);
 
       expect(() =>
@@ -218,7 +218,7 @@ describe('AUD-23 — skema v9 & trigger integritas', () => {
     const path = join(tmpDir('pura-v9-immutable-'), 'pura.db');
     const db = openDb(path);
     try {
-      const jurnal = insertJurnal(db, header(), pasangan());
+      const jurnal = insertJurnalTervalidasi(db, header(), pasangan());
       const baris = listJurnalBaris(db, jurnal.id);
 
       expect(() =>
@@ -249,11 +249,11 @@ describe('AUD-23 — nomor bukti unik per tahun', () => {
     const path = join(tmpDir('pura-v9-nomor-'), 'pura.db');
     const db = openDb(path);
     try {
-      insertJurnal(db, header({ id: 'j-2026', no_bukti: 'JU-2026-0001' }), pasangan());
+      insertJurnalTervalidasi(db, header({ id: 'j-2026', no_bukti: 'JU-2026-0001' }), pasangan());
 
       // Tahun berbeda: nomor baku tahun masing-masing boleh bersama...
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           header({ id: 'j-2025', tanggal: '2025-06-01', no_bukti: 'JU-2025-0001' }),
           pasangan('1001', '4005', 50_000),
@@ -261,7 +261,7 @@ describe('AUD-23 — nomor bukti unik per tahun', () => {
       ).not.toThrow();
       // ...dan nomor yang sama persis pun boleh bila tahun jurnalnya berbeda.
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           header({ id: 'j-2025-lain', tanggal: '2025-07-01', no_bukti: 'JU-2026-0001' }),
           pasangan('1001', '4005', 25_000),
@@ -278,7 +278,7 @@ describe('AUD-23 — nomor bukti unik per tahun', () => {
 
       // ...repository, ...
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           header({ id: 'j-dup-repo', tanggal: '2026-04-01', no_bukti: 'Ju-2026-0001' }),
           pasangan(),
@@ -352,7 +352,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v10', () => {
 
       // Setelah migrasi, nomor yang sama boleh dipakai di tahun lain...
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           header({ id: 'j-v9-2025', tanggal: '2025-07-01', no_bukti: 'JU-2026-0001' }),
           pasangan(),
@@ -360,7 +360,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v10', () => {
       ).not.toThrow();
       // ... tetapi tetap ditolak dalam tahun yang sama.
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           header({ id: 'j-v9-dup', tanggal: '2026-07-01', no_bukti: 'ju-2026-0001' }),
           pasangan(),
@@ -390,7 +390,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v10', () => {
     const aktifPath = join(dir, 'aktif.db');
     let aktif = openDb(aktifPath);
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         aktif,
         header({ id: 'j-aktif', tanggal: '2026-06-01', no_bukti: 'JU-2026-9001' }),
         pasangan(),

@@ -10,7 +10,7 @@ import {
   getJurnal,
   getPengaturan,
   getPengaturanPembukuan,
-  insertJurnal,
+  insertJurnalTervalidasi,
   KUNCI_AKUNTANSI_AWAL_TAHUN,
   listAuditLog,
   saranNomorBukti,
@@ -292,12 +292,12 @@ describe('P1-13 — nomor bukti mengikuti prefix/padding', () => {
       });
       expect(saranNomorBukti(db, '2026-01-02')).toBe('BKM-2026-001');
 
-      const j1 = insertJurnal(
+      const j1 = insertJurnalTervalidasi(
         db,
         { id: 'j1', tanggal: '2026-01-02', keterangan: 'Masuk 1' },
         pasangan('1001', '4005'),
       );
-      const j2 = insertJurnal(
+      const j2 = insertJurnalTervalidasi(
         db,
         { id: 'j2', tanggal: '2026-01-03', keterangan: 'Masuk 2' },
         pasangan('1001', '4005'),
@@ -312,7 +312,7 @@ describe('P1-13 — nomor bukti mengikuti prefix/padding', () => {
         paddingNomorBukti: 4,
       });
       expect(saranNomorBukti(db, '2026-02-01')).toBe('KK-2026-0001');
-      const j3 = insertJurnal(
+      const j3 = insertJurnalTervalidasi(
         db,
         { id: 'j3', tanggal: '2026-02-01', keterangan: 'Masuk 3' },
         pasangan('1001', '4005'),
@@ -354,12 +354,12 @@ describe('P1-13 — nomor bukti mengikuti prefix/padding', () => {
         prefixNomorBukti: 'BKM',
         paddingNomorBukti: 3,
       });
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'jp1', tanggal: '2026-01-02', keterangan: 'Masuk 1' },
         pasangan('1001', '4005'),
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'jp2', tanggal: '2026-01-03', keterangan: 'Masuk 2' },
         pasangan('1001', '4005'),

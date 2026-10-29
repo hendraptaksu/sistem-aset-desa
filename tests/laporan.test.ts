@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { insertJurnal } from '../src/db/repository.js';
+import { insertJurnalTervalidasi } from '../src/db/repository.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { buildDashboardJurnal } from '../src/features/dashboard/dashboard.js';
 import {
@@ -887,7 +887,7 @@ describe('P0-5 — adapter DB (baris jurnal → laporan)', () => {
   it('listBarisJurnal membaca kepala + baris dan laporan tetap seimbang', () => {
     const db = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'db-1', tanggal: '2026-01-01', no_bukti: 'JU-2026-0001', keterangan: 'Modal' },
         [
@@ -895,7 +895,7 @@ describe('P0-5 — adapter DB (baris jurnal → laporan)', () => {
           { akun_kode: '3000', debit: 0, kredit: RP(1_000_000) },
         ],
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'db-2', tanggal: '2026-02-01', no_bukti: 'JU-2026-0002', keterangan: 'Parkir' },
         [
@@ -903,7 +903,7 @@ describe('P0-5 — adapter DB (baris jurnal → laporan)', () => {
           { akun_kode: '4005', debit: 0, kredit: RP(500_000) },
         ],
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'db-3', tanggal: '2026-03-01', no_bukti: 'JU-2026-0003', keterangan: 'Beban' },
         [
@@ -943,7 +943,7 @@ describe('P0-5 — adapter DB (baris jurnal → laporan)', () => {
   it('filter listBarisJurnal per tanggal/akun/jurnal', () => {
     const db = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'f-1', tanggal: '2026-01-01', keterangan: 'Satu' },
         [
@@ -951,7 +951,7 @@ describe('P0-5 — adapter DB (baris jurnal → laporan)', () => {
           { akun_kode: '4005', debit: 0, kredit: 100 },
         ],
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'f-2', tanggal: '2026-02-01', keterangan: 'Dua' },
         [

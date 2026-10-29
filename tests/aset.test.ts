@@ -7,7 +7,7 @@ import {
   deleteAset,
   getAset,
   insertAset,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAset,
   updateAset,
 } from '../src/db/repository.js';
@@ -83,7 +83,7 @@ const RP = (rupiah: number): number => rupiah * 100;
 
 /** Jurnal double-entry seimbang: satu modal awal + satu beban upakara. */
 function isiJurnalDasar(db: ReturnType<typeof openDb>): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id: 'j-modal',
@@ -96,7 +96,7 @@ function isiJurnalDasar(db: ReturnType<typeof openDb>): void {
       { akun_kode: '3000', debit: 0, kredit: RP(1_000_000) },
     ],
   );
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id: 'j-beban',

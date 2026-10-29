@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { insertJurnal, listJurnal } from '../src/db/repository.js';
+import { insertJurnalTervalidasi, listJurnal } from '../src/db/repository.js';
 import { autoBackupHarian } from '../src/features/export/export.js';
 
 function makeJurnal(i: number) {
@@ -54,8 +54,8 @@ describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
       const db = openDb(dbPath);
       const j1 = makeJurnal(1);
       const j2 = makeJurnal(2);
-      insertJurnal(db, j1.header, j1.baris);
-      insertJurnal(db, j2.header, j2.baris);
+      insertJurnalTervalidasi(db, j1.header, j1.baris);
+      insertJurnalTervalidasi(db, j2.header, j2.baris);
       // DB tetap terbuka saat backup (simulasi app jalan, mode WAL)
       const dest = autoBackupHarian(db, bakDir, 7, '2026-09-09');
       expect(dest).toBe(join(bakDir, 'auto-2026-09-09.db'));
@@ -76,7 +76,7 @@ describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
       const bakDir = join(dir, 'backups');
       const db = openDb(dbPath);
       const j1 = makeJurnal(1);
-      insertJurnal(db, j1.header, j1.baris);
+      insertJurnalTervalidasi(db, j1.header, j1.baris);
       // isi 10 backup lama dummy
       for (let d = 1; d <= 10; d++) {
         const stamp = `2026-08-${String(d).padStart(2, '0')}`;

@@ -10,7 +10,7 @@ import { openDb } from '../src/db/database.js';
 import {
   getAkun,
   hapusAkun,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAkun,
   listAuditLog,
   setAkunAktif,
@@ -140,7 +140,7 @@ describe('Tambah akun COA', () => {
       expect(getAkun(db, '5012')).toBeNull();
 
       tambahAkun(db, { kode: '5013', nama: 'AKUN SUDAH DIPAKAI', tipe: 'BEBAN' });
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'awal', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
         [
@@ -191,7 +191,7 @@ describe('Tambah akun COA', () => {
       tambahAkun(db, { kode: '5011', nama: 'PENGELUARAN ARTOS', tipe: 'BEBAN' });
       tambahAkun(db, { kode: '4043', nama: 'PENDAPATAN WEWEDALAN', tipe: 'PENDAPATAN' });
 
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'awal', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
         [

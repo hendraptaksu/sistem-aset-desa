@@ -305,16 +305,18 @@ export type JurnalFilter = {
 };
 
 /**
- * Simpan satu jurnal + barisnya secara atomik. Aturan yang ditegakkan di sini
- * (bukan di UI): minimal 2 baris, tiap baris hanya debit atau kredit > 0,
- * akun harus ada di master `akun`, total debit = total kredit, total > 0.
- * Error dilempar dengan pesan berbahasa Indonesia.
+ * Simpan satu jurnal + barisnya secara atomik SETELAH pemanggil memvalidasi
+ * aturan posting (kunci periode, tanggal mulai, jenis, peringatan kas minus).
+ * Aturan struktural yang tetap ditegakkan di sini: minimal 2 baris, tiap baris
+ * hanya debit atau kredit > 0, akun harus ada di master `akun`, total debit =
+ * total kredit, total > 0. Error dilempar dengan pesan berbahasa Indonesia.
  *
- * CATATAN AKT-25: jalur ini sengaja masih melewati sebagian validasi
- * `postingJurnal` (termasuk batas tanggal mulai AKT-03). Jangan dipakai untuk
- * input produksi; pengetatan/penjadwalan internal ada di tiket AKT-25.
+ * AKT-25: fungsi ini adalah jalur insert mentah dan sengaja TIDAK diekspor
+ * sebagai `insertJurnal`. Pemakai yang sah hanya posting layer (`postingJurnal`
+ * / `postingSaldoAwal`), koreksi yang sudah memvalidasi (`koreksiDanIsiUlang`),
+ * seed dev, dan test. Input produksi wajib lewat `postingJurnal`.
  */
-export function insertJurnal(
+export function insertJurnalTervalidasi(
   db: Database.Database,
   header: JurnalHeaderInput,
   baris: JurnalBarisInput[],
@@ -648,7 +650,8 @@ export function listJurnalLengkapPage(
 
 /**
  * Saran nomor bukti berikutnya untuk pratinjau form (P1-11/P1-13). Hanya
- * membaca DB; penomoran final tetap dilakukan atomik oleh `insertJurnal`.
+ * membaca DB; penomoran final tetap dilakukan atomik oleh `insertJurnalTervalidasi`
+ * lewat `postingJurnal`.
  * Prefix & padding mengikuti pengaturan pembukuan saat ini.
  */
 export function saranNomorBukti(db: Database.Database, tanggal: string): string {

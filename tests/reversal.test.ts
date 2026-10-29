@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
   getJurnalDetail,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAuditLog,
   listJurnal,
   listJurnalLengkap,
@@ -56,7 +56,7 @@ function pasangan(debit: string, kredit: string, nominal: number): JurnalBarisIn
 }
 
 function modal(db: ReturnType<typeof openDb>, nominal = RP(1_000_000)): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id: 'j-modal',
@@ -70,7 +70,7 @@ function modal(db: ReturnType<typeof openDb>, nominal = RP(1_000_000)): void {
 }
 
 function parkir(db: ReturnType<typeof openDb>, nominal = RP(100_000)): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id: 'j-parkir',
@@ -238,7 +238,7 @@ describe('P0-6 — reversal di database', () => {
   it('tanpa tanggal eksplisit, reversal memakai tanggal jurnal asli (tidak menggeser laba)', () => {
     const db = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-pendapatan-2025',
@@ -270,7 +270,7 @@ describe('P0-6 — reversal di database', () => {
   it('tanggal reversal eksplisit tetap dihormati walau berbeda tahun dari jurnal asli', () => {
     const db = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-pendapatan-2025',
@@ -322,7 +322,7 @@ describe('P0-6 — reversal di database', () => {
 
       // Penjagaan terakhir di repository bila service dilewati.
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           {
             id: 'j-balik-mentah',
@@ -348,7 +348,7 @@ describe('P0-6 — reversal di database', () => {
         'INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan) VALUES (?, ?, ?, ?)',
       ).run(2025, '2026-01-01T00:00:00.000Z', '', 'Uji kunci');
 
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-lama',
@@ -368,7 +368,7 @@ describe('P0-6 — reversal di database', () => {
       expect(hasil.reversal?.tanggal).toBe('2025-12-31');
 
       // Tanpa alasan yang memenuhi syarat, service tidak menyimpan apa pun.
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-lama-2',
@@ -394,7 +394,7 @@ describe('P0-6 — reversal di database', () => {
     const db = freshDb();
     try {
       parkir(db); // kas 100rb dari pendapatan
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-belanja',
@@ -486,7 +486,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
     const db = freshDb();
     try {
       modal(db);
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-parkir-grup',
@@ -685,7 +685,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
         'INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan) VALUES (?, ?, ?, ?)',
       ).run(2025, '2026-01-01T00:00:00.000Z', '', '');
 
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-lama',
@@ -722,7 +722,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
   it('koreksi dengan kedua tanggal di tahun yang sama menjaga laba tahunan', () => {
     const db = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-2025',
@@ -770,7 +770,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
     const db = freshDb();
     try {
       modal(db);
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-beban-2025',
@@ -831,7 +831,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
     const db = freshDb();
     try {
       // Kas 1 Jan Rp 500.
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-modal-kecil',
@@ -844,7 +844,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
       );
       // Beban asli Rp 100 (1 Feb) + penerimaan Rp 1.000 (1 Mar) membuat saldo
       // pada tanggal balik (1 Apr) terlihat cukup.
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-beban-asli',
@@ -855,7 +855,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
         },
         pasangan('5000', '1001', RP(100)),
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-masuk-mar',
@@ -913,7 +913,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
   it('jurnal balik dievaluasi pada tanggal balik, bukan tanggal pengganti', () => {
     const db = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-modal-kecil',
@@ -924,7 +924,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
         },
         pasangan('1001', '3000', RP(100)),
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-masuk-asli',
@@ -935,7 +935,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
         },
         pasangan('1001', '4005', RP(100)),
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-belanja',

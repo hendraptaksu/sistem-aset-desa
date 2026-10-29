@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
 import {
-  insertJurnal,
+  insertJurnalTervalidasi,
   insertTutupBuku,
   listTutupBuku,
 } from '../src/db/repository.js';
@@ -59,7 +59,7 @@ function catat(
   tanggal: string,
   baris: BarisRingkas[],
 ): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id,

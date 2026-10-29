@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
-import { insertJurnal, insertTutupBuku, listTutupBuku } from '../src/db/repository.js';
+import { insertJurnalTervalidasi, insertTutupBuku, listTutupBuku } from '../src/db/repository.js';
 import { previewTutupBuku, tutupBuku } from '../src/db/tutup.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { postingJurnal } from '../src/db/posting.js';
@@ -26,7 +26,7 @@ function catat(
   baris: JurnalBarisInput[],
   jenis: JurnalJenis = 'UMUM',
 ): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id,

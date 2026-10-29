@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { COA } from '../src/db/coa.js';
 import { openDb } from '../src/db/database.js';
-import { insertJurnal } from '../src/db/repository.js';
+import { insertJurnalTervalidasi } from '../src/db/repository.js';
 import {
   laporanBukuBesar,
   laporanDetailJurnal,
@@ -47,7 +47,7 @@ function freshDb(): ReturnType<typeof openDb> {
 }
 
 function isiContoh(db: ReturnType<typeof openDb>): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-1', tanggal: '2025-01-01', no_bukti: 'JU-2025-0001', keterangan: 'Saldo awal' },
     [
@@ -55,7 +55,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
       { akun_kode: '3000', debit: 0, kredit: RP(10_000_000) },
     ],
   );
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-2', tanggal: '2025-02-01', no_bukti: 'JU-2025-0002', keterangan: 'Pendapatan parkir' },
     [
@@ -63,7 +63,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
       { akun_kode: '4005', debit: 0, kredit: RP(5_000_000) },
     ],
   );
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-3', tanggal: '2025-03-01', no_bukti: 'JU-2025-0003', keterangan: 'Beban upakara' },
     [
@@ -72,7 +72,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
     ],
   );
   // Jurnal 2026 yang TIDAK menyentuh 1001.
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-4', tanggal: '2026-01-15', no_bukti: 'JU-2026-0001', keterangan: 'Parkir bank' },
     [
@@ -80,7 +80,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
       { akun_kode: '4005', debit: 0, kredit: RP(700_000) },
     ],
   );
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-5', tanggal: '2026-02-01', no_bukti: 'JU-2026-0002', keterangan: 'Bayar listrik' },
     [
@@ -88,7 +88,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
       { akun_kode: '1029', debit: 0, kredit: RP(200_000) },
     ],
   );
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-6', tanggal: '2026-03-01', no_bukti: 'JU-2026-0003', keterangan: 'Serah panjar' },
     [
@@ -97,7 +97,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
     ],
   );
   // Tiga baris: dua sisi debit (beban + sisa kas) dan satu kredit panjar.
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id: 'j-7',
@@ -111,7 +111,7 @@ function isiContoh(db: ReturnType<typeof openDb>): void {
       { akun_kode: '1040', debit: 0, kredit: RP(1_000_000) },
     ],
   );
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     { id: 'j-8', tanggal: '2026-04-01', no_bukti: 'JU-2026-0005', keterangan: 'Terima pinjaman' },
     [

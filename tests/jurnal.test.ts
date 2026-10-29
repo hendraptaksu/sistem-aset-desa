@@ -12,7 +12,7 @@ import {
   getJurnal,
   getJurnalDetail,
   hitungJurnal,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listJurnal,
   listJurnalBaris,
   listJurnalLengkapPage,
@@ -95,7 +95,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('menyimpan jurnal seimbang: grup_id default = id, created_at ISO, baris urut', () => {
     const { db } = freshDb();
     try {
-      const jurnal = insertJurnal(
+      const jurnal = insertJurnalTervalidasi(
         db,
         {
           id: 'j-parkir-1',
@@ -176,7 +176,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
 
       for (const baris of kasus) {
         expect(() =>
-          insertJurnal(
+          insertJurnalTervalidasi(
             db,
             { id: `j-gagal-${kasus.indexOf(baris)}`, tanggal: '2026-01-02', keterangan: 'Uji' },
             baris,
@@ -196,15 +196,15 @@ describe('P0-2 — skema jurnal double-entry', () => {
     const { db } = freshDb();
     try {
       expect(() =>
-        insertJurnal(db, { id: 'j-a', tanggal: '2026-01-02', keterangan: '   ' }, pasangan('1001', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-a', tanggal: '2026-01-02', keterangan: '   ' }, pasangan('1001', '4005')),
       ).toThrow(/Keterangan/);
       expect(() =>
-        insertJurnal(db, { id: 'j-b', tanggal: '02-01-2026', keterangan: 'Salah format' }, pasangan('1001', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-b', tanggal: '02-01-2026', keterangan: 'Salah format' }, pasangan('1001', '4005')),
       ).toThrow(/Tanggal/);
 
-      insertJurnal(db, { id: 'j-c', tanggal: '2026-01-02', keterangan: 'Asli' }, pasangan('1001', '4005'));
+      insertJurnalTervalidasi(db, { id: 'j-c', tanggal: '2026-01-02', keterangan: 'Asli' }, pasangan('1001', '4005'));
       expect(() =>
-        insertJurnal(db, { id: 'j-c', tanggal: '2026-01-03', keterangan: 'Duplikat' }, pasangan('1029', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-c', tanggal: '2026-01-03', keterangan: 'Duplikat' }, pasangan('1029', '4005')),
       ).toThrow(/sudah ada/);
       expect(listJurnal(db)).toHaveLength(1);
       expect(listJurnalBaris(db, 'j-c')).toHaveLength(2);
@@ -216,7 +216,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('mendukung grup, reversal_of, created_at eksplisit, dan menolak referensi reversal asing', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-asli',
@@ -227,7 +227,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
         },
         pasangan('5003', '1001'),
       );
-      const reversal = insertJurnal(
+      const reversal = insertJurnalTervalidasi(
         db,
         {
           id: 'j-balik',
@@ -242,7 +242,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
       expect(reversal.grup_id).toBe('g-beli-alat');
 
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           { id: 'j-asing', tanggal: '2026-02-03', keterangan: 'Salah', reversal_of: 'tidak-ada' },
           pasangan('1001', '4005'),
@@ -256,10 +256,10 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('listJurnal mendukung filter periode, jenis, grup, akun, dan pagination', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(db, { id: 'j-1', tanggal: '2026-01-05', keterangan: 'Parkir', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4005'));
-      insertJurnal(db, { id: 'j-2', tanggal: '2026-02-10', keterangan: 'Listrik', jenis: 'BAYAR' }, pasangan('5010', '1001'));
-      insertJurnal(db, { id: 'j-3', tanggal: '2026-02-20', keterangan: 'Beji', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4001'));
-      insertJurnal(db, { id: 'j-4', tanggal: '2026-03-01', keterangan: 'Pindah dana', jenis: 'TRANSFER' }, pasangan('1029', '1001'));
+      insertJurnalTervalidasi(db, { id: 'j-1', tanggal: '2026-01-05', keterangan: 'Parkir', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4005'));
+      insertJurnalTervalidasi(db, { id: 'j-2', tanggal: '2026-02-10', keterangan: 'Listrik', jenis: 'BAYAR' }, pasangan('5010', '1001'));
+      insertJurnalTervalidasi(db, { id: 'j-3', tanggal: '2026-02-20', keterangan: 'Beji', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4001'));
+      insertJurnalTervalidasi(db, { id: 'j-4', tanggal: '2026-03-01', keterangan: 'Pindah dana', jenis: 'TRANSFER' }, pasangan('1029', '1001'));
 
       const ids = (f: Parameters<typeof listJurnal>[1] = {}) => listJurnal(db, f).map((j) => j.id);
       expect(ids()).toEqual(['j-1', 'j-2', 'j-3', 'j-4']);
@@ -290,25 +290,25 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     kredit: nominal,
   });
 
-  it('insertJurnal tanpa no_bukti mengisi JU-tahun-0001 lalu 0002, per tahun terpisah', () => {
+  it('insertJurnalTervalidasi tanpa no_bukti mengisi JU-tahun-0001 lalu 0002, per tahun terpisah', () => {
     const { db } = freshDb();
     try {
-      const satu = insertJurnal(
+      const satu = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-1', tanggal: '2026-01-02', keterangan: 'Pertama' },
         pasangan('1001', '4005'),
       );
-      const dua = insertJurnal(
+      const dua = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-2', tanggal: '2026-03-04', keterangan: 'Kedua' },
         pasangan('1029', '4005'),
       );
-      const tahunLalu = insertJurnal(
+      const tahunLalu = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-3', tanggal: '2025-12-31', keterangan: 'Tahun lain' },
         pasangan('1001', '4005'),
       );
-      const tiga = insertJurnal(
+      const tiga = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-4', tanggal: '2026-12-31', keterangan: 'Ketiga' },
         pasangan('1001', '4005'),
@@ -320,7 +320,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(tiga.no_bukti).toBe('JU-2026-0003');
 
       // Nomor eksplisit operator dipakai apa adanya (bukan dipaksa JU).
-      const manual = insertJurnal(
+      const manual = insertJurnalTervalidasi(
         db,
         {
           id: 'j-manual',
@@ -339,7 +339,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('max+1 setelah celah, saran form ikut bergerak, dan nomor duplikat ditolak', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-gap',
@@ -351,7 +351,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       );
       expect(saranNomorBukti(db, '2026-07-01')).toBe('JU-2026-0006');
 
-      const auto = insertJurnal(
+      const auto = insertJurnalTervalidasi(
         db,
         { id: 'j-auto', tanggal: '2026-07-02', keterangan: 'Setelah celah' },
         pasangan('1001', '4005'),
@@ -361,7 +361,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
 
       // Nomor lama (0005) dan nomor baru (0006) tidak boleh dipakai ulang.
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           {
             id: 'j-dup-lama',
@@ -373,7 +373,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
         ),
       ).toThrow(/sudah dipakai/);
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           {
             id: 'j-dup-baru',
@@ -437,7 +437,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('koreksi & isi ulang memberi nomor baru untuk balik dan pengganti', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-asli',
@@ -473,7 +473,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('nomor pengganti pilihan operator tidak ditabrak nomor balik otomatis', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-asli',
@@ -510,7 +510,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('panjar dan pihak juga otomatis JU (serah, close, piutang)', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-modal',
@@ -561,7 +561,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
 
   function dbPencarian(): ReturnType<typeof openDb> {
     const { db } = freshDb();
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-parkir',
@@ -572,7 +572,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1001', 15_000_000), K('4005', 15_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-listrik',
@@ -583,7 +583,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('5010', 5_000_000), K('1001', 5_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-transfer',
@@ -594,7 +594,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1029', 7_500_000), K('1001', 7_500_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-panjar',
@@ -605,7 +605,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1040', 2_000_000), K('1001', 2_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-piutang',
@@ -616,7 +616,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1050', 9_000_000), K('1001', 9_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-beji',
@@ -627,7 +627,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1001', 3_000_000), K('4001', 3_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-toilet',
@@ -813,7 +813,7 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
 
       expect(listJurnal(db)).toEqual([]);
       expect(() =>
-        insertJurnal(db, { id: 'j-baru', tanggal: '2026-01-01', keterangan: 'Setelah reset' }, pasangan('1001', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-baru', tanggal: '2026-01-01', keterangan: 'Setelah reset' }, pasangan('1001', '4005')),
       ).not.toThrow();
     } finally {
       db.close();

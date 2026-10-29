@@ -8,7 +8,7 @@ import { buatAuditLog } from '../core/audit.js';
 import {
   getPengaturanPembukuan,
   insertAuditLog,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAkun,
   listTutupBuku,
 } from './repository.js';
@@ -245,7 +245,7 @@ function postingJurnalInti(
       // AKT-01/AKT-02: cek dan tulis berada di transaksi yang sama agar dua
       // posting pertama tidak bisa sama-sama lolos. Saldo awal dikecualikan.
       pastikanWajibSaldoAwal(db, opsi, input.header.jenis);
-      const jurnal = insertJurnal(db, input.header, input.baris);
+      const jurnal = insertJurnalTervalidasi(db, input.header, input.baris);
       // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
       // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.
       const audit = opsi.audit === undefined ? [buatAudit(jurnal, hasil)] : opsi.audit;

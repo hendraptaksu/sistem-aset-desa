@@ -13,7 +13,7 @@ import {
   hitungAuditLog,
   insertAset,
   insertAuditLog,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAuditLog,
   listAuditLogPage,
   updateAset,
@@ -284,12 +284,12 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
   it('reversal & koreksi isi ulang menyimpan data lama dan data baru', () => {
     const db = dbKosong();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-modal', tanggal: '2026-01-01', no_bukti: 'JU-MODAL', keterangan: 'Modal' },
         pasangan('1001', '3000', 1_000_000),
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-parkir', tanggal: '2026-01-02', no_bukti: 'JU-PARKIR', keterangan: 'Parkir' },
         pasangan('1001', '4005', 100_000),
@@ -307,7 +307,7 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
         jurnal: { id: 'j-balik', reversal_of: 'j-parkir' },
       });
 
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-parkir-2', tanggal: '2026-01-05', no_bukti: 'JU-PARKIR-2', keterangan: 'Parkir 2' },
         pasangan('1001', '4005', 90_000),
@@ -346,7 +346,7 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
   it('tutup buku & tutup ulang menyimpan kondisi sebelum/sesudah', () => {
     const db = dbKosong();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-2025', tanggal: '2025-12-01', keterangan: 'Pendapatan 2025' },
         pasangan('1001', '4005', 1_000_000),

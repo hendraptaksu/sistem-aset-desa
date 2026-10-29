@@ -17,11 +17,12 @@ import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import {
   getJurnalDetail,
   getPengaturanPembukuan,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAuditLog,
   listJurnal,
   simpanPengaturanPembukuan,
 } from '../src/db/repository.js';
+import * as repository from '../src/db/repository.js';
 import { DEFAULT_PENGATURAN } from '../src/core/pengaturan.js';
 import { PESAN_JURNAL_PENUTUP_MANUAL } from '../src/core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
@@ -142,7 +143,7 @@ describe('P0-4 — satu pintu posting jurnal', () => {
       expect(jumlahJurnal(db)).toBe(1);
 
       expect(() =>
-        insertJurnal(db, header({ id: 'j-ketiga' }), pasangan('1029', '4005')),
+        insertJurnalTervalidasi(db, header({ id: 'j-ketiga' }), pasangan('1029', '4005')),
       ).toThrow(/sudah dipakai/);
 
       // Penjaga terakhir: INSERT mentah tetap ditolak unique index parsial.
@@ -185,7 +186,7 @@ describe('P0-4 — satu pintu posting jurnal', () => {
       expect(hasil.errors.join(' ')).toMatch(/sudah tidak aktif/);
 
       expect(postingJurnal(db, { header: header(), baris: pasangan() }).tersimpan).toBe(false);
-      expect(() => insertJurnal(db, header(), pasangan())).toThrow(/tidak aktif/);
+      expect(() => insertJurnalTervalidasi(db, header(), pasangan())).toThrow(/tidak aktif/);
       expect(jumlahJurnal(db)).toBe(0);
     } finally {
       db.close();
@@ -205,7 +206,7 @@ describe('P0-4 — satu pintu posting jurnal', () => {
         expect(validasi.errors.join(' ')).toMatch(/tidak boleh diposting/i);
 
         expect(postingJurnal(db, input).tersimpan).toBe(false);
-        expect(() => insertJurnal(db, input.header, input.baris)).toThrow(
+        expect(() => insertJurnalTervalidasi(db, input.header, input.baris)).toThrow(
           /tidak boleh diposting/,
         );
       }
@@ -984,7 +985,7 @@ describe('AKT-03 — tanggal mulai pembukuan sebagai batas bawah', () => {
   it('menolak setting setelah jurnal paling awal, tetapi menerima tanggal yang sama', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-awal', tanggal: '2025-01-02', keterangan: 'Jurnal pertama' },
         pasangan('1001', '4005'),
@@ -1006,7 +1007,7 @@ describe('AKT-03 — tanggal mulai pembukuan sebagai batas bawah', () => {
   it('mengosongkan setting lama saat ada jurnal butuh konfirmasi khusus', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-awal', tanggal: '2025-01-02', keterangan: 'Jurnal pertama' },
         pasangan('1001', '4005'),
@@ -1225,5 +1226,14 @@ describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('AKT-25 — insert mentah tidak memakai nama publik netral', () => {
+  it('repository hanya mengekspor insertJurnalTervalidasi, bukan insertJurnal', () => {
+    // Jalur produksi wajib lewat postingJurnal/koreksi. Nama `insertJurnal`
+    // sengaja tidak ada agar pemanggil baru tidak mengira insert mentah aman.
+    expect('insertJurnal' in repository).toBe(false);
+    expect(typeof repository.insertJurnalTervalidasi).toBe('function');
   });
 });

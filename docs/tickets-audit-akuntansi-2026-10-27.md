@@ -43,13 +43,13 @@
 | AKT-22 | P2 | S | Validasi input koreksi & isi ulang | — | [x] |
 | AKT-23 | P2 | S | Cek akun asing di semua laporan | — | [x] |
 | AKT-24 | P2 | M | Anti-duplikat import Excel | — | [x] |
-| AKT-25 | P2 | M | Guard `insertJurnal` / jadikan internal | — | [ ] |
+| AKT-25 | P2 | M | Guard `insertJurnal` / jadikan internal | — | [x] |
 | AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [ ] |
 | AKT-27 | P2 | S | Perbaiki dokumentasi 3001/3002, closing, reversal | AKT-05, AKT-16 | [ ] |
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 25/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 26/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 10 (AKT-20). Tiket yang menambah
@@ -531,7 +531,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-25 — Guard `insertJurnal` / jadikan internal** · P2 · M
+- [x] **AKT-25 — Guard `insertJurnal` / jadikan internal** · P2 · M (2026-10-29: `insertJurnal` mentah di-rename menjadi `insertJurnalTervalidasi` yang hanya dipakai posting layer, `koreksiDanIsiUlang`, seed, dan test; nama publik `insertJurnal` dihapus dari repository sehingga input produksi wajib lewat `postingJurnal`/`postingSaldoAwal`; perilaku posting & koreksi tidak berubah; komentar `saranNomorBukti`/IPC/UI diselaraskan; test guard memastikan repository tidak mengekspor `insertJurnal`; typecheck bersih; 720/720 test hijau (57 file))
   - **Konteks:** `insertJurnal` adalah fungsi publik yang melewati sebagian
     aturan posting (kunci periode, konsistensi jenis, peringatan kas minus).
     Saat ini dipakai `koreksiDanIsiUlang`, seed, dan test.

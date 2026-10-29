@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
-import { insertJurnal, listAuditLog } from '../src/db/repository.js';
+import { insertJurnalTervalidasi, listAuditLog } from '../src/db/repository.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   buatRekonsiliasi,
@@ -71,7 +71,7 @@ function posting(
   keterangan: string,
   baris: BarisRingkas[],
 ): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id,

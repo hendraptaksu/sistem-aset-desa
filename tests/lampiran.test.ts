@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
-import { insertJurnal, listAuditLog } from '../src/db/repository.js';
+import { insertJurnalTervalidasi, listAuditLog } from '../src/db/repository.js';
 import {
   getLampiran,
   hapusLampiran,
@@ -63,7 +63,7 @@ function freshDb(): ReturnType<typeof openDb> {
 }
 
 function buatJurnal(db: ReturnType<typeof openDb>, id = 'j-1'): string {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id,

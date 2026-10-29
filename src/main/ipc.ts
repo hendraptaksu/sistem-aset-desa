@@ -563,7 +563,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // Saran nomor untuk pratinjau form; penomoran final tetap di insertJurnal.
+  // Saran nomor untuk pratinjau form; penomoran final tetap di postingJurnal.
   daftarkan('jurnal:nomor-berikutnya', (_e, tanggal: unknown) => {
     try {
       const k = perluBuka();

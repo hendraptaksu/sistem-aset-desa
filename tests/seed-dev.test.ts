@@ -14,7 +14,7 @@ import {
 } from '../src/db/pihak.js';
 import {
   getJurnalDetail,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listJurnal,
   listJurnalBaris,
 } from '../src/db/repository.js';
@@ -233,7 +233,7 @@ describe('P0-3 — seed jurnal dev', () => {
 
       const lain = freshDb();
       try {
-        insertJurnal(
+        insertJurnalTervalidasi(
           lain.db,
           { id: 'asli-1', tanggal: '2026-06-01', keterangan: 'Data asli' },
           [

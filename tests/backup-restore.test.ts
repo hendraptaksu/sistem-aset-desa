@@ -21,7 +21,7 @@ import {
   KUNCI_RESET_HASH,
   KUNCI_RESET_SALT,
   getPengaturan,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAuditLog,
   listJurnal,
   sudahSetupPin,
@@ -122,7 +122,7 @@ function siapkanBackupLengkap(
 ): { backupDir: string; sumber: Database.Database } {
   const sumberPath = join(root, 'sumber.db');
   const sumber = openDb(sumberPath);
-  insertJurnal(sumber, jurnal(idJurnal).header, jurnal(idJurnal).baris);
+  insertJurnalTervalidasi(sumber, jurnal(idJurnal).header, jurnal(idJurnal).baris);
 
   const lampiranSumber = join(root, 'sumber-lampiran');
   mkdirSync(lampiranSumber, { recursive: true });
@@ -151,8 +151,8 @@ describe('P0-8 — backupVacuumInto: konsisten walau WAL belum checkpoint', () =
     try {
       const dbPath = join(dir, 'pura.db');
       db = openDb(dbPath);
-      insertJurnal(db, jurnal('j1').header, jurnal('j1').baris);
-      insertJurnal(db, jurnal('j2').header, jurnal('j2').baris);
+      insertJurnalTervalidasi(db, jurnal('j1').header, jurnal('j1').baris);
+      insertJurnalTervalidasi(db, jurnal('j2').header, jurnal('j2').baris);
       expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
       // Data terbaru masih berada di WAL (belum checkpoint, DB tetap terbuka).
       expect(existsSync(`${dbPath}-wal`)).toBe(true);
@@ -162,7 +162,7 @@ describe('P0-8 — backupVacuumInto: konsisten walau WAL belum checkpoint', () =
       expect(existsSync(dest)).toBe(true);
 
       // Koneksi aktif tetap bisa dipakai setelah backup.
-      insertJurnal(db, jurnal('j3').header, jurnal('j3').baris);
+      insertJurnalTervalidasi(db, jurnal('j3').header, jurnal('j3').baris);
 
       cek = openDb(dest);
       expect(listJurnal(cek).map((j) => j.id)).toEqual(['j1', 'j2']);
@@ -187,14 +187,14 @@ describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan b
     let cek: Database.Database | null = null;
     try {
       db = openDb(join(dir, 'pura.db'));
-      insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
       const dest = join(dir, 'backup.db');
       backupVacuumInto(db, dest);
 
       // Sidecar lama yang mungkin tertinggal saat tujuan pernah dibuka.
       writeFileSync(`${dest}-wal`, 'wal-lama');
       writeFileSync(`${dest}-shm`, 'shm-lama');
-      insertJurnal(db, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(db, jurnal('baru').header, jurnal('baru').baris);
 
       backupVacuumInto(db, dest);
       expect(existsSync(dest)).toBe(true);
@@ -219,12 +219,12 @@ describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan b
     try {
       const koneksi = openDb(join(dir, 'pura.db'));
       db = koneksi;
-      insertJurnal(koneksi, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(koneksi, jurnal('lama').header, jurnal('lama').baris);
       const dest = join(dir, 'backup.db');
       backupVacuumInto(koneksi, dest);
 
       // VACUUM INTO ditolak SQLite saat berada di dalam transaksi.
-      insertJurnal(koneksi, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(koneksi, jurnal('baru').header, jurnal('baru').baris);
       koneksi.exec('BEGIN');
       try {
         expect(() => backupVacuumInto(koneksi, dest)).toThrow(/transaction/i);
@@ -251,10 +251,10 @@ describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan b
     let cek: Database.Database | null = null;
     try {
       db = openDb(join(dir, 'pura.db'));
-      insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
       const dest = join(dir, 'backup.db');
       backupVacuumInto(db, dest);
-      insertJurnal(db, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(db, jurnal('baru').header, jurnal('baru').baris);
 
       let error: unknown;
       kontrolRename.gagalTmp = true;
@@ -297,8 +297,8 @@ describe('AUD-11 — backup lengkap: DB + lampiran + manifest', () => {
     try {
       const dbPath = join(dir, 'data', 'pura.db');
       db = openDb(dbPath);
-      insertJurnal(db, jurnal('j1').header, jurnal('j1').baris);
-      insertJurnal(db, jurnal('j2').header, jurnal('j2').baris);
+      insertJurnalTervalidasi(db, jurnal('j1').header, jurnal('j1').baris);
+      insertJurnalTervalidasi(db, jurnal('j2').header, jurnal('j2').baris);
       expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
       // Transaksi terbaru masih di WAL (belum checkpoint, koneksi terbuka).
       expect(existsSync(`${dbPath}-wal`)).toBe(true);
@@ -396,7 +396,7 @@ describe('P0-8 — validasiKandidatRestore: file sampah ditolak', () => {
       // Backup asli → valid.
       const asli = join(dir, 'asli.db');
       db = openDb(asli);
-      insertJurnal(db, jurnal('ok').header, jurnal('ok').baris);
+      insertJurnalTervalidasi(db, jurnal('ok').header, jurnal('ok').baris);
       const validPath = join(dir, 'valid.db');
       backupVacuumInto(db, validPath);
       expect(validasiKandidatRestore(validPath)).toEqual({ valid: true });
@@ -442,7 +442,7 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
     try {
       const sehatPath = join(dir, 'sehat.db');
       db = openDb(sehatPath);
-      insertJurnal(db, jurnal('sehat').header, jurnal('sehat').baris);
+      insertJurnalTervalidasi(db, jurnal('sehat').header, jurnal('sehat').baris);
       const backupSehat = join(dir, 'backup-sehat.db');
       backupVacuumInto(db, backupSehat);
       expect(validasiKandidatRestore(backupSehat)).toEqual({ valid: true });
@@ -470,7 +470,7 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
     try {
       const aktifPath = join(dir, 'aktif.db');
       aktif = openDb(aktifPath);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
 
       const kandidatPath = join(dir, 'kandidat-tidak-seimbang.db');
       buatKandidatTidakSeimbang(kandidatPath);
@@ -491,7 +491,7 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
       // Tidak ada cadangan pra-restore dan file aktif belum tersentuh.
       expect(existsSync(join(dir, 'backups', 'pre-restore-akt11.db'))).toBe(false);
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
-      insertJurnal(aktif, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(aktif, jurnal('baru').header, jurnal('baru').baris);
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama', 'baru']);
     } finally {
       aktif?.close();
@@ -552,10 +552,10 @@ describe('P0-8 — restoreDbAman', () => {
       const aktifPath = join(dir, 'aktif.db');
       const sumberPath = join(dir, 'sumber.db');
       aktif = openDb(aktifPath);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
 
       sumber = openDb(sumberPath);
-      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(sumber, jurnal('baru').header, jurnal('baru').baris);
       // Kandidat diambil dari koneksi terbuka (VACUUM INTO), lalu ditutup.
       const kandidat = join(dir, 'kandidat.db');
       backupVacuumInto(sumber, kandidat);
@@ -598,7 +598,7 @@ describe('P0-8 — restoreDbAman', () => {
     try {
       const aktifPath = join(dir, 'aktif.db');
       db = openDb(aktifPath);
-      insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
       const sampah = join(dir, 'sampah.db');
       writeFileSync(sampah, 'bukan sqlite');
 
@@ -615,7 +615,7 @@ describe('P0-8 — restoreDbAman', () => {
       expect(existsSync(join(dir, 'backups', 'pre-restore-x.db'))).toBe(false);
 
       // DB lama tetap bisa ditulis.
-      insertJurnal(hasil.db, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(hasil.db, jurnal('baru').header, jurnal('baru').baris);
       expect(listJurnal(hasil.db).map((j) => j.id)).toEqual(['lama', 'baru']);
     } finally {
       db?.close();
@@ -629,7 +629,7 @@ describe('P0-8 — restoreDbAman', () => {
     try {
       const aktifPath = join(dir, 'aktif.db');
       db = openDb(aktifPath);
-      insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
 
       // Lolos validasi + audit (semua tabel akuntansi ada dan jurnal kosong)
       // tetapi skemanya rusak: openDb akan gagal membuat index/upsert akun.
@@ -671,7 +671,7 @@ describe('P0-8 — restoreDbAman', () => {
       db = hasil.db;
       // File aktif kembali berisi data lama + tetap bisa ditulis.
       expect(listJurnal(db).map((j) => j.id)).toEqual(['lama']);
-      insertJurnal(db, jurnal('lagi').header, jurnal('lagi').baris);
+      insertJurnalTervalidasi(db, jurnal('lagi').header, jurnal('lagi').baris);
       expect(listJurnal(db).map((j) => j.id)).toEqual(['lama', 'lagi']);
     } finally {
       db?.close();
@@ -700,11 +700,11 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
       const hashAktif = getPengaturan(aktif, KUNCI_PIN_HASH);
       const resetSaltAktif = getPengaturan(aktif, KUNCI_RESET_SALT);
       const resetHashAktif = getPengaturan(aktif, KUNCI_RESET_HASH);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
 
       sumber = openDb(sumberPath);
       expect(setupPin(sumber, '222222')).toBeNull();
-      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(sumber, jurnal('baru').header, jurnal('baru').baris);
       const kandidat = join(dir, 'kandidat.db');
       backupVacuumInto(sumber, kandidat);
       sumber.close();
@@ -770,7 +770,7 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
 
       sumber = openDb(sumberPath);
       expect(sudahSetupPin(sumber)).toBe(false);
-      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(sumber, jurnal('baru').header, jurnal('baru').baris);
       const kandidat = join(dir, 'kandidat.db');
       backupVacuumInto(sumber, kandidat);
       sumber.close();
@@ -817,7 +817,7 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
       sumber = openDb(sumberPath);
       expect(setupPin(sumber, '222222')).toBeNull();
       ambilKodeDaruratSekali();
-      insertJurnal(sumber, jurnal('baru').header, jurnal('baru').baris);
+      insertJurnalTervalidasi(sumber, jurnal('baru').header, jurnal('baru').baris);
       const kandidat = join(dir, 'kandidat.db');
       backupVacuumInto(sumber, kandidat);
       sumber.close();
@@ -865,7 +865,7 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       expect(setupPin(aktif, '111111')).toBeNull();
       const saltAktif = getPengaturan(aktif, KUNCI_PIN_SALT);
       const hashAktif = getPengaturan(aktif, KUNCI_PIN_HASH);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
       mkdirSync(join(attachmentsDir, 'nested'), { recursive: true });
       writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
       writeFileSync(join(attachmentsDir, 'nested', 'lama.pdf'), 'isi-lama-pdf');
@@ -946,7 +946,7 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       const aktifPath = join(dir, 'data', 'pura.db');
       const attachmentsDir = join(dir, 'attachments');
       aktif = openDb(aktifPath);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
       mkdirSync(attachmentsDir, { recursive: true });
       writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
 
@@ -997,7 +997,7 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       const aktifPath = join(dir, 'data', 'pura.db');
       const attachmentsDir = join(dir, 'attachments');
       aktif = openDb(aktifPath);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
       mkdirSync(attachmentsDir, { recursive: true });
       writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
 
@@ -1044,7 +1044,7 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       const aktifPath = join(dataDir, 'pura.db');
       const attachmentsDir = join(dir, 'attachments');
       aktif = openDb(aktifPath);
-      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
       mkdirSync(attachmentsDir, { recursive: true });
       writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
 
@@ -1097,7 +1097,7 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       }
 
       // DB aktif di disk juga sudah kembali ke data lama dan bisa ditulis.
-      insertJurnal(aktif, jurnal('lagi').header, jurnal('lagi').baris);
+      insertJurnalTervalidasi(aktif, jurnal('lagi').header, jurnal('lagi').baris);
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama', 'lagi']);
     } finally {
       kontrolSalin.gagalLampiran = false;

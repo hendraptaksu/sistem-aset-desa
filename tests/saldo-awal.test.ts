@@ -25,7 +25,7 @@ import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   getPengaturan,
   getPengaturanPembukuan,
-  insertJurnal,
+  insertJurnalTervalidasi,
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
   listAuditLog,
   listJurnal,
@@ -359,7 +359,7 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
   it('menolak bila sudah ada jurnal biasa/balik meski bukan buatan wizard', () => {
     const db = openDb(':memory:');
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-lama',

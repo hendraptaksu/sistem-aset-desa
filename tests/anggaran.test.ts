@@ -29,7 +29,7 @@ import {
   listAnggaran,
   simpanAnggaran,
 } from '../src/db/anggaran.js';
-import { insertJurnal, listAkun, listAuditLog, setAkunAktif, tambahAkun } from '../src/db/repository.js';
+import { insertJurnalTervalidasi, listAkun, listAuditLog, setAkunAktif, tambahAkun } from '../src/db/repository.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { labaRugi, saldoAkun, type BarisJurnalSumber } from '../src/core/reports.js';
 import {
@@ -513,7 +513,7 @@ describe('P2-1 — realisasi dari jurnal tersimpan', () => {
   it('angka sama dengan saldoAkun/labaRugi dan filter periode bekerja', () => {
     const db = openDb(':memory:');
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-parkir', tanggal: '2026-01-10', no_bukti: 'JU-2026-0001', keterangan: 'Parkir' },
         [
@@ -521,7 +521,7 @@ describe('P2-1 — realisasi dari jurnal tersimpan', () => {
           { akun_kode: '4005', debit: 0, kredit: RP(7_000_000) },
         ],
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-upakara', tanggal: '2026-02-01', no_bukti: 'JU-2026-0002', keterangan: 'Upakara' },
         [
@@ -529,7 +529,7 @@ describe('P2-1 — realisasi dari jurnal tersimpan', () => {
           { akun_kode: '1001', debit: 0, kredit: RP(2_000_000) },
         ],
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-2027', tanggal: '2027-01-05', no_bukti: 'JU-2027-0001', keterangan: 'Di luar tahun' },
         [
@@ -589,7 +589,7 @@ describe('P2-1 — realisasi dari jurnal tersimpan', () => {
         nama: 'Beban contoh yang dinonaktifkan',
         tipe: 'BEBAN',
       });
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-5011', tanggal: '2026-05-01', no_bukti: 'JU-2026-5011', keterangan: 'Beban 5011' },
         [
