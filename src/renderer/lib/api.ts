@@ -212,6 +212,13 @@ export type TutupPreviewData = {
   aksi: 'TUTUP' | 'TUTUP-ULANG';
   tahunTerakhir: number | null;
   batasTahun: number;
+  /** Temuan audit integritas (kode + pesan); kosong berarti lolos audit. */
+  temuanIntegritas: TemuanIntegritasTampil[];
+};
+
+export type TemuanIntegritasTampil = {
+  kode: string;
+  pesan: string;
 };
 
 export type TutupTersimpanData = {

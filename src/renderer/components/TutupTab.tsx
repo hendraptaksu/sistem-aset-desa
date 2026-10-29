@@ -59,6 +59,15 @@ export function TutupTab() {
       try {
         const r = await api.tutupPreview(tahun);
         setPreview(r);
+        const temuan = r.temuanIntegritas ?? [];
+        if (temuan.length > 0) {
+          setErr(
+            pesanValidasi(r.errors) ||
+              `Audit integritas gagal: ${temuan.map((t) => t.kode).join(', ')}`,
+          );
+          setStep(1);
+          return;
+        }
         if (!r.boleh && !r.perluKonfirmasi) {
           setErr(pesanValidasi(r.errors) || 'Tahun belum bisa ditutup.');
           setStep(1);
@@ -120,6 +129,20 @@ export function TutupTab() {
       <Card>
         <h1 className="mb-3 text-lg font-bold">Tutup Buku (wizard)</h1>
         <ErrorBox msg={err} />
+        {preview && (preview.temuanIntegritas?.length ?? 0) > 0 && (
+          <div className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-800">
+            <p className="font-semibold">
+              Audit integritas akuntansi gagal. Tutup buku diblokir sampai data diperbaiki.
+            </p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+              {preview.temuanIntegritas.map((t, i) => (
+                <li key={`${t.kode}-${i}`}>
+                  <b>{t.kode}</b>: {t.pesan}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
         <p className="mb-3 text-sm text-stone-600">
           Langkah {step}/3: {step === 1 ? 'Preview laba' : step === 2 ? 'Auto-backup .db' : 'Konfirmasi'}.

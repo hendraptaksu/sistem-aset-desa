@@ -1,8 +1,12 @@
-// Adapter DB untuk tutup buku (P0-7).
+// Adapter DB untuk tutup buku (P0-7, AKT-10).
 //
 // `tutup_buku` hanya menyimpan penanda tahun + created_at + backup_path +
 // catatan. Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
 // dari jurnal lewat mesin laporan (P0-5).
+//
+// AKT-10: sebelum mengizinkan tutup buku, jalankan audit integritas. Bila ada
+// jurnal tidak seimbang/akun asing/kerusakan lain, operasi ditolak tanpa
+// menulis apa pun.
 
 import type Database from 'better-sqlite3';
 import { buatAuditLog } from '../core/audit.js';
@@ -15,6 +19,11 @@ import {
 import { labaTahun } from '../core/reports.js';
 import type { TutupBuku } from '../core/types.js';
 import { tanggalLokal } from '../utils/tanggal.js';
+import {
+  auditIntegritas,
+  type HasilAuditIntegritas,
+  type Temuan,
+} from './integritas.js';
 import { listBarisJurnal } from './laporan.js';
 import { insertAuditLog, insertTutupBuku, listTutupBuku } from './repository.js';
 
@@ -27,6 +36,8 @@ export type TutupPreview = HasilValidasiTutup & {
   /** Akumulasi laba ditahan bila tahun ini ikut ditutup. */
   labaDitahanSesudah: number;
   sudahDitutup: boolean;
+  /** Temuan audit integritas; kosong berarti DB lolos audit. */
+  temuanIntegritas: Temuan[];
 };
 
 export type OpsiTutupBuku = {
@@ -45,9 +56,35 @@ export type HasilTutupBuku = HasilValidasiTutup & {
   laba: number;
   labaDitahan: number;
   data?: TutupBuku;
+  /** Temuan audit integritas; kosong berarti DB lolos audit. */
+  temuanIntegritas: Temuan[];
 };
 
 const hariIni = (): string => tanggalLokal();
+
+/**
+ * Gabungkan validasi tahun dengan audit integritas. Temuan apa pun membuat
+ * tutup buku diblokir, termasuk tutup ulang; konfirmasi operator tidak boleh
+ * melewati kerusakan data.
+ */
+function validasiDenganIntegritas(
+  validasi: HasilValidasiTutup,
+  audit: HasilAuditIntegritas,
+): HasilValidasiTutup & { temuanIntegritas: Temuan[] } {
+  if (audit.ok) return { ...validasi, temuanIntegritas: [] };
+
+  return {
+    ...validasi,
+    boleh: false,
+    perluKonfirmasi: false,
+    errors: [
+      ...validasi.errors,
+      `Audit integritas akuntansi gagal. ${audit.ringkasan} Tutup buku diblokir sampai data diperbaiki.`,
+      ...audit.temuan.map((t) => `[${t.kode}] ${t.pesan}`),
+    ],
+    temuanIntegritas: audit.temuan,
+  };
+}
 
 function hitungLabaDitahan(
   baris: ReturnType<typeof listBarisJurnal>,
@@ -70,7 +107,10 @@ export function previewTutupBuku(
 ): TutupPreview {
   const daftar = listTutupBuku(db);
   const angka = Number(tahun);
-  const validasi = validasiTutupBuku(angka, { sekarang, tutup: daftar });
+  const validasi = validasiDenganIntegritas(
+    validasiTutupBuku(angka, { sekarang, tutup: daftar }),
+    auditIntegritas(db),
+  );
   const baris = listBarisJurnal(db);
   const laba = Number.isInteger(angka) ? labaTahun(baris, angka) : 0;
   const sudahDitutup = daftar.some((t) => Number(t.tahun) === angka);
@@ -100,11 +140,14 @@ export function tutupBuku(
   const sekarang = opsi.sekarang ?? hariIni();
   const daftar = listTutupBuku(db);
   const angka = Number(tahun);
-  const validasi = validasiTutupBuku(angka, {
-    sekarang,
-    tutup: daftar,
-    konfirmasiTimpak: opsi.konfirmasiTimpak === true,
-  });
+  const validasi = validasiDenganIntegritas(
+    validasiTutupBuku(angka, {
+      sekarang,
+      tutup: daftar,
+      konfirmasiTimpak: opsi.konfirmasiTimpak === true,
+    }),
+    auditIntegritas(db),
+  );
   const baris = listBarisJurnal(db);
   const laba = Number.isInteger(angka) ? labaTahun(baris, angka) : 0;
   const labaDitahanSekarang = hitungLabaDitahan(baris, daftar);

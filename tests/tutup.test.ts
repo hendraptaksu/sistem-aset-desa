@@ -56,6 +56,30 @@ function audit(db: Database.Database): { aksi: string; alasan: string }[] {
   }[];
 }
 
+/**
+ * Korupsi langsung lewat SQL: kepala jurnal + dua baris yang total debit dan
+ * kreditnya tidak sama. API aplikasi tidak pernah menghasilkan data ini.
+ */
+function korupsiJurnalTidakSeimbang(
+  db: Database.Database,
+  id: string,
+  tanggal: string,
+): void {
+  db.prepare(
+    `INSERT INTO jurnal
+       (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+     VALUES (?, ?, ?, ?, 'UMUM', ?, NULL, '2026-10-29T00:00:00.000Z')`,
+  ).run(id, tanggal, `JU-${id}`, `Korupsi ${id}`, id);
+  db.prepare(
+    `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+     VALUES (?, '1001', 1000, 0, '')`,
+  ).run(id);
+  db.prepare(
+    `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+     VALUES (?, '4005', 0, 900, '')`,
+  ).run(id);
+}
+
 describe('P0-7 — validasi tutup buku (murni)', () => {
   it('menolak tahun berjalan/berikutnya dan bukan bilangan bulat (K2)', () => {
     const ctx = { sekarang: SEKARANG, tutup: [] };
@@ -264,6 +288,65 @@ describe('P0-7 — koreksi setelah tutup buku', () => {
 
       // Laba ditahan turunan = laba 2025 versi terbaru.
       expect(labaDitahan(listBarisJurnal(db), listTutupBuku(db))).toBe(7_000_000);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AKT-10 — tutup buku menolak jika audit integritas gagal', () => {
+  it('preview menolak jurnal tidak seimbang yang dikorupsi lewat SQL', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-seimbang-2025', '2025-02-01', masuk('4005', 1_000_000));
+      korupsiJurnalTidakSeimbang(db, 'j-rusak-2025', '2025-03-01');
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+
+      expect(pratinjau.boleh).toBe(false);
+      expect(pratinjau.perluKonfirmasi).toBe(false);
+      expect(pratinjau.errors.join(' ')).toMatch(/audit integritas/i);
+      expect(pratinjau.errors.join(' ')).toMatch(/tidak seimbang/i);
+      expect(pratinjau.errors.join(' ')).toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(pratinjau.temuanIntegritas.map((t) => t.kode)).toContain(
+        'JURNAL_TIDAK_SEIMBANG',
+      );
+      // Preview tidak menulis apa pun.
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(audit(db)).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tutupBuku menolak dan tidak menulis penanda/audit saat audit gagal', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-seimbang-2025', '2025-02-01', masuk('4005', 1_000_000));
+      korupsiJurnalTidakSeimbang(db, 'j-rusak-2025', '2025-03-01');
+      const jumlahJurnal = db
+        .prepare('SELECT COUNT(*) AS n FROM jurnal')
+        .get() as { n: number };
+
+      const hasil = tutupBuku(db, 2025, {
+        sekarang: SEKARANG,
+        catatan: 'Tidak boleh tersimpan',
+        backupPath: '/tmp/rusak-2025.db',
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.data).toBeUndefined();
+      expect(hasil.errors.join(' ')).toMatch(/audit integritas/i);
+      expect(hasil.errors.join(' ')).toMatch(/tidak seimbang/i);
+      expect(hasil.errors.join(' ')).toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(hasil.temuanIntegritas.map((t) => t.kode)).toContain(
+        'JURNAL_TIDAK_SEIMBANG',
+      );
+
+      // Tidak ada penanda tutup buku, audit, atau jurnal baru.
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(audit(db)).toHaveLength(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual(jumlahJurnal);
     } finally {
       db.close();
     }
