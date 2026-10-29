@@ -93,9 +93,13 @@ Akun yang paling sering diperiksa:
   Saldo utang usaha lama yang masih di `2050` juga tetap Pendanaan sampai
   direklasifikasi lewat jurnal yang diaudit.
 - `3000 MODAL` — hanya berubah karena setoran/penarikan modal atau Saldo Awal.
-- `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun legacy yang hanya
-  dibaca dari laporan; keduanya tidak bisa dipilih/diposting lewat Jurnal Umum
-  atau impor. Nilainya dihitung dari tutup buku dan surplus periode.
+- `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun **legacy** yang hanya
+  ditampilkan untuk membaca data lama. Keduanya **tidak dapat diposting** lewat
+  Jurnal Umum, form terpandu, Saldo Awal, maupun impor. Sistem v2 **tidak
+  menghitung** saldo akun ini dari tutup buku atau surplus periode dan **tidak
+  menulis** ke akun ini; saldo yang tampil hanyalah akumulasi baris jurnal lama
+  yang sudah ada di database. Bila tidak ada data lama, saldonya nol dan itu
+  normal.
 
 Bila saldo tidak wajar, klik baris jurnal untuk melihat detail, lalu koreksi
 lewat mekanisme di bagian 9.
@@ -237,12 +241,13 @@ Langkah baku:
 
 1. Buka **Jurnal Umum**, cari jurnal yang salah.
 2. Tekan **Koreksi**, isi **alasan** (wajib, minimal 5 karakter).
-3. Periksa **pratinjau jurnal balik**: debit/kredit ditukar, tanggal bisa diatur,
-   nomor bukti baru. Default tanggal balik adalah **tanggal jurnal asli** agar
-   koreksi tetap di periode yang sama.
-4. Bila tanggal balik atau tanggal pengganti diubah sampai berbeda tahun,
-   aplikasi menampilkan peringatan kuning. Periksa dampaknya ke Laba Rugi
-   tahunan sebelum menyimpan.
+3. Periksa **pratinjau jurnal balik**: debit/kredit ditukar, nomor bukti baru.
+   **Default tanggal balik adalah tanggal jurnal asli** agar koreksi tetap di
+   periode yang sama. Tanggal balik boleh diubah secara eksplisit, termasuk ke
+   tahun berbeda; aplikasi tidak memblokir perubahan itu.
+4. Bila tanggal balik dan tanggal pengganti jatuh di tahun berbeda, aplikasi
+   menampilkan peringatan kuning. Periksa dampaknya ke Laba Rugi tahunan sebelum
+   menyimpan. Untuk koreksi biasa, pertahankan default tanggal asli.
 5. Simpan. Jurnal asli tetap ada; jurnal balik menetralkan saldonya.
 6. Bila perlu, gunakan **Koreksi & isi ulang** — form terbuka dengan data lama
    sebagai awalan. Sistem membuat jurnal balik + jurnal pengganti dalam satu
@@ -260,6 +265,13 @@ Aturan penting:
 - Koreksi di periode yang sudah ditutup wajib alasan dan tercatat di audit.
 - Koreksi setelah tutup buku tidak boleh membuat Neraca selisih.
 
+**Peringatan dan alasan.** Peringatan seperti kas/bank akan minus, saldo pihak
+akan minus, atau realisasi panjar melebihi panjar tidak memblokir penyimpanan,
+tetapi wajib dikonfirmasi. Di form Transaksi, Jurnal Umum, Saldo Awal, Piutang &
+Hutang, dan Panjar, konfirmasi baru bisa dilanjutkan setelah **alasan minimal 5
+karakter** diisi; alasan tercatat di Riwayat Audit. Alasan koreksi jurnal juga
+wajib minimal 5 karakter.
+
 ---
 
 ## 11. Tutup buku
@@ -270,11 +282,19 @@ Aturan penting:
    Tahun berjalan ditolak.
 4. Tekan **Preview laba**, periksa laba dan laba ditahan.
 5. **Backup otomatis & lanjut** akan membuat backup `.db` sebelum kunci.
-6. Isi catatan pemeriksaan, lalu konfirmasi.
+6. Isi catatan pemeriksaan (opsional), lalu konfirmasi.
 
 Tutup buku hanya menyimpan penanda tahun, waktu, path backup, dan catatan.
 **Laba tidak disimpan sebagai sumber angka.** Menutup ulang tahun yang sama
 tercatat sebagai `TUTUP-ULANG`. Setelah tutup, koreksi masih boleh dengan alasan.
+
+Tutup buku **tidak membuat jurnal penutup** dan tidak memindahkan saldo
+PENDAPATAN/BEBAN ke akun ekuitas. Jangan membuat jurnal penutup manual: sistem
+menolak jurnal yang mencampur akun PENDAPATAN/BEBAN dengan EKUITAS dalam satu
+jurnal (termasuk `3000 MODAL`; `3001`/`3002` juga tidak dapat diposting).
+Pengecualian hanya jurnal **Saldo Awal** dari wizard Saldo Awal. Laba tahun
+berjalan tetap dihitung dari jurnal; laba ditahan bertambah dari daftar tahun
+yang ditutup, bukan dari jurnal buatan operator.
 
 ---
 

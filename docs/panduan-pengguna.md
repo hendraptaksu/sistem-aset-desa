@@ -41,6 +41,12 @@ Prinsipnya: **catat saat kejadian**, lalu lampirkan bukti bila ada. Operator tid
 perlu menghitung debit/kredit; sistem menyusun jurnalnya dan menampilkan
 pratinjau sebelum menyimpan.
 
+> **Peringatan wajib alasan.** Di form Transaksi, Jurnal Umum, Saldo Awal,
+> Piutang & Hutang, dan Panjar, peringatan (mis. kas/bank akan minus, saldo pihak
+> akan minus, atau realisasi panjar melebihi panjar) hanya bisa dilanjutkan
+> setelah menulis **alasan minimal 5 karakter**. Alasan tercatat di Riwayat
+> Audit.
+
 ### 2.1 Terima Uang
 
 Dipakai untuk uang masuk ke kas/bank: parkir, sesari, punia, kios, setoran modal,
@@ -92,7 +98,7 @@ pertanggungjawabannya.
    debit, kas di kredit.
 2. Setelah kegiatan selesai, pilih panjar tersebut → **Pertanggungjawaban**.
 3. Isi rincian belanja per akun beban. Bila ada sisa uang, isi pengembalian ke
-   kas. Bila kurang, sistem meminta konfirmasi.
+   kas. Bila kurang, sistem meminta konfirmasi dengan alasan minimal 5 karakter.
 4. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
    panjar dipertanggungjawabkan.
 
@@ -125,7 +131,9 @@ akuntan memindahkannya lewat jurnal reklasifikasi; aplikasi tidak pernah
 memindahkan saldo lama secara otomatis.
 
 Pihak (nama orang/lembaga) wajib dipilih untuk piutang dan hutang. Saldo per
-pihak dihitung dari jurnal, bukan diketik manual.
+pihak dihitung dari jurnal, bukan diketik manual. Bila pelunasan atau pembayaran
+melebihi saldo pihak, sistem memberi peringatan yang wajib dikonfirmasi dengan
+alasan minimal 5 karakter.
 
 **Penting:** perbaikan gedung yang dibayar belakangan **tidak menambah modal**.
 Yang naik adalah beban (Laba Rugi) dan Utang Usaha `2060` (Neraca). Modal hanya
@@ -147,8 +155,9 @@ atau untuk pemeriksaan. Di sini debit/kredit diisi manual:
 
 **Tanggal koreksi:** jurnal balik otomatis memakai **tanggal jurnal asli**, bukan
 tanggal hari ini, supaya koreksi tidak memindahkan laba ke tahun yang salah.
-Jika tanggal balik atau tanggal pengganti diubah sampai berbeda tahun, aplikasi
-menampilkan peringatan kuning. Baca peringatan itu sebelum melanjutkan.
+Tanggal balik boleh diubah secara eksplisit, termasuk ke tahun berbeda; aplikasi
+tidak memblokir, tetapi menampilkan peringatan kuning bila tanggal balik dan
+tanggal pengganti jatuh di tahun berbeda. Baca peringatan itu sebelum melanjutkan.
 
 ### 2.7 Lampiran bukti
 
@@ -268,6 +277,11 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
 Tutup buku adalah **penanda + kunci periode + catatan**, bukan menyimpan angka
 laba. Laba dan laba ditahan selalu dihitung ulang dari jurnal.
 
+Tutup buku **tidak membuat jurnal penutup** dan tidak memindahkan
+pendapatan/beban ke modal. Jangan membuat jurnal penutup manual; aplikasi menolak
+jurnal yang mencampur akun pendapatan/beban dengan ekuitas dalam satu jurnal
+(kecuali jurnal **Saldo Awal** dari wizard).
+
 1. Pastikan laporan tahun tersebut sudah diperiksa dan **Neraca Saldo seimbang**.
 2. Buka menu **Tutup Buku**.
 3. Isi **Tahun** yang akan ditutup. Hanya tahun yang sudah selesai yang boleh
@@ -381,7 +395,7 @@ hanya menyalin file `.exe`.
 
 | Pesan | Artinya | Yang harus dilakukan |
 |---|---|---|
-| **Kas akan minus** | Transaksi membuat saldo kas/bank di akun itu negatif (kas minus). | Periksa saldo awal dan tanggal. Bila memang benar (kas belum tercatat), konfirmasi; bila ragu, jangan simpan. |
+| **Kas akan minus** | Transaksi membuat saldo kas/bank di akun itu negatif (kas minus). | Periksa saldo awal dan tanggal. Bila memang benar (kas belum tercatat), isi alasan minimal 5 karakter lalu konfirmasi; bila ragu, jangan simpan. |
 | **Periode sudah ditutup** | Tanggal transaksi berada di tahun yang sudah ditutup. | Bila koreksi memang perlu, isi **alasan** minimal 5 karakter. Koreksi tercatat di audit. |
 | **Nomor bukti sudah dipakai** | Nomor `JU-...` sudah ada. | Ganti nomor atau kosongkan agar sistem membuat nomor berikutnya. |
 | **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan tutup buku. Periksa Jurnal Umum dan hubungi pendamping. |

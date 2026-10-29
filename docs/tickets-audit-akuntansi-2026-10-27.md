@@ -45,11 +45,11 @@
 | AKT-24 | P2 | M | Anti-duplikat import Excel | — | [x] |
 | AKT-25 | P2 | M | Guard `insertJurnal` / jadikan internal | — | [x] |
 | AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [x] |
-| AKT-27 | P2 | S | Perbaiki dokumentasi 3001/3002, closing, reversal | AKT-05, AKT-16 | [ ] |
+| AKT-27 | P2 | S | Perbaiki dokumentasi 3001/3002, closing, reversal | AKT-05, AKT-16 | [x] |
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 27/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25, AKT-26 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 28/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25, AKT-26, AKT-27 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 11 (AKT-26). Tiket yang menambah
@@ -563,7 +563,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-27 — Perbaiki dokumentasi 3001/3002, closing, reversal** · P2 · S
+- [x] **AKT-27 — Perbaiki dokumentasi 3001/3002, closing, reversal** · P2 · S (2026-10-29: typecheck bersih; 729/729 test hijau (58 file); `docs/panduan-pemeriksaan.md` kini menyatakan 3001/3002 akun legacy yang tidak dapat diposting dan saldonya hanya berasal dari data lama—bukan angka turunan yang dihitung v2 dari tutup buku/surplus; tutup buku ditegaskan hanya penanda dan jurnal penutup manual P&L→ekuitas ditolak; default tanggal reversal = tanggal jurnal asli, tanggal eksplisit boleh lintas tahun; konfirmasi peringatan di Transaksi/Jurnal Umum/Saldo Awal/Pihak/Panjar wajib alasan ≥5 karakter dan tercatat audit; `docs/arah-akuntansi.md` & `docs/panduan-pengguna.md` diselaraskan; assertions AKT-27 di `tests/dokumentasi.test.ts` mengunci perilaku yang benar; tanpa perubahan kode produksi)
   - **Konteks:** `docs/panduan-pemeriksaan.md` menyebut 3001/3002 “dihitung dari
     tutup buku dan surplus”, padahal kode tidak menghitungnya. Dokumentasi juga
     perlu menegaskan larangan jurnal penutup manual dan default tanggal reversal.

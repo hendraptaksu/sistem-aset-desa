@@ -43,7 +43,10 @@ Inilah yang membuat akuntan percaya: setiap angka di laporan bisa ditelusuri ke 
 ## 3. Prinsip yang dikunci
 
 1. **Jurnal adalah satu-satunya sumber kebenaran.** Tabel `jurnal` (kepala) + `jurnal_baris` (debit/kredit
-   per akun). Tidak ada tabel saldo, tidak ada laba tersimpan.
+   per akun). Tidak ada tabel saldo, tidak ada laba tersimpan. **Tutup buku tidak membuat jurnal penutup**;
+   jurnal penutup manual yang mencampur PENDAPATAN/BEBAN dengan EKUITAS ditolak, kecuali jurnal
+   **SALDO_AWAL** dari wizard Saldo Awal. Akun legacy `3001`/`3002` hanya-baca: tidak dapat diposting dan
+   tidak dihitung ulang dari tutup buku/surplus.
 2. **Setiap jurnal seimbang**: minimal 2 baris, minimal satu sisi > 0 per baris, total debit = total kredit.
 3. **Koreksi = jurnal balik (reversal) + alasan.** Tidak pernah edit/hapus jurnal yang sudah tersimpan.
 4. **Semua laporan dihitung ulang dari jurnal setiap dibuka.** Boleh lambat, tidak boleh basi.

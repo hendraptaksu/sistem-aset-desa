@@ -16,6 +16,7 @@ const bacaRoot = (nama: string): string => readFileSync(join(rootDir, nama), 'ut
 const PENGGUNA = baca('panduan-pengguna.md');
 const PEMERIKSAAN = baca('panduan-pemeriksaan.md');
 const PORTABLE = baca('panduan-portable.md');
+const ARAH = baca('arah-akuntansi.md');
 const README = bacaRoot('README.md');
 const PAKET = JSON.parse(bacaRoot('package.json')) as { version: string };
 
@@ -140,6 +141,34 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
     ]) {
       expect(PEMERIKSAAN, `istilah "${istilah}"`).toContain(istilah);
     }
+  });
+});
+
+describe('AKT-27 — dokumentasi akun legacy, tutup buku, dan reversal', () => {
+  it('menjelaskan 3001/3002 sebagai akun legacy tanpa angka turunan v2', () => {
+    expect(PEMERIKSAAN).toContain('3001 SALDO KUMULATIF');
+    expect(PEMERIKSAAN).toContain('3002 SALDO BERJALAN');
+    expect(PEMERIKSAAN).toContain('akun **legacy**');
+    expect(PEMERIKSAAN).toContain('tidak dapat diposting');
+    expect(PEMERIKSAAN).toMatch(/tidak\s+\*{0,2}menghitung/);
+    // Teks lama AUD-22 salah: v2 tidak menghitung saldo 3001/3002.
+    expect(PEMERIKSAAN).not.toMatch(/Nilai(nya)? dihitung dari tutup buku dan surplus/i);
+  });
+
+  it('menegaskan tutup buku bukan jurnal penutup manual', () => {
+    for (const dokumen of [PEMERIKSAAN, PENGGUNA, ARAH]) {
+      expect(dokumen).toMatch(/jurnal penutup manual/i);
+      expect(dokumen).toMatch(/tidak membuat jurnal penutup/i);
+    }
+  });
+
+  it('menyamakan default reversal dan alasan peringatan dengan perilaku aplikasi', () => {
+    expect(PEMERIKSAAN).toMatch(/Default tanggal balik adalah tanggal jurnal asli/);
+    expect(PEMERIKSAAN).toMatch(/termasuk ke\s+tahun berbeda/);
+    expect(PEMERIKSAAN).toMatch(/alasan minimal 5\s+karakter/i);
+    expect(PENGGUNA).toMatch(/tanggal jurnal asli/i);
+    expect(PENGGUNA).toContain('termasuk ke tahun berbeda');
+    expect(PENGGUNA).toMatch(/alasan minimal 5\s+karakter/i);
   });
 });
 
