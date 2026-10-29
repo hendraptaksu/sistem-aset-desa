@@ -21,7 +21,7 @@
 | AKT-00 | — | S | Baseline audit & reproduksi | — | [x] |
 | AKT-01 | P1 | M | Guard backend: jurnal pertama wajib saldo awal / konfirmasi | — | [x] |
 | AKT-02 | P1 | M | UI konfirmasi "mulai tanpa saldo awal" | AKT-01 | [x] |
-| AKT-03 | P1 | M | Tegakkan tanggal mulai pembukuan sebagai batas bawah | AKT-01 | [ ] |
+| AKT-03 | P1 | M | Tegakkan tanggal mulai pembukuan sebagai batas bawah | AKT-01 | [x] |
 | AKT-04 | P1 | M | Peringatan kas minus untuk tanggal setelah jurnal | — | [ ] |
 | AKT-05 | P1 | S | Default tanggal reversal = tanggal jurnal asli | — | [ ] |
 | AKT-06 | P1 | M | Audit override: peringatan + konfirmasi + alasan | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 3/30 (AKT-00, AKT-01, AKT-02 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 4/30 (AKT-00, AKT-01, AKT-02, AKT-03 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -114,7 +114,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** AKT-01.
 
-- [ ] **AKT-03 — Tegakkan tanggal mulai pembukuan sebagai batas bawah** · P1 · M
+- [x] **AKT-03 — Tegakkan tanggal mulai pembukuan sebagai batas bawah** · P1 · M (2026-10-29: typecheck bersih; 622/622 test hijau (53 file); `simpanSaldoAwal` menulis `akuntansi_tanggal_mulai` atomik bersama jurnal + audit; `PostingContext.tanggalMulaiPembukuan` diisi `buatKonteksPosting`; `validasiJurnal` menolak tanggal sebelum batas dengan pesan `Tanggal jurnal sebelum tanggal mulai pembukuan (YYYY-MM-DD).` kecuali `SALDO_AWAL`; setting kosong tetap tanpa batas; `simpanPengaturanPembukuan` menolak tanggal setelah jurnal paling awal dan pengosongan nilai lama tanpa `konfirmasiKosongkanTanggalMulai`; bypass `insertJurnal` dicatat sebagai dependensi AKT-25)
   - **Konteks:** `tanggalMulaiPembukuan` disimpan, ditampilkan, dan divalidasi,
     tetapi `tanggalMulaiEfektif()` tidak dipakai di produksi. Jurnal bertanggal
     sebelum saldo awal bisa membuat saldo awal dobel hitung.

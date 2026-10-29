@@ -10,10 +10,13 @@ import { openDb } from '../src/db/database.js';
 import { postingJurnal, postingSaldoAwal, validasiJurnalDb } from '../src/db/posting.js';
 import {
   getJurnalDetail,
+  getPengaturanPembukuan,
   insertJurnal,
   listAuditLog,
   listJurnal,
+  simpanPengaturanPembukuan,
 } from '../src/db/repository.js';
+import { DEFAULT_PENGATURAN } from '../src/core/pengaturan.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
 
 const dirs: string[] = [];
@@ -482,6 +485,140 @@ describe('P0-4 — kunci periode via DB', () => {
       });
       expect(hasil.tersimpan).toBe(true);
       expect(hasil.errors).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AKT-03 — tanggal mulai pembukuan sebagai batas bawah', () => {
+  const settingMulai = (tanggalMulaiPembukuan: string) => ({
+    ...DEFAULT_PENGATURAN,
+    tanggalMulaiPembukuan,
+  });
+
+  it('menolak jurnal sebelum batas, menerima tepat pada batas, dan tidak menulis apa pun saat ditolak', () => {
+    const { db } = freshDb();
+    try {
+      simpanPengaturanPembukuan(db, settingMulai('2025-01-01'));
+      const auditSebelum = listAuditLog(db).length;
+
+      const ditolak = postingJurnal(db, {
+        header: header({
+          id: 'j-sebelum-batas',
+          tanggal: '2024-12-31',
+          no_bukti: 'JU-2024-0001',
+        }),
+        baris: pasangan(),
+      });
+      expect(ditolak.tersimpan).toBe(false);
+      expect(ditolak.errors).toContain(
+        'Tanggal jurnal sebelum tanggal mulai pembukuan (2025-01-01).',
+      );
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+
+      const diterima = postingJurnal(db, {
+        header: header({
+          id: 'j-tepat-batas',
+          tanggal: '2025-01-01',
+          no_bukti: 'JU-2025-0001',
+        }),
+        baris: pasangan(),
+      });
+      expect(diterima.tersimpan, diterima.errors.join(' ')).toBe(true);
+      expect(diterima.jurnal?.tanggal).toBe('2025-01-01');
+      expect(jumlahJurnal(db)).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('setting kosong tidak membatasi tanggal (kompatibel data lama)', () => {
+    const { db } = freshDb();
+    try {
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('');
+
+      const hasil = postingJurnal(db, {
+        header: header({
+          id: 'j-tanpa-batas',
+          tanggal: '2020-01-02',
+          no_bukti: 'JU-2020-0001',
+        }),
+        baris: pasangan(),
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(jumlahJurnal(db)).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SALDO_AWAL bertanggal lain tidak terkena batas', () => {
+    const { db } = freshDb();
+    try {
+      simpanPengaturanPembukuan(db, settingMulai('2025-01-01'));
+
+      const hasil = postingSaldoAwal(db, {
+        header: header({
+          id: 'j-saldo-awal-2024',
+          tanggal: '2024-12-31',
+          no_bukti: 'SA-2024-0001',
+          keterangan: 'Saldo awal pembukuan',
+          jenis: 'SALDO_AWAL',
+        }),
+        baris: pasangan('1001', '3000', 1_000_000),
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnal?.tanggal).toBe('2024-12-31');
+      expect(jumlahJurnal(db)).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak setting setelah jurnal paling awal, tetapi menerima tanggal yang sama', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnal(
+        db,
+        { id: 'j-awal', tanggal: '2025-01-02', keterangan: 'Jurnal pertama' },
+        pasangan('1001', '4005'),
+      );
+
+      expect(() =>
+        simpanPengaturanPembukuan(db, settingMulai('2025-01-03')),
+      ).toThrow(/setelah jurnal paling awal \(2025-01-02\)/);
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('');
+
+      const sama = simpanPengaturanPembukuan(db, settingMulai('2025-01-02'));
+      expect(sama.tanggalMulaiPembukuan).toBe('2025-01-02');
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('2025-01-02');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengosongkan setting lama saat ada jurnal butuh konfirmasi khusus', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnal(
+        db,
+        { id: 'j-awal', tanggal: '2025-01-02', keterangan: 'Jurnal pertama' },
+        pasangan('1001', '4005'),
+      );
+      simpanPengaturanPembukuan(db, settingMulai('2025-01-02'));
+
+      expect(() =>
+        simpanPengaturanPembukuan(db, settingMulai('')),
+      ).toThrow(/tidak boleh dikosongkan karena sudah ada jurnal/);
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('2025-01-02');
+
+      const dikosongkan = simpanPengaturanPembukuan(db, settingMulai(''), {
+        konfirmasiKosongkanTanggalMulai: true,
+      });
+      expect(dikosongkan.tanggalMulaiPembukuan).toBe('');
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('');
     } finally {
       db.close();
     }

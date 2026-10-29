@@ -5,7 +5,13 @@
 import type Database from 'better-sqlite3';
 import { KAS_KODES, isAkunKas } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
-import { insertAuditLog, insertJurnal, listAkun, listTutupBuku } from './repository.js';
+import {
+  getPengaturanPembukuan,
+  insertAuditLog,
+  insertJurnal,
+  listAkun,
+  listTutupBuku,
+} from './repository.js';
 import {
   validasiJurnal,
   type HasilValidasiJurnal,
@@ -105,6 +111,10 @@ export function buatKonteksPosting(db: Database.Database, header: JurnalInput['h
     tutupBuku: listTutupBuku(db).map((t) => ({ tahun: Number(t.tahun) })),
     noBuktiTerpakai,
     saldoKas,
+    // AKT-03: batas bawah pembukuan dibaca dari pengaturan. Nilai kosong tetap
+    // kosong (bukan `tanggalMulaiEfektif` yang jatuh ke hari ini) agar data
+    // lama tanpa setting tidak tiba-tiba kehilangan kemampuan backdate.
+    tanggalMulaiPembukuan: getPengaturanPembukuan(db).tanggalMulaiPembukuan,
   };
 }
 

@@ -10,6 +10,10 @@
 
 import type Database from 'better-sqlite3';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
+import {
+  KUNCI_AKUNTANSI_TANGGAL_MULAI,
+  setPengaturan,
+} from './repository.js';
 import { postingSaldoAwal, type HasilPosting } from './posting.js';
 
 export const PESAN_SALDO_AWAL_SUDAH_ADA =
@@ -72,11 +76,22 @@ export function simpanSaldoAwal(
   try {
     const simpan = db.transaction((): HasilPosting => {
       if (hitungJurnal(db) > 0) return hasilGagal(PESAN_SALDO_AWAL_SUDAH_ADA);
-      return postingSaldoAwal(db, input, {
+      const hasil = postingSaldoAwal(db, input, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
         wajibSaldoAwal: opsi.wajibSaldoAwal === true,
         konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
       });
+      // AKT-03: tanggal jurnal saldo awal menjadi batas bawah pembukuan.
+      // Ditulis di transaksi yang sama dengan jurnal + audit; bila penulisan
+      // setting gagal, seluruh saldo awal ikut dibatalkan.
+      if (hasil.tersimpan) {
+        const tanggalMulai = String(
+          hasil.jurnal?.tanggal ?? input.header.tanggal ?? '',
+        ).trim();
+        if (tanggalMulai)
+          setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, tanggalMulai);
+      }
+      return hasil;
     });
     return simpan();
   } catch (e) {

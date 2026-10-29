@@ -309,6 +309,10 @@ export type JurnalFilter = {
  * (bukan di UI): minimal 2 baris, tiap baris hanya debit atau kredit > 0,
  * akun harus ada di master `akun`, total debit = total kredit, total > 0.
  * Error dilempar dengan pesan berbahasa Indonesia.
+ *
+ * CATATAN AKT-25: jalur ini sengaja masih melewati sebagian validasi
+ * `postingJurnal` (termasuk batas tanggal mulai AKT-03). Jangan dipakai untuk
+ * input produksi; pengetatan/penjadwalan internal ada di tiket AKT-25.
  */
 export function insertJurnal(
   db: Database.Database,
@@ -918,6 +922,11 @@ export function getPengaturanPembukuan(
 
 export type OpsiSimpanPengaturan = {
   alasan?: string;
+  /**
+   * AKT-03: izinkan mengosongkan tanggal mulai pembukuan saat sudah ada
+   * jurnal. Tanpa opsi ini, pengosongan yang menghapus nilai lama ditolak.
+   */
+  konfirmasiKosongkanTanggalMulai?: boolean;
 };
 
 /**
@@ -936,6 +945,33 @@ export function simpanPengaturanPembukuan(
 
   const lama = getPengaturanPembukuan(db);
   const simpan = db.transaction(() => {
+    // AKT-03: setting tidak boleh bertentangan dengan jurnal yang sudah ada.
+    // Batas bawah setelah jurnal paling awal akan membuat jurnal lama tidak
+    // mungkin diposting ulang; mengosongkan nilai lama juga butuh konfirmasi.
+    const jurnalPertama = db
+      .prepare('SELECT tanggal FROM jurnal ORDER BY tanggal ASC, rowid ASC LIMIT 1')
+      .get() as { tanggal: string } | undefined;
+    if (jurnalPertama) {
+      const tanggalAwal = String(jurnalPertama.tanggal);
+      if (
+        bersih.tanggalMulaiPembukuan &&
+        bersih.tanggalMulaiPembukuan > tanggalAwal
+      ) {
+        throw new Error(
+          `Tanggal mulai pembukuan (${bersih.tanggalMulaiPembukuan}) tidak boleh setelah jurnal paling awal (${tanggalAwal}).`,
+        );
+      }
+      if (
+        !bersih.tanggalMulaiPembukuan &&
+        lama.tanggalMulaiPembukuan &&
+        opsi.konfirmasiKosongkanTanggalMulai !== true
+      ) {
+        throw new Error(
+          'Tanggal mulai pembukuan tidak boleh dikosongkan karena sudah ada jurnal. Konfirmasi khusus diperlukan.',
+        );
+      }
+    }
+
     setPengaturan(db, KUNCI_AKUNTANSI_NAMA_ENTITAS, bersih.namaEntitas);
     setPengaturan(db, KUNCI_AKUNTANSI_KOP_TAMBAHAN, bersih.kopTambahan);
     setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, bersih.tanggalMulaiPembukuan);

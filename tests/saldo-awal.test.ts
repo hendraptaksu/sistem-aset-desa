@@ -22,7 +22,16 @@ import {
 import { postingJurnal } from '../src/db/posting.js';
 import { reverseJurnal } from '../src/db/reversal.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
-import { insertJurnal, listAuditLog, listJurnal } from '../src/db/repository.js';
+import {
+  getPengaturan,
+  getPengaturanPembukuan,
+  insertJurnal,
+  KUNCI_AKUNTANSI_TANGGAL_MULAI,
+  listAuditLog,
+  listJurnal,
+  simpanPengaturanPembukuan,
+} from '../src/db/repository.js';
+import { DEFAULT_PENGATURAN } from '../src/core/pengaturan.js';
 import { buatJurnalSaldoAwal, type FormSaldoAwal } from '../src/core/forms.js';
 import { arusKas, labaRugi, neraca, neracaSaldo, saldoAkun } from '../src/core/reports.js';
 import { AKUN_MODAL, COA } from '../src/db/coa.js';
@@ -422,6 +431,83 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
       );
       expect(lagi.tersimpan).toBe(false);
       expect(listJurnal(db)).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AKT-03 — saldo awal menjadi tanggal mulai pembukuan', () => {
+  it('menulis setting dalam transaksi yang sama dan menolak jurnal sebelum tanggal saldo awal', () => {
+    const db = openDb(':memory:');
+    try {
+      const preview = buatJurnalSaldoAwal({
+        id: 'j-awal-2025',
+        tanggal: '2025-01-01',
+        keterangan: 'Saldo awal pembukuan 2025',
+        noBukti: 'SA-2025-0001',
+        saldo: [{ akun_kode: '1001', nominal: RP(5_000_000) }],
+      });
+      const hasil = simpanSaldoAwal(db, preview.input);
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('2025-01-01');
+      expect(getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI)).toBe('2025-01-01');
+
+      const ditolak = postingJurnal(db, {
+        header: {
+          id: 'j-sebelum',
+          tanggal: '2024-12-31',
+          no_bukti: 'JU-2024-0001',
+          keterangan: 'Jurnal sebelum saldo awal',
+          jenis: 'UMUM',
+        },
+        baris: [D('1001', RP(100_000)), K('4005', RP(100_000))],
+      });
+      expect(ditolak.tersimpan).toBe(false);
+      expect(ditolak.errors).toContain(
+        'Tanggal jurnal sebelum tanggal mulai pembukuan (2025-01-01).',
+      );
+      expect(listJurnal(db)).toHaveLength(1);
+
+      const diterima = postingJurnal(db, {
+        header: {
+          id: 'j-tepat',
+          tanggal: '2025-01-01',
+          no_bukti: 'JU-2025-0001',
+          keterangan: 'Jurnal tepat pada tanggal mulai',
+          jenis: 'UMUM',
+        },
+        baris: [D('1001', RP(100_000)), K('4005', RP(100_000))],
+      });
+      expect(diterima.tersimpan, diterima.errors.join(' ')).toBe(true);
+      expect(listJurnal(db)).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SALDO_AWAL bertanggal lain dikecualikan dari batas dan memperbarui setting', () => {
+    const db = openDb(':memory:');
+    try {
+      simpanPengaturanPembukuan(db, {
+        ...DEFAULT_PENGATURAN,
+        tanggalMulaiPembukuan: '2025-01-01',
+      });
+
+      const hasil = simpanSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          id: 'j-awal-2024',
+          tanggal: '2024-12-31',
+          keterangan: 'Saldo awal pembukuan 2024',
+          noBukti: 'SA-2024-0001',
+          saldo: [{ akun_kode: '1001', nominal: RP(3_000_000) }],
+        }).input,
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnal?.tanggal).toBe('2024-12-31');
+      expect(getPengaturanPembukuan(db).tanggalMulaiPembukuan).toBe('2024-12-31');
     } finally {
       db.close();
     }

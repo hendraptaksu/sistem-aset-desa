@@ -51,6 +51,11 @@ export type PostingContext = {
   noBuktiTerpakai?: readonly string[];
   /** Saldo kas/bank saat ini dalam sen, per kode akun. */
   saldoKas?: Readonly<Record<string, number>>;
+  /**
+   * AKT-03: batas bawah tanggal jurnal (YYYY-MM-DD) dari pengaturan pembukuan.
+   * Kosong/tidak valid = tidak ada batas (kompatibel data lama).
+   */
+  tanggalMulaiPembukuan?: string;
 };
 
 export type JurnalInput = {
@@ -95,7 +100,8 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  * Validasi lengkap satu jurnal sebelum disimpan.
  *
  * Urutan aturan:
- * 1. Tanggal kalender nyata, keterangan, minimal 2 baris.
+ * 1. Tanggal kalender nyata, tidak sebelum tanggal mulai pembukuan (kecuali
+ *    SALDO_AWAL), keterangan, minimal 2 baris.
  * 2. Akun ada, aktif, bukan akun legacy 3001/3002, tipe/posisi normal
  *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
@@ -115,6 +121,22 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   // ---- 1. Kepala jurnal ----
   if (!tanggalKalenderValid(header.tanggal))
     errors.push(PESAN_TANGGAL_TIDAK_VALID);
+
+  // AKT-03: tanggal mulai pembukuan adalah batas bawah. SALDO_AWAL dikecualikan
+  // agar wizard tetap bisa memakai tanggal yang berbeda; setting kosong/tidak
+  // valid tidak membatasi apa pun (kompatibel data lama).
+  const tanggalMulai = String(ctx.tanggalMulaiPembukuan ?? '').trim();
+  if (
+    header.jenis !== 'SALDO_AWAL' &&
+    tanggalKalenderValid(tanggalMulai) &&
+    tanggalKalenderValid(header.tanggal) &&
+    String(header.tanggal) < tanggalMulai
+  ) {
+    errors.push(
+      `Tanggal jurnal sebelum tanggal mulai pembukuan (${tanggalMulai}).`,
+    );
+  }
+
   if (!String(header.keterangan ?? '').trim()) errors.push('Keterangan wajib diisi.');
   if (baris.length < 2)
     errors.push('Jurnal wajib memiliki minimal 2 baris (satu debit dan satu kredit).');
