@@ -23,6 +23,7 @@ import {
   simpanPengaturanPembukuan,
 } from '../src/db/repository.js';
 import { DEFAULT_PENGATURAN } from '../src/core/pengaturan.js';
+import { PESAN_JURNAL_PENUTUP_MANUAL } from '../src/core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
 
 const dirs: string[] = [];
@@ -1082,6 +1083,147 @@ describe('AKT-14 — tolak tanggal jurnal di masa depan', () => {
       }
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
+  it.each([
+    ['pendapatan → ekuitas', '4005', '3000'],
+    ['beban → ekuitas', '5000', '3000'],
+    ['ekuitas → beban', '3000', '5000'],
+  ])(
+    'menolak %s dengan pesan penutup manual dan tidak menulis jurnal/audit',
+    (_, debit, kredit) => {
+      const { db } = freshDb();
+      try {
+        const input = {
+          header: header({
+            id: `j-tutup-${debit}-${kredit}`,
+            no_bukti: '',
+            keterangan: 'Penutup manual',
+          }),
+          baris: pasangan(debit, kredit),
+        };
+
+        const validasi = validasiJurnalDb(db, input);
+        expect(validasi.boleh).toBe(false);
+        expect(validasi.errors).toContain(PESAN_JURNAL_PENUTUP_MANUAL);
+
+        const hasil = postingJurnal(db, input);
+        expect(hasil.tersimpan).toBe(false);
+        expect(hasil.errors).toContain(PESAN_JURNAL_PENUTUP_MANUAL);
+        expect(jumlahJurnal(db)).toBe(0);
+        expect(db.prepare('SELECT COUNT(*) AS c FROM jurnal_baris').get()).toEqual({ c: 0 });
+        expect(listAuditLog(db)).toEqual([]);
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  it('tetap mengizinkan jurnal P&L murni, beban dibayar kas, dan modal murni', () => {
+    const { db } = freshDb();
+    try {
+      // Modal murni: D kas / K 3000 (tanpa P&L).
+      const modal = postingJurnal(db, {
+        header: header({
+          id: 'j-modal-akt16',
+          no_bukti: 'JU-2026-0501',
+          keterangan: 'Setoran modal',
+        }),
+        baris: pasangan('1001', '3000', 1_000_000),
+      });
+      expect(modal.tersimpan, modal.errors.join(' ')).toBe(true);
+
+      // P&L murni: D kas / K pendapatan (tanpa ekuitas).
+      const pendapatan = postingJurnal(db, {
+        header: header({
+          id: 'j-pendapatan-akt16',
+          no_bukti: 'JU-2026-0502',
+          keterangan: 'Terima uang parkir',
+        }),
+        baris: pasangan('1001', '4005', 50_000),
+      });
+      expect(pendapatan.tersimpan, pendapatan.errors.join(' ')).toBe(true);
+
+      // Beban dibayar kas, bukan ditutup ke ekuitas.
+      const beban = postingJurnal(db, {
+        header: header({
+          id: 'j-beban-akt16',
+          no_bukti: 'JU-2026-0503',
+          keterangan: 'Bayar listrik',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 25_000),
+      });
+      expect(beban.tersimpan, beban.errors.join(' ')).toBe(true);
+
+      expect(jumlahJurnal(db)).toBe(3);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengizinkan alur dua jurnal untuk beban dibayar pemilik: beban/kas lalu kas/modal', () => {
+    const { db } = freshDb();
+    try {
+      const modal = postingJurnal(db, {
+        header: header({
+          id: 'j-modal-pemilik',
+          no_bukti: 'JU-2026-0510',
+          keterangan: 'Setoran modal pemilik',
+        }),
+        baris: pasangan('1001', '3000', 200_000),
+      });
+      expect(modal.tersimpan, modal.errors.join(' ')).toBe(true);
+
+      const beban = postingJurnal(db, {
+        header: header({
+          id: 'j-beban-pemilik',
+          no_bukti: 'JU-2026-0511',
+          keterangan: 'Beban dibayar pemilik',
+          jenis: 'BAYAR',
+        }),
+        baris: pasangan('5000', '1001', 75_000),
+      });
+      expect(beban.tersimpan, beban.errors.join(' ')).toBe(true);
+      expect(jumlahJurnal(db)).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tetap mengizinkan SALDO_AWAL, termasuk yang memuat akun P&L (dikecualikan)', () => {
+    const { db } = freshDb();
+    try {
+      const saldoAwal = postingSaldoAwal(db, {
+        header: header({
+          id: 'j-saldo-awal-akt16',
+          tanggal: '2026-01-01',
+          no_bukti: 'SA-2026-0501',
+          keterangan: 'Saldo awal',
+          jenis: 'SALDO_AWAL',
+        }),
+        baris: pasangan('1001', '3000', 1_000_000),
+      });
+      expect(saldoAwal.tersimpan, saldoAwal.errors.join(' ')).toBe(true);
+
+      const campuran = postingSaldoAwal(db, {
+        header: header({
+          id: 'j-saldo-awal-campuran',
+          tanggal: '2026-01-01',
+          no_bukti: 'SA-2026-0502',
+          keterangan: 'Saldo awal campuran',
+          jenis: 'SALDO_AWAL',
+        }),
+        baris: pasangan('5000', '3000', 10_000),
+      });
+      expect(campuran.tersimpan, campuran.errors.join(' ')).toBe(true);
+
+      expect(jumlahJurnal(db)).toBe(2);
+    } finally {
+      db.close();
     }
   });
 });

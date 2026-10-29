@@ -34,7 +34,7 @@
 | AKT-13 | P1 | S | Laporan anggaran tetap jalan saat akun pagu nonaktif | — | [x] |
 | AKT-14 | P1 | S | Tolak/tandai tanggal jurnal di masa depan | — | [x] |
 | AKT-15 | P1 | S | Default periode Laba Rugi & Arus Kas ke periode berjalan | AKT-14 | [x] |
-| AKT-16 | P1 | M | Larang jurnal penutup manual P&L → ekuitas | — | [ ] |
+| AKT-16 | P1 | M | Larang jurnal penutup manual P&L → ekuitas | — | [x] |
 | AKT-17 | P1 | S | Reklasifikasi arus kas pinjaman 1050 ke investasi | — | [ ] |
 | AKT-18 | P1 | M | Pisahkan transfer dan biaya pada jurnal kas gabungan | — | [ ] |
 | AKT-19 | P1 | S | Desain pemisahan utang usaha vs pinjaman (2050) | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 16/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 17/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -369,19 +369,19 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test && npm run build`.
   - **Dependency:** AKT-14.
 
-- [ ] **AKT-16 — Larang jurnal penutup manual P&L → ekuitas** · P1 · M
+- [x] **AKT-16 — Larang jurnal penutup manual P&L → ekuitas** · P1 · M (2026-10-29: typecheck bersih; 679/679 test hijau (56 file); `validasiJurnal` mengumpulkan tipe akun dari `ctx.akun` per kode dan menolak jurnal yang memakai PENDAPATAN/BEBAN sekaligus EKUITAS dengan pesan `PESAN_JURNAL_PENUTUP_MANUAL`; `SALDO_AWAL` dikecualikan sehingga jurnal modal/saldo awal tetap sah; penolakan terjadi sebelum transaksi tulis sehingga jurnal, baris, dan audit tidak tersimpan; test `tests/posting.test.ts` mencakup D 4005/K 3000, D 5000/K 3000, dan D 3000/K 5000 ditolak tanpa jejak, serta P&L murni, beban/kas, kas/modal, dan SALDO_AWAL tetap boleh; jenis `PENUTUP` resmi tetap backlog terpisah)
   - **Konteks:** Sistem mengasumsikan tidak ada jurnal penutup manual, tetapi
     Jurnal Umum bisa menutup P&L ke 3000. Setelah itu `labaTahun` dan riwayat
     tutup buku menjadi 0, walaupun Neraca tetap balance.
   - **Langkah:**
-    1. Di `validasiJurnal`, deteksi jurnal yang memakai akun PENDAPATAN/BEBAN
+    1. [x] Di `validasiJurnal`, deteksi jurnal yang memakai akun PENDAPATAN/BEBAN
        dan EKUITAS sekaligus.
-    2. Tolak dengan pesan: "Jurnal penutup manual tidak didukung. Tutup buku
+    2. [x] Tolak dengan pesan: "Jurnal penutup manual tidak didukung. Tutup buku
        hanya penanda; gunakan menu Tutup Buku. Untuk pembayaran beban oleh
        pemilik, buat dua jurnal: beban/kas lalu kas/modal."
-    3. Jangan blokir `SALDO_AWAL` (tidak memakai P&L) dan jurnal modal murni
+    3. [x] Jangan blokir `SALDO_AWAL` (tidak memakai P&L) dan jurnal modal murni
        (tanpa P&L).
-    4. Bila nanti dibutuhkan alur penutup resmi, buat jenis `PENUTUP` terpisah;
+    4. [x] Bila nanti dibutuhkan alur penutup resmi, buat jenis `PENUTUP` terpisah;
        jangan longgarkan aturan ini diam-diam.
   - **DoD:** Jurnal D 4005 / K 3000 ditolak; D beban / K kas dan D kas / K 3000
     tetap boleh.

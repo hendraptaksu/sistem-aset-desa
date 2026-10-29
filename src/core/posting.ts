@@ -73,6 +73,10 @@ export type PostingContext = {
 /** AKT-14: pesan penolakan tanggal jurnal setelah hari ini. */
 export const PESAN_TANGGAL_MASA_DEPAN = 'Tanggal jurnal tidak boleh di masa depan.';
 
+/** AKT-16: pesan penolakan jurnal penutup manual (P&L dicampur ekuitas). */
+export const PESAN_JURNAL_PENUTUP_MANUAL =
+  'Jurnal penutup manual tidak didukung. Tutup buku hanya penanda; gunakan menu Tutup Buku. Untuk pembayaran beban oleh pemilik, buat dua jurnal: beban/kas lalu kas/modal.';
+
 export type JurnalInput = {
   header: JurnalHeaderInput;
   baris: JurnalBarisInput[];
@@ -121,10 +125,11 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
  *    PIUTANG 1050; HUTANG 2050).
- * 4. Total debit = total kredit dan > 0.
- * 5. Periode terkunci wajib alasan >= 5 karakter.
- * 6. Kas/bank akan minus -> peringatan (bukan error).
- * 7. Nomor bukti duplikat ditolak.
+ * 4. Jurnal penutup manual (P&L + ekuitas) ditolak, kecuali SALDO_AWAL.
+ * 5. Total debit = total kredit dan > 0.
+ * 6. Periode terkunci wajib alasan >= 5 karakter.
+ * 7. Kas/bank akan minus -> peringatan (bukan error).
+ * 8. Nomor bukti duplikat ditolak.
  */
 export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilValidasiJurnal {
   const errors: string[] = [];
@@ -248,6 +253,23 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
       errors.push('Jurnal Piutang wajib memakai akun 1050 PIUTANG LAIN LAIN.');
     if (jenis === 'HUTANG' && !kodeSah.includes('2050'))
       errors.push('Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN.');
+  }
+
+  // ---- 3b. Larangan jurnal penutup manual (AKT-16) ----
+  // P&L dan ekuitas dalam satu jurnal adalah bentuk penutup manual: laba tahun
+  // berjalan dan riwayat tutup buku menjadi 0 walau neraca tetap balance.
+  // SALDO_AWAL dikecualikan karena bukan operasi P&L (saldo awal ekuitas tetap
+  // sah). Bila nanti dibutuhkan alur penutup resmi, tambahkan jenis `PENUTUP`
+  // tersendiri — jangan melonggarkan aturan ini diam-diam.
+  if (jenis !== 'SALDO_AWAL') {
+    const tipeDipakai = new Set<CoaTipe>();
+    for (const b of baris) {
+      const akunBaris = petaAkun.get(String(b.akun_kode ?? '').trim());
+      if (akunBaris) tipeDipakai.add(akunBaris.tipe);
+    }
+    const adaLabaRugi = tipeDipakai.has('PENDAPATAN') || tipeDipakai.has('BEBAN');
+    if (adaLabaRugi && tipeDipakai.has('EKUITAS'))
+      errors.push(PESAN_JURNAL_PENUTUP_MANUAL);
   }
 
   // ---- 4. Keseimbangan ----
