@@ -51,6 +51,10 @@
 
 **Status: 30/30 (semua tiket selesai).**
 
+**Verifikasi akhir 2026-10-29:** `npm run typecheck` bersih; `npm test`
+**737/737 test hijau (58 file)**; `npm run build` hijau. Seluruh tiket
+AKT-00..AKT-29 selesai dan checklist per tiket dipenuhi.
+
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 11 (AKT-26). Tiket yang menambah
 > kolom/trigger wajib menaikkan versi satu langkah dan memperbarui test migrasi.
 > Jika AKT-20 dan AKT-26 sama-sama menyentuh skema, tiket yang dikerjakan kedua
