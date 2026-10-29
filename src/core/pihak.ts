@@ -62,8 +62,8 @@ export function klasifikasiAlurPihak(
       'Jurnal Piutang/Hutang wajib tepat 2 baris: satu debit dan satu kredit.',
     );
 
-  const debit = baris.filter((b) => Number.isInteger(b.debit) && b.debit > 0);
-  const kredit = baris.filter((b) => Number.isInteger(b.kredit) && b.kredit > 0);
+  const debit = baris.filter((b) => Number.isSafeInteger(b.debit) && b.debit > 0);
+  const kredit = baris.filter((b) => Number.isSafeInteger(b.kredit) && b.kredit > 0);
   if (debit.length !== 1 || kredit.length !== 1)
     throw new Error('Jurnal Piutang/Hutang harus berisi satu sisi debit dan satu sisi kredit.');
 

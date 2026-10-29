@@ -47,10 +47,9 @@
 | AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [x] |
 | AKT-27 | P2 | S | Perbaiki dokumentasi 3001/3002, closing, reversal | AKT-05, AKT-16 | [x] |
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [x] |
-| AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
+| AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [x] |
 
-**Status: 29/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25, AKT-26, AKT-27, AKT-28 selesai).** Kerjakan berurutan; jangan mencentang
-tiket tanpa bukti test.
+**Status: 30/30 (semua tiket selesai).**
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 11 (AKT-26). Tiket yang menambah
 > kolom/trigger wajib menaikkan versi satu langkah dan memperbarui test migrasi.
@@ -602,7 +601,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-29 — Ketahanan validasi & tanggal import** · P3 · S
+- [x] **AKT-29 — Ketahanan validasi & tanggal import** · P3 · S (2026-10-29: typecheck bersih; 737/737 test hijau (58 file); `validasiJurnal` mengembalikan error untuk input/header/baris null tanpa throw dan `postingJurnal` tidak menulis apa pun; nominal wajib `Number.isSafeInteger` di posting/forms/repository/panjar/pihak; `parseTanggalImpor` Date memakai `tanggalLokal` sehingga tengah malam WITA tidak mundur sehari; test workbook serial 1904 lolos karena ExcelJS mengonversi sel tanggal, serial mentah tanpa format tetap terdokumentasi sebagai batasan 1900)
   - **Konteks:** Beberapa kasus kecil tetapi berpotensi error:
     - `validasiJurnal` bisa melempar exception bila `header`/baris null;
     - nominal core/repository memakai `Number.isInteger`, bukan

@@ -20,6 +20,7 @@ import { COA, PESAN_AKUN_LEGACY, akunBolehDiposting } from '../../db/coa.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../../core/types.js';
 import { formatRp } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 
 /** Batas aman file & baris impor (dipakai IPC + parser). */
 export const BATAS_UKURAN_IMPOR = 10 * 1024 * 1024; // 10 MB
@@ -161,7 +162,9 @@ export function validasiBatasImpor(input: {
 function teksNilai(nilai: unknown): string {
   if (nilai === null || nilai === undefined) return '';
   if (nilai instanceof Date) {
-    return Number.isNaN(nilai.getTime()) ? '' : nilai.toISOString().slice(0, 10);
+    // AKT-29: Date bisa berasal dari tengah malam lokal WITA. Format dengan
+    // zona bisnis aplikasi, bukan toISOString() yang dapat mundur sehari.
+    return Number.isNaN(nilai.getTime()) ? '' : tanggalLokal(nilai);
   }
   if (typeof nilai === 'string') return nilai.trim();
   if (typeof nilai === 'number' || typeof nilai === 'boolean') return String(nilai);
@@ -201,12 +204,18 @@ export function parseTanggalImpor(nilai: unknown): {
 
   // Date object / serial Excel.
   if (nilai instanceof Date && !Number.isNaN(nilai.getTime())) {
-    const iso = nilai.toISOString().slice(0, 10);
+    // AKT-29: pakai tanggal lokal WITA agar Date tengah malam lokal tidak
+    // bergeser ke hari sebelumnya seperti pada toISOString()/UTC.
+    const iso = tanggalLokal(nilai);
     return tanggalKalenderValid(iso)
       ? { iso, mentah }
       : { iso: '', mentah, error: `Tanggal "${mentah}" tidak valid.` };
   }
   if (typeof nilai === 'number' && Number.isFinite(nilai)) {
+    // Serial mentah diasumsikan sistem tanggal 1900. Untuk workbook 1904,
+    // ExcelJS sudah mengubah sel berformat tanggal menjadi Date (ditangani di
+    // atas); serial mentah tanpa format tanggal tidak membawa info sistem
+    // tanggal sehingga tidak bisa dibedakan di sini.
     const epoch = Date.UTC(1899, 11, 30);
     const d = new Date(epoch + Math.round(nilai) * 86_400_000);
     const iso = d.toISOString().slice(0, 10);

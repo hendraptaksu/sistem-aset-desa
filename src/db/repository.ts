@@ -382,9 +382,9 @@ export function insertJurnalTervalidasi(
       throw new Error(`Baris ${i + 1}: akun ${akunKode} sudah tidak aktif.`);
     if (!akunBolehDiposting(akunKode, Number(akunDb.aktif) === 1, { dikenal: true }))
       throw new Error(`Baris ${i + 1}: akun ${akunKode} ${PESAN_AKUN_LEGACY}`);
-    if (!Number.isInteger(b.debit) || b.debit < 0)
+    if (!Number.isSafeInteger(b.debit) || b.debit < 0)
       throw new Error(`Baris ${i + 1}: debit harus bilangan bulat ≥ 0.`);
-    if (!Number.isInteger(b.kredit) || b.kredit < 0)
+    if (!Number.isSafeInteger(b.kredit) || b.kredit < 0)
       throw new Error(`Baris ${i + 1}: kredit harus bilangan bulat ≥ 0.`);
     if (b.debit > 0 && b.kredit > 0)
       throw new Error(`Baris ${i + 1}: isi salah satu saja — debit ATAU kredit.`);

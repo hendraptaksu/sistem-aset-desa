@@ -75,6 +75,13 @@ export type PostingContext = {
 /** AKT-14: pesan penolakan tanggal jurnal setelah hari ini. */
 export const PESAN_TANGGAL_MASA_DEPAN = 'Tanggal jurnal tidak boleh di masa depan.';
 
+/**
+ * AKT-29: input yang tidak berbentuk objek jurnal ditolak lewat hasil validasi,
+ * bukan exception, agar pemanggil IPC/UI tetap mendapat daftar error.
+ */
+export const PESAN_INPUT_JURNAL_TIDAK_VALID =
+  'Data jurnal tidak valid: header jurnal wajib diisi.';
+
 /** AKT-16: pesan penolakan jurnal penutup manual (P&L dicampur ekuitas). */
 export const PESAN_JURNAL_PENUTUP_MANUAL =
   'Jurnal penutup manual tidak didukung. Tutup buku hanya penanda; gunakan menu Tutup Buku. Untuk pembayaran beban oleh pemilik, buat dua jurnal: beban/kas lalu kas/modal.';
@@ -136,26 +143,38 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  * 7. Kas/bank akan minus -> peringatan (bukan error).
  * 8. Nomor bukti duplikat ditolak.
  */
-export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilValidasiJurnal {
+export function validasiJurnal(
+  input: JurnalInput | null | undefined,
+  ctx: PostingContext,
+): HasilValidasiJurnal {
   const errors: string[] = [];
   const peringatan: string[] = [];
-  const header = input.header;
-  const baris = Array.isArray(input.baris) ? input.baris : [];
-  const alasan = String(input.alasan ?? '').trim();
+  const konteks = (ctx ?? {}) as PostingContext;
+  const headerMentah = input?.header;
+  const headerObj =
+    headerMentah !== null && typeof headerMentah === 'object'
+      ? (headerMentah as Partial<JurnalHeaderInput>)
+      : null;
+  if (!headerObj) errors.push(PESAN_INPUT_JURNAL_TIDAK_VALID);
+  const header: Partial<JurnalHeaderInput> = headerObj ?? {};
+  const tanggal = String(header.tanggal ?? '').trim();
+  const jenis = String(header.jenis ?? 'UMUM') as JurnalJenis;
+  const baris = Array.isArray(input?.baris) ? input.baris : [];
+  const alasan = String(input?.alasan ?? '').trim();
 
   // ---- 1. Kepala jurnal ----
-  if (!tanggalKalenderValid(header.tanggal))
+  if (!tanggalKalenderValid(tanggal))
     errors.push(PESAN_TANGGAL_TIDAK_VALID);
 
   // AKT-03: tanggal mulai pembukuan adalah batas bawah. SALDO_AWAL dikecualikan
   // agar wizard tetap bisa memakai tanggal yang berbeda; setting kosong/tidak
   // valid tidak membatasi apa pun (kompatibel data lama).
-  const tanggalMulai = String(ctx.tanggalMulaiPembukuan ?? '').trim();
+  const tanggalMulai = String(konteks.tanggalMulaiPembukuan ?? '').trim();
   if (
-    header.jenis !== 'SALDO_AWAL' &&
+    jenis !== 'SALDO_AWAL' &&
     tanggalKalenderValid(tanggalMulai) &&
-    tanggalKalenderValid(header.tanggal) &&
-    String(header.tanggal) < tanggalMulai
+    tanggalKalenderValid(tanggal) &&
+    tanggal < tanggalMulai
   ) {
     errors.push(
       `Tanggal jurnal sebelum tanggal mulai pembukuan (${tanggalMulai}).`,
@@ -166,11 +185,11 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   // keduanya sudah lolos validasi kalender berformat YYYY-MM-DD. Tanggal hari
   // ini tetap diterima; ctx.sekarang kosong (pemanggil lama/fungsi murni) tidak
   // membatasi apa pun.
-  const sekarang = String(ctx.sekarang ?? '').trim();
+  const sekarang = String(konteks.sekarang ?? '').trim();
   if (
     tanggalKalenderValid(sekarang) &&
-    tanggalKalenderValid(header.tanggal) &&
-    String(header.tanggal) > sekarang
+    tanggalKalenderValid(tanggal) &&
+    tanggal > sekarang
   ) {
     errors.push(PESAN_TANGGAL_MASA_DEPAN);
   }
@@ -179,7 +198,9 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   if (baris.length < 2)
     errors.push('Jurnal wajib memiliki minimal 2 baris (satu debit dan satu kredit).');
 
-  const petaAkun = new Map(ctx.akun.map((a) => [a.kode, a]));
+  const daftarAkun = Array.isArray(konteks.akun) ? konteks.akun : [];
+  const petaAkun = new Map(daftarAkun.map((a) => [a.kode, a]));
+
   const deltaKas = new Map<string, number>();
   let totalDebit = 0;
   let totalKredit = 0;
@@ -188,7 +209,9 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   // ---- 2. Baris: akun, tipe, nominal ----
   baris.forEach((b, i) => {
     const no = i + 1;
-    const kode = String(b.akun_kode ?? '').trim();
+    // AKT-29: baris null/undefined tidak boleh membuat validator melempar.
+    const item = b !== null && typeof b === 'object' ? b : ({} as JurnalBarisInput);
+    const kode = String(item.akun_kode ?? '').trim();
     const akunBaris = petaAkun.get(kode);
 
     if (!kode) errors.push(`Baris ${no}: akun belum dipilih.`);
@@ -209,8 +232,10 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
         );
     }
 
-    const debitOk = Number.isInteger(b.debit) && b.debit >= 0;
-    const kreditOk = Number.isInteger(b.kredit) && b.kredit >= 0;
+    const debit = item.debit;
+    const kredit = item.kredit;
+    const debitOk = Number.isSafeInteger(debit) && debit >= 0;
+    const kreditOk = Number.isSafeInteger(kredit) && kredit >= 0;
     if (!debitOk) errors.push(`Baris ${no}: debit harus bilangan bulat ≥ 0.`);
     if (!kreditOk) errors.push(`Baris ${no}: kredit harus bilangan bulat ≥ 0.`);
 
@@ -218,30 +243,29 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
       adaNominalSalah = true;
       return;
     }
-    if (b.debit > 0 && b.kredit > 0) {
+    if (debit > 0 && kredit > 0) {
       errors.push(`Baris ${no}: isi salah satu saja — debit ATAU kredit.`);
       adaNominalSalah = true;
       return;
     }
-    if (b.debit === 0 && b.kredit === 0) {
+    if (debit === 0 && kredit === 0) {
       errors.push(`Baris ${no}: nominal debit/kredit harus lebih dari 0.`);
       adaNominalSalah = true;
       return;
     }
 
-    totalDebit += b.debit;
-    totalKredit += b.kredit;
+    totalDebit += debit;
+    totalKredit += kredit;
     if (akunBaris && isAkunKas(kode))
-      deltaKas.set(kode, (deltaKas.get(kode) ?? 0) + b.debit - b.kredit);
+      deltaKas.set(kode, (deltaKas.get(kode) ?? 0) + debit - kredit);
   });
 
   // ---- 3. Jenis jurnal konsisten dengan akun yang dipakai ----
-  const jenis = String(header.jenis ?? 'UMUM') as JurnalJenis;
   if (!JENIS_JURNAL.includes(jenis)) {
     errors.push('Jenis jurnal tidak dikenal.');
   } else {
     const kodeSah = baris
-      .map((b) => String(b.akun_kode ?? '').trim())
+      .map((b) => String(b?.akun_kode ?? '').trim())
       .filter((kode) => petaAkun.has(kode));
 
     if (jenis === 'TRANSFER') {
@@ -267,7 +291,7 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   // Jurnal reklasifikasi D 2050 / K 2060 tanpa kas tetap diperbolehkan.
   if (jenis !== 'SALDO_AWAL') {
     const kodeSah = baris
-      .map((b) => String(b.akun_kode ?? '').trim())
+      .map((b) => String(b?.akun_kode ?? '').trim())
       .filter((kode) => petaAkun.has(kode));
     const adaKas = kodeSah.some((kode) => isAkunKas(kode));
     if (
@@ -290,7 +314,7 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   if (jenis !== 'SALDO_AWAL') {
     const tipeDipakai = new Set<CoaTipe>();
     for (const b of baris) {
-      const akunBaris = petaAkun.get(String(b.akun_kode ?? '').trim());
+      const akunBaris = petaAkun.get(String(b?.akun_kode ?? '').trim());
       if (akunBaris) tipeDipakai.add(akunBaris.tipe);
     }
     const adaLabaRugi = tipeDipakai.has('PENDAPATAN') || tipeDipakai.has('BEBAN');
@@ -308,8 +332,8 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   }
 
   // ---- 5. Kunci periode (longgar: alasan >= 5 karakter) ----
-  if (tanggalKalenderValid(header.tanggal)) {
-    const kunci = validasiSimpanLonggar(header.tanggal, ctx.tutupBuku ?? [], alasan);
+  if (tanggalKalenderValid(tanggal)) {
+    const kunci = validasiSimpanLonggar(tanggal, konteks.tutupBuku ?? [], alasan);
     if (!kunci.boleh && kunci.error) errors.push(kunci.error);
   }
 
@@ -318,11 +342,11 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   // ditambah minimum cumulative sum mutasi setelah tanggal itu. Dengan begitu
   // jurnal backdate tetap diperingatkan bila membuat kas minus di tanggal
   // berikutnya, dan hanya ada satu pesan per akun (nominal minus terburuk).
-  if (ctx.saldoKas) {
+  if (konteks.saldoKas) {
     for (const [kode, delta] of deltaKas) {
-      const saldoAwal = ctx.saldoKas[kode];
+      const saldoAwal = konteks.saldoKas[kode];
       if (saldoAwal === undefined || delta === 0) continue;
-      const saldoTerburuk = saldoAwal + delta + (ctx.kasMinimumSetelah?.[kode] ?? 0);
+      const saldoTerburuk = saldoAwal + delta + (konteks.kasMinimumSetelah?.[kode] ?? 0);
       if (saldoTerburuk < 0) {
         peringatan.push(
           `Kas/Bank ${labelAkun(petaAkun.get(kode), kode)} akan minus ${formatRp(-saldoTerburuk)}. Periksa kembali — boleh lanjut dengan konfirmasi.`,
@@ -335,7 +359,7 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   const noBukti = String(header.no_bukti ?? '').trim();
   if (noBukti) {
     const dipakai = new Set(
-      (ctx.noBuktiTerpakai ?? []).map((n) => String(n).trim().toLowerCase()),
+      (konteks.noBuktiTerpakai ?? []).map((n) => String(n).trim().toLowerCase()),
     );
     if (dipakai.has(noBukti.toLowerCase()))
       errors.push(`Nomor bukti ${noBukti} sudah dipakai. Gunakan nomor bukti lain.`);

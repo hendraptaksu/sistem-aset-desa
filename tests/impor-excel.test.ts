@@ -32,6 +32,7 @@ import {
   PESAN_NO_BUKTI_IMPOR_WAJIB,
   parseImporExcel,
   parseNominalImpor,
+  parseTanggalImpor,
   validasiBatasImpor,
   type HasilParseImpor,
 } from '../src/features/import/parser.js';
@@ -163,6 +164,38 @@ describe('P2-9 — template Excel', () => {
       expect(noBukti, `contoh ${nama} harus punya no_bukti`).not.toBe('');
     }
     expect(new Set(contoh.values()).size).toBe(3);
+  });
+});
+
+describe('AKT-29 — tanggal import tidak bergeser sehari', () => {
+  it('Date tengah malam WITA tetap memakai tanggal lokal yang sama', () => {
+    // 2026-01-14T16:00:00Z = 2026-01-15 00:00 WITA. toISOString() lama
+    // menghasilkan 2026-01-14 sehingga tanggal impor mundur sehari.
+    const tengahMalamWita = new Date('2026-01-14T16:00:00.000Z');
+    expect(parseTanggalImpor(tengahMalamWita)).toMatchObject({
+      iso: '2026-01-15',
+      mentah: '2026-01-15',
+    });
+  });
+
+  it('workbook serial 1904 dibaca dengan tanggal yang benar (didukung ExcelJS)', async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.properties.date1904 = true;
+    const ws = wb.addWorksheet('Jurnal');
+    ws.addRow([...KOLOM_TEMPLATE_IMPOR]);
+    ws.addRow(['G-1904', '', 'BUKTI-1904', 'Tanggal serial 1904', '1001', 10_000, '', '']);
+    ws.addRow(['G-1904', '', '', '', '4005', '', 10_000, '']);
+    // Sel tanggal asli (bukan serial mentah): ExcelJS mengonversi memakai
+    // sistem 1904 saat membaca, jadi parser menerima Date yang sudah benar.
+    ws.getCell(2, 2).value = new Date(Date.UTC(2026, 0, 15));
+    ws.getCell(2, 2).numFmt = 'yyyy-mm-dd';
+
+    const buffer = (await wb.xlsx.writeBuffer()) as unknown as Uint8Array;
+    const hasil = await parseImporExcel(buffer, { namaFile: 'serial-1904.xlsx' });
+
+    expect(hasil.errors).toEqual([]);
+    expect(hasil.ringkasan.grupValid).toBe(1);
+    expect(hasil.grup[0]!.tanggal).toBe('2026-01-15');
   });
 });
 

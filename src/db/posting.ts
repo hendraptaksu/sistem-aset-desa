@@ -86,12 +86,12 @@ export type HasilPosting = HasilValidasiJurnal & {
 /** Ambil konteks DB yang dibutuhkan validator murni. */
 export function buatKonteksPosting(
   db: Database.Database,
-  header: JurnalInput['header'],
+  header: JurnalInput['header'] | null | undefined,
   /** AKT-14: override tanggal acuan; default tanggal lokal WITA. */
   sekarang?: string,
 ): PostingContext {
-  const tanggal = String(header.tanggal ?? '').trim();
-  const noBukti = String(header.no_bukti ?? '').trim();
+  const tanggal = String(header?.tanggal ?? '').trim();
+  const noBukti = String(header?.no_bukti ?? '').trim();
   // AUD-23: validasi duplikat hanya terhadap nomor di tahun yang sama. Validasi
   // tanggal tetap dilakukan di posting layer; query ini memakai prefix tahun
   // agar cocok dengan unique index `idx_jurnal_no_bukti_tahun`.
@@ -173,11 +173,11 @@ export function buatKonteksPosting(
 /** Validasi jurnal dengan konteks dari DB (tanpa menyimpan). */
 export function validasiJurnalDb(
   db: Database.Database,
-  input: JurnalInput,
+  input: JurnalInput | null | undefined,
   /** AKT-14: override tanggal acuan agar test tidak bergantung tanggal mesin. */
   opsi: Pick<OpsiPosting, 'sekarang'> = {},
 ): HasilValidasiJurnal {
-  return validasiJurnal(input, buatKonteksPosting(db, input.header, opsi.sekarang));
+  return validasiJurnal(input, buatKonteksPosting(db, input?.header, opsi.sekarang));
 }
 
 /** Alasan konfirmasi peringatan yang sudah dinormalisasi (trim). */
@@ -214,12 +214,21 @@ type BuatAuditJurnal = (jurnal: Jurnal, hasil: HasilValidasiJurnal) => AuditLog;
  */
 function postingJurnalInti(
   db: Database.Database,
-  input: JurnalInput,
+  input: JurnalInput | null | undefined,
   opsi: OpsiPosting,
   buatAudit: BuatAuditJurnal,
 ): HasilPosting {
   const hasil = validasiJurnalDb(db, input, { sekarang: opsi.sekarang });
   if (hasil.errors.length > 0) return { ...hasil, tersimpan: false };
+  if (!input || !input.header || !Array.isArray(input.baris)) {
+    // Jaring pengaman AKT-29: validator sudah menolak bentuk ini; jangan pernah
+    // lanjut ke insert dengan header/baris yang tidak lengkap.
+    return {
+      ...hasil,
+      tersimpan: false,
+      errors: [...hasil.errors, 'Data jurnal tidak lengkap.'],
+    };
+  }
   if (hasil.peringatan.length > 0 && !opsi.konfirmasiPeringatan)
     return { ...hasil, tersimpan: false };
 
@@ -295,13 +304,20 @@ export function postingSaldoAwal(
   input: JurnalInput,
   opsi: OpsiPosting = {},
 ): HasilPosting {
-  const header = { ...input.header, jenis: 'SALDO_AWAL' as const };
-  return postingJurnalInti(db, { ...input, header }, opsi, (jurnal, hasil) =>
+  // AKT-29: input/header null tidak boleh melempar sebelum validator sempat
+  // mengembalikan daftar error.
+  const dasar = input && typeof input === 'object' ? input : ({} as JurnalInput);
+  const headerMentah = dasar.header;
+  const header =
+    headerMentah && typeof headerMentah === 'object'
+      ? { ...headerMentah, jenis: 'SALDO_AWAL' as const }
+      : headerMentah;
+  return postingJurnalInti(db, { ...dasar, header } as JurnalInput, opsi, (jurnal, hasil) =>
     buatAuditLog(
       `SALDO-AWAL ${header.id}`,
-      String(input.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
+      String(input?.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
       undefined,
-      dataAuditJurnal(jurnal, input.baris, hasil.peringatan, opsi),
+      dataAuditJurnal(jurnal, input?.baris ?? [], hasil.peringatan, opsi),
     ),
   );
 }

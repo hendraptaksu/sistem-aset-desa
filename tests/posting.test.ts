@@ -24,7 +24,15 @@ import {
 } from '../src/db/repository.js';
 import * as repository from '../src/db/repository.js';
 import { DEFAULT_PENGATURAN } from '../src/core/pengaturan.js';
-import { PESAN_JURNAL_PENUTUP_MANUAL } from '../src/core/posting.js';
+import {
+  PESAN_INPUT_JURNAL_TIDAK_VALID,
+  PESAN_JURNAL_PENUTUP_MANUAL,
+  validasiJurnal,
+  type JurnalInput,
+} from '../src/core/posting.js';
+import { buatJurnalTerimaUang } from '../src/core/forms.js';
+import { klasifikasiAlurPihak } from '../src/core/pihak.js';
+import { serahkanPanjar } from '../src/db/panjar.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
 
 const dirs: string[] = [];
@@ -1235,5 +1243,111 @@ describe('AKT-25 — insert mentah tidak memakai nama publik netral', () => {
     // sengaja tidak ada agar pemanggil baru tidak mengira insert mentah aman.
     expect('insertJurnal' in repository).toBe(false);
     expect(typeof repository.insertJurnalTervalidasi).toBe('function');
+  });
+});
+
+describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
+  it('input/header/baris null dikembalikan sebagai error validasi, bukan exception', () => {
+    const { db } = freshDb();
+    try {
+      const ctx = buatKonteksPosting(db, header());
+
+      expect(() => validasiJurnal(null, ctx)).not.toThrow();
+      const kosong = validasiJurnal(null, ctx);
+      expect(kosong.boleh).toBe(false);
+      expect(kosong.errors).toContain(PESAN_INPUT_JURNAL_TIDAK_VALID);
+
+      const tanpaHeader = validasiJurnal(
+        { header: null, baris: pasangan() } as unknown as JurnalInput,
+        ctx,
+      );
+      expect(tanpaHeader.boleh).toBe(false);
+      expect(tanpaHeader.errors).toContain(PESAN_INPUT_JURNAL_TIDAK_VALID);
+
+      const barisNull = validasiJurnal(
+        { header: header(), baris: [null, undefined] } as unknown as JurnalInput,
+        ctx,
+      );
+      expect(barisNull.boleh).toBe(false);
+      expect(barisNull.errors.join(' ')).toMatch(/Baris 1/);
+      expect(barisNull.errors.join(' ')).toMatch(/Baris 2/);
+
+      // postingJurnal juga tidak boleh melempar sebelum validator mengembalikan
+      // error, dan tidak boleh menulis jurnal/audit apa pun.
+      const postingNull = postingJurnal(db, null as unknown as JurnalInput);
+      expect(postingNull.tersimpan).toBe(false);
+      expect(postingNull.errors.length).toBeGreaterThan(0);
+
+      const postingTanpaHeader = postingJurnal(db, {
+        header: null,
+        baris: pasangan(),
+      } as unknown as JurnalInput);
+      expect(postingTanpaHeader.tersimpan).toBe(false);
+      expect(postingTanpaHeader.errors.length).toBeGreaterThan(0);
+
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(listAuditLog(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak nominal di luar safe integer di posting, form, repository, panjar, dan pihak', () => {
+    const { db } = freshDb();
+    try {
+      // 2^53 adalah integer menurut Number.isInteger, tetapi bukan safe integer.
+      const tidakAman = Number.MAX_SAFE_INTEGER + 1;
+      const input = {
+        header: header({ id: 'j-besar', no_bukti: 'JU-2026-9999' }),
+        baris: pasangan('1001', '4005', tidakAman),
+      };
+
+      const validasi = validasiJurnalDb(db, input);
+      expect(validasi.boleh).toBe(false);
+      expect(validasi.errors.join(' ')).toMatch(/Baris 1: debit/);
+      expect(validasi.errors.join(' ')).toMatch(/Baris 2: kredit/);
+
+      const hasil = postingJurnal(db, input);
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/bilangan bulat/);
+      expect(jumlahJurnal(db)).toBe(0);
+
+      expect(() => insertJurnalTervalidasi(db, input.header, input.baris)).toThrow(
+        /bilangan bulat/,
+      );
+
+      expect(() =>
+        buatJurnalTerimaUang({
+          tanggal: '2026-01-02',
+          nominal: tidakAman,
+          keterangan: 'Nominal tidak aman',
+          akunKas: '1001',
+          akunLawan: '4005',
+        }),
+      ).toThrow(/bilangan bulat/);
+
+      const panjar = serahkanPanjar(db, {
+        tanggal: '2026-01-02',
+        penerima: 'Uji nominal',
+        jumlah: tidakAman,
+        akunKasSumber: '1001',
+      });
+      expect(panjar.tersimpan).toBe(false);
+      expect(panjar.errors.join(' ')).toMatch(/bilangan bulat/);
+
+      expect(() =>
+        klasifikasiAlurPihak({
+          header: header({ jenis: 'PIUTANG' }),
+          baris: [
+            { akun_kode: '1050', debit: tidakAman, kredit: 0 },
+            { akun_kode: '1001', debit: 0, kredit: tidakAman },
+          ],
+        }),
+      ).toThrow(/satu sisi debit dan satu sisi kredit/i);
+
+      expect(jumlahJurnal(db)).toBe(0);
+    } finally {
+      db.close();
+    }
   });
 });

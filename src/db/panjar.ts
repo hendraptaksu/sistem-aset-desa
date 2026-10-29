@@ -145,7 +145,7 @@ export function serahkanPanjar(
   const penerima = String(input?.penerima ?? '').trim();
   if (!penerima) return gagal('Nama penerima panjar wajib diisi.');
   if (penerima.length > 200) return gagal('Nama penerima panjar maks. 200 karakter.');
-  if (!Number.isInteger(input?.jumlah) || input.jumlah <= 0)
+  if (!Number.isSafeInteger(input?.jumlah) || input.jumlah <= 0)
     return gagal('Jumlah panjar harus bilangan bulat lebih dari 0 (satuan sen).');
   const akunKasSumber = String(
     input?.akunKasSumber ?? input?.akun_kas_sumber ?? input?.akunKas ?? '',
@@ -259,7 +259,7 @@ export function closePanjarV2(
     const nominal = it?.nominal as unknown;
     if (!akun)
       return gagal(`Rincian realisasi baris ${i + 1}: akun BEBAN belum dipilih.`);
-    if (typeof nominal !== 'number' || !Number.isInteger(nominal) || nominal <= 0)
+    if (typeof nominal !== 'number' || !Number.isSafeInteger(nominal) || nominal <= 0)
       return gagal(`Rincian realisasi baris ${i + 1}: nominal harus bilangan bulat > 0.`);
     items.push({ akun, nominal });
   }
