@@ -10,6 +10,11 @@ import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
@@ -22,6 +27,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
   PESAN_PROSES_GAGAL,
@@ -203,6 +209,11 @@ export function FormTransaksiTerpandu({
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalPendingRef = useRef<{
+    alasan?: string;
+    konfirmasi?: boolean;
+  }>({});
 
   useEffect(
     () => () => {
@@ -383,13 +394,18 @@ export function FormTransaksiTerpandu({
   }
 
   async function simpan(
-    opsi: { alasan?: string; konfirmasi?: boolean } = {},
+    opsi: {
+      alasan?: string;
+      konfirmasi?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErr(null);
     setInfo(null);
     setPesanKonfirmasi(null);
     setLockOpen(false);
+    setSaldoAwalOpen(false);
     setToast(null);
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -419,11 +435,16 @@ export function FormTransaksiTerpandu({
     }
 
     const nominalTersimpan = nominal;
+    saldoAwalPendingRef.current = {
+      ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
+      ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+    };
     busyRef.current = true;
     setBusy(true);
     try {
       const hasil = await api.jurnalPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
       });
       const nomorTersimpan = hasil.jurnal.no_bukti;
       setInfo(
@@ -447,7 +468,9 @@ export function FormTransaksiTerpandu({
         });
       });
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
         setPesanKonfirmasi(pesanError(e));
@@ -458,6 +481,21 @@ export function FormTransaksiTerpandu({
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    void simpan({
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    // Saldo awal sudah tersimpan; ulangi penyimpanan transaksi yang tertunda.
+    void simpan(saldoAwalPendingRef.current);
   }
 
   return (
@@ -756,10 +794,19 @@ export function FormTransaksiTerpandu({
           onCancel={() => setLockOpen(false)}
           onSubmit={(alasan) => {
             setLockOpen(false);
-            void simpan({ alasan });
+            void simpan({ ...saldoAwalPendingRef.current, alasan });
           }}
         />
       )}
+
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        coa={coa}
+        sibuk={busy}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={mulaiTanpaSaldoAwal}
+        onSaldoAwalTersimpan={saldoAwalTersimpan}
+      />
     </Card>
   );
 }

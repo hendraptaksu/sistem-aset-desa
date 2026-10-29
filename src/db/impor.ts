@@ -29,6 +29,10 @@ export type OpsiImporExcel = {
   konfirmasiPeringatan?: boolean;
   /** Nama file untuk audit (bukan isi file). */
   namaFile?: string;
+  /** AKT-02: impor termasuk pintu input yang mewajibkan saldo awal pertama. */
+  wajibSaldoAwal?: boolean;
+  /** Operator sudah memilih "mulai tanpa saldo awal" pada sesi ini. */
+  konfirmasiTanpaSaldoAwal?: boolean;
   /** Waktu acuan yang bisa dipatok test. */
   now?: () => Date;
   /** Pembuat ID jurnal; default unik berbasis waktu + nomor grup. */
@@ -233,6 +237,8 @@ export function imporJurnalDariExcel(
       // jurnal/baris/audit CREATE yang tertinggal.
       const posting = postingJurnal(db, input, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+        wajibSaldoAwal: opsi.wajibSaldoAwal === true,
+        konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
       });
 
       if (posting.tersimpan && posting.jurnal) {

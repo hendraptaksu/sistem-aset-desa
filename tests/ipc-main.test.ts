@@ -623,8 +623,18 @@ describe('P2-9 — import Excel lewat IPC', () => {
     // Pratinjau tidak boleh menulis jurnal.
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
 
+    // AKT-02: impor adalah pintu input; jurnal pertama ditolak sampai operator
+    // memilih saldo awal atau mengonfirmasi mulai tanpa saldo awal.
+    const ditolak = await env.panggil('import:proses', target, {
+      konfirmasiPeringatan: true,
+    });
+    expect(ditolak.ok).toBe(false);
+    expect(ditolak.error).toMatch(/Belum ada saldo awal/);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
+
     const proses = await env.panggil('import:proses', target, {
       konfirmasiPeringatan: true,
+      konfirmasiTanpaSaldoAwal: true,
     });
     expect(proses.ok, proses.error).toBe(true);
     expect(proses.data.hasil.ringkasan).toMatchObject({
@@ -979,6 +989,62 @@ describe('AKT-01 — jurnal:posting mewajibkan saldo awal pertama', () => {
     );
 
     expect(hasil.ok, hasil.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+  });
+});
+
+describe('AKT-02 — IPC pihak/panjar ikut mewajibkan saldo awal pertama', () => {
+  it('pihak:posting menolak jurnal pertama lalu menerima flag mulai tanpa', async () => {
+    const env = buatEnv();
+    const pihak = await env.panggil('pihak:create', { nama: 'Banjar Uji AKT-02' });
+    expect(pihak.ok, pihak.error).toBe(true);
+
+    const req = {
+      pihakId: pihak.data.id,
+      input: {
+        header: {
+          id: 'j-pihak-akt02',
+          tanggal: '2026-02-01',
+          keterangan: 'Terima pinjaman dari pihak',
+          jenis: 'HUTANG',
+        },
+        baris: [D('1001', 500_000), K('2050', 500_000)],
+      },
+    };
+
+    const ditolak = await env.panggil('pihak:posting', req);
+    expect(ditolak.ok).toBe(false);
+    expect(ditolak.error).toMatch(/Belum ada saldo awal/);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
+
+    const lanjut = await env.panggil('pihak:posting', req, {
+      konfirmasiTanpaSaldoAwal: true,
+    });
+    expect(lanjut.ok, lanjut.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+  });
+
+  it('panjar:create menolak jurnal pertama lalu menerima flag mulai tanpa', async () => {
+    const env = buatEnv();
+    const input = {
+      tanggal: '2026-02-01',
+      penerima: 'Panitia Uji AKT-02',
+      jumlah: 100_000,
+      akunKasSumber: '1001',
+    };
+
+    const ditolak = await env.panggil('panjar:create', input, undefined, {
+      konfirmasiPeringatan: true,
+    });
+    expect(ditolak.ok).toBe(false);
+    expect(ditolak.error).toMatch(/Belum ada saldo awal/);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
+
+    const lanjut = await env.panggil('panjar:create', input, undefined, {
+      konfirmasiPeringatan: true,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+    expect(lanjut.ok, lanjut.error).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
   });
 });

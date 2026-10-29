@@ -364,7 +364,13 @@ export const api = {
   /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
   jurnalPosting: (
     input: JurnalInput,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      /** AKT-02: semua pintu input UI mengirim true. */
+      wajibSaldoAwal?: boolean;
+      /** Operator memilih "mulai tanpa saldo awal" pada sesi ini. */
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) => call<{ jurnal: Jurnal }>('jurnal:posting', input, opsi),
   jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
     call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),
@@ -372,7 +378,11 @@ export const api = {
   saldoAwalStatus: () => call<StatusSaldoAwal>('saldo-awal:status'),
   saldoAwalPosting: (
     input: FormSaldoAwal,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) => call<{ jurnal: Jurnal }>('saldo-awal:posting', input, opsi),
   jurnalKoreksiIsiUlang: (
     id: string,
@@ -418,7 +428,12 @@ export const api = {
   pihakDelete: (id: string) => call<{ id: string }>('pihak:delete', id),
   pihakPosting: (
     req: { pihakId: string; input: JurnalInput },
-    opsi: { konfirmasiPeringatan?: boolean; konfirmasiSaldo?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      konfirmasiSaldo?: boolean;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) =>
     call<{
       jurnal: Jurnal;
@@ -440,7 +455,11 @@ export const api = {
       noBukti?: string;
     },
     alasan?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) =>
     call<{ id: string; panjar: Panjar; jurnal?: Jurnal }>(
       'panjar:create',
@@ -455,6 +474,8 @@ export const api = {
       items: { kategori_baga: string; nominal: number }[];
       konfirmasiKurang?: boolean;
       konfirmasiPeringatan?: boolean;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
     },
     alasan?: string,
   ) =>
@@ -500,7 +521,11 @@ export const api = {
   /** Impor grup valid; file diparse ulang di main. Batal = `{diproses:false}`. */
   importProses: (
     filePath?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) => call<ImportProsesData>('import:proses', filePath, opsi),
   saveBuffer: (req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) =>
     call<{ saved: boolean; path: string }>('file:save-buffer', req),

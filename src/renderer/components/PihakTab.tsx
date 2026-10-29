@@ -24,6 +24,11 @@ import type { JurnalPihakTampil, Pihak, PihakSaldo } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
@@ -38,6 +43,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
   PESAN_MUAT_GAGAL,
@@ -360,6 +366,11 @@ export function PihakTab() {
   const [infoForm, setInfoForm] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalPendingRef = useRef<{
+    alasan?: string;
+    konfirmasi?: boolean;
+  }>({});
 
   // UI-08: tiga form (transaksi, tambah pihak, ubah pihak) berbagi satu guard.
   // Status kotor per form mencegah simpan sukses satu form menghapus peringatan
@@ -532,13 +543,18 @@ export function PihakTab() {
   }
 
   async function simpan(
-    opsi: { alasan?: string; konfirmasi?: boolean } = {},
+    opsi: {
+      alasan?: string;
+      konfirmasi?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErrForm(null);
     setInfoForm(null);
     setPesanKonfirmasi(null);
     setLockOpen(false);
+    setSaldoAwalOpen(false);
 
     if (!formSah) {
       setErrForm(
@@ -565,6 +581,10 @@ export function PihakTab() {
       return;
     }
 
+    saldoAwalPendingRef.current = {
+      ...(alasan ? { alasan } : {}),
+      ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+    };
     busyRef.current = true;
     setBusy(true);
     try {
@@ -573,6 +593,7 @@ export function PihakTab() {
         {
           konfirmasiPeringatan: opsi.konfirmasi === true,
           konfirmasiSaldo: opsi.konfirmasi === true,
+          ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
         },
       );
       alasanRef.current = '';
@@ -589,7 +610,9 @@ export function PihakTab() {
           infoAlur.pesanSukses,
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
         setPesanKonfirmasi(pesanError(e));
@@ -721,6 +744,20 @@ export function PihakTab() {
   const riwayatSaldo = saldo.find((s) => s.id === riwayatId);
   const totalDebitRiwayat = riwayat.reduce((s, j) => s + j.debit, 0);
   const totalKreditRiwayat = riwayat.reduce((s, j) => s + j.kredit, 0);
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    void simpan({
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    void simpan(saldoAwalPendingRef.current);
+  }
 
   return (
     <div className="space-y-4">
@@ -1262,7 +1299,7 @@ export function PihakTab() {
             }}
             onSubmit={(alasan) => {
               setLockOpen(false);
-              void simpan({ alasan });
+              void simpan({ ...saldoAwalPendingRef.current, alasan });
             }}
           />
         )}
@@ -1288,6 +1325,15 @@ export function PihakTab() {
           onKonfirmasi={() => void konfirmasiHapusPihak()}
         />
       )}
+
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        coa={coa}
+        sibuk={busy}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={mulaiTanpaSaldoAwal}
+        onSaldoAwalTersimpan={saldoAwalTersimpan}
+      />
     </div>
   );
 }

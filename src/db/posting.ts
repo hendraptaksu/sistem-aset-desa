@@ -35,6 +35,25 @@ export type OpsiPosting = {
 export const PESAN_WAJIB_SALDO_AWAL =
   'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.';
 
+/**
+ * Guard jurnal pertama (AKT-01/AKT-02). Dipanggil DI DALAM transaksi tulis agar
+ * dua posting pertama tidak bisa sama-sama lolos. Saldo awal sendiri dan
+ * pemanggil DB langsung tanpa opsi tetap kompatibel.
+ */
+export function pastikanWajibSaldoAwal(
+  db: Database.Database,
+  opsi: OpsiPosting,
+  jenis: JurnalInput['header']['jenis'] | undefined = undefined,
+): void {
+  if (opsi.wajibSaldoAwal !== true) return;
+  if (opsi.konfirmasiTanpaSaldoAwal === true) return;
+  if (jenis === 'SALDO_AWAL') return;
+  const row = db.prepare('SELECT COUNT(*) AS total FROM jurnal').get() as {
+    total: number;
+  };
+  if (Number(row.total) === 0) throw new Error(PESAN_WAJIB_SALDO_AWAL);
+}
+
 export type HasilPosting = HasilValidasiJurnal & {
   tersimpan: boolean;
   jurnal?: Jurnal;
@@ -115,18 +134,9 @@ export function postingJurnal(
 
   try {
     const simpan = db.transaction(() => {
-      // AKT-01: cek dan tulis berada di transaksi yang sama agar dua posting
-      // pertama tidak bisa sama-sama lolos. Saldo awal sendiri dikecualikan.
-      if (
-        opsi.wajibSaldoAwal === true &&
-        opsi.konfirmasiTanpaSaldoAwal !== true &&
-        input.header.jenis !== 'SALDO_AWAL'
-      ) {
-        const row = db.prepare('SELECT COUNT(*) AS total FROM jurnal').get() as {
-          total: number;
-        };
-        if (Number(row.total) === 0) throw new Error(PESAN_WAJIB_SALDO_AWAL);
-      }
+      // AKT-01/AKT-02: cek dan tulis berada di transaksi yang sama agar dua
+      // posting pertama tidak bisa sama-sama lolos. Saldo awal dikecualikan.
+      pastikanWajibSaldoAwal(db, opsi, input.header.jenis);
       const jurnal = insertJurnal(db, input.header, input.baris);
       // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
       // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.

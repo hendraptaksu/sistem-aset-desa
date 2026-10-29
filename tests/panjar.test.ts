@@ -582,3 +582,44 @@ describe('P1-4 — migrasi skema panjar v4', () => {
     }
   });
 });
+
+describe('AKT-02 — close panjar menghormati guard saldo awal', () => {
+  it('menolak close saat belum ada jurnal bila opsi wajibSaldoAwal aktif', () => {
+    const db = openDb(':memory:');
+    try {
+      // Dokumen panjar tanpa jurnal open hanya mungkin dari data lama/rusak;
+      // matikan FK sementara agar guard posting yang diuji, bukan FK.
+      db.pragma('foreign_keys = OFF');
+      db.prepare(
+        `INSERT INTO panjar
+           (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+            tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
+         VALUES ('p-guard', '2026-02-01', 'Panitia Guard', ?, '1001', 'OPEN',
+                 NULL, 'j-open-ghost', NULL, '2026-02-01T00:00:00.000Z')`,
+      ).run(RP(100_000));
+      db.pragma('foreign_keys = ON');
+
+      const input = {
+        id: 'p-guard',
+        tanggalClose: '2026-02-02',
+        items: [{ kategori_baga: '5004', nominal: RP(100_000) }],
+        wajibSaldoAwal: true as const,
+      };
+
+      const ditolak = closePanjarV2(db, input);
+      expect(ditolak.tersimpan).toBe(false);
+      expect(ditolak.errors.join(' ')).toMatch(/Belum ada saldo awal/);
+      expect(listJurnal(db)).toHaveLength(0);
+
+      const lanjut = closePanjarV2(db, {
+        ...input,
+        konfirmasiTanpaSaldoAwal: true,
+      });
+      expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
+      expect(listJurnal(db)).toHaveLength(1);
+      expect(getPanjar(db, 'p-guard')?.status).toBe('CLOSED');
+    } finally {
+      db.close();
+    }
+  });
+});

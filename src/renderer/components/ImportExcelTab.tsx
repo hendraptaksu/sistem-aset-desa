@@ -15,8 +15,14 @@ import type { HasilImporExcel } from '../../db/impor.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { pesanError, PESAN_MUAT_GAGAL } from '../../utils/pesanError.js';
 import { api } from '../lib/api.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
 import { Badge, Button, Card, ErrorBox, KonfirmasiModal } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 
 function tanggalTampil(tanggal: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(tanggal) ? formatTanggal(tanggal) : tanggal || '—';
@@ -97,6 +103,7 @@ export function ImportExcelTab() {
   const [info, setInfo] = useState<string | null>(null);
   const [konfirmasi, setKonfirmasi] = useState(false);
   const [izinkanPeringatan, setIzinkanPeringatan] = useState(false);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
 
   const grupPeringatan = useMemo(
@@ -171,12 +178,14 @@ export function ImportExcelTab() {
 
   async function prosesImpor(): Promise<void> {
     setKonfirmasi(false);
+    setSaldoAwalOpen(false);
     await jalankan(async () => {
       setErr(null);
       setInfo(null);
       try {
         const data = await api.importProses(filePath || undefined, {
           konfirmasiPeringatan: izinkanPeringatan,
+          ...opsiSaldoAwal(),
         });
         if (!data.diproses || !data.hasil) {
           setInfo('Pemilihan file dibatalkan.');
@@ -191,14 +200,29 @@ export function ImportExcelTab() {
         );
         if (data.hasil.errors.length > 0) setErr(data.hasil.errors.join(' '));
       } catch (e) {
-        setErr(
-          pesanError(
-            e,
-            'Gagal mengimpor jurnal. Periksa file, lalu coba lagi atau hubungi pendamping.',
-          ),
-        );
+        if (adalahErrorSaldoAwal(e)) {
+          setSaldoAwalOpen(true);
+        } else {
+          setErr(
+            pesanError(
+              e,
+              'Gagal mengimpor jurnal. Periksa file, lalu coba lagi atau hubungi pendamping.',
+            ),
+          );
+        }
       }
     });
+  }
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    void prosesImpor();
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    void prosesImpor();
   }
 
   return (
@@ -480,6 +504,14 @@ export function ImportExcelTab() {
           onKonfirmasi={() => void prosesImpor()}
         />
       )}
+
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        sibuk={sibuk}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={mulaiTanpaSaldoAwal}
+        onSaldoAwalTersimpan={saldoAwalTersimpan}
+      />
     </div>
   );
 }

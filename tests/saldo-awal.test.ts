@@ -32,7 +32,14 @@ import {
   validasiBentukSaldoAwal,
 } from '../src/main/validation.js';
 import { SaldoAwalWizard } from '../src/renderer/components/SaldoAwalWizard.js';
+import { SaldoAwalGuard } from '../src/renderer/components/SaldoAwalGuard.js';
 import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
+import {
+  adalahErrorSaldoAwal,
+  lupakanMulaiTanpaSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../src/renderer/lib/saldoAwal.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -522,5 +529,59 @@ describe('P1-6 — validasi bentuk input IPC & UI', () => {
     expect(tombol).toBeDefined();
     // SSR belum menjalankan efek IPC → status belum diketahui, tombol aman disabled.
     expect(tombol).toContain('disabled');
+  });
+});
+
+describe('AKT-02 — modal guard saldo awal', () => {
+  it('menampilkan pesan dan dua pilihan saat jurnal pertama ditolak backend', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalGuard, {
+        terbuka: true,
+        onBatal: () => undefined,
+        onMulaiTanpa: () => undefined,
+        onSaldoAwalTersimpan: () => undefined,
+      }),
+    );
+
+    expect(html).toContain(
+      'Belum ada saldo awal. Isi saldo awal dulu, atau mulai tanpa saldo awal.',
+    );
+    expect(html).toContain('Isi Saldo Awal');
+    expect(html).toContain('Mulai tanpa saldo awal');
+    expect(html).toContain('Batal');
+  });
+
+  it('tidak merender modal saat tertutup', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalGuard, {
+        terbuka: false,
+        onBatal: () => undefined,
+        onMulaiTanpa: () => undefined,
+        onSaldoAwalTersimpan: () => undefined,
+      }),
+    );
+    expect(html).toBe('');
+  });
+
+  it('mendeteksi error backend dan meneruskan flag sesi ke opsi IPC', () => {
+    lupakanMulaiTanpaSaldoAwal();
+    expect(adalahErrorSaldoAwal(new Error('Belum ada saldo awal. Isi dulu.'))).toBe(
+      true,
+    );
+    expect(adalahErrorSaldoAwal(new Error('Jurnal tidak seimbang'))).toBe(false);
+    expect(opsiSaldoAwal()).toEqual({
+      wajibSaldoAwal: true,
+      konfirmasiTanpaSaldoAwal: false,
+    });
+
+    tandaiMulaiTanpaSaldoAwal();
+    // Pilihan tersimpan untuk sesi: form berikutnya tidak menampilkan modal lagi.
+    expect(opsiSaldoAwal()).toEqual({
+      wajibSaldoAwal: true,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+
+    lupakanMulaiTanpaSaldoAwal();
+    expect(opsiSaldoAwal().konfirmasiTanpaSaldoAwal).toBe(false);
   });
 });

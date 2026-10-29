@@ -15,6 +15,11 @@ import { formatRp } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
+import {
   Badge,
   Button,
   CurrencyInput,
@@ -26,6 +31,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import { pesanError } from '../../utils/pesanError.js';
 
@@ -123,6 +129,11 @@ export function JurnalUmumEditor({
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalPendingRef = useRef<{
+    alasan?: string;
+    konfirmasi?: boolean;
+  }>({});
 
   // COA bisa datang setelah editor dirender (mis. duplikat saat daftar akun
   // belum termuat). Lengkapi teks kode—nama tanpa menimpa isian manual.
@@ -280,12 +291,17 @@ export function JurnalUmumEditor({
   }
 
   async function simpan(
-    opsi: { alasan?: string; konfirmasi?: boolean } = {},
+    opsi: {
+      alasan?: string;
+      konfirmasi?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErr(null);
     setPesanKonfirmasi(null);
     setLockOpen(false);
+    setSaldoAwalOpen(false);
 
     if (!formSah) {
       setErr(
@@ -307,15 +323,22 @@ export function JurnalUmumEditor({
         baris: barisForm,
         ...(alasan ? { alasan } : {}),
       });
+      saldoAwalPendingRef.current = {
+        ...(alasan ? { alasan } : {}),
+        ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+      };
       const hasil = await api.jurnalPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
       });
       const nomor = hasil.jurnal.no_bukti || 'tanpa nomor bukti';
       onSelesai(
         `Jurnal ${nomor} tersimpan — debit = kredit ${formatRp(validasi.totalDebit)}.`,
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
         setLockOpen(true);
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
         setPesanKonfirmasi(pesanError(e));
@@ -326,6 +349,20 @@ export function JurnalUmumEditor({
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    void simpan({
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    void simpan(saldoAwalPendingRef.current);
   }
 
   return (
@@ -604,10 +641,19 @@ export function JurnalUmumEditor({
             onCancel={() => setLockOpen(false)}
             onSubmit={(alasan) => {
               setLockOpen(false);
-              void simpan({ alasan });
+              void simpan({ ...saldoAwalPendingRef.current, alasan });
             }}
           />
         )}
+
+        <SaldoAwalGuard
+          terbuka={saldoAwalOpen}
+          coa={coa}
+          sibuk={busy}
+          onBatal={() => setSaldoAwalOpen(false)}
+          onMulaiTanpa={mulaiTanpaSaldoAwal}
+          onSaldoAwalTersimpan={saldoAwalTersimpan}
+        />
 
         {konfirmasiTutup && (
           <KonfirmasiModal

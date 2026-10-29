@@ -45,6 +45,10 @@ export type PostingPihakInput = {
   konfirmasiSaldo?: boolean;
   /** Alias ringkas untuk `konfirmasiSaldo` (dipakai sebagian test/pemanggil). */
   konfirmasi?: boolean;
+  /** AKT-02: pintu input mewajibkan saldo awal untuk jurnal pertama. */
+  wajibSaldoAwal?: boolean;
+  /** Operator sudah memilih "mulai tanpa saldo awal" pada sesi ini. */
+  konfirmasiTanpaSaldoAwal?: boolean;
 };
 
 export type HasilPostingPihak = HasilValidasiJurnal & {
@@ -375,6 +379,8 @@ export function postingPihak(
       // pemetaan pihak agar data "sesudah" memuat saldo yang benar.
       const hasil = postingJurnal(db, input.input, {
         konfirmasiPeringatan: true,
+        wajibSaldoAwal: input.wajibSaldoAwal === true,
+        konfirmasiTanpaSaldoAwal: input.konfirmasiTanpaSaldoAwal === true,
         audit: [],
       });
       if (!hasil.tersimpan || !hasil.jurnal) {

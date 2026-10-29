@@ -44,6 +44,10 @@ export type SerahPanjarInput = {
   noBukti?: string;
   alasan?: string;
   konfirmasiPeringatan?: boolean;
+  /** AKT-02: pintu input mewajibkan saldo awal untuk jurnal pertama. */
+  wajibSaldoAwal?: boolean;
+  /** Operator sudah memilih "mulai tanpa saldo awal" pada sesi ini. */
+  konfirmasiTanpaSaldoAwal?: boolean;
 };
 
 export type ItemCloseInput = {
@@ -62,6 +66,10 @@ export type ClosePanjarInput = {
   konfirmasiKurang?: boolean;
   /** Operator sudah menyetujui peringatan posting (mis. kas akan minus). */
   konfirmasiPeringatan?: boolean;
+  /** AKT-02: pintu input mewajibkan saldo awal untuk jurnal pertama. */
+  wajibSaldoAwal?: boolean;
+  /** Operator sudah memilih "mulai tanpa saldo awal" pada sesi ini. */
+  konfirmasiTanpaSaldoAwal?: boolean;
   /** ID jurnal close; opsional (dibuat otomatis, berguna untuk test). */
   jurnalId?: string;
 };
@@ -189,6 +197,8 @@ export function serahkanPanjar(
     const simpan = db.transaction(() => {
       const hasil = postingJurnal(db, jurnalInput, {
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        wajibSaldoAwal: input.wajibSaldoAwal === true,
+        konfirmasiTanpaSaldoAwal: input.konfirmasiTanpaSaldoAwal === true,
         audit: [audit],
       });
       if (!hasil.tersimpan || !hasil.jurnal) return hasil;
@@ -316,6 +326,8 @@ export function closePanjarV2(
     const simpan = db.transaction(() => {
       const hasil = postingJurnal(db, rencana.input, {
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        wajibSaldoAwal: input.wajibSaldoAwal === true,
+        konfirmasiTanpaSaldoAwal: input.konfirmasiTanpaSaldoAwal === true,
         audit: [audit],
       });
       if (!hasil.tersimpan || !hasil.jurnal) {

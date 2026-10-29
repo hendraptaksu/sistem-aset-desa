@@ -20,7 +20,7 @@
 |---|---|---|---|---|---|
 | AKT-00 | — | S | Baseline audit & reproduksi | — | [x] |
 | AKT-01 | P1 | M | Guard backend: jurnal pertama wajib saldo awal / konfirmasi | — | [x] |
-| AKT-02 | P1 | M | UI konfirmasi "mulai tanpa saldo awal" | AKT-01 | [ ] |
+| AKT-02 | P1 | M | UI konfirmasi "mulai tanpa saldo awal" | AKT-01 | [x] |
 | AKT-03 | P1 | M | Tegakkan tanggal mulai pembukuan sebagai batas bawah | AKT-01 | [ ] |
 | AKT-04 | P1 | M | Peringatan kas minus untuk tanggal setelah jurnal | — | [ ] |
 | AKT-05 | P1 | S | Default tanggal reversal = tanggal jurnal asli | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 2/30 (AKT-00, AKT-01 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 3/30 (AKT-00, AKT-01, AKT-02 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -90,7 +90,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-02 — UI konfirmasi "mulai tanpa saldo awal"** · P1 · M
+- [x] **AKT-02 — UI konfirmasi "mulai tanpa saldo awal"** · P1 · M (2026-10-29: typecheck bersih; 615/615 test hijau (53 file); build hijau; modal guard `SaldoAwalGuard` dipakai Transaksi/Jurnal Umum/Panjar/Pihak/Import, tombol Isi Saldo Awal membuka wizard, pilihan mulai tanpa disimpan per sesi (sessionStorage) dan diteruskan sebagai `wajibSaldoAwal: true` + `konfirmasiTanpaSaldoAwal`; IPC pihak/panjar/import kini ikut menolak jurnal pertama; error backend "Belum ada saldo awal..." memicu modal)
   - **Konteks:** Setelah AKT-01, pintu `jurnal:posting` pada DB kosong akan
     gagal. Tiket ini memperluas guard ke semua pintu input dan memberi pilihan
     yang jelas di UI, bukan error buntu.

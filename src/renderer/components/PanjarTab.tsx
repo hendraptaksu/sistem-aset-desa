@@ -17,6 +17,11 @@ import { panjarPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
@@ -29,6 +34,7 @@ import {
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 import { ExportActions } from './ExportActions.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
@@ -99,6 +105,9 @@ export function PanjarTab() {
   const [infoClose, setInfoClose] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState<'' | 'OPEN' | 'CLOSED'>('');
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalTargetRef = useRef<'OPEN' | 'CLOSE'>('OPEN');
+  const saldoAwalPendingRef = useRef<{ konfirmasiPeringatan?: boolean }>({});
 
   // Form serah
   const [tanggal, setTanggal] = useState(tanggalLokal());
@@ -251,13 +260,17 @@ export function PanjarTab() {
 
   async function submitOpen(
     alasan?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyOpenRef.current) return;
     setErr(null);
     setInfo(null);
     setLockRetry(null);
     setPesanKonfirmasiSerah(null);
+    setSaldoAwalOpen(false);
 
     if (!formSerahSah) {
       setErr(
@@ -271,6 +284,8 @@ export function PanjarTab() {
     if (alasan !== undefined) alasanOpenRef.current = alasan;
     const alasanPakai = alasan ?? (alasanOpenRef.current || undefined);
 
+    saldoAwalTargetRef.current = 'OPEN';
+    saldoAwalPendingRef.current = { ...opsi };
     busyOpenRef.current = true;
     setBusyOpen(true);
     try {
@@ -284,7 +299,10 @@ export function PanjarTab() {
           ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
         },
         alasanPakai,
-        opsi,
+        {
+          konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
+        },
       );
       alasanOpenRef.current = '';
       setPenerima('');
@@ -299,7 +317,9 @@ export function PanjarTab() {
           'Kas berkurang, Uang Panjar (1040) bertambah.',
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
         setLockRetry(() => (a: string) => submitOpen(a));
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
         setPesanKonfirmasiSerah(pesanError(e));
@@ -314,13 +334,17 @@ export function PanjarTab() {
 
   async function submitClose(
     alasan?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyCloseRef.current) return;
     setErrClose(null);
     setInfoClose(null);
     setLockRetry(null);
     setPesanKonfirmasi(null);
+    setSaldoAwalOpen(false);
 
     if (!closeTarget) {
       setErrClose('Pilih panjar yang akan dipertanggungjawabkan.');
@@ -345,6 +369,8 @@ export function PanjarTab() {
     if (alasan !== undefined) alasanCloseRef.current = alasan;
     const alasanPakai = alasan ?? (alasanCloseRef.current || undefined);
 
+    saldoAwalTargetRef.current = 'CLOSE';
+    saldoAwalPendingRef.current = { ...opsi };
     busyCloseRef.current = true;
     setBusyClose(true);
     try {
@@ -355,6 +381,7 @@ export function PanjarTab() {
           items,
           konfirmasiKurang: kurang > 0 && setujuKurang,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
         },
         alasanPakai,
       );
@@ -372,7 +399,9 @@ export function PanjarTab() {
           (r.kurang > 0 ? `, kurang ${formatRp(r.kurang)} dibayar dari kas sumber.` : '.'),
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
         setLockRetry(() => (a: string) => submitClose(a));
       } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
         setPesanKonfirmasi(pesanError(e));
@@ -458,6 +487,24 @@ export function PanjarTab() {
       return `Kekurangan dibayar dari kas — ${labelAkun(akun)}`;
     return `Beban — ${labelAkun(akun)}`;
   };
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    const opsi = {
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    };
+    if (saldoAwalTargetRef.current === 'CLOSE') void submitClose(undefined, opsi);
+    else void submitOpen(undefined, opsi);
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    if (saldoAwalTargetRef.current === 'CLOSE')
+      void submitClose(undefined, saldoAwalPendingRef.current);
+    else void submitOpen(undefined, saldoAwalPendingRef.current);
+  }
 
   return (
     <div className="space-y-4">
@@ -963,6 +1010,15 @@ export function PanjarTab() {
           }}
         />
       )}
+
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        coa={coa}
+        sibuk={saldoAwalTargetRef.current === 'CLOSE' ? busyClose : busyOpen}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={mulaiTanpaSaldoAwal}
+        onSaldoAwalTersimpan={saldoAwalTersimpan}
+      />
     </div>
   );
 }

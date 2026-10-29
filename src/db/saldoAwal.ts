@@ -25,6 +25,9 @@ export type StatusSaldoAwal = {
 export type OpsiSimpanSaldoAwal = {
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
   konfirmasiPeringatan?: boolean;
+  /** AKT-02: diteruskan ke posting layer; jenis SALDO_AWAL selalu dikecualikan. */
+  wajibSaldoAwal?: boolean;
+  konfirmasiTanpaSaldoAwal?: boolean;
 };
 
 function hitungJurnal(db: Database.Database): number {
@@ -71,6 +74,8 @@ export function simpanSaldoAwal(
       if (hitungJurnal(db) > 0) return hasilGagal(PESAN_SALDO_AWAL_SUDAH_ADA);
       return postingSaldoAwal(db, input, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+        wajibSaldoAwal: opsi.wajibSaldoAwal === true,
+        konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
       });
     });
     return simpan();

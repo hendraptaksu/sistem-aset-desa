@@ -178,6 +178,9 @@ export function SaldoAwalWizard({
     try {
       const res = await api.saldoAwalPosting(form, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        // AKT-02: opsi ini konsisten dengan pintu input lain; jenis SALDO_AWAL
+        // tetap dikecualikan dari guard sehingga wizard bisa menjadi jurnal pertama.
+        wajibSaldoAwal: true,
       });
       onSukses(
         `Saldo awal ${formatTanggal(tanggal)} tersimpan — satu jurnal seimbang ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}).`,

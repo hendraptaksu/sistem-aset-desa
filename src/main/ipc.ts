@@ -34,7 +34,12 @@ import {
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
-import { postingJurnal, validasiJurnalDb } from '../db/posting.js';
+import {
+  PESAN_WAJIB_SALDO_AWAL,
+  pastikanWajibSaldoAwal,
+  postingJurnal,
+  validasiJurnalDb,
+} from '../db/posting.js';
 import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
 import {
   closePanjarV2,
@@ -223,6 +228,13 @@ export function registerIpc(deps: IpcDeps): void {
     perluKonfirmasi,
   });
   const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+  /** AKT-02: hanya `true` eksplisit dari renderer yang dianggap konfirmasi. */
+  const bacaKonfirmasiTanpaSaldoAwal = (opsi: unknown): boolean =>
+    typeof opsi === 'object' &&
+    opsi !== null &&
+    !Array.isArray(opsi) &&
+    (opsi as { konfirmasiTanpaSaldoAwal?: unknown }).konfirmasiTanpaSaldoAwal === true;
 
   // AUD-17: setiap handler hanya boleh dipanggil frame renderer aplikasi.
   // Event tanpa senderFrame (frame hancur) atau dari iframe/halaman asing
@@ -803,11 +815,7 @@ export function registerIpc(deps: IpcDeps): void {
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
-      const konfirmasiTanpaSaldoAwal =
-        typeof opsi === 'object' &&
-        opsi !== null &&
-        !Array.isArray(opsi) &&
-        (opsi as { konfirmasiTanpaSaldoAwal?: unknown }).konfirmasiTanpaSaldoAwal === true;
+      const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
       // AUD-09: Jurnal Umum tidak punya metadata pihak. Beri peringatan (bukan
       // error) agar akuntan sadar jurnal 1050/2050 akan tampil belum teralokasi.
@@ -873,8 +881,15 @@ export function registerIpc(deps: IpcDeps): void {
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+      const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
-      const hasil = simpanSaldoAwal(deps.db(), jurnalInput, { konfirmasiPeringatan });
+      const hasil = simpanSaldoAwal(deps.db(), jurnalInput, {
+        konfirmasiPeringatan,
+        // AKT-02: opsi diteruskan konsisten; jenis SALDO_AWAL selalu dikecualikan
+        // dari guard sehingga wizard tetap bisa menjadi jurnal pertama.
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal,
+      });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
           pesanValidasi(hasil.errors) ||
@@ -1197,6 +1212,9 @@ export function registerIpc(deps: IpcDeps): void {
         konfirmasiSaldo:
           (opts as { konfirmasiSaldo?: unknown }).konfirmasiSaldo === true ||
           (opts as { konfirmasi?: unknown }).konfirmasi === true,
+        // AKT-02: pintu Piutang/Hutang ikut mewajibkan saldo awal pertama.
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
       });
 
       if (!hasil.tersimpan || !hasil.jurnal) {
@@ -1259,6 +1277,9 @@ export function registerIpc(deps: IpcDeps): void {
           ...bentuk.input,
           ...(alasanTeks ? { alasan: alasanTeks } : {}),
           konfirmasiPeringatan: konfirmasi,
+          // AKT-02: serah panjar ikut mewajibkan saldo awal pertama.
+          wajibSaldoAwal: true,
+          konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
         });
         if (!hasil.tersimpan || !hasil.panjar) {
           const pesan =
@@ -1305,6 +1326,9 @@ export function registerIpc(deps: IpcDeps): void {
           ...(alasanTeks ? { alasan: alasanTeks } : {}),
           konfirmasiKurang: opsi.konfirmasiKurang === true,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          // AKT-02: pertanggungjawaban panjar juga menerima flag sesi yang sama.
+          wajibSaldoAwal: true,
+          konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(req),
         });
         if (!hasil.tersimpan || !hasil.panjar) {
           const pesan =
@@ -1638,6 +1662,7 @@ export function registerIpc(deps: IpcDeps): void {
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+      const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
       const file = bacaFileImpor(sumber);
       if ('error' in file) return fail(file.error);
@@ -1648,9 +1673,25 @@ export function registerIpc(deps: IpcDeps): void {
         namaFile: file.namaFile,
       });
       const divalidasi = validasiImporDariExcel(deps.db(), parsed);
+
+      // AKT-02: impor adalah pintu input; jurnal pertama hanya boleh masuk
+      // setelah operator memilih saldo awal atau mengonfirmasi mulai tanpa.
+      if (divalidasi.grup.some((g) => g.status === 'OK')) {
+        try {
+          pastikanWajibSaldoAwal(deps.db(), {
+            wajibSaldoAwal: true,
+            konfirmasiTanpaSaldoAwal,
+          });
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : PESAN_WAJIB_SALDO_AWAL);
+        }
+      }
+
       const hasil = imporJurnalDariExcel(deps.db(), divalidasi, {
         konfirmasiPeringatan,
         namaFile: file.namaFile,
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal,
       });
 
       return ok({
