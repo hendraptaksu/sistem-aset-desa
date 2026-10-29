@@ -482,6 +482,149 @@ describe('P0-6 — koreksi & isi ulang', () => {
     }
   });
 
+  it('AKT-22: grup pengganti selalu ikut jurnal asli dan input grup diabaikan', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      insertJurnal(
+        db,
+        {
+          id: 'j-parkir-grup',
+          tanggal: '2026-01-02',
+          no_bukti: 'JU-2026-0010',
+          keterangan: 'Parkir dengan grup khusus',
+          jenis: 'TERIMA',
+          grup_id: 'g-parkir-asli',
+        },
+        pasangan('1001', '4005', RP(100_000)),
+      );
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-parkir-grup',
+        'Nominal salah, seharusnya 90rb',
+        {
+          header: {
+            id: 'j-parkir-grup-baru',
+            tanggal: '2026-01-02',
+            no_bukti: 'JU-2026-0011',
+            keterangan: 'Parkir (koreksi)',
+            jenis: 'TERIMA',
+            grup_id: 'g-palsu-dari-luar',
+            reversal_of: null,
+          },
+          baris: pasangan('1001', '4005', RP(90_000)),
+        },
+        { id: 'j-parkir-grup-balik', tanggal: '2026-01-05' },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnalBaru).toMatchObject({
+        grup_id: 'g-parkir-asli',
+        reversal_of: null,
+        jenis: 'TERIMA',
+      });
+      expect(hasil.reversal).toMatchObject({
+        grup_id: 'g-parkir-asli',
+        reversal_of: 'j-parkir-grup',
+        jenis: 'REVERSAL',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AKT-22: menolak pengganti berjenis REVERSAL tanpa menulis jurnal/audit', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db);
+      const sebelum = jumlahJurnal(db);
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-parkir',
+        'Nominal salah, seharusnya 80rb',
+        {
+          header: {
+            id: 'j-parkir-baru',
+            tanggal: '2026-01-02',
+            keterangan: 'Pengganti berjenis reversal palsu',
+            jenis: 'REVERSAL',
+          },
+          baris: pasangan('1001', '4005', RP(80_000)),
+        },
+        { id: 'j-balik-parkir', tanggal: '2026-01-05' },
+      );
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/REVERSAL/);
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getJurnalDetail(db, 'j-balik-parkir')).toBeNull();
+      expect(getJurnalDetail(db, 'j-parkir-baru')).toBeNull();
+      expect(listAuditLog(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AKT-22: SALDO_AWAL pengganti hanya boleh bila jurnal asli SALDO_AWAL', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db);
+      const sebelum = jumlahJurnal(db);
+
+      const ditolak = koreksiDanIsiUlang(
+        db,
+        'j-parkir',
+        'Ubah jenis menjadi saldo awal',
+        {
+          header: {
+            id: 'j-parkir-jadi-awal',
+            tanggal: '2026-01-02',
+            keterangan: 'Parkir diubah jadi saldo awal',
+            jenis: 'SALDO_AWAL',
+          },
+          baris: pasangan('1001', '4005', RP(80_000)),
+        },
+        { id: 'j-balik-parkir', tanggal: '2026-01-05' },
+      );
+
+      expect(ditolak.tersimpan).toBe(false);
+      expect(ditolak.errors.join(' ')).toMatch(/SALDO_AWAL/);
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getJurnalDetail(db, 'j-balik-parkir')).toBeNull();
+      expect(getJurnalDetail(db, 'j-parkir-jadi-awal')).toBeNull();
+      expect(listAuditLog(db)).toEqual([]);
+
+      const diterima = koreksiDanIsiUlang(
+        db,
+        'j-modal',
+        'Nominal saldo awal salah, seharusnya 900rb',
+        {
+          header: {
+            id: 'j-modal-baru',
+            tanggal: '2026-01-01',
+            keterangan: 'Saldo awal kas (koreksi)',
+            jenis: 'SALDO_AWAL',
+          },
+          baris: pasangan('1001', '3000', RP(900_000)),
+        },
+        { id: 'j-modal-balik', tanggal: '2026-01-01' },
+      );
+
+      expect(diterima.tersimpan, diterima.errors.join(' ')).toBe(true);
+      expect(diterima.jurnalBaru).toMatchObject({
+        grup_id: 'j-modal',
+        reversal_of: null,
+        jenis: 'SALDO_AWAL',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
   it('atomik: bila jurnal pengganti gagal, reversal dan audit batal', () => {
     const db = freshDb();
     try {

@@ -15,6 +15,7 @@ import {
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from '../src/core/types.js';
 import {
   validasiBentukJurnalInput,
+  validasiBentukKoreksiInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukSaldoAwal,
@@ -476,6 +477,104 @@ describe('P1-12 — tanggal kalender seragam', () => {
     expect(hasil.ok).toBe(false);
     if (!hasil.ok)
       expect(hasil.error).toBe('Tanggal mulai tidak boleh setelah tanggal sampai.');
+  });
+});
+
+describe('AKT-22 — bentuk input koreksi & isi ulang', () => {
+  const koreksi = {
+    header: {
+      id: '',
+      tanggal: '2026-03-12',
+      keterangan: 'Jurnal pengganti',
+      no_bukti: 'JU-2026-9002',
+      jenis: 'TERIMA',
+    },
+    baris: pasangan(),
+  };
+
+  it('menerima ID kosong (dibuat main) dan tidak meneruskan grup/reversal_of', () => {
+    const hasil = validasiBentukKoreksiInput({
+      ...koreksi,
+      header: {
+        ...koreksi.header,
+        id: '   ',
+        no_bukti: '  JU-2026-9002  ',
+        grup_id: 'g-diabaikan',
+        reversal_of: null,
+      },
+      alasan: '  koreksi nominal  ',
+      extra: 'diabaikan',
+    });
+    expect(hasil.ok).toBe(true);
+    if (!hasil.ok) return;
+
+    expect(hasil.input.header).toMatchObject({
+      id: '',
+      tanggal: '2026-03-12',
+      keterangan: 'Jurnal pengganti',
+      no_bukti: 'JU-2026-9002',
+      jenis: 'TERIMA',
+    });
+    expect(hasil.input.header).not.toHaveProperty('grup_id');
+    expect(hasil.input.header).not.toHaveProperty('reversal_of');
+    expect(hasil.input.alasan).toBe('koreksi nominal');
+  });
+
+  it('menolak ID/keterangan/no bukti yang terlalu panjang', () => {
+    for (const header of [
+      { ...koreksi.header, id: 'j'.repeat(201) },
+      { ...koreksi.header, keterangan: 'k'.repeat(1001) },
+      { ...koreksi.header, no_bukti: 'B'.repeat(101) },
+    ]) {
+      const hasil = validasiBentukKoreksiInput({ ...koreksi, header });
+      expect(hasil.ok).toBe(false);
+    }
+  });
+
+  it('menolak field wajib kosong, jenis REVERSAL, dan baris tidak valid', () => {
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, keterangan: '   ' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, tanggal: '' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, jenis: 'REVERSAL' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, reversal_of: 'j-lain' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({ ...koreksi, baris: [koreksi.baris[0]] }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        baris: [koreksi.baris[0], { ...koreksi.baris[1], debit: 1.5, kredit: 0 }],
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('mengizinkan SALDO_AWAL pada bentuk; keputusan akhir di DB', () => {
+    const hasil = validasiBentukKoreksiInput({
+      ...koreksi,
+      header: { ...koreksi.header, jenis: 'SALDO_AWAL' },
+      baris: pasangan('1001', '3000'),
+    });
+    expect(hasil.ok).toBe(true);
+    if (hasil.ok) expect(hasil.input.header.jenis).toBe('SALDO_AWAL');
   });
 });
 

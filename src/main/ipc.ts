@@ -132,6 +132,7 @@ import {
 import { tanggalLokal } from '../utils/tanggal.js';
 import {
   validasiBentukJurnalInput,
+  validasiBentukKoreksiInput,
   validasiBentukAkunBaru,
   validasiBentukAkunUbah,
   validasiKodeAkun,
@@ -973,18 +974,23 @@ export function registerIpc(deps: IpcDeps): void {
       try {
         const k = perluBuka();
         if (k) return fail(k);
-        if (!input || !input.header || !Array.isArray(input.baris))
-          return fail('Data jurnal pengganti tidak lengkap.');
-        const tanggalJurnal = validasiTanggalOpsional(input.header.tanggal);
+        const bentukId = validasiIdJurnal(id);
+        if (!bentukId.ok) return fail(bentukId.error);
+        // AKT-22: jangan percaya objek mentah. Validator bentuk yang sama
+        // dengan jurnal biasa menolak ID/keterangan/no bukti kepanjangan,
+        // field wajib kosong, REVERSAL, dan baris yang tidak valid.
+        const bentuk = validasiBentukKoreksiInput(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const tanggalJurnal = validasiTanggalOpsional(bentuk.input.header.tanggal);
         if (!tanggalJurnal.ok || !tanggalJurnal.input)
           return fail(PESAN_TANGGAL_TIDAK_VALID);
         const tanggal = validasiTanggalOpsional(opsi?.tanggal);
         if (!tanggal.ok) return fail(tanggal.error);
         const hasil = koreksiDanIsiUlang(
           deps.db(),
-          String(id ?? ''),
+          bentukId.input,
           String(alasan ?? ''),
-          input,
+          bentuk.input,
           {
             id: typeof opsi?.id === 'string' ? opsi.id : undefined,
             tanggal: tanggal.input || undefined,

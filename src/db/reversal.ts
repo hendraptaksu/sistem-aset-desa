@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { isAkunKas } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
-import { rencanaReversal } from '../core/reversal.js';
+import { PESAN_REVERSAL, rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
 import { validasiJurnal } from '../core/posting.js';
@@ -203,12 +203,28 @@ export function koreksiDanIsiUlang(
   const rencana = rencanaUntuk(db, id, alasan, opsi);
   if (!rencana.boleh || !rencana.input) return hasilGagal(rencana.errors);
 
+  // Baca jurnal asli sekali: jenis & grup_id pengganti wajib mengikuti aslinya,
+  // bukan input renderer (AKT-22). Reversal tidak boleh mengarah ke jenis
+  // REVERSAL palsu, dan SALDO_AWAL hanya sah bila jurnal asli juga SALDO_AWAL.
+  const detail = getJurnalDetail(db, id);
+  if (!detail) return hasilGagal([PESAN_REVERSAL.tidakDitemukan]);
+
+  const jenisPengganti = inputBaru?.header?.jenis;
+  if (jenisPengganti === 'REVERSAL')
+    return hasilGagal(['Jurnal pengganti tidak boleh berjenis REVERSAL.']);
+  if (jenisPengganti === 'SALDO_AWAL' && detail.jurnal.jenis !== 'SALDO_AWAL')
+    return hasilGagal([
+      'Jurnal pengganti berjenis SALDO_AWAL hanya boleh bila jurnal asli juga SALDO_AWAL.',
+    ]);
+
   const headerBaru: JurnalHeaderInput = {
     ...inputBaru.header,
     id: String(inputBaru.header?.id ?? '').trim() || idBaru('j'),
     // Pengganti tetap satu grup dengan jurnal asli + jurnal balik agar
     // penelusuran (drill-down) menunjukkan satu peristiwa koreksi utuh.
-    grup_id: String(inputBaru.header?.grup_id ?? '').trim() || rencana.input.header.grup_id,
+    // Nilai dari renderer selalu diabaikan: grup yang diubah dari luar akan
+    // memutus rantai koreksi dan menyamarkan audit.
+    grup_id: detail.jurnal.grup_id,
     reversal_of: null,
   };
   if (headerBaru.id === id)
@@ -262,7 +278,6 @@ export function koreksiDanIsiUlang(
   if (peringatan.length > 0 && !opsi.konfirmasiPeringatan)
     return { boleh: true, errors: [], peringatan, perluKonfirmasi: true, tersimpan: false };
 
-  const detail = getJurnalDetail(db, id)!;
   const auditBalik = buatAuditLog(
     `REVERSAL ${id}`,
     alasan.trim(),

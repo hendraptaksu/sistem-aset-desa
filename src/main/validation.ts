@@ -294,15 +294,20 @@ export type HasilBentukJurnalInput =
   | { ok: true; input: JurnalInput }
   | { ok: false; error: string };
 
-/**
- * Validasi bentuk data jurnal yang datang dari renderer sebelum masuk ke
- * posting layer. IPC tidak boleh mempercayai objek mentah: semua field
- * dinormalisasi dan hanya field yang dikenal yang diteruskan.
- *
- * `reversal_of` / `jenis=REVERSAL` sengaja ditolak karena jurnal balik wajib
- * lewat jalur koreksi (`jurnal:reverse`), bukan jalur simpan biasa.
- */
-export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInput {
+type OpsiBentukJurnal = {
+  /** Form biasa wajib ID; koreksi boleh kosong karena main membuat ID unik. */
+  idWajib: boolean;
+  /**
+   * Koreksi boleh memakai SALDO_AWAL, tetapi hanya bila jurnal asli juga
+   * SALDO_AWAL. Aturan terakhir ditegakkan di `koreksiDanIsiUlang`.
+   */
+  izinkanSaldoAwal: boolean;
+};
+
+function validasiBentukJurnal(
+  nilai: unknown,
+  opsi: OpsiBentukJurnal,
+): HasilBentukJurnalInput {
   if (!objek(nilai)) return { ok: false, error: 'Data jurnal tidak lengkap.' };
   if (!objek(nilai.header)) return { ok: false, error: 'Kepala jurnal tidak lengkap.' };
   if (!Array.isArray(nilai.baris)) return { ok: false, error: 'Daftar baris jurnal tidak lengkap.' };
@@ -314,9 +319,18 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
   const h = nilai.header;
 
   const id = h.id;
-  if (typeof id !== 'string' || !id.trim())
+  let idBersih = '';
+  if (id !== undefined && id !== null) {
+    if (typeof id !== 'string')
+      return {
+        ok: false,
+        error: opsi.idWajib ? 'ID jurnal wajib diisi.' : 'ID jurnal tidak valid.',
+      };
+    idBersih = id.trim();
+  }
+  if (!idBersih && opsi.idWajib)
     return { ok: false, error: 'ID jurnal wajib diisi.' };
-  if (id.trim().length > 200) return { ok: false, error: 'ID jurnal terlalu panjang.' };
+  if (idBersih.length > 200) return { ok: false, error: 'ID jurnal terlalu panjang.' };
 
   const tanggal = h.tanggal;
   if (typeof tanggal !== 'string' || !tanggal.trim())
@@ -335,7 +349,12 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
     h.reversal_of !== null &&
     String(h.reversal_of).trim() !== ''
   )
-    return { ok: false, error: 'Jurnal balik harus dibuat lewat menu Koreksi.' };
+    return {
+      ok: false,
+      error: opsi.izinkanSaldoAwal
+        ? 'Jurnal pengganti tidak boleh mengacu ke jurnal lain.'
+        : 'Jurnal balik harus dibuat lewat menu Koreksi.',
+    };
 
   let noBukti = '';
   if (h.no_bukti !== undefined && h.no_bukti !== null) {
@@ -354,8 +373,13 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
     )
       return { ok: false, error: 'Jenis jurnal tidak dikenal.' };
     if (h.jenis === 'REVERSAL')
-      return { ok: false, error: 'Jurnal balik harus dibuat lewat menu Koreksi.' };
-    if (h.jenis === 'SALDO_AWAL')
+      return {
+        ok: false,
+        error: opsi.izinkanSaldoAwal
+          ? 'Jurnal pengganti tidak boleh berjenis REVERSAL.'
+          : 'Jurnal balik harus dibuat lewat menu Koreksi.',
+      };
+    if (h.jenis === 'SALDO_AWAL' && !opsi.izinkanSaldoAwal)
       return {
         ok: false,
         error: 'Saldo awal harus dibuat lewat Wizard Saldo Awal, bukan form jurnal biasa.',
@@ -409,7 +433,7 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
   }
 
   const header: JurnalHeaderInput = {
-    id: id.trim(),
+    id: idBersih,
     tanggal: tanggal.trim(),
     keterangan: keterangan.trim(),
     ...(noBukti ? { no_bukti: noBukti } : {}),
@@ -420,6 +444,39 @@ export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInpu
     ok: true,
     input: { header, baris, ...(alasan ? { alasan } : {}) },
   };
+}
+
+/**
+ * Validasi bentuk data jurnal yang datang dari renderer sebelum masuk ke
+ * posting layer. IPC tidak boleh mempercayai objek mentah: semua field
+ * dinormalisasi dan hanya field yang dikenal yang diteruskan.
+ *
+ * `reversal_of` / `jenis=REVERSAL` sengaja ditolak karena jurnal balik wajib
+ * lewat jalur koreksi (`jurnal:reverse`), bukan jalur simpan biasa.
+ */
+export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInput {
+  return validasiBentukJurnal(nilai, {
+    idWajib: true,
+    izinkanSaldoAwal: false,
+  });
+}
+
+/**
+ * AKT-22: bentuk input jurnal pengganti pada `jurnal:koreksi-isi-ulang`.
+ * Sama ketatnya dengan form jurnal biasa, dengan dua pengecualian yang
+ * disengaja:
+ * - ID boleh kosong karena main membuat ID unik pengganti;
+ * - SALDO_AWAL boleh pada bentuk, tetapi `koreksiDanIsiUlang` tetap menolak
+ *   bila jurnal asli bukan SALDO_AWAL.
+ * `REVERSAL`, `grup_id`, dan `reversal_of` tidak pernah diteruskan.
+ */
+export function validasiBentukKoreksiInput(
+  nilai: unknown,
+): HasilBentukJurnalInput {
+  return validasiBentukJurnal(nilai, {
+    idWajib: false,
+    izinkanSaldoAwal: true,
+  });
 }
 
 // ---------------------------------------------------------------------------
