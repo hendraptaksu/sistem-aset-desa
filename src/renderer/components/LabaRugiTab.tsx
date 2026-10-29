@@ -6,9 +6,10 @@ import {
   periodeFile,
 } from '../../features/export/workbooks.js';
 import { labaRugiPrintDoc } from '../../features/export/printAdapters.js';
-import { formatRp, formatTanggal } from '../../utils/format.js';
+import { formatRp } from '../../utils/format.js';
+import { periodeBerjalan } from '../../utils/tanggal.js';
 import { api, type LabaRugiHasil } from '../lib/api.js';
-import { badgeLabaRugi } from '../lib/tampilanLaporan.js';
+import { badgeLabaRugi, labelPeriodeLaporan } from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { JurnalAkunModal } from './JurnalAkunModal.js';
@@ -21,10 +22,14 @@ type AkunDipilih = { kode: string; nama: string };
  * Layar Laba Rugi (P1-9). Seluruh angka berasal dari `laporan:laba-rugi`
  * (core/reports.ts); tab ini tidak menghitung ulang laba dan tidak menyimpan
  * angka turunan. Klik baris akun untuk menelusuri jurnal asalnya.
+ *
+ * AKT-15: default filter = periode berjalan (1 Jan tahun ini s/d hari ini
+ * WITA) agar konsisten dengan Dashboard/Neraca. `sekarang` hanya untuk test.
  */
-export function LabaRugiTab() {
-  const [mulai, setMulai] = useState('');
-  const [sampai, setSampai] = useState('');
+export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
+  const [periodeAwal] = useState(() => periodeBerjalan(sekarang));
+  const [mulai, setMulai] = useState(periodeAwal.mulai);
+  const [sampai, setSampai] = useState(periodeAwal.sampai);
   const [data, setData] = useState<LabaRugiHasil | null>(null);
   const [coa, setCoa] = useState<Coa[]>([]);
   const [akunDipilih, setAkunDipilih] = useState<AkunDipilih | null>(null);
@@ -75,12 +80,7 @@ export function LabaRugiTab() {
   const pendapatan = data?.pendapatan.filter((b) => b.nominal !== 0) ?? [];
   const beban = data?.beban.filter((b) => b.nominal !== 0) ?? [];
   const badge = data ? badgeLabaRugi(data.defisit) : null;
-  const periode =
-    !mulai && !sampai
-      ? 'seluruh riwayat'
-      : `${mulai ? formatTanggal(mulai) : 'awal'} s/d ${
-          sampai ? formatTanggal(sampai) : 'akhir'
-        }`;
+  const periode = labelPeriodeLaporan(mulai, sampai);
 
   return (
     <div className="space-y-4">
@@ -100,14 +100,14 @@ export function LabaRugiTab() {
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Dari tanggal (opsional)">
+          <Field label="Dari tanggal">
             <TextInput
               type="date"
               value={mulai}
               onChange={(e) => setMulai(e.target.value)}
             />
           </Field>
-          <Field label="Sampai tanggal (opsional)">
+          <Field label="Sampai tanggal">
             <TextInput
               type="date"
               value={sampai}
@@ -117,6 +117,7 @@ export function LabaRugiTab() {
           <div className="flex items-end">
             <Button
               variant="ghost"
+              title="Tampilkan seluruh riwayat tanpa batas tanggal"
               onClick={() => {
                 setMulai('');
                 setSampai('');
@@ -127,9 +128,10 @@ export function LabaRugiTab() {
           </div>
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Kosongkan tanggal untuk melihat seluruh riwayat. Klik baris akun untuk
-          melihat daftar jurnal pada periode ini, lalu klik jurnal untuk detail
-          debit/kredit.
+          Periode aktif: {periode}. Klik “Semua tanggal” untuk melihat seluruh
+          riwayat, atau kosongkan salah satu tanggal untuk membuka batas
+          awal/akhir. Klik baris akun untuk melihat daftar jurnal pada periode
+          ini, lalu klik jurnal untuk detail debit/kredit.
         </p>
 
         {data && (

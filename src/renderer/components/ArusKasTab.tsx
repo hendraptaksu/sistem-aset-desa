@@ -8,8 +8,12 @@ import {
 } from '../../features/export/workbooks.js';
 import { arusKasPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { periodeBerjalan } from '../../utils/tanggal.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
-import { labelKelompokArusKas } from '../lib/tampilanLaporan.js';
+import {
+  labelKelompokArusKas,
+  labelPeriodeLaporan,
+} from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
@@ -31,10 +35,14 @@ const KELOMPOK: {
  * Layar Arus Kas (P1-9). Semua angka berasal dari `laporan:arus-kas`
  * (core/reports.ts); transfer antar dompet tidak dihitung sebagai arus masuk
  * atau keluar. Klik baris mutasi untuk membuka detail jurnal asalnya.
+ *
+ * AKT-15: default filter = periode berjalan (1 Jan tahun ini s/d hari ini
+ * WITA) agar konsisten dengan Dashboard/Neraca. `sekarang` hanya untuk test.
  */
-export function ArusKasTab() {
-  const [mulai, setMulai] = useState('');
-  const [sampai, setSampai] = useState('');
+export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
+  const [periodeAwal] = useState(() => periodeBerjalan(sekarang));
+  const [mulai, setMulai] = useState(periodeAwal.mulai);
+  const [sampai, setSampai] = useState(periodeAwal.sampai);
   const [data, setData] = useState<ArusKasHasil | null>(null);
   const [coa, setCoa] = useState<Coa[]>([]);
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
@@ -103,12 +111,7 @@ export function ArusKasTab() {
       .join(', ');
   }
 
-  const periode =
-    !mulai && !sampai
-      ? 'seluruh riwayat'
-      : `${mulai ? formatTanggal(mulai) : 'awal'} s/d ${
-          sampai ? formatTanggal(sampai) : 'akhir'
-        }`;
+  const periode = labelPeriodeLaporan(mulai, sampai);
 
   return (
     <div className="space-y-4">
@@ -126,14 +129,14 @@ export function ArusKasTab() {
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Dari tanggal (opsional)">
+          <Field label="Dari tanggal">
             <TextInput
               type="date"
               value={mulai}
               onChange={(e) => setMulai(e.target.value)}
             />
           </Field>
-          <Field label="Sampai tanggal (opsional)">
+          <Field label="Sampai tanggal">
             <TextInput
               type="date"
               value={sampai}
@@ -143,6 +146,7 @@ export function ArusKasTab() {
           <div className="flex items-end">
             <Button
               variant="ghost"
+              title="Tampilkan seluruh riwayat tanpa batas tanggal"
               onClick={() => {
                 setMulai('');
                 setSampai('');
@@ -153,8 +157,9 @@ export function ArusKasTab() {
           </div>
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik baris mutasi
-          untuk melihat jurnal asal dan nomor buktinya.
+          Periode aktif: {periode}. Klik “Semua tanggal” untuk melihat seluruh
+          riwayat. Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik
+          baris mutasi untuk melihat jurnal asal dan nomor buktinya.
         </p>
         {data && (
           <div className="mt-3">
