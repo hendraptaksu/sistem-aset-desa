@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION } from '../../db/database.js';
+import { auditIntegritas } from '../../db/integritas.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
@@ -172,7 +173,8 @@ export type ValidasiRestore = { valid: true } | { valid: false; error: string };
 /**
  * Validasi kandidat restore SEBELUM menyentuh DB aktif:
  * file ada & berupa file, SQLite terbaca, `integrity_check` = ok, bukan dari
- * versi aplikasi yang lebih baru, dan semua tabel wajib ada.
+ * versi aplikasi yang lebih baru, semua tabel wajib ada, dan audit integritas
+ * akuntansi (termasuk `PRAGMA foreign_key_check`) tidak menemukan masalah.
  */
 export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
   let kandidat: Database.Database | null = null;
@@ -209,6 +211,24 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
         valid: false,
         error: `File ini bukan backup aplikasi ini (tabel ${kurang.join(', ')} tidak ditemukan).`,
       };
+
+    // AKT-11: backup yang lolos SQLite belum tentu sehat secara akuntansi.
+    // `auditIntegritas` juga menjalankan `PRAGMA foreign_key_check`.
+    const audit = auditIntegritas(kandidat);
+    if (!audit.ok) {
+      const rincian = audit.temuan
+        .slice(0, 10)
+        .map((t) => `[${t.kode}] ${t.pesan}`)
+        .join(' ');
+      const sisa =
+        audit.temuan.length > 10 ? ` (+${audit.temuan.length - 10} temuan lain)` : '';
+      return {
+        valid: false,
+        error:
+          `Backup tidak lolos audit akuntansi. Pilih backup lain. ` +
+          `${audit.ringkasan}${sisa} ${rincian}`.trim(),
+      };
+    }
 
     return { valid: true };
   } catch {

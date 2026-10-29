@@ -27,7 +27,6 @@ import {
   sudahSetupPin,
 } from '../src/db/repository.js';
 import {
-  TABEL_WAJIB_RESTORE,
   backupPraUpgrade,
   backupVacuumInto,
   restoreDbAman,
@@ -80,6 +79,39 @@ function jurnal(id: string, tanggal = '2026-09-09') {
       { akun_kode: '4007', debit: 0, kredit: 100_000 },
     ],
   };
+}
+
+/**
+ * AKT-11: kandidat yang valid secara SQLite tetapi gagal audit akuntansi.
+ * Berisi jurnal tidak seimbang sekaligus akun asing (baris 9999).
+ */
+function buatKandidatTidakSeimbang(path: string): void {
+  const db = openDb(path);
+  try {
+    // Seed lewat SQL langsung agar bisa melanggar FK akun dan keseimbangan.
+    db.pragma('foreign_keys = OFF');
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, created_at)
+       VALUES (?, ?, ?, ?, 'UMUM', ?, ?)`,
+    ).run(
+      'j-tidak-seimbang',
+      '2026-09-10',
+      'JU-AKT11',
+      'Uji AKT-11',
+      'g-akt11',
+      '2026-09-10T00:00:00.000Z',
+    );
+    const baris = db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES (?, ?, ?, ?, '')`,
+    );
+    baris.run('j-tidak-seimbang', '1001', 100_000, 0);
+    baris.run('j-tidak-seimbang', '9999', 0, 90_000);
+  } finally {
+    db.pragma('foreign_keys = ON');
+    db.close();
+  }
 }
 
 /** Buat folder backup lengkap dari DB sumber sementara + isi lampiran. */
@@ -403,6 +435,71 @@ describe('P0-8 — validasiKandidatRestore: file sampah ditolak', () => {
   });
 });
 
+describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi', () => {
+  it('menolak jurnal tidak seimbang/akun asing dan menerima backup sehat', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-akt11-val-'));
+    let db: Database.Database | null = null;
+    try {
+      const sehatPath = join(dir, 'sehat.db');
+      db = openDb(sehatPath);
+      insertJurnal(db, jurnal('sehat').header, jurnal('sehat').baris);
+      const backupSehat = join(dir, 'backup-sehat.db');
+      backupVacuumInto(db, backupSehat);
+      expect(validasiKandidatRestore(backupSehat)).toEqual({ valid: true });
+
+      const rusakPath = join(dir, 'backup-tidak-seimbang.db');
+      buatKandidatTidakSeimbang(rusakPath);
+      const hasil = validasiKandidatRestore(rusakPath);
+      expect(hasil.valid).toBe(false);
+      if (hasil.valid) throw new Error('kandidat rusak seharusnya ditolak');
+      expect(hasil.error).toContain(
+        'Backup tidak lolos audit akuntansi. Pilih backup lain.',
+      );
+      expect(hasil.error).toMatch(/Ditemukan \d+ temuan integritas akuntansi/);
+      expect(hasil.error).toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(hasil.error).toContain('AKUN_TIDAK_DIKENAL');
+    } finally {
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('restoreDbAman menolak sebelum DB aktif disentuh', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-akt11-restore-'));
+    let aktif: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      aktif = openDb(aktifPath);
+      insertJurnal(aktif, jurnal('lama').header, jurnal('lama').baris);
+
+      const kandidatPath = join(dir, 'kandidat-tidak-seimbang.db');
+      buatKandidatTidakSeimbang(kandidatPath);
+
+      const hasil = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidatPath,
+        dirBackup: join(dir, 'backups'),
+        stamp: 'akt11',
+      });
+      expect(hasil.ok).toBe(false);
+      if (hasil.ok) throw new Error('seharusnya ditolak');
+      expect(hasil.db).toBe(aktif); // koneksi lama tetap dipakai
+      expect(hasil.error).toContain(
+        'Backup tidak lolos audit akuntansi. Pilih backup lain.',
+      );
+
+      // Tidak ada cadangan pra-restore dan file aktif belum tersentuh.
+      expect(existsSync(join(dir, 'backups', 'pre-restore-akt11.db'))).toBe(false);
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
+      insertJurnal(aktif, jurnal('baru').header, jurnal('baru').baris);
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama', 'baru']);
+    } finally {
+      aktif?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('P0-8 — backupPraUpgrade: simpan DB lama sebelum tabel single-entry dibuang', () => {
   it('membuat pre-upgrade untuk DB v1 dan tidak membuat untuk DB v2', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-upgrade-'));
@@ -534,11 +631,31 @@ describe('P0-8 — restoreDbAman', () => {
       db = openDb(aktifPath);
       insertJurnal(db, jurnal('lama').header, jurnal('lama').baris);
 
-      // Lolos validasi (nama tabel lengkap, integrity ok) tetapi skemanya rusak:
-      // openDb akan gagal membuat index/upsert akun.
+      // Lolos validasi + audit (semua tabel akuntansi ada dan jurnal kosong)
+      // tetapi skemanya rusak: openDb akan gagal membuat index/upsert akun.
       const kandidatPath = join(dir, 'kandidat-rusak.db');
       const rusak = new Database(kandidatPath);
-      for (const t of TABEL_WAJIB_RESTORE) rusak.exec(`CREATE TABLE ${t} (x TEXT)`);
+      rusak.exec(`
+        CREATE TABLE akun (kode TEXT PRIMARY KEY);
+        CREATE TABLE jurnal (id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, no_bukti TEXT NOT NULL DEFAULT '');
+        CREATE TABLE jurnal_baris (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          jurnal_id TEXT NOT NULL,
+          akun_kode TEXT NOT NULL,
+          debit INTEGER NOT NULL DEFAULT 0,
+          kredit INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE panjar (
+          id TEXT PRIMARY KEY,
+          status TEXT NOT NULL,
+          jurnal_close_id TEXT,
+          tanggal_close TEXT
+        );
+        CREATE TABLE tutup_buku (tahun INTEGER PRIMARY KEY);
+        CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT);
+        CREATE TABLE audit_log (id TEXT PRIMARY KEY);
+        CREATE TABLE aset (id TEXT PRIMARY KEY);
+      `);
       rusak.close();
 
       const hasil = restoreDbAman(db, {

@@ -29,7 +29,7 @@
 | AKT-08 | P1 | M | UI/API alasan overbalance Pihak & overrun Panjar | AKT-06 | [x] |
 | AKT-09 | P1 | M | Modul audit integritas akuntansi | — | [x] |
 | AKT-10 | P1 | S | Tutup buku menolak jika audit integritas gagal | AKT-09 | [x] |
-| AKT-11 | P1 | S | Restore menolak backup yang tidak lolos audit integritas | AKT-09 | [ ] |
+| AKT-11 | P1 | S | Restore menolak backup yang tidak lolos audit integritas | AKT-09 | [x] |
 | AKT-12 | P1 | S | Tutup buku berurutan / cegah lompat tahun | — | [ ] |
 | AKT-13 | P1 | S | Laporan anggaran tetap jalan saat akun pagu nonaktif | — | [ ] |
 | AKT-14 | P1 | S | Tolak/tandai tanggal jurnal di masa depan | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 11/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 12/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -285,7 +285,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** AKT-09.
 
-- [ ] **AKT-11 — Restore menolak backup yang tidak lolos audit integritas** · P1 · S
+- [x] **AKT-11 — Restore menolak backup yang tidak lolos audit integritas** · P1 · S (2026-10-29: typecheck bersih; 656/656 test hijau (55 file); `validasiKandidatRestore` membuka kandidat readonly lalu menjalankan `auditIntegritas` (termasuk `PRAGMA foreign_key_check`) setelah cek tabel wajib; temuan apa pun -> `valid:false` dengan ringkasan + pesan "Backup tidak lolos audit akuntansi. Pilih backup lain."; kandidat selalu ditutup di `finally`; test di `tests/backup-restore.test.ts` memastikan jurnal tidak seimbang/akun asing ditolak sebelum DB aktif disentuh dan backup sehat tetap `valid:true`)
   - **Konteks:** `validasiKandidatRestore` hanya `integrity_check` SQLite dan
     keberadaan tabel. Backup yang secara SQLite valid tetapi punya jurnal tidak
     seimbang/akun asing bisa lolos.
