@@ -31,8 +31,12 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  * - 10   = pemisahan akun utang usaha (AKT-20): COA statis 2060 HUTANG USAHA
  *          di-seed idempoten (tanpa DDL baru); 2050 tetap pinjaman/legacy.
  *          Versi ini juga mencegah aplikasi v9 membuka backup v10.
+ * - 11   = audit log append-only + tutup buku tidak bisa dihapus (AKT-26):
+ *          trigger menolak update/delete `audit_log` dan delete `tutup_buku`.
+ *          Update `tutup_buku` tetap diizinkan karena tutup ulang memakai
+ *          `ON CONFLICT DO UPDATE`.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * DDL dasar v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung
@@ -351,11 +355,44 @@ function terapkanKontrakV10(db: Database.Database): void {
 }
 
 /**
+ * AKT-26 — aturan v11: audit log append-only dan `tutup_buku` tidak bisa
+ * dihapus. Trigger selalu dibuat ulang (DROP + CREATE) agar DB lama ikut
+ * terlindungi dan perubahan definisi trigger di masa depan ikut diterapkan.
+ * Update `tutup_buku` sengaja TIDAK diblokir: tutup ulang memakai upsert
+ * `ON CONFLICT(tahun) DO UPDATE`.
+ */
+function terapkanAturanV11(db: Database.Database): void {
+  db.exec(`
+    DROP TRIGGER IF EXISTS trg_audit_log_immutable_update;
+    CREATE TRIGGER trg_audit_log_immutable_update
+    BEFORE UPDATE ON audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'Audit log tidak boleh diubah.');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_audit_log_immutable_delete;
+    CREATE TRIGGER trg_audit_log_immutable_delete
+    BEFORE DELETE ON audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'Audit log tidak boleh dihapus.');
+    END;
+
+    DROP TRIGGER IF EXISTS trg_tutup_buku_immutable_delete;
+    CREATE TRIGGER trg_tutup_buku_immutable_delete
+    BEFORE DELETE ON tutup_buku
+    BEGIN
+      SELECT RAISE(ABORT, 'Tutup buku tidak boleh dihapus.');
+    END;
+  `);
+}
+
+/**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
  * - Selalu membersihkan tabel single-entry lama (P0-3).
  * - Membuat seluruh DDL v2 bila belum ada.
  * - Menerapkan aturan integritas v9 (trigger + unique index per tahun).
  * - Menerapkan kontrak COA v10 (akun 2060 idempoten, tanpa DDL).
+ * - Menerapkan aturan v11 (audit append-only, tutup buku tidak bisa dihapus).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -370,6 +407,7 @@ export function migrasi(db: Database.Database): number {
     }
     terapkanAturanV9(db);
     terapkanKontrakV10(db);
+    terapkanAturanV11(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

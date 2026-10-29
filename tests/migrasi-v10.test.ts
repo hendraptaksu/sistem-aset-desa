@@ -1,9 +1,9 @@
 // AKT-20 — migrasi v9 → v10: pemisahan akun utang usaha 2060.
 //
 // Fokus:
-// - DB v9 lama dibuka aplikasi v10: user_version 10, akun 2060 di-seed,
+// - DB v9 lama dibuka aplikasi saat ini: user_version v11, akun 2060 di-seed,
 //   jurnal 2050 lama utuh, dan migrasi idempoten saat dibuka ulang.
-// - Backup v9 tetap bisa direstore; DB hasil restore ikut menjadi v10.
+// - Backup v9 tetap bisa direstore; DB hasil restore ikut menjadi v11.
 // - Kandidat backup dari versi lebih baru ditolak (guard downgrade).
 
 import Database from 'better-sqlite3';
@@ -95,7 +95,7 @@ function buatFixtureV9(path: string): void {
 }
 
 describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
-  it('membuka DB v9 → v10, menambah 2060 idempoten, jurnal 2050 lama utuh', () => {
+  it('membuka DB v9 → versi saat ini, menambah 2060 idempoten, jurnal 2050 lama utuh', () => {
     const path = join(tmpDir('pura-v10-migrasi-'), 'pura.db');
     buatFixtureV9(path);
 
@@ -107,8 +107,8 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(10);
-      expect(versi(db)).toBe(10);
+      expect(SCHEMA_VERSION).toBe(11);
+      expect(versi(db)).toBe(11);
       expect(getAkun(db, AKUN_HUTANG_USAHA)).toMatchObject({
         kode: '2060',
         nama: 'HUTANG USAHA',
@@ -133,7 +133,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     // Buka ulang: idempoten, akun 2060 tidak tergandakan.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(10);
+      expect(versi(db2)).toBe(11);
       expect(
         db2.prepare("SELECT COUNT(*) AS n FROM akun WHERE kode = '2060'").get(),
       ).toEqual({ n: 1 });
@@ -143,7 +143,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     }
   });
 
-  it('backup v9 tetap valid direstore ke aplikasi v10 dan mendapat akun 2060', () => {
+  it('backup v9 tetap valid direstore ke aplikasi saat ini dan mendapat akun 2060', () => {
     const dir = tmpDir('pura-v10-restore-');
     const backupPath = join(dir, 'backup-v9.db');
     buatFixtureV9(backupPath);
@@ -164,7 +164,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
       if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
 
-      expect(versi(aktif)).toBe(10);
+      expect(versi(aktif)).toBe(11);
       expect(getAkun(aktif, AKUN_HUTANG_USAHA)?.nama).toBe('HUTANG USAHA');
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v9-awal', 'j-v9-hutang']);
       expect(
@@ -177,14 +177,14 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     }
   });
 
-  it('backup dari skema lebih baru (v11) ditolak sebelum restore', () => {
+  it('backup dari skema lebih baru (v12) ditolak sebelum restore', () => {
     const dir = tmpDir('pura-v10-baru-');
     const path = join(dir, 'baru.db');
     buatFixtureV9(path);
 
     const db = new Database(path);
     try {
-      db.pragma('user_version = 11');
+      db.pragma('user_version = 12');
     } finally {
       db.close();
     }
@@ -194,7 +194,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     if (!hasil.valid) expect(hasil.error).toMatch(/versi lebih baru/i);
   });
 
-  it('backupPraUpgrade tetap berfungsi sebagai cadangan sebelum v9 dibuka v10', () => {
+  it('backupPraUpgrade tetap berfungsi sebagai cadangan sebelum v9 dimigrasikan', () => {
     const dir = tmpDir('pura-v10-pra-');
     const path = join(dir, 'pura.db');
     buatFixtureV9(path);

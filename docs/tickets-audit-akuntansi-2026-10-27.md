@@ -44,15 +44,15 @@
 | AKT-23 | P2 | S | Cek akun asing di semua laporan | — | [x] |
 | AKT-24 | P2 | M | Anti-duplikat import Excel | — | [x] |
 | AKT-25 | P2 | M | Guard `insertJurnal` / jadikan internal | — | [x] |
-| AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [ ] |
+| AKT-26 | P2 | S | Audit log append-only; `tutup_buku` tidak bisa dihapus | — | [x] |
 | AKT-27 | P2 | S | Perbaiki dokumentasi 3001/3002, closing, reversal | AKT-05, AKT-16 | [ ] |
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 26/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 27/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21, AKT-22, AKT-23, AKT-24, AKT-25, AKT-26 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
-> **Catatan skema:** `SCHEMA_VERSION` saat ini 10 (AKT-20). Tiket yang menambah
+> **Catatan skema:** `SCHEMA_VERSION` saat ini 11 (AKT-26). Tiket yang menambah
 > kolom/trigger wajib menaikkan versi satu langkah dan memperbarui test migrasi.
 > Jika AKT-20 dan AKT-26 sama-sama menyentuh skema, tiket yang dikerjakan kedua
 > memakai versi berikutnya—jangan dua tiket memakai nomor versi yang sama.
@@ -548,12 +548,12 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —
 
-- [ ] **AKT-26 — Audit log append-only; `tutup_buku` tidak bisa dihapus** · P2 · S
+- [x] **AKT-26 — Audit log append-only; `tutup_buku` tidak bisa dihapus** · P2 · S (2026-10-29: migrasi v11 menambah trigger `BEFORE UPDATE/DELETE ON audit_log` + `BEFORE DELETE ON tutup_buku`; update `tutup_buku` tetap diizinkan untuk tutup ulang; DB v9/v10 lama dan restore backup ikut termigrasi idempoten; typecheck bersih; 726/726 test hijau (58 file))
   - **Konteks:** `jurnal` dilindungi trigger, tetapi `audit_log` dan `tutup_buku`
     masih bisa di-update/delete lewat SQL. Audit tidak tamper-evident, tetapi
     minimal jangan bisa dihapus tanpa meninggalkan jejak.
   - **Langkah:**
-    1. Migrasi v10: trigger `BEFORE UPDATE/DELETE ON audit_log` → `RAISE(ABORT)`.
+    1. Migrasi v11: trigger `BEFORE UPDATE/DELETE ON audit_log` → `RAISE(ABORT)`.
     2. Trigger `BEFORE DELETE ON tutup_buku` → `RAISE(ABORT)`; **jangan** blokir
        update, karena tutup ulang memakai `ON CONFLICT DO UPDATE`.
     3. Pastikan `migrasi()` idempoten dan DB lama ikut terlindungi.
