@@ -485,6 +485,138 @@ describe('P2-2 — create, list, detail, selesai, audit', () => {
   });
 });
 
+describe('AKT-21 — wajib alasan saat rekonsiliasi berselisih', () => {
+  const CATATAN = 'Biaya admin bank belum tercatat';
+
+  it('menolak selisih tanpa catatan dan tidak mengubah status', () => {
+    const db = freshDb();
+    try {
+      isiJurnal(db);
+      const rek = buatRekonsiliasi(db, {
+        akun_kode: '1001',
+        tanggal: '2026-01-31',
+        saldo_bank: RP(5_900_000),
+      });
+      expect(rek).toMatchObject({
+        saldo_buku: RP(5_800_000),
+        selisih: RP(100_000),
+        status: 'LEBIH',
+        selesai: false,
+      });
+
+      // Tanpa catatan dan catatan < 5 karakter sama-sama ditolak, pesan
+      // menyebut nominal selisih.
+      expect(() => selesaikanRekonsiliasi(db, rek.id)).toThrow(/Rp 100\.000,00/);
+      expect(() => selesaikanRekonsiliasi(db, rek.id, { catatan: 'abcd' })).toThrow(
+        /Rp 100\.000,00/,
+      );
+
+      const setelah = listRekonsiliasi(db).find((r) => r.id === rek.id);
+      expect(setelah).toMatchObject({
+        catatan: '',
+        selesai: false,
+        selesai_at: null,
+        selisih: RP(100_000),
+      });
+      expect(
+        listAuditLog(db).filter((a) => a.aksi === 'REKONSILIASI-SELESAI'),
+      ).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengizinkan selisih selesai dengan catatan tersimpan dan mengaudit selisih + catatan', () => {
+    const db = freshDb();
+    try {
+      isiJurnal(db);
+      const rek = buatRekonsiliasi(db, {
+        akun_kode: '1001',
+        tanggal: '2026-01-31',
+        saldo_bank: RP(5_900_000),
+        catatan: CATATAN,
+      });
+
+      const selesai = selesaikanRekonsiliasi(db, rek.id);
+      expect(selesai).toMatchObject({
+        catatan: CATATAN,
+        selisih: RP(100_000),
+        selesai: true,
+      });
+      expect(selesai.selesai_at).toBeTruthy();
+
+      const audit = listAuditLog(db).find((a) => a.aksi === 'REKONSILIASI-SELESAI');
+      expect(audit).toBeTruthy();
+      expect(audit!.alasan).toContain('Rp 100.000,00');
+      expect(audit!.alasan).toContain(CATATAN);
+      expect(JSON.parse(audit!.data_baru_json)).toMatchObject({
+        catatan: CATATAN,
+        selesai: true,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengizinkan selisih selesai dengan catatan baru saat menandai selesai', () => {
+    const db = freshDb();
+    try {
+      isiJurnal(db);
+      const rek = buatRekonsiliasi(db, {
+        akun_kode: '1001',
+        tanggal: '2026-01-31',
+        saldo_bank: RP(5_900_000),
+      });
+
+      const selesai = selesaikanRekonsiliasi(db, rek.id, {
+        catatan: `  ${CATATAN}  `,
+      });
+      expect(selesai).toMatchObject({
+        catatan: CATATAN,
+        selisih: RP(100_000),
+        selesai: true,
+      });
+
+      const audit = listAuditLog(db).find((a) => a.aksi === 'REKONSILIASI-SELESAI');
+      expect(audit).toBeTruthy();
+      expect(audit!.alasan).toContain('Rp 100.000,00');
+      expect(audit!.alasan).toContain(CATATAN);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('cocok tanpa catatan tetap boleh selesai', () => {
+    const db = freshDb();
+    try {
+      isiJurnal(db);
+      const rek = buatRekonsiliasi(db, {
+        akun_kode: '1001',
+        tanggal: '2026-01-31',
+        saldo_bank: RP(5_800_000),
+      });
+
+      const selesai = selesaikanRekonsiliasi(db, rek.id);
+      expect(selesai).toMatchObject({
+        catatan: '',
+        selisih: 0,
+        status: 'COCOK',
+        selesai: true,
+      });
+
+      const audit = listAuditLog(db).find((a) => a.aksi === 'REKONSILIASI-SELESAI');
+      expect(audit).toBeTruthy();
+      expect(audit!.alasan).toContain('Rp 0,00');
+      expect(JSON.parse(audit!.data_baru_json)).toMatchObject({
+        catatan: '',
+        selesai: true,
+      });
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('P2-2 — migrasi v6 & data tetap setelah reopen', () => {
   it('membuat tabel + index, menaikkan user_version, dan menyimpan data', () => {
     const path = pathBaru();

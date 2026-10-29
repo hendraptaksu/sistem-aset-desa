@@ -16,6 +16,7 @@ import {
   type MutasiRekonsiliasiBaris,
   type StatusRekonsiliasi,
 } from '../core/rekonsiliasi.js';
+import { formatRp } from '../utils/format.js';
 
 export type RekonsiliasiDb = {
   id: string;
@@ -203,8 +204,13 @@ export function buatRekonsiliasi(
 
 /**
  * Tandai rekonsiliasi selesai + audit `REKONSILIASI-SELESAI` berisi kondisi
- * lama/baru. Rekonsiliasi yang sudah selesai ditolak dengan pesan jelas agar
- * tidak ada penandaan ganda yang membingungkan.
+ * lama/baru, selisih, dan catatan. Rekonsiliasi yang sudah selesai ditolak
+ * dengan pesan jelas agar tidak ada penandaan ganda yang membingungkan.
+ *
+ * Bila saldo bank ≠ saldo buku, catatan/alasan minimal 5 karakter wajib ada
+ * (baru atau yang sudah tersimpan). Ini hanya mencegah "selesai palsu":
+ * item penyesuaian seperti outstanding check, setoran dalam perjalanan, dan
+ * biaya bank belum ditangani di sini dan menjadi backlog terpisah.
  */
 export function selesaikanRekonsiliasi(
   db: Database.Database,
@@ -234,9 +240,24 @@ export function selesaikanRekonsiliasi(
         `Rekonsiliasi tanggal ${lama.tanggal} sudah ditandai selesai. Tidak perlu ditandai lagi.`,
       );
 
+    // Hitung ulang dari jurnal (bukan angka tersimpan) sebelum status diubah.
+    const baris = listBarisJurnal(db, { sampai: lama.tanggal });
+    const saldoBuku = saldoAkun(baris, lama.akun_kode, lama.tanggal);
+    const hitung = hitungRekonsiliasi({
+      saldoBank: lama.saldo_bank,
+      saldoBuku,
+    });
+    const catatan = catatanBaru === undefined ? lama.catatan : catatanBaru;
+    if (hitung.selisih !== 0 && catatan.trim().length < 5) {
+      throw new Error(
+        `Rekonsiliasi belum cocok: selisih ${formatRp(hitung.selisih)}. ` +
+          'Isi catatan/alasan minimal 5 karakter sebelum menandai selesai.',
+      );
+    }
+
     const baru: RekonsiliasiDb = {
       ...lama,
-      catatan: catatanBaru === undefined ? lama.catatan : catatanBaru,
+      catatan,
       selesai: true,
       selesai_at: new Date().toISOString(),
     };
@@ -248,8 +269,9 @@ export function selesaikanRekonsiliasi(
     catatAudit(db, {
       aksi: 'REKONSILIASI-SELESAI',
       alasan:
-        baru.catatan ||
-        `Rekonsiliasi bank ${baru.akun_kode} tanggal ${baru.tanggal} selesai`,
+        `Rekonsiliasi bank ${baru.akun_kode} tanggal ${baru.tanggal} selesai; ` +
+        `selisih ${formatRp(hitung.selisih)}; ` +
+        `catatan: ${baru.catatan || '-'}`,
       lama,
       baru,
     });

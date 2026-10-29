@@ -39,7 +39,7 @@
 | AKT-18 | P1 | M | Pisahkan transfer dan biaya pada jurnal kas gabungan | — | [x] |
 | AKT-19 | P1 | S | Desain pemisahan utang usaha vs pinjaman (2050) | — | [x] |
 | AKT-20 | P1 | M | Implementasi klasifikasi arus kas 2050 | AKT-19 | [x] |
-| AKT-21 | P2 | S | Wajib alasan saat menandai rekonsiliasi dengan selisih | — | [ ] |
+| AKT-21 | P2 | S | Wajib alasan saat menandai rekonsiliasi dengan selisih | — | [x] |
 | AKT-22 | P2 | S | Validasi input koreksi & isi ulang | — | [ ] |
 | AKT-23 | P2 | S | Cek akun asing di semua laporan | — | [ ] |
 | AKT-24 | P2 | M | Anti-duplikat import Excel | — | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 21/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 22/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12, AKT-13, AKT-14, AKT-15, AKT-16, AKT-17, AKT-18, AKT-19, AKT-20, AKT-21 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 10 (AKT-20). Tiket yang menambah
@@ -459,7 +459,7 @@ tiket tanpa bukti test.
 
 ## Fase B — P2: penting, setelah P1 stabil
 
-- [ ] **AKT-21 — Wajib alasan saat menandai rekonsiliasi dengan selisih** · P2 · S
+- [x] **AKT-21 — Wajib alasan saat menandai rekonsiliasi dengan selisih** · P2 · S (2026-10-29: `selesaikanRekonsiliasi` menghitung ulang saldo buku/selisih dari jurnal sebelum ubah status; selisih ≠ 0 wajib catatan ≥5 karakter (baru atau tersimpan) dan ditolak tanpa mengubah status bila kurang; audit `REKONSILIASI-SELESAI` memuat selisih + catatan; cocok tetap boleh selesai tanpa catatan; item penyesuaian tetap backlog terpisah; typecheck bersih; 703/703 test hijau (57 file))
   - **Konteks:** `selesaikanRekonsiliasi` bisa menandai selesai walau
     `selisih != 0` dan `catatan` kosong. Saya reproduksi selisih Rp100.000,
     `selesai:true`, catatan `""`.
