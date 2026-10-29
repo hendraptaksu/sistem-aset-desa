@@ -30,7 +30,7 @@
 | AKT-09 | P1 | M | Modul audit integritas akuntansi | — | [x] |
 | AKT-10 | P1 | S | Tutup buku menolak jika audit integritas gagal | AKT-09 | [x] |
 | AKT-11 | P1 | S | Restore menolak backup yang tidak lolos audit integritas | AKT-09 | [x] |
-| AKT-12 | P1 | S | Tutup buku berurutan / cegah lompat tahun | — | [ ] |
+| AKT-12 | P1 | S | Tutup buku berurutan / cegah lompat tahun | — | [x] |
 | AKT-13 | P1 | S | Laporan anggaran tetap jalan saat akun pagu nonaktif | — | [ ] |
 | AKT-14 | P1 | S | Tolak/tandai tanggal jurnal di masa depan | — | [ ] |
 | AKT-15 | P1 | S | Default periode Laba Rugi & Arus Kas ke periode berjalan | AKT-14 | [ ] |
@@ -49,7 +49,7 @@
 | AKT-28 | P2 | S | Rapikan total saldo export, total anggaran, status dashboard | — | [ ] |
 | AKT-29 | P3 | S | Ketahanan validasi & tanggal import | — | [ ] |
 
-**Status: 12/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11 selesai).** Kerjakan berurutan; jangan mencentang
+**Status: 13/30 (AKT-00, AKT-01, AKT-02, AKT-03, AKT-04, AKT-05, AKT-06, AKT-07, AKT-08, AKT-09, AKT-10, AKT-11, AKT-12 selesai).** Kerjakan berurutan; jangan mencentang
 tiket tanpa bukti test.
 
 > **Catatan skema:** `SCHEMA_VERSION` saat ini 9. Tiket yang menambah
@@ -302,7 +302,7 @@ tiket tanpa bukti test.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** AKT-09.
 
-- [ ] **AKT-12 — Tutup buku berurutan / cegah lompat tahun** · P1 · S
+- [x] **AKT-12 — Tutup buku berurutan / cegah lompat tahun** · P1 · S (2026-10-29: typecheck bersih; 661/661 test hijau (55 file); `KonteksValidasiTutup.tahunAdaJurnal` dipakai `validasiTutupBuku` untuk menolak penutupan baru bila tahun lebih lama berjurnal belum ditutup—daftar tahun diurutkan dan disebut di pesan—sementara `TUTUP-ULANG` tidak terkena aturan ini dan tahun tanpa jurnal boleh dilewati; `previewTutupBuku`/`tutupBuku` mengisi data dari `SELECT DISTINCT substr(tanggal,1,4) FROM jurnal`; test pure + DB di `tests/tutup.test.ts`)
   - **Konteks:** `validasiTutupBuku` hanya menolak tahun yang lebih kecil dari
     tahun tutup terakhir. 2025 bisa ditutup lebih dulu, lalu 2024 ditolak
     selamanya. Laba 2024 tidak pernah masuk `labaDitahan`.

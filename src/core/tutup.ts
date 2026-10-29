@@ -16,6 +16,8 @@ export type KonteksValidasiTutup = {
   sekarang: string;
   /** Tahun-tahun yang sudah ditutup. */
   tutup: ReadonlyArray<TutupBukuRef>;
+  /** Tahun-tahun yang memiliki jurnal, untuk cegah lompat tahun. */
+  tahunAdaJurnal: ReadonlyArray<number>;
   /** Operator sudah menyetujui penimpaan tahun yang sudah ditutup. */
   konfirmasiTimpak?: boolean;
 };
@@ -53,6 +55,17 @@ export function tahunTutupTerurut(tutup: ReadonlyArray<TutupBukuRef>): number[] 
   ].sort((a, b) => a - b);
 }
 
+/** Daftar tahun jurnal yang valid, unik, urut menaik. */
+export function tahunJurnalTerurut(tahunAdaJurnal: ReadonlyArray<number>): number[] {
+  return [
+    ...new Set(
+      (tahunAdaJurnal ?? [])
+        .map((t) => Number(t))
+        .filter((t) => Number.isInteger(t)),
+    ),
+  ].sort((a, b) => a - b);
+}
+
 /**
  * Validasi satu aksi tutup buku.
  *
@@ -60,7 +73,10 @@ export function tahunTutupTerurut(tutup: ReadonlyArray<TutupBukuRef>): number[] 
  * 1. Tahun bilangan bulat yang masuk akal.
  * 2. Tahun <= tahun lalu (K2); tahun berjalan/berikutnya ditolak.
  * 3. Tahun baru harus lebih besar dari tahun tutup terakhir (urut menaik).
- * 4. Tahun yang sudah ditutup boleh ditimpa, tetapi wajib konfirmasi
+ * 4. Penutupan baru ditolak bila ada tahun lebih lama yang punya jurnal tetapi
+ *    belum ditutup (AKT-12). Tahun tanpa jurnal boleh dilewati. Aturan ini
+ *    tidak berlaku untuk tutup ulang tahun yang sudah ditutup.
+ * 5. Tahun yang sudah ditutup boleh ditimpa, tetapi wajib konfirmasi
  *    (`aksi = TUTUP-ULANG`).
  */
 export function validasiTutupBuku(
@@ -100,6 +116,16 @@ export function validasiTutupBuku(
       errors.push(
         `Tutup buku harus berurutan menaik. Tahun ${tahunTerakhir} sudah ditutup; tahun ${angka} sudah lewat.`,
       );
+    } else {
+      const belumDitutup = tahunJurnalTerurut(ctx.tahunAdaJurnal).filter(
+        (t) => t < angka && !daftar.includes(t),
+      );
+      if (belumDitutup.length > 0) {
+        const daftarTahun = belumDitutup.join(', ');
+        errors.push(
+          `Tutup buku harus berurutan. Tahun ${daftarTahun} memiliki jurnal tetapi belum ditutup; tutup tahun tersebut lebih dulu sebelum ${angka}.`,
+        );
+      }
     }
   }
 

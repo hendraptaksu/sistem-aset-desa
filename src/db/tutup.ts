@@ -62,6 +62,21 @@ export type HasilTutupBuku = HasilValidasiTutup & {
 
 const hariIni = (): string => tanggalLokal();
 
+/** Tahun-tahun yang memiliki jurnal (distinct), urut menaik. */
+function bacaTahunAdaJurnal(db: Database.Database): number[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT substr(tanggal, 1, 4) AS tahun
+       FROM jurnal
+       ORDER BY tahun`,
+    )
+    .all() as { tahun: string }[];
+  return rows
+    .map((r) => Number(r.tahun))
+    .filter((t) => Number.isInteger(t))
+    .sort((a, b) => a - b);
+}
+
 /**
  * Gabungkan validasi tahun dengan audit integritas. Temuan apa pun membuat
  * tutup buku diblokir, termasuk tutup ulang; konfirmasi operator tidak boleh
@@ -106,9 +121,10 @@ export function previewTutupBuku(
   sekarang = hariIni(),
 ): TutupPreview {
   const daftar = listTutupBuku(db);
+  const tahunAdaJurnal = bacaTahunAdaJurnal(db);
   const angka = Number(tahun);
   const validasi = validasiDenganIntegritas(
-    validasiTutupBuku(angka, { sekarang, tutup: daftar }),
+    validasiTutupBuku(angka, { sekarang, tutup: daftar, tahunAdaJurnal }),
     auditIntegritas(db),
   );
   const baris = listBarisJurnal(db);
@@ -139,11 +155,13 @@ export function tutupBuku(
 ): HasilTutupBuku {
   const sekarang = opsi.sekarang ?? hariIni();
   const daftar = listTutupBuku(db);
+  const tahunAdaJurnal = bacaTahunAdaJurnal(db);
   const angka = Number(tahun);
   const validasi = validasiDenganIntegritas(
     validasiTutupBuku(angka, {
       sekarang,
       tutup: daftar,
+      tahunAdaJurnal,
       konfirmasiTimpak: opsi.konfirmasiTimpak === true,
     }),
     auditIntegritas(db),

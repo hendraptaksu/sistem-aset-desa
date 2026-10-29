@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
-import { insertJurnal, listTutupBuku } from '../src/db/repository.js';
+import { insertJurnal, insertTutupBuku, listTutupBuku } from '../src/db/repository.js';
 import { previewTutupBuku, tutupBuku } from '../src/db/tutup.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { postingJurnal } from '../src/db/posting.js';
@@ -82,7 +82,7 @@ function korupsiJurnalTidakSeimbang(
 
 describe('P0-7 — validasi tutup buku (murni)', () => {
   it('menolak tahun berjalan/berikutnya dan bukan bilangan bulat (K2)', () => {
-    const ctx = { sekarang: SEKARANG, tutup: [] };
+    const ctx = { sekarang: SEKARANG, tutup: [], tahunAdaJurnal: [] };
     expect(validasiTutupBuku(2025, ctx).boleh).toBe(true);
     expect(validasiTutupBuku(2026, ctx).boleh).toBe(false);
     expect(validasiTutupBuku(2026, ctx).errors.join(' ')).toMatch(/sudah selesai/);
@@ -93,17 +93,69 @@ describe('P0-7 — validasi tutup buku (murni)', () => {
   });
 
   it('menolak tutup buku yang tidak urut menaik', () => {
-    const ctx = { sekarang: SEKARANG, tutup: [{ tahun: 2025 }] };
+    const ctx = { sekarang: SEKARANG, tutup: [{ tahun: 2025 }], tahunAdaJurnal: [] };
     const hasil = validasiTutupBuku(2024, ctx);
     expect(hasil.boleh).toBe(false);
     expect(hasil.errors.join(' ')).toMatch(/berurutan menaik/);
 
-    const naik = validasiTutupBuku(2026, { sekarang: '2027-01-02', tutup: [{ tahun: 2025 }] });
+    const naik = validasiTutupBuku(2026, {
+      sekarang: '2027-01-02',
+      tutup: [{ tahun: 2025 }],
+      tahunAdaJurnal: [],
+    });
     expect(naik.boleh).toBe(true);
   });
 
+  it('menolak lompat tahun bila tahun sebelumnya punya jurnal (AKT-12)', () => {
+    const ctx = {
+      sekarang: SEKARANG,
+      tutup: [],
+      tahunAdaJurnal: [2023, 2024, 2025],
+    };
+
+    const lompat = validasiTutupBuku(2025, ctx);
+    expect(lompat.boleh).toBe(false);
+    expect(lompat.errors.join(' ')).toMatch(/berurutan/);
+    expect(lompat.errors.join(' ')).toContain('2023, 2024');
+    expect(lompat.errors.join(' ')).toContain('2025');
+
+    expect(validasiTutupBuku(2024, { ...ctx, tutup: [{ tahun: 2023 }] }).boleh).toBe(true);
+    expect(
+      validasiTutupBuku(2025, {
+        ...ctx,
+        tutup: [{ tahun: 2023 }, { tahun: 2024 }],
+      }).boleh,
+    ).toBe(true);
+  });
+
+  it('tahun tanpa jurnal boleh dilewati dan tutup ulang tetap boleh (AKT-12)', () => {
+    const ctx = {
+      sekarang: SEKARANG,
+      tutup: [{ tahun: 2022 }, { tahun: 2023 }],
+      tahunAdaJurnal: [2022, 2023, 2025],
+    };
+    // 2024 tidak punya jurnal, jadi boleh dilewati.
+    expect(validasiTutupBuku(2025, ctx).boleh).toBe(true);
+    // Tahun tanpa jurnal juga boleh ditutup.
+    expect(validasiTutupBuku(2024, ctx).boleh).toBe(true);
+
+    // TUTUP-ULANG tidak menerapkan aturan urutan tahun lama.
+    const ulang = validasiTutupBuku(2025, {
+      sekarang: SEKARANG,
+      tutup: [{ tahun: 2025 }],
+      tahunAdaJurnal: [2023, 2025],
+      konfirmasiTimpak: true,
+    });
+    expect(ulang.aksi).toBe('TUTUP-ULANG');
+    expect(ulang.boleh).toBe(true);
+  });
+
   it('tahun yang sudah ditutup wajib konfirmasi (TUTUP-ULANG)', () => {
-    const ctx = { sekarang: SEKARANG, tutup: [{ tahun: 2025 }] };
+    const ctx = {
+      sekarang: SEKARANG,
+      tutup: [{ tahun: 2025 }],
+      tahunAdaJurnal: [2025],
+    };
     const belum = validasiTutupBuku(2025, ctx);
     expect(belum.boleh).toBe(false);
     expect(belum.perluKonfirmasi).toBe(true);
@@ -196,6 +248,76 @@ describe('P0-7 — tutup buku di DB', () => {
 
       expect(audit(db)).toHaveLength(1);
       expect(audit(db)[0]!.aksi).toBe('TUTUP 2025');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak lompat tahun saat tahun sebelumnya punya jurnal (AKT-12)', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-2024', '2024-06-01', masuk('4005', 2_000_000));
+      catat(db, 'j-2025', '2025-06-01', masuk('4005', 3_000_000));
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.boleh).toBe(false);
+      expect(pratinjau.errors.join(' ')).toMatch(/berurutan/);
+      expect(pratinjau.errors.join(' ')).toContain('2024');
+      expect(pratinjau.sudahDitutup).toBe(false);
+
+      const lompat = tutupBuku(db, 2025, { sekarang: SEKARANG });
+      expect(lompat.tersimpan).toBe(false);
+      expect(lompat.errors.join(' ')).toMatch(/Tahun 2024/);
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(audit(db)).toHaveLength(0);
+
+      expect(tutupBuku(db, 2024, { sekarang: SEKARANG }).tersimpan).toBe(true);
+      expect(tutupBuku(db, 2025, { sekarang: SEKARANG }).tersimpan).toBe(true);
+      expect(listTutupBuku(db).map((t) => t.tahun)).toEqual([2024, 2025]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('boleh melewati tahun tanpa jurnal (AKT-12)', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-2023', '2023-05-01', masuk('4005', 1_000_000));
+      catat(db, 'j-2025', '2025-05-01', masuk('4005', 2_000_000));
+
+      expect(tutupBuku(db, 2023, { sekarang: SEKARANG }).tersimpan).toBe(true);
+      expect(tutupBuku(db, 2025, { sekarang: SEKARANG }).tersimpan).toBe(true);
+      expect(listTutupBuku(db).map((t) => t.tahun)).toEqual([2023, 2025]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tutup ulang tahun lama tetap boleh meski ada tahun lebih lama berjurnal (AKT-12)', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-2023', '2023-04-01', masuk('4005', 500_000));
+      catat(db, 'j-2024', '2024-04-01', masuk('4005', 700_000));
+      insertTutupBuku(db, {
+        tahun: 2024,
+        created_at: '2025-01-10T00:00:00.000Z',
+        backup_path: '',
+        catatan: 'Tutup lama',
+      });
+
+      const belum = tutupBuku(db, 2024, { sekarang: SEKARANG });
+      expect(belum.tersimpan).toBe(false);
+      expect(belum.perluKonfirmasi).toBe(true);
+      expect(belum.errors).toEqual([]);
+
+      const ulang = tutupBuku(db, 2024, {
+        sekarang: SEKARANG,
+        konfirmasiTimpak: true,
+        catatan: 'Diulang',
+      });
+      expect(ulang.tersimpan).toBe(true);
+      expect(ulang.aksi).toBe('TUTUP-ULANG');
+      expect(ulang.data?.catatan).toBe('Diulang');
     } finally {
       db.close();
     }
