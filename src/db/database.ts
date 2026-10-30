@@ -43,6 +43,10 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  */
 export const SCHEMA_VERSION = 13;
 
+/** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
+export const PESAN_DB_VERSI_BARU =
+  'Database dibuat aplikasi versi lebih baru. Perbarui aplikasi.';
+
 /**
  * DDL dasar v2–v12. Hanya berisi tabel model baru + tabel pendukung
  * (pengaturan PIN). Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset,
@@ -361,6 +365,17 @@ function terapkanMigrasiV13(db: Database.Database): void {
 }
 
 /**
+ * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
+ * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
+ * `user_version` lebih besar tidak boleh disentuh sama sekali.
+ */
+function pastikanVersiDidukung(db: Database.Database): number {
+  const versi = Number(db.pragma('user_version', { simple: true }) ?? 0);
+  if (versi > SCHEMA_VERSION) throw new Error(PESAN_DB_VERSI_BARU);
+  return versi;
+}
+
+/**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
  * - Menolak DB yang dibuat aplikasi versi lebih baru SEBELUM DDL apa pun.
  * - Selalu membersihkan tabel single-entry lama (P0-3).
@@ -373,10 +388,7 @@ function terapkanMigrasiV13(db: Database.Database): void {
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
-  const versiAwal = Number(db.pragma('user_version', { simple: true }) ?? 0);
-  if (versiAwal > SCHEMA_VERSION) {
-    throw new Error('Database dibuat aplikasi versi lebih baru. Perbarui aplikasi.');
-  }
+  const versiAwal = pastikanVersiDidukung(db);
   const siapkan = db.transaction(() => {
     buangTabelLama(db);
     db.exec(DDL);
@@ -410,6 +422,10 @@ export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   try {
+    // DB-05: tolak versi lebih baru sebelum `journal_mode = WAL` (pragma itu
+    // mengubah header file) dan sebelum migrasi/DDL apa pun. Guard di
+    // `migrasi()` tetap dipertahankan untuk pemanggil langsung.
+    pastikanVersiDidukung(db);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     migrasi(db);

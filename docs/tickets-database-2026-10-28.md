@@ -73,7 +73,7 @@
 | DB-02 | P1 | MANUAL | Klarifikasi lampiran, Jurnal Umum, Import, Anggaran | — | [x] |
 | DB-03 | P0 | M | Pisahkan endpoint posting manual vs form terpandu | — | [x] |
 | DB-04 | P0 | S | Unique saldo awal + status saldo awal | — | [x] |
-| DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [ ] |
+| DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [x] |
 | DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [ ] |
 | DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [ ] |
 | DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
@@ -231,7 +231,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run typecheck` bersih; `npm test` **709 test/57 file hijau**;
     `npm run build` berhasil.
 
-- [ ] **DB-05 — Tolak DB yang dibuat versi aplikasi lebih baru** · P0 · S
+- [x] **DB-05 — Tolak DB yang dibuat versi aplikasi lebih baru** · P0 · S
   - **Konteks:** `openDb()` menjalankan DDL/trigger lama pada DB dengan
     `user_version > SCHEMA_VERSION`. Restore sudah dicek, direct open belum.
   - **Langkah:**
@@ -244,6 +244,19 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** tidak ada DDL yang dijalankan pada DB versi lebih baru.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** —
+  - **Bukti 2026-10-30:** Pesan guard dijadikan konstanta
+    `PESAN_DB_VERSI_BARU` dan logikanya dipusatkan di `pastikanVersiDidukung()`
+    yang dipanggil `migrasi()` sebelum transaksi/DDL. `openDb()` kini memanggil
+    guard yang sama **sebelum** `journal_mode = WAL`, karena pragma WAL
+    mengubah header file; DB versi lebih baru ditolak tanpa satu byte pun
+    berubah (tidak ada `-wal`/`-shm`) dan koneksi tetap ditutup lewat
+    try/catch yang sudah ada. `SCHEMA_VERSION` tidak dinaikkan. Test baru
+    `tests/db-05-versi-baru.test.ts` (8) mencakup file v14 byte-identik + bisa
+    dihapus setelah penolakan, `:memory:` v14 ditolak sebelum DDL, DB v13 dan
+    v12 tetap terbuka/migrasi, DB baru `:memory:`, serta jalur restore
+    (`validasiKandidatRestore`, `restoreDbAman`, dan manifest backup lengkap)
+    dengan pesan tepat. `npm run typecheck` bersih; `npm test`
+    **717 test/58 file hijau** (baseline 709/57); `npm run build` berhasil.
 
 - [ ] **DB-06 — Hentikan drop tabel berbasis bentuk** · P0 · M
   - **Konteks:** `buangTabelLama()` berjalan setiap `openDb()` dan menghapus
@@ -824,11 +837,12 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
 1. **Baseline sudah hijau (DB-35).** `docs/panduan-portable.md` dipulihkan;
    test arsip ERD v1 dihapus. `npm test` **736/58 hijau**. Klaim `737/737` di
    dokumen AKT sudah tidak relevan.
-2. **DB versi lebih baru tidak ditolak.** `migrasi()` di
-   `src/db/database.ts` menjalankan DDL/seed walau `user_version` lebih besar
-   dari `SCHEMA_VERSION`. `validasiKandidatRestore` sudah punya guard, tetapi
-   `openDb()` belum. Risiko: aplikasi versi lama membuka DB versi baru lalu
-   merusak/menimpa aturan. Ini **DB-05** yang masih terbuka.
+2. **DB versi lebih baru kini ditolak (DB-05, 2026-10-30).**
+   `migrasi()` menolak `user_version > SCHEMA_VERSION` sebelum DDL, dan
+   `openDb()` memeriksa versi sebelum PRAGMA WAL sehingga file DB versi lebih
+   baru tidak tersentuh. `validasiKandidatRestore` juga sudah punya guard.
+   Risiko aplikasi versi lama membuka DB versi baru lalu merusak/menimpa aturan
+   sudah ditutup dengan regression test khusus.
 3. **Backup pra-upgrade bergantung pada nama tabel, bukan versi.**
    `buangTabelLama()` berjalan setiap `openDb()` dan membuang tabel lama
    berdasarkan bentuk. `backupPraUpgrade()` hanya membuat backup bila ada
