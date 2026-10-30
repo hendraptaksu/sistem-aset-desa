@@ -30,6 +30,14 @@ export type PanjarItem = {
   panjar_id: string;
   kategori_baga: string; // kode BEBAN (lihat BEBAN_KODES di db/coa.ts)
   nominal: number; // sen
+  /**
+   * DB-18: detail nota per baris pertanggungjawaban. Baris lama/legacy boleh
+   * berisi string kosong; jurnal close tetap agregat per akun.
+   */
+  nota_nomor: string;
+  nota_tanggal: string; // YYYY-MM-DD atau '' untuk data legacy
+  toko: string;
+  keterangan: string;
   /** Jurnal pertanggungjawaban yang memuat realisasi item ini. */
   jurnal_id?: string | null;
 };

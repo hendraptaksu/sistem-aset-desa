@@ -226,6 +226,23 @@ describe('DB-17 — panduan Pindah Dana', () => {
   });
 });
 
+describe('DB-18 — panduan panjar per nota', () => {
+  it('menyebut input nota per baris dan jurnal close tetap agregat', () => {
+    for (const istilah of [
+      'nomor nota',
+      'tanggal nota',
+      'toko/penerima',
+      'akun beban',
+      'keterangan baris',
+      '+ Tambah baris nota',
+      'menggabungkan debit per akun',
+      'tidak boleh setelah',
+    ]) {
+      expect(PENGGUNA, `istilah "${istilah}"`).toContain(istilah);
+    }
+  });
+});
+
 describe('P2-8 — panduan portable', () => {
   it('menjelaskan installer vs portable dan peringatan dua salinan', () => {
     expect(PORTABLE).toContain('2026-10-27');

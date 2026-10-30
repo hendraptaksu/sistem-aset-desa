@@ -343,7 +343,15 @@ export const api = {
     req: {
       id: string;
       tanggalClose: string;
-      items: { kategori_baga: string; nominal: number }[];
+      items: {
+        kategori_baga: string;
+        nominal: number;
+        /** DB-18: detail nota per baris; kosong = perilaku legacy. */
+        nota_nomor?: string;
+        nota_tanggal?: string;
+        toko?: string;
+        keterangan?: string;
+      }[];
       konfirmasiKurang?: boolean;
       konfirmasiPeringatan?: boolean;
       /** AKT-08: alasan operator saat realisasi melebihi panjar. */

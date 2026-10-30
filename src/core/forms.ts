@@ -428,11 +428,103 @@ export function buatJurnalSaldoAwal(form: FormSaldoAwal): HasilSaldoAwal {
   return { input, totalAktiva, totalKewajiban, selisih, akunModal: AKUN_MODAL };
 }
 
+// DB-18: detail nota per baris panjar. Field opsional agar data/form lama tetap
+// sah; nilai kosong disimpan sebagai string kosong di `panjar_item`.
+export const MAKS_NOTA_NOMOR = 100;
+export const MAKS_NOTA_TOKO = 200;
+export const MAKS_NOTA_KETERANGAN = 500;
+
+export type NotaPanjarInput = {
+  nota_nomor?: unknown;
+  nota_tanggal?: unknown;
+  toko?: unknown;
+  keterangan?: unknown;
+};
+
+export type NotaPanjar = {
+  nota_nomor: string;
+  /** YYYY-MM-DD, atau '' bila tidak diisi (legacy). */
+  nota_tanggal: string;
+  toko: string;
+  keterangan: string;
+};
+
+export type HasilNormalisasiNota =
+  | { ok: true; nota: NotaPanjar }
+  | { ok: false; error: string };
+
+/**
+ * Normalisasi + validasi server-side field nota panjar (DB-18).
+ * Field yang tidak dikirim tetap boleh kosong (perilaku legacy). Bila tanggal
+ * nota diisi, bentuk kalender wajib valid dan tidak boleh setelah tanggal
+ * realisasi/close.
+ */
+export function normalisasiNotaPanjar(
+  nilai: NotaPanjarInput | null | undefined,
+  opts: { tanggalClose?: string; label?: string } = {},
+): HasilNormalisasiNota {
+  const label = opts.label ?? 'Rincian realisasi';
+  const baca = (
+    field: keyof NotaPanjarInput,
+    nama: string,
+    maks: number,
+  ): { ok: true; nilai: string } | { ok: false; error: string } => {
+    const mentah = nilai?.[field];
+    if (mentah === undefined || mentah === null) return { ok: true, nilai: '' };
+    if (typeof mentah !== 'string')
+      return { ok: false, error: `${label}: ${nama} tidak valid.` };
+    const teks = mentah.trim();
+    if (teks.length > maks)
+      return { ok: false, error: `${label}: ${nama} maks. ${maks} karakter.` };
+    return { ok: true, nilai: teks };
+  };
+
+  const nomor = baca('nota_nomor', 'nomor nota', MAKS_NOTA_NOMOR);
+  if (!nomor.ok) return nomor;
+  const tanggal = baca('nota_tanggal', 'tanggal nota', 10);
+  if (!tanggal.ok) return tanggal;
+  const toko = baca('toko', 'toko/penerima', MAKS_NOTA_TOKO);
+  if (!toko.ok) return toko;
+  const keterangan = baca('keterangan', 'keterangan', MAKS_NOTA_KETERANGAN);
+  if (!keterangan.ok) return keterangan;
+
+  if (tanggal.nilai) {
+    if (!tanggalKalenderValid(tanggal.nilai))
+      return {
+        ok: false,
+        error: `${label}: tanggal nota tidak valid (YYYY-MM-DD).`,
+      };
+    const tanggalClose = String(opts.tanggalClose ?? '').trim();
+    if (tanggalKalenderValid(tanggalClose) && tanggal.nilai > tanggalClose)
+      return {
+        ok: false,
+        error:
+          `${label}: tanggal nota (${tanggal.nilai}) tidak boleh setelah ` +
+          `tanggal realisasi (${tanggalClose}).`,
+      };
+  }
+
+  return {
+    ok: true,
+    nota: {
+      nota_nomor: nomor.nilai,
+      nota_tanggal: tanggal.nilai,
+      toko: toko.nilai,
+      keterangan: keterangan.nilai,
+    },
+  };
+}
+
 export type ItemPanjarClose = {
   /** Kode akun realisasi; wajib akun BEBAN (bukan kas/bank/1040). */
   akun: string;
   /** Nominal dalam sen; bilangan bulat > 0. */
   nominal: number;
+  /** DB-18: detail nota; opsional untuk data/form lama. */
+  nota_nomor?: string;
+  nota_tanggal?: string;
+  toko?: string;
+  keterangan?: string;
 };
 
 export type FormPanjarClose = {
@@ -491,6 +583,11 @@ export function buatJurnalPanjarClose(form: FormPanjarClose): HasilPanjarClose {
     const no = i + 1;
     if (!it || typeof it !== 'object')
       throw new Error(`Rincian realisasi baris ${no} tidak valid.`);
+    const nota = normalisasiNotaPanjar(it, {
+      tanggalClose: tanggal,
+      label: `Rincian realisasi baris ${no}`,
+    });
+    if (!nota.ok) throw new Error(nota.error);
     const data = akunCoa(String(it.akun ?? ''), `Akun realisasi baris ${no}`, form.daftarAkun);
     if (isAkunKasData(data))
       throw new Error(

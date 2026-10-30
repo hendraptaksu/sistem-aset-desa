@@ -709,3 +709,69 @@ describe('validasi legacy panjar', () => {
     expect(validatePanjarItems([{ kategori_baga: '5004', nominal: 100 }])).toEqual([]);
   });
 });
+
+describe('DB-18 — validasi bentuk close panjar dengan detail nota', () => {
+  it('meneruskan field nota yang valid dan mengizinkan field kosong (legacy)', () => {
+    const denganNota = validasiBentukPanjarClose({
+      id: 'p-1',
+      tanggalClose: '2026-03-01',
+      items: [
+        {
+          kategori_baga: '5004',
+          nominal: 100_000,
+          nota_nomor: 'N-001',
+          nota_tanggal: '2026-02-10',
+          toko: 'Toko A',
+          keterangan: 'konsumsi',
+        },
+      ],
+    });
+    expect(denganNota.ok).toBe(true);
+    if (denganNota.ok)
+      expect(denganNota.input.items[0]).toEqual({
+        kategori_baga: '5004',
+        nominal: 100_000,
+        nota_nomor: 'N-001',
+        nota_tanggal: '2026-02-10',
+        toko: 'Toko A',
+        keterangan: 'konsumsi',
+      });
+
+    const legacy = validasiBentukPanjarClose({
+      id: 'p-1',
+      tanggalClose: '2026-03-01',
+      items: [{ kategori_baga: '5004', nominal: 100_000 }],
+    });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok)
+      expect(legacy.input.items[0]).toMatchObject({
+        nota_nomor: '',
+        nota_tanggal: '',
+        toko: '',
+        keterangan: '',
+      });
+  });
+
+  it('menolak tanggal nota setelah tanggal close, tanggal salah, dan teks kepanjangan', () => {
+    const dasar = {
+      id: 'p-1',
+      tanggalClose: '2026-03-01',
+      items: [{ kategori_baga: '5004', nominal: 100_000 }],
+    };
+    const cases: [Record<string, unknown>, RegExp][] = [
+      [{ nota_tanggal: '2026-03-02' }, /tidak boleh setelah/i],
+      [{ nota_tanggal: '2026-02-31' }, /tanggal nota tidak valid/i],
+      [{ nota_nomor: 'x'.repeat(101) }, /nomor nota maks\. 100/i],
+      [{ toko: 'x'.repeat(201) }, /toko\/penerima maks\. 200/i],
+      [{ keterangan: 'x'.repeat(501) }, /keterangan maks\. 500/i],
+    ];
+    for (const [nota, pola] of cases) {
+      const hasil = validasiBentukPanjarClose({
+        ...dasar,
+        items: [{ ...dasar.items[0], ...nota }],
+      });
+      expect(hasil.ok, String(nota)).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toMatch(pola);
+    }
+  });
+});

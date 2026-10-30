@@ -412,6 +412,140 @@ describe('P1-4 — pertanggungjawaban panjar', () => {
   });
 });
 
+describe('DB-18 — detail nota per baris panjar', () => {
+  it('dua nota dengan akun sama menjadi dua panjar_item, jurnal close tetap agregat', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const hasil = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-03-01',
+        items: [
+          {
+            kategori_baga: '5004',
+            nominal: RP(300_000),
+            nota_nomor: 'N-001',
+            nota_tanggal: '2026-02-10',
+            toko: 'Toko A',
+            keterangan: 'konsumsi rapat 1',
+          },
+          {
+            kategori_baga: '5004',
+            nominal: RP(400_000),
+            nota_nomor: 'N-002',
+            nota_tanggal: '2026-02-11',
+            toko: 'Toko B',
+            keterangan: 'konsumsi rapat 2',
+          },
+        ],
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.totalRealisasi).toBe(RP(700_000));
+      expect(hasil.sisa).toBe(RP(300_000));
+
+      // Dua nota akun 5004 digabung menjadi SATU baris debit jurnal close.
+      expect(ringkasBaris(hasil.panjar!.jurnal_close_id!, db)).toEqual([
+        { akun: '5004', debit: RP(700_000), kredit: 0 },
+        { akun: '1001', debit: RP(300_000), kredit: 0 },
+        { akun: '1040', debit: 0, kredit: RP(1_000_000) },
+      ]);
+
+      const items = listPanjarItemsV2(db, 'p1');
+      expect(items).toHaveLength(2);
+      expect(items.map((i) => i.kategori_baga)).toEqual(['5004', '5004']);
+      expect(items[0]).toMatchObject({
+        nominal: RP(300_000),
+        nota_nomor: 'N-001',
+        nota_tanggal: '2026-02-10',
+        toko: 'Toko A',
+        keterangan: 'konsumsi rapat 1',
+        jurnal_id: hasil.panjar!.jurnal_close_id,
+      });
+      expect(items[1]).toMatchObject({
+        nominal: RP(400_000),
+        nota_nomor: 'N-002',
+        nota_tanggal: '2026-02-11',
+        toko: 'Toko B',
+        keterangan: 'konsumsi rapat 2',
+        jurnal_id: hasil.panjar!.jurnal_close_id,
+      });
+      expect(listPanjarV2(db, 'CLOSED')[0]).toMatchObject({
+        total_realisasi: RP(700_000),
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak tanggal nota tidak valid/melewati tanggal close dan field kepanjangan', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const jurnalSebelum = listJurnal(db).length;
+
+      for (const [nota, pola] of [
+        [{ nota_tanggal: '2026-03-02' }, /tidak boleh setelah/i],
+        [{ nota_tanggal: '2026-02-31' }, /tanggal nota tidak valid/i],
+        [{ toko: 'x'.repeat(201) }, /toko\/penerima maks\. 200/i],
+        [{ nota_nomor: 'x'.repeat(101) }, /nomor nota maks\. 100/i],
+        [{ keterangan: 'x'.repeat(501) }, /keterangan maks\. 500/i],
+      ] as const) {
+        const hasil = closePanjarV2(db, {
+          id: 'p1',
+          tanggalClose: '2026-03-01',
+          items: [
+            { kategori_baga: '5004', nominal: RP(100_000), ...nota },
+          ],
+        });
+        expect(hasil.tersimpan, String(nota)).toBe(false);
+        expect(hasil.errors.join(' ')).toMatch(pola);
+        expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
+      }
+
+      expect(listJurnal(db)).toHaveLength(jurnalSebelum);
+      expect(listPanjarItemsV2(db, 'p1')).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tanpa field nota tetap sah (legacy) dan tersimpan sebagai string kosong', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const hasil = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-03-01',
+        items: [{ kategori_baga: '5004', nominal: RP(500_000) }],
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(listPanjarItemsV2(db, 'p1')[0]).toMatchObject({
+        nota_nomor: '',
+        nota_tanggal: '',
+        toko: '',
+        keterangan: '',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('form close menampilkan input nomor/tanggal nota, toko, dan keterangan', () => {
+    const html = renderToStaticMarkup(createElement(PanjarTab));
+    for (const label of [
+      'Nomor nota',
+      'Tanggal nota',
+      'Toko / penerima nota',
+      'Akun beban',
+      'Nominal (Rp)',
+      'Keterangan baris (opsional)',
+      '+ Tambah baris nota',
+    ]) {
+      expect(html, label).toContain(label);
+    }
+  });
+});
+
 describe('P1-4 — builder murni buatJurnalPanjarClose', () => {
   it('menyusun pas, sisa, dan kurang dengan total seimbang', () => {
     const dasar = {

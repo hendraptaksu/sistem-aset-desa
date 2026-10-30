@@ -65,8 +65,11 @@ import {
  *          `akun.sumber` (BAWAAN/TAMBAHAN). Migrasi aditif + backfill idempoten
  *          dari COA statis; akun di luar COA menjadi TAMBAHAN. Tabel tidak
  *          direbuild. Upsert COA saat `openDb` hanya memperbarui baris BAWAAN.
+ * - 17   = detail nota panjar (DB-18): kolom aditif `panjar_item.nota_nomor`,
+ *          `nota_tanggal`, `toko`, `keterangan` (default ''). Baris lama tetap
+ *          sah dengan nilai kosong; jurnal close tetap agregat per akun.
  */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -188,6 +191,11 @@ CREATE TABLE IF NOT EXISTS panjar_item (
   kategori_baga TEXT NOT NULL,
   nominal INTEGER NOT NULL CHECK (nominal > 0),
   jurnal_id TEXT NOT NULL,
+  -- DB-18: detail nota per baris; kosong untuk baris legacy/form lama.
+  nota_nomor TEXT NOT NULL DEFAULT '',
+  nota_tanggal TEXT NOT NULL DEFAULT '',
+  toko TEXT NOT NULL DEFAULT '',
+  keterangan TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (panjar_id) REFERENCES panjar(id) ON DELETE CASCADE,
   FOREIGN KEY (kategori_baga) REFERENCES akun(kode),
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
@@ -644,6 +652,26 @@ function terapkanMigrasiV16(db: Database.Database): void {
 }
 
 /**
+ * DB-18 — detail nota panjar v17 (aditif, tanpa rebuild tabel).
+ *
+ * Empat kolom baru ditambahkan bila belum ada. Baris `panjar_item` lama
+ * otomatis mendapat default '' sehingga tidak ada data yang hilang/diubah.
+ * Idempoten: kolom diperiksa dari `table_info`, dan tidak ada DROP/REBUILD.
+ * Dijalankan di dalam transaksi `migrasi()`.
+ */
+function terapkanMigrasiV17(db: Database.Database): void {
+  const kolom = new Set(kolomTabel(db, 'panjar_item'));
+  if (!kolom.has('nota_nomor'))
+    db.exec("ALTER TABLE panjar_item ADD COLUMN nota_nomor TEXT NOT NULL DEFAULT ''");
+  if (!kolom.has('nota_tanggal'))
+    db.exec("ALTER TABLE panjar_item ADD COLUMN nota_tanggal TEXT NOT NULL DEFAULT ''");
+  if (!kolom.has('toko'))
+    db.exec("ALTER TABLE panjar_item ADD COLUMN toko TEXT NOT NULL DEFAULT ''");
+  if (!kolom.has('keterangan'))
+    db.exec("ALTER TABLE panjar_item ADD COLUMN keterangan TEXT NOT NULL DEFAULT ''");
+}
+
+/**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
  * `user_version` lebih besar tidak boleh disentuh sama sekali.
@@ -667,6 +695,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v14 (unique reversal + trigger validasi jurnal).
  * - Menerapkan migrasi v15 (unique nama akun + trigger validasi akun).
  * - Menerapkan migrasi v16 (metadata is_kas/kelompok/sumber + backfill).
+ * - Menerapkan migrasi v17 (detail nota panjar, aditif).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -689,6 +718,7 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV14(db);
     terapkanMigrasiV15(db);
     terapkanMigrasiV16(db);
+    terapkanMigrasiV17(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

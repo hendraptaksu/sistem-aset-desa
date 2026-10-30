@@ -5,7 +5,7 @@
 // - UPDATE/DELETE audit ditolak; DELETE tutup buku ditolak.
 // - Tutup ulang (`ON CONFLICT(tahun) DO UPDATE`) tetap berfungsi, dan UPDATE
 //   langsung ke `tutup_buku` tidak diblokir.
-// - DB v9/v10 lama yang dibuka aplikasi saat ini (v16) ikut mendapat trigger; migrasi
+// - DB v9/v10 lama yang dibuka aplikasi saat ini (v17) ikut mendapat trigger; migrasi
 //   idempoten saat dijalankan/dibuka ulang.
 // - Backup v9/v10 tetap bisa direstore dan trigger terpasang setelah migrasi.
 
@@ -95,13 +95,13 @@ function buatFixtureLama(path: string, versiLama: 9 | 10): void {
 }
 
 describe('AKT-26 — trigger v11 pada DB baru', () => {
-  it('membuat trigger audit/tutup buku, versi v16, dan idempoten', () => {
+  it('membuat trigger audit/tutup buku, versi v17, dan idempoten', () => {
     const path = join(tmpDir('pura-v11-baru-'), 'pura.db');
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(16);
-      expect(versi(db)).toBe(16);
+      expect(SCHEMA_VERSION).toBe(17);
+      expect(versi(db)).toBe(17);
 
       const trigger = daftarTriggerV11(db);
       expect(trigger.map((t) => t.name)).toEqual([...TRIGGER_V11]);
@@ -123,8 +123,8 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
       ).toEqual({ n: 7 });
 
       // Migrasi dijalankan dua kali: trigger dibuat ulang, tidak dobel.
-      expect(migrasi(db)).toBe(16);
-      expect(migrasi(db)).toBe(16);
+      expect(migrasi(db)).toBe(17);
+      expect(migrasi(db)).toBe(17);
       expect(daftarTriggerV11(db).map((t) => t.name)).toEqual([...TRIGGER_V11]);
     } finally {
       db.close();
@@ -132,7 +132,7 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
 
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(16);
+      expect(versi(db2)).toBe(17);
       expect(daftarTriggerV11(db2).map((t) => t.name)).toEqual([...TRIGGER_V11]);
     } finally {
       db2.close();
@@ -181,7 +181,7 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
   });
 });
 
-describe('AKT-26 — migrasi DB v9/v10 → v16', () => {
+describe('AKT-26 — migrasi DB v9/v10 → v17', () => {
   for (const versiLama of [9, 10] as const) {
     it(`membuka DB v${versiLama} lama: trigger terpasang, data utuh, idempoten`, () => {
       const path = join(tmpDir(`pura-v11-dari-v${versiLama}-`), 'pura.db');
@@ -189,7 +189,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v16', () => {
 
       const db = openDb(path);
       try {
-        expect(versi(db)).toBe(16);
+        expect(versi(db)).toBe(17);
         expect(daftarTriggerV11(db).map((t) => t.name)).toEqual([...TRIGGER_V11]);
 
         // Data lama tidak berubah.
@@ -211,7 +211,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v16', () => {
         );
 
         // Migrasi kedua pada DB yang sama tidak menggandakan trigger.
-        expect(migrasi(db)).toBe(16);
+        expect(migrasi(db)).toBe(17);
         expect(daftarTriggerV11(db).map((t) => t.name)).toEqual([...TRIGGER_V11]);
         expect(listAuditLog(db)).toHaveLength(1);
         expect(listTutupBuku(db)).toHaveLength(1);
@@ -222,14 +222,14 @@ describe('AKT-26 — migrasi DB v9/v10 → v16', () => {
       // Buka ulang juga idempoten.
       const db2 = openDb(path);
       try {
-        expect(versi(db2)).toBe(16);
+        expect(versi(db2)).toBe(17);
         expect(daftarTriggerV11(db2).map((t) => t.name)).toEqual([...TRIGGER_V11]);
       } finally {
         db2.close();
       }
     });
 
-    it(`merestore backup v${versiLama} ke v16 dan memasang trigger`, () => {
+    it(`merestore backup v${versiLama} ke v17 dan memasang trigger`, () => {
       const dir = tmpDir(`pura-v11-restore-v${versiLama}-`);
       const backupPath = join(dir, `backup-v${versiLama}.db`);
       buatFixtureLama(backupPath, versiLama);
@@ -250,7 +250,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v16', () => {
         if (!hasil.ok) throw new Error(hasil.error);
         aktif = hasil.db;
 
-        expect(versi(aktif)).toBe(16);
+        expect(versi(aktif)).toBe(17);
         expect(daftarTriggerV11(aktif).map((t) => t.name)).toEqual([...TRIGGER_V11]);
         expect(listAuditLog(aktif).map((a) => a.id)).toEqual(['audit-lama']);
         expect(listTutupBuku(aktif).map((t) => t.tahun)).toEqual([2025]);

@@ -1,6 +1,7 @@
 // Validasi input murni (tanpa Electron/DB) — di-test di tests/ipc-validation.test.ts.
 
 import { isBeban, type CoaTipe } from '../db/coa.js';
+import { normalisasiNotaPanjar } from '../core/forms.js';
 import {
   JENIS_JURNAL,
   tanggalKalenderValid,
@@ -50,7 +51,15 @@ export type BentukPanjarSerah = {
 export type BentukPanjarClose = {
   id: string;
   tanggalClose: string;
-  items: { kategori_baga: string; nominal: number }[];
+  items: {
+    kategori_baga: string;
+    nominal: number;
+    /** DB-18: detail nota opsional; legacy boleh kosong. */
+    nota_nomor?: string;
+    nota_tanggal?: string;
+    toko?: string;
+    keterangan?: string;
+  }[];
 };
 
 type HasilBentuk<T> = { ok: true; input: T } | { ok: false; error: string };
@@ -141,7 +150,14 @@ export function validasiBentukPanjarClose(
   if (nilai.items.length > 500)
     return { ok: false, error: 'Rincian realisasi panjar maksimal 500 baris.' };
 
-  const items: { kategori_baga: string; nominal: number }[] = [];
+  const items: {
+    kategori_baga: string;
+    nominal: number;
+    nota_nomor: string;
+    nota_tanggal: string;
+    toko: string;
+    keterangan: string;
+  }[] = [];
   for (let i = 0; i < nilai.items.length; i += 1) {
     const it = nilai.items[i];
     if (!objek(it))
@@ -160,7 +176,14 @@ export function validasiBentukPanjarClose(
         ok: false,
         error: `Baris ${i + 1}: nominal harus bilangan bulat lebih dari 0.`,
       };
-    items.push({ kategori_baga: akun.nilai, nominal });
+    // DB-18: field nota opsional, tetapi bila dikirim wajib aman dan tanggal
+    // nota tidak boleh melewati tanggal realisasi.
+    const nota = normalisasiNotaPanjar(it, {
+      tanggalClose: tanggalClose.nilai,
+      label: `Baris ${i + 1}`,
+    });
+    if (!nota.ok) return nota;
+    items.push({ kategori_baga: akun.nilai, nominal, ...nota.nota });
   }
 
   return { ok: true, input: { id: id.nilai, tanggalClose: tanggalClose.nilai, items } };

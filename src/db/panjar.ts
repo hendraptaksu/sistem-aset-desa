@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3';
 import {
   buatJurnalPanjarClose,
   buatJurnalPanjarSerah,
+  normalisasiNotaPanjar,
   type HasilPanjarClose,
   type ItemPanjarClose,
 } from '../core/forms.js';
@@ -55,6 +56,11 @@ export type ItemCloseInput = {
   akun?: string;
   kategori_baga?: string;
   nominal: number;
+  /** DB-18: detail nota opsional; kosong = perilaku legacy. */
+  nota_nomor?: string;
+  nota_tanggal?: string;
+  toko?: string;
+  keterangan?: string;
 };
 
 export type ClosePanjarInput = {
@@ -261,7 +267,12 @@ export function closePanjarV2(
       return gagal(`Rincian realisasi baris ${i + 1}: akun BEBAN belum dipilih.`);
     if (typeof nominal !== 'number' || !Number.isSafeInteger(nominal) || nominal <= 0)
       return gagal(`Rincian realisasi baris ${i + 1}: nominal harus bilangan bulat > 0.`);
-    items.push({ akun, nominal });
+    const nota = normalisasiNotaPanjar(it, {
+      tanggalClose,
+      label: `Rincian realisasi baris ${i + 1}`,
+    });
+    if (!nota.ok) return gagal(nota.error);
+    items.push({ akun, nominal, ...nota.nota });
   }
 
   let rencana: HasilPanjarClose;
@@ -341,6 +352,10 @@ export function closePanjarV2(
         kategori_baga: it.akun,
         nominal: it.nominal,
         jurnal_id: jurnalId,
+        nota_nomor: it.nota_nomor ?? '',
+        nota_tanggal: it.nota_tanggal ?? '',
+        toko: it.toko ?? '',
+        keterangan: it.keterangan ?? '',
       })),
       jurnal: rencana.input.header,
       baris: rencana.input.baris,
@@ -386,10 +401,22 @@ export function closePanjarV2(
         throw new Error('Panjar sudah ditutup oleh proses lain. Muat ulang daftar panjar.');
 
       const ins = db.prepare(
-        `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO panjar_item
+           (panjar_id, kategori_baga, nominal, jurnal_id,
+            nota_nomor, nota_tanggal, toko, keterangan)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       );
-      for (const it of items) ins.run(id, it.akun, it.nominal, jurnalId);
+      for (const it of items)
+        ins.run(
+          id,
+          it.akun,
+          it.nominal,
+          jurnalId,
+          it.nota_nomor ?? '',
+          it.nota_tanggal ?? '',
+          it.toko ?? '',
+          it.keterangan ?? '',
+        );
 
       return {
         ...hasil,
@@ -450,7 +477,8 @@ export function listPanjarItemsV2(
 ): PanjarItem[] {
   const rows = db
     .prepare(
-      `SELECT id, panjar_id, kategori_baga, nominal, jurnal_id
+      `SELECT id, panjar_id, kategori_baga, nominal, jurnal_id,
+              nota_nomor, nota_tanggal, toko, keterangan
        FROM panjar_item WHERE panjar_id = ? ORDER BY id`,
     )
     .all(panjarId) as RowPanjar[];
@@ -460,5 +488,9 @@ export function listPanjarItemsV2(
     kategori_baga: String(r.kategori_baga),
     nominal: Number(r.nominal),
     jurnal_id: String(r.jurnal_id),
+    nota_nomor: String(r.nota_nomor ?? ''),
+    nota_tanggal: String(r.nota_tanggal ?? ''),
+    toko: String(r.toko ?? ''),
+    keterangan: String(r.keterangan ?? ''),
   }));
 }

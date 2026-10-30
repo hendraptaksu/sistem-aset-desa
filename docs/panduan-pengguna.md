@@ -130,9 +130,19 @@ pertanggungjawabannya.
    sumber, tanggal, dan keterangan. Simpan. Jurnalnya: `1040 UANG PANJAR` di
    debit, kas di kredit.
 2. Setelah kegiatan selesai, pilih panjar tersebut → **Pertanggungjawaban**.
-3. Isi rincian belanja per akun beban. Bila ada sisa uang, isi pengembalian ke
-   kas. Bila kurang, sistem meminta konfirmasi dengan alasan minimal 5 karakter.
-4. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
+3. Isi rincian belanja **per nota**: nomor nota, tanggal nota, toko/penerima,
+   akun beban, nominal, dan keterangan baris. Gunakan **+ Tambah baris nota**
+   bila satu pertanggungjawaban memuat beberapa nota. Dua nota dengan akun beban
+   yang sama tetap disimpan sebagai dua baris rincian; jurnal close tetap
+   menggabungkan debit per akun agar tidak ada baris jurnal ganda. Detail nota
+   bisa dibuka lewat **Lihat rincian** di daftar panjar.
+4. Nomor nota maksimal 100 karakter, toko/penerima maksimal 200 karakter, dan
+   keterangan baris maksimal 500 karakter. Tanggal nota tidak boleh setelah
+   tanggal realisasi. Bila nota fisik tidak ada, field nota boleh dikosongkan
+   (perilaku lama tetap sah).
+5. Bila ada sisa uang, isi pengembalian ke kas. Bila kurang, sistem meminta
+   konfirmasi dengan alasan minimal 5 karakter.
+6. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
    panjar dipertanggungjawabkan.
 
 **Penting — koreksi panjar:** jurnal serah maupun pertanggungjawaban panjar

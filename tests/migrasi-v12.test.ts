@@ -3,7 +3,7 @@
 // Fokus:
 // - DB v11 berisi data di semua tabel yang disetujui tetap terbuka, dibuatkan
 //   backup pra-upgrade, tabel legacy dibuang, dan tabel akuntansi utuh.
-// - DB baru langsung v16 tanpa tabel legacy.
+// - DB baru langsung v17 tanpa tabel legacy.
 // - DB versi lebih baru ditolak SEBELUM DDL dan tidak diubah.
 // - Backup v11/v14 tetap bisa direstore; backup v14 diterima.
 // - Migrasi idempoten dan backup dibuat untuk setiap kenaikan versi.
@@ -273,7 +273,7 @@ function buatFixtureV11(path: string): void {
   }
 }
 
-describe('DB-33 — migrasi v11 → v16', () => {
+describe('DB-33 — migrasi v11 → v17', () => {
   it('membuat backup, membuang tabel legacy, dan mempertahankan tabel akuntansi', () => {
     const dir = tmpDir('pura-v12-migrasi-');
     const path = join(dir, 'pura.db');
@@ -300,8 +300,8 @@ describe('DB-33 — migrasi v11 → v16', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(16);
-      expect(versi(db)).toBe(16);
+      expect(SCHEMA_VERSION).toBe(17);
+      expect(versi(db)).toBe(17);
       const tabel = daftarTabel(db);
       for (const wajib of TABEL_INTI) expect(tabel).toContain(wajib);
       for (const lama of TABEL_DIHAPUS_V12) {
@@ -357,12 +357,12 @@ describe('DB-33 — migrasi v11 → v16', () => {
       db.close();
     }
 
-    // Migrasi dijalankan ulang dan DB dibuka ulang: tetap v16, tanpa tabel legacy.
+    // Migrasi dijalankan ulang dan DB dibuka ulang: tetap v17, tanpa tabel legacy.
     const db2 = openDb(path);
     try {
-      expect(migrasi(db2)).toBe(16);
-      expect(migrasi(db2)).toBe(16);
-      expect(versi(db2)).toBe(16);
+      expect(migrasi(db2)).toBe(17);
+      expect(migrasi(db2)).toBe(17);
+      expect(versi(db2)).toBe(17);
       const tabel = daftarTabel(db2);
       for (const lama of TABEL_DIHAPUS_V12) expect(tabel).not.toContain(lama);
       expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v11']);
@@ -374,10 +374,10 @@ describe('DB-33 — migrasi v11 → v16', () => {
     expect(validasiKandidatRestore(backup)).toEqual({ valid: true });
   });
 
-  it('DB baru langsung v16 tanpa tabel legacy dan lolos audit', () => {
+  it('DB baru langsung v17 tanpa tabel legacy dan lolos audit', () => {
     const db = openDb(':memory:');
     try {
-      expect(versi(db)).toBe(16);
+      expect(versi(db)).toBe(17);
       const tabel = daftarTabel(db);
       for (const wajib of TABEL_INTI) expect(tabel).toContain(wajib);
       for (const lama of TABEL_DIHAPUS_V12) {

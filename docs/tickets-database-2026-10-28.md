@@ -99,7 +99,7 @@
 | DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [ ] |
 | DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
 | DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
-| DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [ ] |
+| DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [x] |
 | DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [ ] |
 | DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [ ] |
 | DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [ ] |
@@ -872,7 +872,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     bersih; `npm test` **805 test/65 file hijau** (baseline 795/64);
     `npm run build` berhasil.
 
-- [ ] **DB-18 — Panjar: field nota di `panjar_item` + form** · P1 · M
+- [x] **DB-18 — Panjar: field nota di `panjar_item` + form** · P1 · M
   - **Konteks:** user butuh rincian per nota; `panjar_item` sekarang hanya
     menyimpan akun beban/nominal/jurnal_id. `buatJurnalPanjarClose` juga
     menggabungkan item per akun, sehingga detail nota hilang.
@@ -894,6 +894,32 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `panjar_item`; jurnal close tetap seimbang; UI menampilkan detail nota.
   - **Test:** `tests/panjar.test.ts` + test migrasi.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-31:** `SCHEMA_VERSION` 16 → 17. Migrasi v17 aditif dan
+    idempoten menambah `panjar_item.nota_nomor`, `nota_tanggal`, `toko`, dan
+    `keterangan` (semua `TEXT NOT NULL DEFAULT ''`) lewat `ALTER TABLE` bila
+    kolom belum ada, tanpa rebuild/drop. Baris `panjar_item` lama otomatis
+    mendapat string kosong. DDL dasar juga memuat empat kolom tersebut.
+    `ItemPanjarClose`, `ItemCloseInput`, `BentukPanjarClose`, tipe API
+    renderer, `PanjarItem`, dan `listPanjarItemsV2` membawa field nota;
+    validasi server-side (helper `normalisasiNotaPanjar`) menolak tanggal nota
+    tidak valid atau setelah tanggal close, serta nomor nota >100, toko >200,
+    dan keterangan >500 karakter. Field nota kosong tetap sah untuk data/form
+    legacy. Form pertanggungjawaban `PanjarTab` kini punya input nomor nota,
+    tanggal nota, toko/penerima, akun beban, nominal, dan keterangan per baris
+    dengan tambah/hapus baris; rincian di daftar menampilkan detail nota. Dua
+    nota dengan akun sama disimpan sebagai dua baris `panjar_item`, sedangkan
+    `buatJurnalPanjarClose` tetap menggabungkan debit per akun sehingga jurnal
+    close tidak memiliki baris ganda. `docs/panduan-pengguna.md` bagian panjar
+    diperbarui. Test baru/penyesuaian: `tests/migrasi-v17.test.ts` (2) untuk
+    migrasi v16→v17 + default kosong + idempoten, `tests/panjar.test.ts`
+    (2 nota akun sama → 2 item + jurnal agregat; tanggal nota setelah close,
+    tanggal salah, dan panjang teks ditolak tanpa menulis apa pun; legacy tanpa
+    field nota; form UI), `tests/ipc-validation.test.ts` (validasi bentuk close
+    dengan detail nota), `tests/dokumentasi.test.ts`, serta ekspektasi
+    `SCHEMA_VERSION` di seluruh test migrasi dan penjaga `kolomTabel` DB-06.
+    Tidak menyentuh `data/`, jurnal, backup, atau tabel lain; tidak commit.
+    `npm run typecheck` bersih; `npm test` **814 test/66 file hijau**
+    (baseline 805/65); `npm run build` berhasil.
   - **Dependency:** —
 
 - [ ] **DB-19 — Panjar: validasi item vs jurnal close** · P1 · M

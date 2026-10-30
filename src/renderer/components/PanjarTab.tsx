@@ -50,7 +50,37 @@ import {
   pesanError,
 } from '../../utils/pesanError.js';
 
-type ItemRow = { kategori_baga: string; nominal: number };
+type ItemRow = {
+  kategori_baga: string;
+  nominal: number;
+  nota_nomor: string;
+  nota_tanggal: string;
+  toko: string;
+  keterangan: string;
+};
+
+function barisItemBaru(notaTanggal = ''): ItemRow {
+  return {
+    kategori_baga: '5004',
+    nominal: 0,
+    nota_nomor: '',
+    nota_tanggal: notaTanggal,
+    toko: '',
+    keterangan: '',
+  };
+}
+
+/** Bentuk item yang dikirim ke IPC; detail nota kosong tetap boleh (legacy). */
+function itemKeInput(it: ItemRow) {
+  return {
+    kategori_baga: it.kategori_baga,
+    nominal: it.nominal,
+    nota_nomor: it.nota_nomor.trim(),
+    nota_tanggal: it.nota_tanggal.trim(),
+    toko: it.toko.trim(),
+    keterangan: it.keterangan.trim(),
+  };
+}
 
 type Pratinjau = {
   input: JurnalInput | null;
@@ -133,7 +163,7 @@ export function PanjarTab() {
   // Form pertanggungjawaban
   const [closeId, setCloseId] = useState('');
   const [tanggalClose, setTanggalClose] = useState(tanggalLokal());
-  const [items, setItems] = useState<ItemRow[]>([{ kategori_baga: '5004', nominal: 0 }]);
+  const [items, setItems] = useState<ItemRow[]>([barisItemBaru()]);
   const [busyClose, setBusyClose] = useState(false);
   const busyCloseRef = useRef(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
@@ -238,7 +268,14 @@ export function PanjarTab() {
           penerima: closeTarget.penerima,
           akunKas: closeTarget.akun_kas_sumber,
           jumlahPanjar: closeTarget.jumlah,
-          items: items.map((it) => ({ akun: it.kategori_baga, nominal: it.nominal })),
+          items: items.map((it) => ({
+            akun: it.kategori_baga,
+            nominal: it.nominal,
+            nota_nomor: it.nota_nomor.trim(),
+            nota_tanggal: it.nota_tanggal.trim(),
+            toko: it.toko.trim(),
+            keterangan: it.keterangan.trim(),
+          })),
           keterangan: `Pertanggungjawaban panjar ${closeTarget.penerima}`,
           daftarAkun: coa,
         }),
@@ -405,7 +442,7 @@ export function PanjarTab() {
         {
           id: closeTarget.id,
           tanggalClose,
-          items,
+          items: items.map(itemKeInput),
           konfirmasiKurang: opsi.konfirmasiKurang === true,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
           ...(konfirmasi
@@ -422,7 +459,7 @@ export function PanjarTab() {
       setPesanKonfirmasi(null);
       setErrorKonfirmasi(null);
       setCloseId('');
-      setItems([{ kategori_baga: '5004', nominal: 0 }]);
+      setItems([barisItemBaru()]);
       setDetailId('');
       setDetailItems({});
       setCloseDirty(false);
@@ -456,7 +493,7 @@ export function PanjarTab() {
   function pilihUntukClose(p: Panjar) {
     setCloseId(p.id);
     setTanggalClose(tanggalLokal() < p.tanggal ? p.tanggal : tanggalLokal());
-    setItems([{ kategori_baga: '5004', nominal: 0 }]);
+    setItems([barisItemBaru()]);
     setPesanKonfirmasi(null);
     setErrorKonfirmasi(null);
     setErrClose(null);
@@ -471,6 +508,11 @@ export function PanjarTab() {
         block: 'start',
       });
     }
+  }
+
+  function ubahItem(i: number, patch: Partial<ItemRow>): void {
+    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    setCloseDirty(true);
   }
 
   async function toggleDetail(id: string) {
@@ -753,60 +795,89 @@ export function PanjarTab() {
           </div>
         )}
 
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-3">
           {items.map((it, i) => (
-            <div key={i} className="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_180px_auto]">
-              <Field label={i === 0 ? 'Jenis belanja (baga)' : ''}>
-                <Select
-                  value={it.kategori_baga}
-                  disabled={busyClose}
-                  onChange={(e) => {
-                    const nilai = e.target.value;
-                    setItems((xs) =>
-                      xs.map((x, j) =>
-                        j === i ? { ...x, kategori_baga: nilai } : x,
-                      ),
-                    );
+            <div
+              key={i}
+              className="rounded-xl border border-stone-200 bg-stone-50 p-3"
+            >
+              <div className="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_150px_1fr_auto]">
+                <Field label="Nomor nota">
+                  <TextInput
+                    value={it.nota_nomor}
+                    disabled={busyClose}
+                    placeholder="cth: 001/NOTA/2026"
+                    onChange={(e) => ubahItem(i, { nota_nomor: e.target.value })}
+                  />
+                </Field>
+                <Field label="Tanggal nota">
+                  <TextInput
+                    type="date"
+                    value={it.nota_tanggal}
+                    max={tanggalClose || undefined}
+                    disabled={busyClose}
+                    onChange={(e) => ubahItem(i, { nota_tanggal: e.target.value })}
+                  />
+                </Field>
+                <Field label="Toko / penerima nota">
+                  <TextInput
+                    value={it.toko}
+                    disabled={busyClose}
+                    placeholder="cth: Toko Bangunan Jaya"
+                    onChange={(e) => ubahItem(i, { toko: e.target.value })}
+                  />
+                </Field>
+                <Button
+                  variant="ghost"
+                  disabled={busyClose || items.length === 1}
+                  onClick={() => {
+                    setItems((xs) => xs.filter((_, j) => j !== i));
                     setCloseDirty(true);
                   }}
                 >
-                  {bagaList.map((b) => (
-                    <option key={b.kode} value={b.kode}>
-                      {b.kode} — {b.nama}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label={i === 0 ? 'Nominal (Rp)' : ''}>
-                <CurrencyInput
-                  value={it.nominal}
-                  onChange={(n) => {
-                    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, nominal: n } : x)));
-                    setCloseDirty(true);
-                  }}
-                />
-              </Field>
-              <Button
-                variant="ghost"
-                disabled={busyClose || items.length === 1}
-                onClick={() => {
-                  setItems((xs) => xs.filter((_, j) => j !== i));
-                  setCloseDirty(true);
-                }}
-              >
-                ✕
-              </Button>
+                  Hapus
+                </Button>
+              </div>
+              <div className="mt-2 grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_180px_1fr]">
+                <Field label="Akun beban">
+                  <Select
+                    value={it.kategori_baga}
+                    disabled={busyClose}
+                    onChange={(e) => ubahItem(i, { kategori_baga: e.target.value })}
+                  >
+                    {bagaList.map((b) => (
+                      <option key={b.kode} value={b.kode}>
+                        {b.kode} — {b.nama}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Nominal (Rp)">
+                  <CurrencyInput
+                    value={it.nominal}
+                    onChange={(n) => ubahItem(i, { nominal: n })}
+                  />
+                </Field>
+                <Field label="Keterangan baris (opsional)">
+                  <TextInput
+                    value={it.keterangan}
+                    disabled={busyClose}
+                    placeholder="cth: beli bahan bangunan"
+                    onChange={(e) => ubahItem(i, { keterangan: e.target.value })}
+                  />
+                </Field>
+              </div>
             </div>
           ))}
           <Button
             variant="ghost"
             disabled={busyClose}
             onClick={() => {
-              setItems((xs) => [...xs, { kategori_baga: '5004', nominal: 0 }]);
+              setItems((xs) => [...xs, barisItemBaru(tanggalClose)]);
               setCloseDirty(true);
             }}
           >
-            + Tambah baris belanja
+            + Tambah baris nota
           </Button>
         </div>
 
@@ -984,18 +1055,28 @@ export function PanjarTab() {
                             <table className="w-full text-left text-sm">
                               <thead>
                                 <tr className="text-stone-500">
+                                  <th className="py-1 pr-3">No. nota</th>
+                                  <th className="py-1 pr-3">Tgl nota</th>
+                                  <th className="py-1 pr-3">Toko / penerima</th>
                                   <th className="py-1 pr-3">Jenis belanja</th>
                                   <th className="py-1 pr-3 text-right">Nominal</th>
+                                  <th className="py-1 pr-3">Keterangan</th>
                                   <th className="py-1">Jurnal</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {detailItems[p.id]!.map((it) => (
                                   <tr key={it.id ?? `${it.kategori_baga}-${it.nominal}`}>
+                                    <td className="py-1 pr-3">{it.nota_nomor || '—'}</td>
+                                    <td className="py-1 pr-3 whitespace-nowrap">
+                                      {it.nota_tanggal ? formatTanggal(it.nota_tanggal) : '—'}
+                                    </td>
+                                    <td className="py-1 pr-3">{it.toko || '—'}</td>
                                     <td className="py-1 pr-3">{labelAkun(it.kategori_baga)}</td>
                                     <td className="py-1 pr-3 text-right">
                                       {formatRp(it.nominal)}
                                     </td>
+                                    <td className="py-1 pr-3">{it.keterangan || '—'}</td>
                                     <td className="py-1 text-xs text-stone-500">
                                       {it.jurnal_id ?? '—'}
                                     </td>
