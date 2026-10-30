@@ -740,6 +740,18 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
     expect(html).not.toContain('Piutang/Hutang');
   });
 
+  it('menonaktifkan simpan dan menampilkan peringatan bila akun Dari = Ke', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/TransaksiForm.tsx'),
+      'utf8',
+    );
+    // Guard UI: formSah mensyaratkan dua dompet berbeda, tombol simpan memakai
+    // formSah, dan pesan kesalahan ditampilkan di bawah pilihan Ke.
+    expect(sumber).toContain('akunKas !== akunKe');
+    expect(sumber).toContain('disabled={busy || memuat || !formSah}');
+    expect(sumber).toContain('Akun Dari dan Ke harus berbeda');
+  });
+
   it('merender form Pindah Dana dengan label Dari/Ke dan penjelasan total kas', () => {
     const html = renderToStaticMarkup(
       createElement(FormTransaksiTerpandu, {

@@ -214,6 +214,18 @@ describe('AKT-27 — dokumentasi akun legacy, tutup buku, dan reversal', () => {
   });
 });
 
+describe('DB-17 — panduan Pindah Dana', () => {
+  it('menyebut menu Transaksi → Pindah Dana, contoh nyata, dan bukan pendapatan/beban', () => {
+    expect(PENGGUNA).toContain('**Transaksi** → pilih kartu **Pindah Dana**');
+    expect(PENGGUNA).toContain('1014 — LPD 12.005150/DL/2020');
+    expect(PENGGUNA).toContain('1001 KAS');
+    expect(PENGGUNA).toMatch(/bukan pendapatan dan bukan beban/i);
+    expect(PENGGUNA).toMatch(/total kas tetap/i);
+    // Contoh harus tetap menegaskan arah jurnal: tujuan di debit, asal di kredit.
+    expect(PENGGUNA).toMatch(/\*\*debit = dompet tujuan\*\*, \*\*kredit = dompet asal\*\*/i);
+  });
+});
+
 describe('P2-8 — panduan portable', () => {
   it('menjelaskan installer vs portable dan peringatan dua salinan', () => {
     expect(PORTABLE).toContain('2026-10-27');

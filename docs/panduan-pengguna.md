@@ -80,13 +80,46 @@ akun tersebut untuk koreksi oleh akuntan pendamping.
 ### 2.3 Pindah Dana
 
 Dipakai untuk memindahkan uang antar dompet kas/bank, misalnya **LPD → Kas
-Bendahara**. Ini bukan pendapatan dan bukan beban.
+Bendahara**. Ini **bukan pendapatan dan bukan beban**: tidak ada akun 4xxx/5xxx
+yang dipakai, tidak masuk Laba Rugi, dan total kas seluruh dompet tidak
+berubah. Yang berubah hanya saldo masing-masing dompet.
 
-1. Buka **Transaksi** → **Pindah Dana**.
-2. Isi **Dari** (dompet asal), **Ke** (dompet tujuan), nominal, tanggal, dan
-   keterangan.
-3. Asal dan tujuan tidak boleh sama. Total kas tidak berubah, hanya pindah tempat.
-4. Periksa pratinjau lalu simpan.
+1. Buka **Transaksi** → pilih kartu **Pindah Dana**.
+2. Isi **Tanggal**, **Dari** (dompet asal), **Ke** (dompet tujuan), **Nominal**,
+   dan **Keterangan**.
+3. Asal dan tujuan harus dua dompet berbeda. Bila sama, tombol simpan tetap
+   nonaktif dan aplikasi menampilkan peringatan.
+4. Periksa pratinjau: **debit = dompet tujuan**, **kredit = dompet asal**.
+   Kedua sisi harus sama besar.
+5. Tekan **Simpan Pindah Dana**.
+
+**Contoh konkret.** Tanggal 31 Oktober 2026 Bendahara memindahkan Rp 250.000
+dari LPD `1014 LPD 12.005150/DL/2020` ke kas tunai `1001 KAS`.
+
+| Isian | Nilai |
+|---|---|
+| Tanggal | 2026-10-31 |
+| Dari | `1014 — LPD 12.005150/DL/2020` |
+| Ke | `1001 — KAS` |
+| Nominal | Rp 250.000 |
+| Keterangan | Pindah kas LPD ke Kas Bendahara |
+
+Pratinjau jurnal yang disimpan:
+
+| Akun | Debit | Kredit |
+|---|---:|---:|
+| `1001 KAS` (tujuan) | Rp 250.000 | — |
+| `1014 LPD 12.005150/DL/2020` (asal) | — | Rp 250.000 |
+| **Total** | **Rp 250.000** | **Rp 250.000** |
+
+Setelah disimpan: saldo `1014` berkurang Rp 250.000, saldo `1001` bertambah
+Rp 250.000, dan **total kas tetap**. Jurnal ini berjenis **Transfer** di daftar
+jurnal.
+
+**Dompet baru.** Rekening bank/LPD yang ditambahkan lewat **Daftar Akun**
+dengan penanda kas/bank (`is_kas = 1`) otomatis muncul di pilihan **Dari** dan
+**Ke** Pindah Dana. Akun yang dinonaktifkan tidak muncul di form baru, tetapi
+saldo historisnya tetap terbaca di laporan.
 
 ### 2.4 Panjar (uang muka kegiatan)
 

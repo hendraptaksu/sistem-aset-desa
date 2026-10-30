@@ -2,8 +2,8 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-31 (setelah DB-15):** `npm run typecheck` bersih;
-> `npm test` **795 test / 64 file hijau**; `npm run build` berhasil.
+> **Baseline terakhir 2026-10-31 (setelah DB-17):** `npm run typecheck` bersih;
+> `npm test` **805 test / 65 file hijau**; `npm run build` berhasil.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
 > relevan. Verifikasi ulang sebelum mulai.
@@ -98,7 +98,7 @@
 | DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [ ] |
 | DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [ ] |
 | DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
-| DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [ ] |
+| DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
 | DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [ ] |
 | DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [ ] |
 | DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [ ] |
@@ -837,7 +837,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Verifikasi:** typecheck + test.
   - **Dependency:** DB-16b, DB-16d.
 
-- [ ] **DB-17 — Verifikasi & dokumentasi Pindah Dana** · P1 · S
+- [x] **DB-17 — Verifikasi & dokumentasi Pindah Dana** · P1 · S
   - **Konteks:** “Transaksi antar Kas/bank” sudah ada sebagai form Pindah Dana
     (`TRANSFER`), tetapi client mungkin belum menemukannya.
   - **Langkah:**
@@ -850,6 +850,27 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     Pindah Dana.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-14.
+  - **Bukti 2026-10-31:** Audit alur Pindah Dana (`TransaksiForm` kartu
+    Pindah Dana, `buatJurnalPindahDana`, dan posting layer) tidak menemukan bug
+    DB-17. Dropdown Dari/Ke memakai `coa:list` dari master `akun` dengan
+    `isAkunKasData()` + `aktif !== false`, bukan `KAS_KODES` statis; builder dan
+    `validasiJurnal` menolak asal = tujuan; nominal wajib bilangan bulat > 0;
+    jurnal tersimpan selalu D tujuan / K asal dan seimbang. Posting layer juga
+    menolak akun nonaktif dan pasangan kas kurang dari dua akun berbeda.
+    Tidak ada perubahan kode produksi atau skema (`SCHEMA_VERSION` tetap 16).
+    Test baru `tests/db-17-pindah-dana.test.ts` (8) mencakup tiga pasangan
+    1001→1010, 1010→1014, 1014→1001 (D/K, seimbang, saldo berpindah, total kas
+    dan Arus Kas tetap), semua pasangan akun aktif `is_kas=1` dari master DB
+    termasuk bank tambahan 1101, penolakan asal = tujuan di builder + posting,
+    penolakan akun nonaktif, penolakan nominal nol/negatif/pecahan/NaN, serta
+    transfer ke bank tambahan dari metadata DB. `tests/forms-ui.test.ts`
+    menambah penjaga UI (tombol simpan nonaktif + pesan) saat Dari = Ke;
+    `tests/dokumentasi.test.ts` menambah penjaga panduan Pindah Dana.
+    `docs/panduan-pengguna.md` memuat contoh konkret 1014→1001 Rp 250.000,
+    arah D tujuan / K asal, penegasan bukan pendapatan/beban, dan total kas
+    tetap. Tidak menyentuh `data/`, jurnal, atau commit. `npm run typecheck`
+    bersih; `npm test` **805 test/65 file hijau** (baseline 795/64);
+    `npm run build` berhasil.
 
 - [ ] **DB-18 — Panjar: field nota di `panjar_item` + form** · P1 · M
   - **Konteks:** user butuh rincian per nota; `panjar_item` sekarang hanya
