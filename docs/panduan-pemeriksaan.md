@@ -67,7 +67,7 @@ transaksi aslinya.
   hutang.
 - Transfer antar kas/bank yang memakai akun pendapatan/beban.
 - Jurnal dengan dua baris yang keduanya debit atau keduanya kredit (sistem
-  menolak, tetapi periksa bila ada data lama/import).
+  menolak, tetapi periksa bila ada data lama).
 - Jurnal balik (`REVERSAL`) tanpa alasan yang jelas.
 
 ---
@@ -98,7 +98,7 @@ Akun yang paling sering diperiksa:
 - `3000 MODAL` — hanya berubah karena setoran/penarikan modal atau Saldo Awal.
 - `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun **legacy** yang hanya
   ditampilkan untuk membaca data lama. Keduanya **tidak dapat diposting** lewat
-  Jurnal Umum, form terpandu, Saldo Awal, maupun impor. Sistem v2 **tidak
+  Jurnal Umum, form terpandu, maupun Saldo Awal. Sistem v2 **tidak
   menghitung** saldo akun ini dari tutup buku atau surplus periode dan **tidak
   menulis** ke akun ini; saldo yang tampil hanyalah akumulasi baris jurnal lama
   yang sudah ada di database. Bila tidak ada data lama, saldonya nol dan itu

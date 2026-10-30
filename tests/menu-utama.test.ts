@@ -154,3 +154,62 @@ describe('DB-24 — Anggaran dihapus dari menu/UI', () => {
     expect(AUDIT_DETAIL).toContain("a.startsWith('ANGGARAN')");
   });
 });
+
+describe('DB-25 — Import Excel dihapus dari menu/UI', () => {
+  it('tidak lagi punya tab, menu, render, atau komponen Import Excel', () => {
+    expect(APP).not.toContain('Import Excel');
+    expect(APP).not.toContain('ImportExcelTab');
+    expect(APP).not.toContain('FileSpreadsheet');
+    expect(APP).not.toContain("'import'");
+    for (const label of [
+      'Dashboard',
+      'Transaksi',
+      'Daftar Akun',
+      'Jurnal Umum',
+      'Tutup Buku',
+      'Pengaturan',
+    ]) {
+      expect(APP, `menu "${label}" tetap ada`).toContain(label);
+    }
+  });
+
+  it('tidak mengekspos API/tipe renderer, IPC, parser, atau pesan error import', () => {
+    expect(API).not.toContain('import:');
+    expect(API).not.toContain('importTemplate');
+    expect(API).not.toContain('importPreview');
+    expect(API).not.toContain('importProses');
+    expect(API).not.toContain('ImportPreviewData');
+    expect(API).not.toContain('ImportProsesData');
+    expect(API).not.toContain('HasilParseImpor');
+    expect(API).not.toContain('HasilImporExcel');
+    expect(IPC).not.toContain('import:');
+    expect(IPC).not.toContain('bacaFileImpor');
+    expect(IPC).not.toContain('GAGAL_IMPOR');
+    expect(IPC).not.toContain('parseImporExcel');
+    expect(VALIDATION).not.toContain('validasiImpor');
+  });
+
+  it('file modul dan test import Excel sudah dihapus', () => {
+    for (const path of [
+      'src/renderer/components/ImportExcelTab.tsx',
+      'src/features/import/parser.ts',
+      'src/features/import/template.ts',
+      'src/db/impor.ts',
+      'tests/impor-excel.test.ts',
+    ]) {
+      expect(existsSync(join(ROOT, path)), `${path} tidak ada`).toBe(false);
+    }
+  });
+
+  it('exceljs tetap tersedia untuk export/print', () => {
+    const paket = JSON.parse(baca('package.json')) as {
+      dependencies?: Record<string, string>;
+    };
+    expect(paket.dependencies?.exceljs).toBeTruthy();
+    expect(WORKBOOKS).toContain("import ExcelJS from 'exceljs'");
+  });
+
+  it('label audit lama IMPORT-EXCEL tetap tersedia', () => {
+    expect(AUDIT_DETAIL).toContain("a.startsWith('IMPORT')");
+  });
+});

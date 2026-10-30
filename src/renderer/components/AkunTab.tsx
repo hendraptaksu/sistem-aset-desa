@@ -148,7 +148,7 @@ export function AkunTab() {
           tipe,
         });
         setInfo(
-          `Akun ${baru.kode} — ${baru.nama} tersimpan. Akun langsung tersedia di form transaksi, Jurnal Umum, laporan, dan template impor.`,
+          `Akun ${baru.kode} — ${baru.nama} tersimpan. Akun langsung tersedia di form transaksi, Jurnal Umum, dan laporan.`,
         );
         setStatusFilter('aktif');
       }
@@ -211,7 +211,7 @@ export function AkunTab() {
             <p className="mt-1 max-w-3xl text-sm text-stone-600">
               Akun bawaan mengikuti <b>KODE AKUN.csv</b>. Tambahkan akun{' '}
               <b>Beban</b> atau <b>Pendapatan</b> baru di sini; akun langsung muncul
-              di form transaksi, Jurnal Umum, laporan, dan template impor.
+              di form transaksi, Jurnal Umum, dan laporan.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

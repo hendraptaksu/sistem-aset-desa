@@ -434,7 +434,7 @@ export const PESAN_PIHAK_BELUM_TERALOKASI =
   'Jurnal ini akan tampil sebagai belum teralokasi di menu Hutang.';
 
 /**
- * Peringatan (bukan error) untuk jalur Jurnal Umum/Import: jurnal yang memakai
+ * Peringatan (bukan error) untuk jalur Jurnal Umum: jurnal yang memakai
  * 2050/2060 tanpa metadata pihak akan menambah selisih rekonsiliasi. Akun 1050
  * hanya dibaca untuk data lama dan tidak lagi punya alur input piutang.
  */

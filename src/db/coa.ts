@@ -51,7 +51,7 @@ export const AKUN_MODAL = '3000';
  */
 export const AKUN_LEGACY_TIDAK_DIPOSTING: ReadonlySet<string> = new Set(['3001', '3002']);
 
-/** Pesan seragam untuk penolakan akun legacy di UI/posting/import. */
+/** Pesan seragam untuk penolakan akun legacy di UI/posting. */
 export const PESAN_AKUN_LEGACY =
   'adalah akun legacy 3001/3002: saldonya hanya berasal dari data lama dan tidak boleh diposting; akun ini hanya untuk laporan.';
 

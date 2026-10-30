@@ -175,49 +175,7 @@ Foto kuitansi/nota atau PDF ditempelkan per jurnal:
 Lampiran disimpan sebagai file di folder `attachments`, **bukan** di dalam file
 database. Karena itu lampiran **tidak ikut backup `.db`** — lihat bagian 5.
 
-### 2.8 Import Excel (migrasi data lama / banyak jurnal sekaligus)
-
-Menu **Import Excel** dipakai bila data sudah ada di Excel dan ingin dimasukkan
-sekaligus. Alurnya empat langkah:
-
-1. **Unduh Template** → simpan file `.xlsx`. Di dalamnya ada sheet:
-   - **Jurnal** — tabel yang diisi (contoh 3 grup sudah tersedia),
-   - **Petunjuk** — cara pakai singkat,
-   - **Akun** — daftar kode akun yang sah beserta nama dan tipenya.
-2. **Isi file.** Satu **grup** = satu jurnal. Kolom sheet Jurnal:
-   `grup`, `tanggal`, `no_bukti`, `keterangan`, `akun`, `debit`, `kredit`,
-   `catatan`.
-   - `tanggal` ditulis `YYYY-MM-DD` (mis. `2026-01-31`) atau `DD/MM/YYYY`
-     (mis. `31/01/2026`). Tanggal yang tidak ada (31 Feb) ditolak.
-   - `akun` berisi **kode akun**, bukan nama (mis. `1001`).
-   - `debit` dan `kredit` berisi **angka rupiah** pada salah satu kolom saja,
-     bukan sen dan tanpa tulisan `Rp`.
-   - `tanggal`, `keterangan`, dan `no_bukti` boleh hanya diisi di baris pertama
-     grup; baris berikutnya otomatis mengikuti. `no_bukti` tetap **wajib** ada
-     pada setiap grup.
-   - Setiap grup minimal 2 baris dan **total debit harus sama dengan total
-     kredit**. Grup yang tidak seimbang ditolak seluruhnya.
-   - `no_bukti` **wajib diisi** dan tidak boleh kosong. Impor tidak membuat
-     nomor otomatis. Nomor bukti yang sudah dipakai pada **tahun yang sama**
-     (tanpa membedakan huruf besar/kecil) akan ditolak, sehingga impor ulang
-     file yang sama tidak menggandakan jurnal. Nomor yang sama boleh dipakai
-     lagi di tahun berbeda.
-3. **Pilih & Pratinjau** → pilih file `.xlsx`. Sistem menampilkan ringkasan dan
-   hasil **per baris** (baris Excel, grup, tanggal, keterangan, akun, debit,
-   kredit, status, alasan). Tahap ini **belum menyimpan apa pun**. Grup tanpa
-   `no_bukti` atau dengan nomor yang sudah dipakai akan tampil **GAGAL**.
-4. **Impor N Jurnal Valid** → konfirmasi. Hanya grup valid yang disimpan. Bila
-   ada peringatan kas/bank minus, centang izin khusus setelah memeriksa saldo;
-   tanpa centang, grup tersebut tidak diimpor. Setelah selesai, nomor bukti yang
-   tersimpan ditampilkan dan jurnal bisa dilihat di **Jurnal Umum**.
-
-Bentuk sederhana juga didukung: satu baris Excel dengan kolom `tanggal`,
-`keterangan`, `akun_debit`, `akun_kredit`, `nominal`, dan `no_bukti` (wajib)
-menjadi satu jurnal dua baris. Batas aman: file maksimal **10 MB** dan maksimal
-**5.000 baris** data. Jurnal yang sudah diimpor tetap permanen; koreksi
-dilakukan lewat jurnal balik, bukan edit/hapus.
-
-### 2.9 Daftar Akun (tambah/ubah/nonaktifkan akun)
+### 2.8 Daftar Akun (tambah/ubah/nonaktifkan akun)
 
 Menu **Daftar Akun** menampilkan seluruh COA yang dipakai aplikasi. Di sini
 operator dapat mengelola akun **Beban** atau **Pendapatan** baru tanpa menunggu
@@ -227,7 +185,7 @@ update aplikasi:
 2. Isi **Kode akun** 4 digit yang belum dipakai (Beban `5xxx`, Pendapatan
    `4xxx`), **Nama akun**, dan **Jenis akun**.
 3. Tekan **Tambah Akun**. Akun langsung muncul di form **Transaksi**,
-   **Jurnal Umum**, laporan, dan template **Import Excel**.
+   **Jurnal Umum**, dan laporan.
 4. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
 
 Untuk akun tambahan yang sudah ada:

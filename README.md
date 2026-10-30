@@ -53,7 +53,7 @@ angka turunan yang disimpan mati.
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Renderer (Chromium) — React 19 + Tailwind                           │
 │ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Pihak, Jurnal,     │
-│ laporan, Pengaturan, Import Excel                                   │
+│ laporan, dan Pengaturan                                             │
 │ Tidak pernah menyentuh SQLite; semua lewat window.api.invoke()      │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ IPC (preload CJS, contextBridge)
@@ -77,7 +77,7 @@ angka turunan yang disimpan mati.
                                     │ jurnal + jurnal_baris   │
                                     └─────────────────────────┘
 
-src/features/*: import Excel, export XLSX/PDF/HTML, backup & restore lengkap.
+src/features/*: export XLSX/PDF/HTML, backup & restore lengkap.
 ```
 
 Prinsip yang dijaga:

@@ -587,6 +587,17 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect('anggaranToWorkbook' in mod).toBe(false);
   });
 
+  it('DB-25: modul import dihapus tetapi export XLSX tetap berjalan', async () => {
+    const mod = await import('../src/features/export/workbooks.js');
+    expect('parseImporExcel' in mod).toBe(false);
+    expect('buatTemplateImpor' in mod).toBe(false);
+
+    // File .xlsx yang dihasilkan tetap berupa arsip ZIP (tanda PK).
+    const buffer = await workbookToBuffer(await jurnalToWorkbook(jurnal, COA));
+    expect(buffer.byteLength).toBeGreaterThan(0);
+    expect(Buffer.from(buffer).subarray(0, 2).toString('utf8')).toBe('PK');
+  });
+
   it('semua workbook bisa dibaca ulang ExcelJS dan tetap numerik (round-trip)', async () => {
     const wbs = [
       await jurnalToWorkbook(jurnal, COA),

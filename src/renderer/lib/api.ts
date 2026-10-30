@@ -26,15 +26,11 @@ import type {
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
-import type { HasilParseImpor } from '../../features/import/parser.js';
-import type { HasilImporExcel } from '../../db/impor.js';
 import type { LokasiData } from '../../main/lokasiData.js';
 
 export type {
   ArusKasHasil,
   BukuBesarHasil,
-  HasilImporExcel,
-  HasilParseImpor,
   LabaRugiHasil,
   LampiranJurnal,
   ModeNeracaSaldo,
@@ -165,22 +161,6 @@ export type TutupTersimpanData = {
   labaDitahan: number;
   aksi: 'TUTUP' | 'TUTUP-ULANG';
   data: TutupBuku;
-};
-
-/** Hasil dialog pratinjau import Excel; `diproses:false` = operator batal. */
-export type ImportPreviewData = {
-  diproses: boolean;
-  filePath: string;
-  namaFile: string;
-  hasil?: HasilParseImpor;
-};
-
-/** Hasil proses import Excel; `diproses:false` = operator batal. */
-export type ImportProsesData = {
-  diproses: boolean;
-  filePath: string;
-  namaFile: string;
-  hasil?: HasilImporExcel;
 };
 
 declare global {
@@ -437,24 +417,6 @@ export const api = {
   auditList: (f: AuditFilterApi = {}) => call<AuditLogPage>('audit:list', f),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),
-  // ---- Import jurnal massal dari Excel (P2-9) ----
-  /** Unduh template .xlsx lewat save dialog; batal = `{saved:false}`. */
-  importTemplate: () => call<{ saved: boolean; path: string }>('import:template'),
-  /**
-   * Pilih file (atau kirim path hasil preview untuk "Muat ulang"), parse +
-   * validasi DB tanpa menulis jurnal. Batal = `{diproses:false}`.
-   */
-  importPreview: (filePath?: string) =>
-    call<ImportPreviewData>('import:preview', filePath),
-  /** Impor grup valid; file diparse ulang di main. Batal = `{diproses:false}`. */
-  importProses: (
-    filePath?: string,
-    opsi: {
-      konfirmasiPeringatan?: boolean;
-      wajibSaldoAwal?: boolean;
-      konfirmasiTanpaSaldoAwal?: boolean;
-    } = {},
-  ) => call<ImportProsesData>('import:proses', filePath, opsi),
   saveBuffer: (req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) =>
     call<{ saved: boolean; path: string }>('file:save-buffer', req),
   /** Simpan PDF langsung (hidden window + printToPDF di main). HTML dari paginator P1-16. */

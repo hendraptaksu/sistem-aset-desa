@@ -101,7 +101,7 @@
 | DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [x] |
 | DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [ ] |
 | DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [x] |
-| DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [ ] |
+| DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [x] |
 | DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [ ] |
 | DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [ ] |
 | DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [ ] |
@@ -994,7 +994,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     berhasil.
   - **Dependency:** — (keputusan 2026-10-30).
 
-- [ ] **DB-25 — Hapus modul Import Excel (UI/API/parser/test)** · P1 · M
+- [x] **DB-25 — Hapus modul Import Excel (UI/API/parser/test)** · P1 · M
   - **Konteks:** user menilai import rawan dan tidak perlu. Import adalah pintu
     input eksternal; menghapusnya mengurangi risiko duplikat/salah akun.
     Excel tetap dipakai untuk export/print.
@@ -1009,6 +1009,14 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     test & build hijau.
   - **Test:** test menu + export.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** tab/menu/render `ImportExcelTab`, `src/features/import/*`,
+    `src/db/impor.ts`, 3 channel IPC (`import:template`, `import:preview`,
+    `import:proses`), helper `bacaFileImpor`/`pratinjauFileImpor`, tipe/API
+    renderer, dan `tests/impor-excel.test.ts` dihapus. `exceljs` dipertahankan
+    untuk export/print; regression test menu/API/IPC/parser/export/dokumen
+    ditambahkan. Label audit lama `IMPORT-EXCEL` tetap agar riwayat terbaca.
+    `npm run typecheck` bersih; `npm test` **695/55 hijau**; `npm run build`
+    berhasil.
   - **Dependency:** DB-02 (konfirmasi tidak ada migrasi data lama).
 
 - [ ] **DB-33 — Migrasi v12: drop tabel yang disetujui + guard/backup** · P0 · M

@@ -22,7 +22,7 @@ describe('tanggalLokal WITA', () => {
     expect(tanggalLokal(new Date('2026-01-01T00:30:00+08:00'))).toBe('2026-01-01');
   });
 
-  it('tengah malam WITA tidak mundur sehari (dipakai tanggal import)', () => {
+  it('tengah malam WITA tidak mundur sehari', () => {
     // 2026-01-14T16:00:00Z = 2026-01-15 00:00 WITA.
     expect(tanggalLokal(new Date('2026-01-14T16:00:00.000Z'))).toBe('2026-01-15');
   });

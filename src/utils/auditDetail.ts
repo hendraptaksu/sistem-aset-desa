@@ -265,6 +265,8 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('ANGGARAN')) return 'Ubah anggaran';
   if (a.startsWith('REKONSILIASI-SELESAI')) return 'Selesaikan rekonsiliasi bank';
   if (a.startsWith('REKONSILIASI')) return 'Rekonsiliasi bank';
+  // Label audit lama modul Import Excel (dihapus DB-25); tetap dibaca agar
+  // riwayat audit lama tidak kehilangan keterangan.
   if (a.startsWith('IMPORT')) return 'Impor Excel';
   if (a.startsWith('LAMPIRAN-TAMBAH')) return 'Tambah lampiran';
   if (a.startsWith('LAMPIRAN-HAPUS')) return 'Hapus lampiran';

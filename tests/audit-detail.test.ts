@@ -265,7 +265,7 @@ describe('T12 formatAksiAudit', () => {
     );
   });
 
-  it('aksi anggaran, rekonsiliasi, impor, dan lampiran berlabel', () => {
+  it('aksi legacy anggaran, rekonsiliasi, impor, dan lampiran berlabel', () => {
     expect(formatAksiAudit('ANGGARAN')).toBe('Ubah anggaran');
     expect(formatAksiAudit('REKONSILIASI')).toBe('Rekonsiliasi bank');
     expect(formatAksiAudit('REKONSILIASI-SELESAI')).toBe(

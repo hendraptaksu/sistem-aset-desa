@@ -7,7 +7,7 @@
 // diuji dengan vitest tanpa Electron.
 
 import type Database from 'better-sqlite3';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
   catatAudit,
@@ -31,8 +31,6 @@ import {
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
 import {
   PESAN_WAJIB_ALASAN_PERINGATAN,
-  PESAN_WAJIB_SALDO_AWAL,
-  pastikanWajibSaldoAwal,
   postingJurnal,
   validasiJurnalDb,
 } from '../db/posting.js';
@@ -68,15 +66,6 @@ import {
   simpanLampiranDenganMetadata,
 } from '../features/lampiran/lampiran.js';
 import { validasiLampiran } from '../core/lampiran.js';
-import {
-  parseImporExcel,
-  validasiBatasImpor,
-} from '../features/import/parser.js';
-import {
-  NAMA_FILE_TEMPLATE_IMPOR,
-  buatBufferTemplateImpor,
-} from '../features/import/template.js';
-import { imporJurnalDariExcel, validasiImporDariExcel } from '../db/impor.js';
 import { KAS_KODES } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
@@ -278,49 +267,6 @@ export function registerIpc(deps: IpcDeps): void {
   const GAGAL_BACKUP = 'Gagal membuat cadangan. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_RESTORE =
     'Gagal memulihkan data. Data lama tetap dipakai; coba lagi atau hubungi pendamping.';
-  const GAGAL_IMPOR =
-    'Gagal memproses impor Excel. Periksa file, lalu coba lagi atau hubungi pendamping.';
-
-  // ---- Import Excel (P2-9) ----
-  // Renderer hanya boleh mengirim path hasil dialog/preview. Path divalidasi
-  // ulang (ekstensi .xlsx, file nyata, batas 10 MB) sebelum dibaca di main.
-  type FileImpor = { buffer: Buffer; namaFile: string } | { error: string };
-
-  const bacaFileImpor = (filePath: string): FileImpor => {
-    const path = String(filePath ?? '').trim();
-    if (!path) return { error: 'File impor belum dipilih.' };
-    if (!/\.xlsx$/i.test(path))
-      return { error: 'File impor harus berformat .xlsx (Excel).' };
-    let info: ReturnType<typeof statSync>;
-    try {
-      info = statSync(path);
-    } catch {
-      return { error: 'File impor tidak ditemukan. Pilih file .xlsx yang masih ada.' };
-    }
-    if (!info.isFile()) return { error: 'Yang dipilih bukan file Excel.' };
-    const batas = validasiBatasImpor({ ukuran: info.size });
-    if (batas) return { error: batas };
-    try {
-      return { buffer: readFileSync(path), namaFile: basename(path) };
-    } catch {
-      return { error: 'File impor tidak bisa dibaca. Tutup file di Excel, lalu coba lagi.' };
-    }
-  };
-
-  /** Baca + parse + validasi DB tanpa menulis. */
-  const pratinjauFileImpor = async (filePath: string) => {
-    const file = bacaFileImpor(filePath);
-    if ('error' in file) return file;
-    const hasil = await parseImporExcel(file.buffer, {
-      akun: listAkun(deps.db()),
-      namaFile: file.namaFile,
-    });
-    return {
-      filePath,
-      namaFile: file.namaFile,
-      hasil: validasiImporDariExcel(deps.db(), hasil),
-    };
-  };
 
   daftarkan('coa:list', () => ok(listAkun(deps.db())));
   daftarkan('akun:tambah', (_e, input: unknown) => {
@@ -1389,135 +1335,6 @@ export function registerIpc(deps: IpcDeps): void {
       return ok(denganBackupTerakhir(d, lastAutoBackup(dirBackup)));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  // ---- Import jurnal massal dari Excel (P2-9) ----
-  // Template dibangun murni di main (renderer-safe) lalu ditulis lewat dialog.
-  daftarkan('import:template', async () => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const { canceled, filePath } = await deps.dialog.showSaveDialog({
-        title: 'Simpan template import jurnal',
-        defaultPath: NAMA_FILE_TEMPLATE_IMPOR,
-        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-      });
-      if (canceled || !filePath) return ok({ saved: false, path: '' });
-      const buffer = await buatBufferTemplateImpor(listAkun(deps.db(), { aktif: true }));
-      deps.writeFile(filePath, Buffer.from(buffer));
-      return ok({ saved: true, path: filePath });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_FILE));
-    }
-  });
-
-  // Pratinjau: baca file (opsional path dari pratinjau sebelumnya agar tombol
-  // "Muat ulang" tidak membuka dialog lagi), parse, lalu validasi DB.
-  // TIDAK menulis jurnal apa pun.
-  daftarkan('import:preview', async (_e, filePath?: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-
-      let sumber: string;
-      if (filePath !== undefined && filePath !== null) {
-        if (typeof filePath !== 'string' || !filePath.trim())
-          return fail('File impor tidak valid. Pilih file .xlsx lagi.');
-        sumber = filePath.trim();
-      } else {
-        const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-          title: 'Pilih file Excel untuk pratinjau impor',
-          filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-          properties: ['openFile'],
-        });
-        if (canceled || filePaths.length === 0)
-          return ok({ diproses: false, filePath: '', namaFile: '' });
-        sumber = filePaths[0]!;
-      }
-
-      const preview = await pratinjauFileImpor(sumber);
-      if ('error' in preview) return fail(preview.error);
-      return ok({
-        diproses: true,
-        filePath: preview.filePath,
-        namaFile: preview.namaFile,
-        hasil: preview.hasil,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_IMPOR));
-    }
-  });
-
-  // Proses: pakai path dari pratinjau bila ada, atau buka dialog lagi. File
-  // diparse ULANG (jangan percaya hasil preview di renderer), lalu semua grup
-  // valid disimpan lewat postingJurnal di adapter DB.
-  daftarkan('import:proses', async (_e, filePath?: unknown, opsi?: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-
-      let sumber: string;
-      if (filePath !== undefined && filePath !== null) {
-        if (typeof filePath !== 'string' || !filePath.trim())
-          return fail('File impor tidak valid. Pilih file .xlsx lagi.');
-        sumber = filePath.trim();
-      } else {
-        const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-          title: 'Pilih file Excel untuk diimpor',
-          filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-          properties: ['openFile'],
-        });
-        if (canceled || filePaths.length === 0)
-          return ok({ diproses: false, filePath: '', namaFile: '' });
-        sumber = filePaths[0]!;
-      }
-
-      const konfirmasiPeringatan =
-        typeof opsi === 'object' &&
-        opsi !== null &&
-        !Array.isArray(opsi) &&
-        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
-      const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
-
-      const file = bacaFileImpor(sumber);
-      if ('error' in file) return fail(file.error);
-
-      // Validasi DB dulu agar alasan per baris konsisten dengan pratinjau.
-      const parsed = await parseImporExcel(file.buffer, {
-        akun: listAkun(deps.db()),
-        namaFile: file.namaFile,
-      });
-      const divalidasi = validasiImporDariExcel(deps.db(), parsed);
-
-      // AKT-02: impor adalah pintu input; jurnal pertama hanya boleh masuk
-      // setelah operator memilih saldo awal atau mengonfirmasi mulai tanpa.
-      if (divalidasi.grup.some((g) => g.status === 'OK')) {
-        try {
-          pastikanWajibSaldoAwal(deps.db(), {
-            wajibSaldoAwal: true,
-            konfirmasiTanpaSaldoAwal,
-          });
-        } catch (e) {
-          return fail(e instanceof Error ? e.message : PESAN_WAJIB_SALDO_AWAL);
-        }
-      }
-
-      const hasil = imporJurnalDariExcel(deps.db(), divalidasi, {
-        konfirmasiPeringatan,
-        namaFile: file.namaFile,
-        wajibSaldoAwal: true,
-        konfirmasiTanpaSaldoAwal,
-      });
-
-      return ok({
-        diproses: true,
-        filePath: sumber,
-        namaFile: file.namaFile,
-        hasil,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_IMPOR));
     }
   });
 

@@ -139,7 +139,7 @@ upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev see
   Neraca Saldo, Laba Rugi, Neraca, Arus Kas), posting layer, reversal, tutup buku, backup/restore aman, audit.
 - **P1 — Pengalaman pengguna:** form terpandu (operator awam), Jurnal Umum (akuntan pendamping),
   drill-down, export/print semua laporan, template cetak resmi, nomor bukti `JU`, pengaturan, dashboard.
-- **P2 — Lanjutan:** lampiran bukti, test integrasi, dokumentasi, import Excel massal.
+- **P2 — Lanjutan:** lampiran bukti, test integrasi, dan dokumentasi.
   (Rekonsiliasi bank, aset tetap, & multi-user sudah dibatalkan.)
 
 Detail per ticket (dengan checkbox dan bukti) ada di `docs/tickets-perbaikan.md`.

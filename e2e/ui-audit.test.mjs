@@ -46,7 +46,6 @@ const TAB = [
   { id: 'pembantu', label: 'Buku Pembantu' },
   { id: 'realisasi', label: 'Anggaran' },
   { id: 'rekonsiliasi', label: 'Rekonsiliasi Bank' },
-  { id: 'import', label: 'Import Excel' },
   { id: 'laba-rugi', label: 'Laba Rugi' },
   { id: 'neraca', label: 'Neraca' },
   { id: 'arus-kas', label: 'Arus Kas' },

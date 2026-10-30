@@ -146,6 +146,14 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
     }
   });
 
+  it('DB-25: dokumen tidak lagi menawarkan modul Import Excel', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, ARAH]) {
+      expect(dokumen).not.toMatch(/import\s+excel/i);
+      expect(dokumen).not.toMatch(/impor\s+jurnal/i);
+      expect(dokumen).not.toMatch(/template\s+impor/i);
+    }
+  });
+
   it('DB-23a: dokumen tidak lagi menawarkan alur input piutang', () => {
     for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, ARAH]) {
       expect(dokumen).not.toContain('Piutang & Hutang');
