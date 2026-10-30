@@ -72,7 +72,7 @@ afterEach(() => {
 });
 
 describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
-  it('hanya membuat tabel model baru + pengaturan & aset yang dipertahankan', () => {
+  it('hanya membuat tabel model baru + pengaturan yang dipertahankan', () => {
     const { db } = freshDb();
     try {
       const tabel = namaTabel(db);
@@ -87,7 +87,6 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
           'tutup_buku',
           'audit_log',
           'pengaturan',
-          'aset',
           // P1-4: metadata panjar v2 (bukan tabel single-entry lama).
           'panjar',
           'panjar_item',

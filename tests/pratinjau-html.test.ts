@@ -1,4 +1,4 @@
-// P1-15 — pratinjau cetak untuk HTML laporan lama (Aset/Realisasi/Pembantu).
+// P1-15 — pratinjau cetak untuk HTML laporan lama (Realisasi/Pembantu).
 // Kontrak: dokumen legacy dibungkus tanpa auto-print/inline script; tombol
 // Cetak berasal dari komponen parent, bukan dari dalam iframe.
 
@@ -9,14 +9,14 @@ import { wrapPrintDocument } from '../src/features/export/workbooks.js';
 import { PratinjauHtmlModal } from '../src/renderer/components/PratinjauHtmlModal.js';
 
 const bodyLegacy =
-  '<table><tbody><tr><td>Inventaris Aset</td><td>Rp 1.000,00</td></tr></tbody></table>';
+  '<table><tbody><tr><td>Buku Pembantu</td><td>Rp 1.000,00</td></tr></tbody></table>';
 
 describe('PratinjauHtmlModal (P1-15)', () => {
   it('dokumen legacy dibungkus tanpa window.print() otomatis dan tanpa script', () => {
-    const html = wrapPrintDocument('Inventaris Aset', bodyLegacy, {
+    const html = wrapPrintDocument('Buku Pembantu', bodyLegacy, {
       autoPrint: false,
     });
-    expect(html).toContain('Inventaris Aset');
+    expect(html).toContain('Buku Pembantu');
     expect(html).toContain('@page');
     expect(html).toContain('<style>');
     expect(html).not.toContain('window.print()');
@@ -27,7 +27,7 @@ describe('PratinjauHtmlModal (P1-15)', () => {
   it('modal menampilkan iframe srcDoc + tombol Cetak/Tutup dari parent', () => {
     const markup = renderToStaticMarkup(
       createElement(PratinjauHtmlModal, {
-        judul: 'Inventaris Aset',
+        judul: 'Buku Pembantu',
         body: bodyLegacy,
         onClose: () => {},
       }),

@@ -6,7 +6,6 @@ import {
   BarChart3,
   BookMarked,
   BookOpen,
-  Building2,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
@@ -28,7 +27,6 @@ import { AkunTab } from './components/AkunTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
 import { BukuBesarTab } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
-import { AsetTab } from './components/AsetTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
 import { PihakTab } from './components/PihakTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
@@ -52,7 +50,7 @@ import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -61,7 +59,6 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
   { id: 'buku-besar', label: 'Buku Besar', Icon: BookMarked },
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
-  { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pihak', label: 'Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
@@ -103,7 +100,6 @@ const GRUP_MENU: {
       'arus-kas',
       'realisasi',
       'pembantu',
-      'aset',
     ],
   },
   {
@@ -618,7 +614,7 @@ function AppShell() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">{namaEntitas}</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Hutang, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab onBukaTab={bukaDariDashboard} />
@@ -640,7 +636,6 @@ function AppShell() {
                 }}
               />
             )}
-            {tab === 'aset' && <AsetTab />}
             {tab === 'panjar' && <PanjarTab />}
             {tab === 'pihak' && <PihakTab />}
             {tab === 'pembantu' && <PembantuTab />}

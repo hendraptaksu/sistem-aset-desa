@@ -27,7 +27,7 @@ describe('P1-12 — pesanError', () => {
     for (const pesan of [
       'SQLITE_CONSTRAINT: UNIQUE constraint failed: jurnal.no_bukti',
       'SqliteError: no such table: jurnal',
-      'UNIQUE constraint failed: aset.kode',
+      'UNIQUE constraint failed: akun.kode',
       'constraint failed',
     ]) {
       expect(pesanError(new Error(pesan))).toBe(PESAN_SIMPAN_GAGAL);

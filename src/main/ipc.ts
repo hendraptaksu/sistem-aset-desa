@@ -11,15 +11,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node
 import { basename, join } from 'node:path';
 import {
   catatAudit,
-  deleteAset,
-  getAset,
   getJurnal,
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
   hapusAkun,
-  insertAset,
   listAkun,
-  listAset,
   listAuditLogPage,
   listJurnalLengkap,
   listJurnalLengkapPage,
@@ -29,7 +25,6 @@ import {
   simpanPengaturanPembukuan,
   tambahAkun,
   ubahNamaAkun,
-  updateAset,
   type AuditFilter,
   type JurnalFilter,
 } from '../db/repository.js';
@@ -113,7 +108,6 @@ import {
   stampBackupLokal,
 } from '../features/export/backupLengkap.js';
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
-import type { Aset } from '../core/types.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
 import { rentangTahunBuku } from '../core/pengaturan.js';
@@ -148,8 +142,6 @@ import {
   validasiIdLampiran,
   validasiRentangLaporan,
   validasiTanggalOpsional,
-  validateAsetInput,
-  type AsetInput,
 } from './validation.js';
 import {
   ambilKodeDaruratSekali,
@@ -287,8 +279,6 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat menyimpan data pihak. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_PANJAR =
     'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_ASET =
-    'Terjadi kesalahan saat menyimpan data aset. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_ANGGARAN =
     'Terjadi kesalahan saat menyimpan pagu anggaran. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_LAMPIRAN =
@@ -1335,84 +1325,6 @@ export function registerIpc(deps: IpcDeps): void {
       }
     },
   );
-
-  // ---- Inventaris Aset (non-keuangan, TIDAK kena kunci tutup buku) ----
-  daftarkan('aset:list', (_e, f: { jenis?: string; cari?: string } = {}) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listAset(deps.db(), f));
-  });
-
-  daftarkan('aset:create', (_e, input: AsetInput) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const errs = validateAsetInput(input);
-      if (errs.length) return fail(pesanValidasi(errs));
-      const now = new Date().toISOString();
-      const row: Aset = {
-        id: uid('a'),
-        kode: input.kode.trim(),
-        nama: input.nama.trim(),
-        jenis: input.jenis as Aset['jenis'],
-        luas_m2: input.luas_m2,
-        lokasi: input.lokasi.trim(),
-        status_hukum: input.status_hukum.trim(),
-        tahun_perolehan: input.tahun_perolehan,
-        asal_usul: input.asal_usul.trim(),
-        kondisi: input.kondisi as Aset['kondisi'],
-        keterangan: input.keterangan.trim(),
-        nilai_sen: input.nilai_sen,
-        created_at: now,
-        updated_at: now,
-      };
-      insertAset(deps.db(), row);
-      return ok({ id: row.id });
-    } catch (e) {
-      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(pesanError(e, GAGAL_ASET));
-    }
-  });
-
-  daftarkan('aset:update', (_e, id: string, input: AsetInput) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const errs = validateAsetInput(input);
-      if (errs.length) return fail(pesanValidasi(errs));
-      const lama = getAset(deps.db(), String(id));
-      if (!lama) return fail('Aset tidak ditemukan.');
-      updateAset(deps.db(), {
-        ...lama,
-        kode: input.kode.trim(),
-        nama: input.nama.trim(),
-        jenis: input.jenis as Aset['jenis'],
-        luas_m2: input.luas_m2,
-        lokasi: input.lokasi.trim(),
-        status_hukum: input.status_hukum.trim(),
-        tahun_perolehan: input.tahun_perolehan,
-        asal_usul: input.asal_usul.trim(),
-        kondisi: input.kondisi as Aset['kondisi'],
-        keterangan: input.keterangan.trim(),
-        nilai_sen: input.nilai_sen,
-        updated_at: new Date().toISOString(),
-      });
-      return ok({ id });
-    } catch (e) {
-      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(pesanError(e, GAGAL_ASET));
-    }
-  });
-
-  daftarkan('aset:delete', (_e, id: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      deleteAset(deps.db(), String(id));
-      return ok({ id });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_ASET));
-    }
-  });
 
   daftarkan('tutup:list', () => {
     const k = perluBuka();

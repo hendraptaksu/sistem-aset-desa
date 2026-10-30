@@ -603,15 +603,15 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
   it('merender judul, akibat aksi, tombol Batal, dan tombol lanjut', () => {
     const html = renderToStaticMarkup(
       createElement(KonfirmasiModal, {
-        judul: 'Hapus aset dari inventaris?',
-        deskripsi: 'Aset AST-001 akan dihapus. Angka laporan tidak berubah.',
+        judul: 'Hapus akun 5011?',
+        deskripsi: 'Akun 5011 akan dihapus. Jurnal lama tetap memakai namanya.',
         labelYa: 'Ya, hapus',
         onBatal: () => {},
         onKonfirmasi: () => {},
       }),
     );
-    expect(html).toContain('Hapus aset dari inventaris?');
-    expect(html).toContain('Aset AST-001 akan dihapus.');
+    expect(html).toContain('Hapus akun 5011?');
+    expect(html).toContain('Akun 5011 akan dihapus.');
     expect(html).toContain('Batal');
     expect(html).toContain('Ya, hapus');
     expect(html).not.toContain('disabled=""');

@@ -37,7 +37,7 @@ angka turunan yang disimpan mati.
 - Koreksi tidak pernah mengedit/menghapus jurnal lama: selalu **jurnal balik
   (reversal) + alasan**, dengan jejak audit.
 - Laporan: Buku Besar, Neraca Saldo (tahun berjalan/kumulatif), Laba Rugi,
-  Neraca, Arus Kas, Anggaran, Panjar, dan aset/inventaris.
+  Neraca, Arus Kas, Anggaran, dan Panjar.
 - Lampiran bukti (foto/PDF) disimpan di folder `attachments`, bukan di dalam
   database.
 - Backup database memakai `VACUUM INTO`; tersedia **Backup Lengkap** yang
@@ -53,7 +53,7 @@ angka turunan yang disimpan mati.
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Renderer (Chromium) — React 19 + Tailwind                           │
 │ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Pihak, Jurnal,     │
-│ laporan, Pengaturan, Import Excel, Aset                             │
+│ laporan, Pengaturan, Import Excel                                   │
 │ Tidak pernah menyentuh SQLite; semua lewat window.api.invoke()      │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ IPC (preload CJS, contextBridge)

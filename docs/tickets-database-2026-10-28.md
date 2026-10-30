@@ -108,7 +108,7 @@
 | DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [ ] |
 | DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
 | DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
-| DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [ ] |
+| DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [x] |
 | DB-33 | P0 | M | Migrasi v12: drop tabel yang disetujui + guard/backup | DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37 | [ ] |
 | DB-34 | P1 | S | Audit integritas: reversal, tipe akun, tabel opsional | DB-33 | [ ] |
 | DB-35 | P0 | S | Baseline dokumen/test hijau | — | [x] |
@@ -899,7 +899,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     berhasil.
   - **Dependency:** — (keputusan 2026-10-30).
 
-- [ ] **DB-32 — Hapus modul Inventaris Aset (UI/API/test)** · P1 · M
+- [x] **DB-32 — Hapus modul Inventaris Aset (UI/API/test)** · P1 · M
   - **Konteks:** `aset` adalah register non-akuntansi: tidak masuk jurnal,
     tidak disusutkan, tidak muncul di Neraca. User ingin aplikasi pembukuan
     saja. Menyimpan register terpisah membuat batas akuntansi kabur.
@@ -915,6 +915,13 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
   - **Test:** test menu + `tests/audit.test.ts`/`tests/jurnal.test.ts` yang
     menyebut tabel aset disesuaikan.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** tab/menu/render, `AsetTab.tsx`, 4 channel IPC,
+    `validateAsetInput`, tipe `Aset`, CRUD repository, API renderer, export XLSX/
+    HTML aset, dan `tests/aset.test.ts` dihapus; opsi filter audit `ASET`
+    dihapus tetapi label audit lama `ASET-*` tetap. Tabel `aset` dan
+    `TABEL_WAJIB_RESTORE` sengaja belum disentuh (menunggu DB-33).
+    `npm run typecheck` bersih; `npm test` **729/57 hijau**; `npm run build`
+    berhasil.
   - **Dependency:** — (keputusan 2026-10-30).
 
 - [x] **DB-23a — Hapus alur piutang 1050 (UI/API/builder/test)** · P1 · M

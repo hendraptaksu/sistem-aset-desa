@@ -9,14 +9,11 @@ import { describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import {
   catatAudit,
-  deleteAset,
   hitungAuditLog,
-  insertAset,
   insertAuditLog,
   insertJurnalTervalidasi,
   listAuditLog,
   listAuditLogPage,
-  updateAset,
 } from '../src/db/repository.js';
 import { postingJurnal, postingSaldoAwal } from '../src/db/posting.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
@@ -31,7 +28,7 @@ import {
   ubahPin,
 } from '../src/main/kunci.js';
 import { buatAuditLog, jsonAuditAman } from '../src/core/audit.js';
-import type { Aset, AuditLog } from '../src/core/types.js';
+import type { AuditLog } from '../src/core/types.js';
 
 function dbKosong(): Database.Database {
   return openDb(':memory:');
@@ -87,7 +84,7 @@ describe('T10 listAuditLog', () => {
     catatAudit(db, {
       id: 'audit-json',
       tanggal: '2026-03-01T00:00:00.000Z',
-      aksi: 'ASET-UPDATE a-1',
+      aksi: 'PANJAR-CREATE p-1',
       alasan: 'Ubah nama',
       lama: { nama: 'Lama' },
       baru: { nama: 'Baru' },
@@ -116,7 +113,7 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
       auditRow({ id: 'a1', tanggal: '2026-01-05T08:00:00.000Z', aksi: 'CREATE j-1' }),
       auditRow({ id: 'a2', tanggal: '2026-01-10T08:00:00.000Z', aksi: 'REVERSAL j-1' }),
       auditRow({ id: 'a3', tanggal: '2026-02-01T08:00:00.000Z', aksi: 'REVERSAL j-2' }),
-      auditRow({ id: 'a4', tanggal: '2026-02-15T08:00:00.000Z', aksi: 'ASET-CREATE a-1' }),
+      auditRow({ id: 'a4', tanggal: '2026-02-15T08:00:00.000Z', aksi: 'PANJAR-CREATE p-1' }),
       auditRow({ id: 'a5', tanggal: '2026-03-01T08:00:00.000Z', aksi: 'PENGATURAN-IDLE' }),
     ];
     for (const r of rows) insertAuditLog(db, r);
@@ -127,7 +124,7 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
     isi(db);
     expect(listAuditLog(db, { aksi: 'REVERSAL' }).map((r) => r.id)).toEqual(['a3', 'a2']);
     expect(listAuditLog(db, { aksi: 'REVERSAL j-1' }).map((r) => r.id)).toEqual(['a2']);
-    expect(listAuditLog(db, { aksi: 'ASET' }).map((r) => r.id)).toEqual(['a4']);
+    expect(listAuditLog(db, { aksi: 'PANJAR' }).map((r) => r.id)).toEqual(['a4']);
     db.close();
   });
 
@@ -370,51 +367,6 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
       expect(ulang.aksi).toBe('TUTUP-ULANG 2025');
       expect(JSON.parse(ulang.data_lama_json)).toMatchObject({ tahun: 2025, catatan: 'Pertama' });
       expect(JSON.parse(ulang.data_baru_json)).toMatchObject({ tahun: 2025, catatan: 'Kedua' });
-    } finally {
-      db.close();
-    }
-  });
-
-  it('CRUD aset menulis data lama & baru, atomik dengan operasinya', () => {
-    const db = dbKosong();
-    try {
-      const now = '2026-01-01T00:00:00.000Z';
-      const aset: Aset = {
-        id: 'a-1',
-        kode: 'AST-001',
-        nama: 'Tanah Lama',
-        jenis: 'TANAH',
-        luas_m2: 100,
-        lokasi: 'Pura',
-        status_hukum: 'druwe',
-        tahun_perolehan: 2010,
-        asal_usul: 'hibah',
-        kondisi: 'BAIK',
-        keterangan: '',
-        nilai_sen: null,
-        created_at: now,
-        updated_at: now,
-      };
-      insertAset(db, aset);
-      updateAset(db, { ...aset, nama: 'Tanah Baru', updated_at: '2026-01-02T00:00:00.000Z' });
-      deleteAset(db, aset.id);
-
-      const audit = listAuditLog(db);
-      expect(audit.map((a) => a.aksi.split(' ')[0])).toEqual([
-        'ASET-DELETE',
-        'ASET-UPDATE',
-        'ASET-CREATE',
-      ]);
-      const tambah = audit.find((a) => a.aksi.startsWith('ASET-CREATE'))!;
-      expect(tambah.data_lama_json).toBe('');
-      expect(JSON.parse(tambah.data_baru_json)).toMatchObject({ kode: 'AST-001', nama: 'Tanah Lama' });
-      const ubah = audit.find((a) => a.aksi.startsWith('ASET-UPDATE'))!;
-      expect(JSON.parse(ubah.data_lama_json)).toMatchObject({ nama: 'Tanah Lama' });
-      expect(JSON.parse(ubah.data_baru_json)).toMatchObject({ nama: 'Tanah Baru' });
-      const hapus = audit.find((a) => a.aksi.startsWith('ASET-DELETE'))!;
-      expect(JSON.parse(hapus.data_lama_json)).toMatchObject({ nama: 'Tanah Baru' });
-      // Tidak ada aset tersisa: audit tidak menghidupkan kembali baris.
-      expect(db.prepare('SELECT COUNT(*) AS c FROM aset').get()).toEqual({ c: 0 });
     } finally {
       db.close();
     }

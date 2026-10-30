@@ -5,7 +5,6 @@ import type { FormSaldoAwal } from '../../core/forms.js';
 import type { AlurPihak, RekonsiliasiPihak, SaldoPihak } from '../../core/pihak.js';
 import type { RealisasiAnggaranHasil } from '../../core/anggaran.js';
 import type {
-  Aset,
   AuditLog,
   Jurnal,
   JurnalBaris,
@@ -475,18 +474,6 @@ export const api = {
       panjar: Panjar;
       jurnal?: Jurnal;
     }>('panjar:close', req, alasan),
-  asetList: (f: { jenis?: string; cari?: string } = {}) => call<Aset[]>('aset:list', f),
-  asetCreate: (input: {
-    kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;
-    status_hukum: string; tahun_perolehan: number | null; asal_usul: string; kondisi: string;
-    keterangan: string; nilai_sen: number | null;
-  }) => call<{ id: string }>('aset:create', input),
-  asetUpdate: (id: string, input: {
-    kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;
-    status_hukum: string; tahun_perolehan: number | null; asal_usul: string; kondisi: string;
-    keterangan: string; nilai_sen: number | null;
-  }) => call<{ id: string }>('aset:update', id, input),
-  asetDelete: (id: string) => call<{ id: string }>('aset:delete', id),
   tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
   tutupCreate: (req: {

@@ -165,6 +165,8 @@ export const TABEL_WAJIB_RESTORE = [
   'tutup_buku',
   'pengaturan',
   'audit_log',
+  // Tabel legacy; modul Inventaris Aset sudah dihapus (DB-32). Wajib tetap ada
+  // sampai migrasi DB-33 membuang tabel + entri ini bersamaan.
   'aset',
 ] as const;
 

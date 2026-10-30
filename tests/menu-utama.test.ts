@@ -13,6 +13,7 @@ const baca = (path: string): string => readFileSync(join(ROOT, path), 'utf8');
 const APP = baca('src/renderer/App.tsx');
 const API = baca('src/renderer/lib/api.ts');
 const VALIDATION = baca('src/main/validation.ts');
+const WORKBOOKS = baca('src/features/export/workbooks.ts');
 const AUDIT_DETAIL = baca('src/utils/auditDetail.ts');
 
 describe('DB-31 — Rekonsiliasi Bank dihapus dari menu/UI', () => {
@@ -57,5 +58,55 @@ describe('DB-31 — Rekonsiliasi Bank dihapus dari menu/UI', () => {
   it('label audit lama REKONSILIASI-* tetap tersedia', () => {
     expect(AUDIT_DETAIL).toContain("a.startsWith('REKONSILIASI-SELESAI')");
     expect(AUDIT_DETAIL).toContain("a.startsWith('REKONSILIASI')");
+  });
+});
+
+describe('DB-32 — Inventaris Aset dihapus dari menu/UI', () => {
+  it('tidak lagi punya tab, menu, render, atau komponen Inventaris Aset', () => {
+    expect(APP).not.toContain('Inventaris Aset');
+    expect(APP).not.toContain('AsetTab');
+    expect(APP).not.toContain("'aset'");
+    for (const label of [
+      'Dashboard',
+      'Transaksi',
+      'Panjar',
+      'Hutang',
+      'Buku Besar',
+      'Neraca Saldo',
+      'Laba Rugi',
+      'Neraca',
+      'Arus Kas',
+      'Pengaturan',
+    ]) {
+      expect(APP, `menu "${label}" tetap ada`).toContain(label);
+    }
+  });
+
+  it('tidak mengekspos tipe/API renderer, validator, atau export aset', () => {
+    expect(API).not.toContain('aset:');
+    expect(API).not.toContain('asetList');
+    expect(API).not.toContain('asetCreate');
+    expect(API).not.toContain('asetUpdate');
+    expect(API).not.toContain('asetDelete');
+    expect(VALIDATION).not.toContain('AsetInput');
+    expect(VALIDATION).not.toContain('validateAsetInput');
+    expect(WORKBOOKS).not.toContain('asetToWorkbook');
+    expect(WORKBOOKS).not.toContain('asetToHtml');
+    expect(WORKBOOKS).not.toContain('DAFTAR INVENTARIS ASET');
+  });
+
+  it('file modul dan test inventaris aset sudah dihapus', () => {
+    for (const path of [
+      'src/renderer/components/AsetTab.tsx',
+      'tests/aset.test.ts',
+    ]) {
+      expect(existsSync(join(ROOT, path)), `${path} tidak ada`).toBe(false);
+    }
+  });
+
+  it('label audit lama ASET-* tetap tersedia', () => {
+    expect(AUDIT_DETAIL).toContain("a.startsWith('ASET-CREATE')");
+    expect(AUDIT_DETAIL).toContain("a.startsWith('ASET-UPDATE')");
+    expect(AUDIT_DETAIL).toContain("a.startsWith('ASET-DELETE')");
   });
 });

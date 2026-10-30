@@ -307,7 +307,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 |---|---|
 | **Debit (D)** | Sisi kiri jurnal. Menambah aset/beban; mengurangi kewajiban/ekuitas/pendapatan. |
 | **Kredit (K)** | Sisi kanan jurnal. Menambah kewajiban/ekuitas/pendapatan; mengurangi aset/beban. |
-| **Aktiva (aset)** | Harta yang dimiliki: kas, bank, piutang, panjar, inventaris (inventaris tidak masuk Neraca keuangan). |
+| **Aktiva (aset)** | Harta yang dimiliki: kas, bank, piutang, dan panjar. |
 | **Kewajiban (hutang)** | Yang masih harus dibayar pura kepada pihak lain. |
 | **Ekuitas (modal)** | Hak pemilik atas aset setelah dikurangi kewajiban; terdiri dari modal, laba ditahan, dan laba berjalan. |
 | **Pendapatan** | Penghasilan periode: parkir, sesari, punia, kios, bunga, dll. Menambah ekuitas. |

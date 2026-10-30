@@ -234,13 +234,16 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('REVERSAL j-1')).toBe('Koreksi jurnal (balik)');
     expect(formatAksiAudit('KOREKSI-ISI-ULANG j-1')).toBe('Koreksi & isi ulang jurnal');
     expect(formatAksiAudit('SALDO-AWAL j-1')).toBe('Saldo awal');
-    expect(formatAksiAudit('ASET-CREATE a-1')).toBe('Tambah aset');
-    expect(formatAksiAudit('ASET-UPDATE a-1')).toBe('Ubah aset');
-    expect(formatAksiAudit('ASET-DELETE a-1')).toBe('Hapus aset');
     expect(formatAksiAudit('BACKUP-AUTO')).toBe('Backup otomatis');
     expect(formatAksiAudit('BACKUP-EXPORT')).toBe('Backup manual');
     expect(formatAksiAudit('RESTORE')).toBe('Restore database');
     expect(formatAksiAudit('PENGATURAN-IDLE')).toBe('Ubah auto-kunci');
+  });
+
+  it('DB-32 — label audit lama ASET-* tetap tampil walau modul dihapus', () => {
+    expect(formatAksiAudit('ASET-CREATE a-1')).toBe('Tambah aset');
+    expect(formatAksiAudit('ASET-UPDATE a-1')).toBe('Ubah aset');
+    expect(formatAksiAudit('ASET-DELETE a-1')).toBe('Hapus aset');
   });
 
   it('aksi pihak, piutang, dan hutang memakai label ramah', () => {

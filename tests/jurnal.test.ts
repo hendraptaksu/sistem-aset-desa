@@ -724,7 +724,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
 });
 
 describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
-  it('membuang tabel single-entry, mempertahankan pengaturan & aset, idempoten', () => {
+  it('membuang tabel single-entry, mempertahankan pengaturan, idempoten', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-migrasi-'));
     dirs.push(dir);
     const path = join(dir, 'lama.db');
@@ -751,28 +751,12 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
         created_at TEXT NOT NULL, backup_path TEXT NOT NULL DEFAULT ''
       );
       CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT NOT NULL DEFAULT '');
-      CREATE TABLE aset (
-        id TEXT PRIMARY KEY, kode TEXT NOT NULL UNIQUE, nama TEXT NOT NULL,
-        jenis TEXT NOT NULL DEFAULT 'LAINNYA', luas_m2 REAL, lokasi TEXT NOT NULL DEFAULT '',
-        status_hukum TEXT NOT NULL DEFAULT '', tahun_perolehan INTEGER,
-        asal_usul TEXT NOT NULL DEFAULT '', kondisi TEXT NOT NULL DEFAULT 'BAIK',
-        keterangan TEXT NOT NULL DEFAULT '', nilai_sen INTEGER,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      );
       PRAGMA user_version = 0;
     `);
     lama.prepare("INSERT INTO pengaturan (kunci, nilai) VALUES ('pin_salt', 'lama')").run();
     lama
       .prepare(
         "INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori, masuk, keluar) VALUES ('t-lama', '2025-12-31', 'Data lama', '1001', '4005', 123, 0)",
-      )
-      .run();
-    lama
-      .prepare(
-        `INSERT INTO aset (id, kode, nama, jenis, lokasi, status_hukum, asal_usul,
-          kondisi, keterangan, created_at, updated_at)
-         VALUES ('a-lama', 'AST-001', 'Tanah Druwe', 'TANAH', 'Puri', 'druwe', '',
-          'BAIK', '', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')`,
       )
       .run();
     lama.prepare("INSERT INTO tutup_buku (tahun, laba, created_at) VALUES (2025, 999, '2025-12-31T00:00:00.000Z')").run();
@@ -799,12 +783,8 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
         (db.prepare('SELECT COUNT(*) AS c FROM panjar').get() as { c: number }).c,
       ).toBe(0);
 
-      // PIN & inventaris aset dipertahankan.
+      // PIN dipertahankan.
       expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'pin_salt'").get()).toEqual({ nilai: 'lama' });
-      expect(db.prepare("SELECT kode, nama FROM aset WHERE id = 'a-lama'").get()).toEqual({
-        kode: 'AST-001',
-        nama: 'Tanah Druwe',
-      });
 
       // tutup_buku lama (punya `laba`) diganti bentuk v2 tanpa angka laba tersimpan.
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);

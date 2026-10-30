@@ -19,7 +19,6 @@ import type {
   JurnalJenis,
 } from '../core/types.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
-import { tahunLokal } from '../utils/tanggal.js';
 
 export type PanjarItemInput = { kategori_baga: string; nominal: number };
 
@@ -166,52 +165,6 @@ export function validasiBentukPanjarClose(
   }
 
   return { ok: true, input: { id: id.nilai, tanggalClose: tanggalClose.nilai, items } };
-}
-
-export const ASET_JENIS = ['TANAH', 'BANGUNAN', 'LAINNYA'] as const;
-export const ASET_KONDISI = ['BAIK', 'RUSAK_RINGAN', 'RUSAK_BERAT', 'TIDAK_DIKETAHUI'] as const;
-
-export type AsetInput = {
-  kode: string;
-  nama: string;
-  jenis: string;
-  luas_m2: number | null;
-  lokasi: string;
-  status_hukum: string;
-  tahun_perolehan: number | null;
-  asal_usul: string;
-  kondisi: string;
-  keterangan: string;
-  nilai_sen: number | null;
-};
-
-/** Validasi Inventaris Aset: nominal sengaja opsional (null = belum dinilai). */
-export function validateAsetInput(a: AsetInput): string[] {
-  const err: string[] = [];
-  if (!a.kode.trim()) err.push('Kode aset wajib diisi.');
-  else if (a.kode.trim().length > 32) err.push('Kode aset maks. 32 karakter.');
-  if (!a.nama.trim()) err.push('Nama aset wajib diisi.');
-  if (!(ASET_JENIS as readonly string[]).includes(a.jenis)) err.push('Jenis aset tidak valid.');
-  if (!(ASET_KONDISI as readonly string[]).includes(a.kondisi)) err.push('Kondisi aset tidak valid.');
-  if (a.luas_m2 !== null && (!Number.isFinite(a.luas_m2) || a.luas_m2 < 0 || a.luas_m2 > 1e9))
-    err.push('Luas harus angka ≥ 0 (atau kosongkan).');
-  const tahunIni = tahunLokal();
-  if (
-    a.tahun_perolehan !== null &&
-    (!Number.isInteger(a.tahun_perolehan) || a.tahun_perolehan < 1900 || a.tahun_perolehan > tahunIni + 1)
-  )
-    err.push('Tahun perolehan tidak valid (atau kosongkan).');
-  if (a.nilai_sen !== null && (!Number.isInteger(a.nilai_sen) || a.nilai_sen < 0))
-    err.push('Nilai harus bilangan bulat ≥ 0 (atau kosongkan bila belum dinilai).');
-  for (const [label, v] of [
-    ['Lokasi', a.lokasi],
-    ['Status hukum', a.status_hukum],
-    ['Asal-usul', a.asal_usul],
-    ['Keterangan', a.keterangan],
-  ] as const) {
-    if (v.length > 500) err.push(`${label} maks. 500 karakter.`);
-  }
-  return err;
 }
 
 // ---------------------------------------------------------------------------

@@ -150,10 +150,6 @@ const CHANNEL_IPC = [
   'anggaran:simpan',
   'app:buka-folder',
   'app:info-lokasi',
-  'aset:create',
-  'aset:delete',
-  'aset:list',
-  'aset:update',
   'audit:list',
   'backup:auto',
   'backup:export',
@@ -218,11 +214,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 73 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 69 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(73);
+    expect(env.handlers.size).toBe(69);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(73);
+    expect(CHANNEL_IPC).toHaveLength(69);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -230,6 +226,11 @@ describe('P2-7 — registrasi handler IPC', () => {
     expect([...env.handlers.keys()].filter((kanal) => kanal.startsWith('rekonsiliasi:'))).toEqual(
       [],
     );
+  });
+
+  it('DB-32: channel inventaris aset sudah tidak terdaftar', () => {
+    const env = buatEnv();
+    expect([...env.handlers.keys()].filter((kanal) => kanal.startsWith('aset:'))).toEqual([]);
   });
 });
 

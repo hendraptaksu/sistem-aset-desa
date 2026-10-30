@@ -120,7 +120,7 @@ upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev see
 |---|---|---|---|
 | K1 | Operator utama | **Orang awam**, dengan istri (akuntan) sebagai pendamping/pemeriksa | Form terpandu jadi alur utama; mode Jurnal Umum & istilah standar tetap tersedia |
 | K2 | Boleh tutup tahun berjalan? | **Setuju: tidak.** Hanya tahun yang sudah selesai (≤ tahun lalu) | P0-7 menolak tahun berjalan/berikutnya |
-| K3 | Aset tetap & penyusutan | **Dibuang** — terlalu rumit/membingungkan | Tidak ada aset tetap/penyusutan di Neraca. Modul Inventaris Aset tetap daftar barang non-akuntansi (opsional, boleh dihapus kapan saja) |
+| K3 | Aset tetap & penyusutan | **Dibuang** — terlalu rumit/membingungkan | Tidak ada aset tetap/penyusutan di Neraca. Modul Inventaris Aset juga dihapus (DB-32); aplikasi hanya untuk pembukuan. |
 | K4 | Multi-user & enkripsi | **Tidak; PIN cukup** | Ticket multi-user & enkripsi dibatalkan |
 | K5 | Nomor bukti | Ikut yang lazim | **`JU-2026-0001`** (JU = Jurnal Umum). `JP` dihindari karena ambigu (Jurnal Pembelian/Penjualan di perusahaan dagang). Alternatif: `BKM/BKK` untuk bukti kas masuk/keluar |
 | K6 | Data lama | **Dibuang** — masih POC, belum ada production | Tidak ada kode migrasi; DB v2 mulai dari nol |

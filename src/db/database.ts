@@ -40,7 +40,8 @@ export const SCHEMA_VERSION = 11;
 
 /**
  * DDL dasar v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung
- * yang tetap dipertahankan (pengaturan PIN & inventaris aset non-akuntansi).
+ * (pengaturan PIN). Tabel `aset` hanya disisakan untuk DB lama sampai migrasi
+ * DB-33 menghapusnya; modul Inventaris Aset sudah tidak dipakai.
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
  * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
@@ -138,7 +139,8 @@ CREATE TABLE IF NOT EXISTS pengaturan (
   nilai TEXT NOT NULL DEFAULT ''
 );
 
--- Inventaris barang non-akuntansi (tidak masuk Neraca/Laba Rugi).
+-- Tabel legacy DB-32: modul Inventaris Aset sudah dihapus dari UI/API; tabel
+-- disisakan agar DB lama tetap terbaca sampai dibuang oleh migrasi DB-33.
 CREATE TABLE IF NOT EXISTS aset (
   id TEXT PRIMARY KEY,
   kode TEXT NOT NULL UNIQUE,
@@ -253,7 +255,8 @@ function kolomTabel(db: Database.Database, nama: string): string[] {
  * K6: POC, data single-entry lama dibuang. Hapus `transaksi`/`coa` dan panjar
  * bentuk v1 (tanpa jurnal_open_id). Panjar bentuk v2 (P1-4) dipertahankan agar
  * metadata dokumen tidak hilang saat aplikasi dibuka ulang.
- * `pengaturan` (PIN) dan `aset` sengaja dipertahankan.
+ * `pengaturan` (PIN) dan tabel legacy `aset` sengaja dipertahankan sampai
+ * migrasi DB-33; modul aset sendiri sudah dihapus di DB-32.
  */
 function buangTabelLama(db: Database.Database): void {
   db.exec('DROP TABLE IF EXISTS transaksi');
