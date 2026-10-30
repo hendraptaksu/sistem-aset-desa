@@ -147,6 +147,7 @@ const CHANNEL_IPC = [
   'akun:ubah',
   'app:buka-folder',
   'app:info-lokasi',
+  'audit:integritas',
   'audit:list',
   'backup:auto',
   'backup:export',
@@ -195,11 +196,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 51 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 52 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(51);
+    expect(env.handlers.size).toBe(52);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(51);
+    expect(CHANNEL_IPC).toHaveLength(52);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -226,6 +227,60 @@ describe('P2-7 — registrasi handler IPC', () => {
     expect([...env.handlers.keys()].filter((kanal) => kanal.startsWith('pihak:'))).toEqual(
       [],
     );
+  });
+});
+
+describe('DB-12 — IPC audit integritas read-only', () => {
+  it('DB bersih: mengembalikan ok true tanpa temuan', async () => {
+    const env = buatEnv();
+    const hasil = await env.panggil('audit:integritas');
+
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hasil.data).toMatchObject({
+      ok: true,
+      temuan: [],
+      ringkasan: expect.stringMatching(/tidak ada temuan/i),
+    });
+  });
+
+  it('DB rusak: mengembalikan temuan dan tidak menulis tabel apa pun', async () => {
+    const env = buatEnv();
+    const db = env.db();
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES ('j-rusak', '2026-10-23', '', 'Korupsi', 'UMUM', 'j-rusak', NULL,
+               '2026-10-29T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES ('j-rusak', '1001', 1000, 0, '')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES ('j-rusak', '4001', 0, 900, '')`,
+    ).run();
+
+    const tabel = ['akun', 'jurnal', 'jurnal_baris', 'audit_log', 'panjar', 'panjar_item'];
+    const hitung = (): Record<string, number> =>
+      Object.fromEntries(
+        tabel.map((t) => [
+          t,
+          (db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
+        ]),
+      );
+    const sebelum = hitung();
+
+    const hasil = await env.panggil('audit:integritas');
+    const ulang = await env.panggil('audit:integritas');
+
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hasil.data.ok).toBe(false);
+    expect(hasil.data.temuan[0]).toMatchObject({ kode: 'JURNAL_TIDAK_SEIMBANG' });
+    expect(hasil.data.ringkasan).toMatch(/1 temuan/i);
+    expect(ulang.data).toEqual(hasil.data);
+    expect(hitung()).toEqual(sebelum);
+    expect(env.setDbCalls).toHaveLength(0);
   });
 });
 

@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import pkg from '../package.json';
-import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
+import { SCHEMA_VERSION, DDL, openDb } from '../src/db/database.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
@@ -656,31 +656,14 @@ describe('P0-8 — restoreDbAman', () => {
       db = openDb(aktifPath);
       insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
 
-      // Lolos validasi + audit (semua tabel akuntansi ada dan jurnal kosong)
-      // tetapi skemanya rusak: openDb akan gagal membuat index/upsert akun.
+      // Lolos validasi + audit (semua tabel/kolom akuntansi ada dan jurnal
+      // kosong) tetapi skemanya rusak: ada tabel yang menabrak nama index v13,
+      // sehingga openDb gagal saat migrasi.
       const kandidatPath = join(dir, 'kandidat-rusak.db');
       const rusak = new Database(kandidatPath);
-      rusak.exec(`
-        CREATE TABLE akun (kode TEXT PRIMARY KEY);
-        CREATE TABLE jurnal (id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, no_bukti TEXT NOT NULL DEFAULT '');
-        CREATE TABLE jurnal_baris (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          jurnal_id TEXT NOT NULL,
-          akun_kode TEXT NOT NULL,
-          debit INTEGER NOT NULL DEFAULT 0,
-          kredit INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE panjar (
-          id TEXT PRIMARY KEY,
-          status TEXT NOT NULL,
-          jurnal_close_id TEXT,
-          tanggal_close TEXT
-        );
-        CREATE TABLE tutup_buku (tahun INTEGER PRIMARY KEY);
-        CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT);
-        CREATE TABLE audit_log (id TEXT PRIMARY KEY);
-        CREATE TABLE panjar_item (id INTEGER PRIMARY KEY, panjar_id TEXT, jurnal_id TEXT);
-      `);
+      rusak.exec(DDL);
+      rusak.exec('CREATE TABLE ux_jurnal_saldo_awal (x INTEGER);');
+      rusak.pragma(`user_version = ${SCHEMA_VERSION}`);
       rusak.close();
 
       const hasil = restoreDbAman(db, {

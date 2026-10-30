@@ -54,6 +54,10 @@ describe('DB-09 — backup lengkap: pura.db + manifest, tanpa file lampiran', ()
       expect(manifest.daftarFile).toEqual(['pura.db']);
       expect(manifest.ukuranDb).toBe(statSync(join(destDir, 'pura.db')).size);
       expect(manifest).not.toHaveProperty('jumlahLampiran');
+      expect(manifest.auditIntegritas).toMatchObject({
+        ok: true,
+        jumlahTemuan: 0,
+      });
 
       cek = openDb(join(destDir, 'pura.db'));
       expect(listJurnal(cek).map((j) => j.id)).toEqual(['j1']);
@@ -203,8 +207,7 @@ describe('DB-09 — auto-backup harian sengaja satu file .db', () => {
   });
 });
 
-describe('DB-09 — UI dan dokumentasi menempatkan Restore Lengkap sebagai jalur utama', () => {
-  it('Dashboard: tombol Restore Lengkap tampil lebih dulu dan .db diberi peringatan', () => {
+describe('DB-09 — UI dan dokumentasi menempatkan Restore Lengkap sebagai jalur utama', () => {  it('Dashboard: tombol Restore Lengkap tampil lebih dulu dan .db diberi peringatan', () => {
     const dashboard = baca('src/renderer/components/DashboardTab.tsx');
     const awalPulihkan = dashboard.indexOf('id="judul-pulihkan"');
     expect(awalPulihkan).toBeGreaterThan(-1);
@@ -240,6 +243,40 @@ describe('DB-09 — UI dan dokumentasi menempatkan Restore Lengkap sebagai jalur
       expect(dokumen, path).toMatch(/hanya memulihkan database/i);
       expect(dokumen, path).toMatch(/tidak memvalidasi manifest/i);
       expect(dokumen, path).toMatch(/satu file database/i);
+    }
+  });
+});
+
+describe('DB-12 — backup lengkap menolak DB yang tidak lolos audit', () => {
+  it('tidak membuat folder/target dan tidak menulis manifest', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-db12-backup-rusak-'));
+    let db: ReturnType<typeof openDb> | null = null;
+    try {
+      const dbPath = join(dir, 'data', 'pura.db');
+      db = openDb(dbPath);
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+         VALUES ('j-rusak', '2026-10-30', '', 'Korupsi', 'UMUM', 'j-rusak', NULL,
+                 '2026-10-30T00:00:00.000Z')`,
+      ).run();
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-rusak', '1001', 1000, 0, '')`,
+      ).run();
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-rusak', '4001', 0, 900, '')`,
+      ).run();
+
+      const destDir = join(dir, 'pura-backup-rusak');
+      expect(() => buatBackupLengkap({ db: db!, dbPath, destDir })).toThrow(
+        /audit integritas/i,
+      );
+      expect(existsSync(destDir)).toBe(false);
+    } finally {
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

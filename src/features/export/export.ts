@@ -16,6 +16,7 @@ import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION } from '../../db/database.js';
 import { auditIntegritas } from '../../db/integritas.js';
+import { auditSebelumBackup } from './auditBackup.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
@@ -516,6 +517,9 @@ export function autoBackupHarian(
   const dest = join(dir, `auto-${stamp}.db`);
   let dibuat = false;
   if (!existsSync(dest)) {
+    // DB-12: audit hanya sebelum menulis backup baru. Backup yang sudah ada
+    // untuk hari ini tidak ditulis ulang dan tidak memicu audit/tulisan lain.
+    auditSebelumBackup(db);
     backupVacuumInto(db, dest);
     dibuat = true;
   }

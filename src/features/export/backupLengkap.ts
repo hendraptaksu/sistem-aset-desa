@@ -19,10 +19,21 @@ import type Database from 'better-sqlite3';
 import pkg from '../../../package.json';
 import { SCHEMA_VERSION } from '../../db/database.js';
 import { formatWaktuLokal } from '../../utils/tanggal.js';
+import { auditSebelumBackup } from './auditBackup.js';
 import { backupVacuumInto } from './export.js';
 
 /** Versi aplikasi yang sedang berjalan, diambil dari package.json saat build. */
 export const VERSI_APP = pkg.version;
+
+/**
+ * DB-12: ringkasan audit integritas yang dijalankan tepat sebelum backup.
+ * Backup hanya dibuat bila `ok`; field ini memberi bukti audit di manifest.
+ */
+export type AuditManifestBackup = {
+  ok: boolean;
+  jumlahTemuan: number;
+  ringkasan: string;
+};
 
 export type ManifestBackupLengkap = {
   versiApp: string;
@@ -36,6 +47,8 @@ export type ManifestBackupLengkap = {
    * Sejak DB-37 hanya berisi `pura.db`; `manifest.json` sendiri tidak didaftar.
    */
   daftarFile: string[];
+  /** DB-12: hasil audit integritas sebelum backup; backup hanya dibuat bila ok. */
+  auditIntegritas?: AuditManifestBackup;
 };
 
 export type OpsiBackupLengkap = {
@@ -94,6 +107,10 @@ export function buatBackupLengkap(opsi: OpsiBackupLengkap): HasilBackupLengkap {
     }
   }
 
+  // DB-12: fail-safe sebelum menulis apa pun. Backup dari DB yang tidak lolos
+  // audit akan ditolak restore (AKT-11), jadi jangan dibuat seolah-olah sehat.
+  const audit = auditSebelumBackup(opsi.db);
+
   mkdirSync(destDir, { recursive: true });
   try {
     backupVacuumInto(opsi.db, destDb);
@@ -105,6 +122,11 @@ export function buatBackupLengkap(opsi: OpsiBackupLengkap): HasilBackupLengkap {
       dibuat: new Date().toISOString(),
       ukuranDb: statSync(destDb).size,
       daftarFile: ['pura.db'],
+      auditIntegritas: {
+        ok: audit.ok,
+        jumlahTemuan: audit.temuan.length,
+        ringkasan: audit.ringkasan,
+      },
     };
     writeFileSync(
       join(destDir, 'manifest.json'),

@@ -21,11 +21,13 @@ import type {
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
+import type { HasilAuditIntegritas } from '../../db/integritas.js';
 import type { LokasiData } from '../../main/lokasiData.js';
 
 export type {
   ArusKasHasil,
   BukuBesarHasil,
+  HasilAuditIntegritas,
   LabaRugiHasil,
   ModeNeracaSaldo,
   NeracaHasil,
@@ -361,6 +363,8 @@ export const api = {
     konfirmasiTimpak?: boolean;
   }) => call<TutupTersimpanData>('tutup:create', req),
   auditList: (f: AuditFilterApi = {}) => call<AuditLogPage>('audit:list', f),
+  /** DB-12: audit integritas read-only; mengembalikan temuan + ringkasan. */
+  auditIntegritas: () => call<HasilAuditIntegritas>('audit:integritas'),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),
   saveBuffer: (req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) =>

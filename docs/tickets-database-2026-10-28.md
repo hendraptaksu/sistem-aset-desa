@@ -80,7 +80,7 @@
 | DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [x] |
 | DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [x] |
 | DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [x] |
-| DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [ ] |
+| DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [x] |
 | DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [ ] |
 | DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [ ] |
 | DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [ ] |
@@ -453,7 +453,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run typecheck` bersih; `npm test` **741 test/62 file hijau**
     (baseline 734/61); `npm run build` berhasil.
 
-- [ ] **DB-12 — Audit integritas DB (perluas AKT-09)** · P0 · M
+- [x] **DB-12 — Audit integritas DB (perluas AKT-09)** · P0 · M
   - **Konteks:** aplikasi mengandalkan validasi kode; tidak ada pemeriksaan
     integritas menyeluruh pada DB/backup.
   - **Langkah:**
@@ -470,6 +470,34 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     4. Koordinasi dengan AKT-09; jangan menulis dua modul audit berbeda.
   - **DoD:** report berisi daftar masalah + jumlah; test fixture rusak.
   - **Verifikasi:** typecheck + test.
+  - **Bukti 2026-10-30:** audit tetap satu modul di `src/db/integritas.ts`
+    (AKT-09 diperluas, bukan modul kedua). `auditIntegritasDb(db)` menjadi
+    wrapper tipis yang mengembalikan `KODE: pesan` untuk IPC. Pemeriksaan baru:
+    `JURNAL_TANPA_BARIS` (dipisahkan dari `JURNAL_KURANG_DUA_BARIS`),
+    `REVERSAL_GANDA`, `REVERSAL_ATAS_REVERSAL`, `REVERSAL_TANPA_ASLI`,
+    `REVERSAL_GRUP_BERBEDA`, `PANJAR_OPEN_TIDAK_LENGKAP`,
+    `PANJAR_CLOSED_TIDAK_LENGKAP` (sekarang termasuk item pertanggungjawaban),
+    `PANJAR_OPEN_PUNYA_CLOSE` (termasuk tanggal close tanpa jurnal close),
+    `AKUN_TIPE_TIDAK_VALID`, `AKUN_POSISI_NORMAL_TIDAK_VALID`,
+    `AKUN_POSISI_NORMAL_TIDAK_COCOK`, dan `AKUN_AKTIF_TIDAK_VALID`.
+    `PRAGMA foreign_key_check` tetap dijalankan. Pemeriksaan lampiran/anggaran
+    sengaja tidak dibuat karena tabel/modulnya sudah dihapus. IPC read-only
+    `audit:integritas` mengembalikan `{ ok, temuan, ringkasan }`; renderer
+    mendapat tipe `HasilAuditIntegritas` + method `auditIntegritas()`. Startup
+    memanggil `auditIntegritasSaatMulai()` sebelum auto-backup, hanya mencatat
+    info/warning dan tidak pernah memblokir aplikasi. `autoBackupHarian` dan
+    `buatBackupLengkap` menjalankan audit sebelum `VACUUM INTO`; bila tidak
+    lolos, backup dibatalkan (fail-safe seperti validasi restore) dan manifest
+    backup lengkap mencatat `auditIntegritas`. Tutup buku tetap memakai
+    `auditIntegritas` yang sama sehingga temuan baru ikut memblokir. Tidak ada
+    auto-fix, perubahan skema, atau kenaikan `SCHEMA_VERSION`.
+    Test baru/penyesuaian di `tests/integritas.test.ts`,
+    `tests/audit-awal.test.ts`, `tests/backup-auto.test.ts`,
+    `tests/db-09-backup-lengkap.test.ts`, `tests/ipc-main.test.ts`,
+    `tests/tutup.test.ts`, `tests/backup-restore.test.ts`, dan
+    `tests/migrasi-v12.test.ts` (fixture tipe akun diselaraskan ke AKTIVA).
+    `npm run typecheck` bersih; `npm test` **763 test/63 file hijau**
+    (baseline 741/62); `npm run build` berhasil.
   - **Dependency:** — (koordinasi AKT-09).
 
 ---

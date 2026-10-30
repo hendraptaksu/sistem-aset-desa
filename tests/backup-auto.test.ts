@@ -1,5 +1,5 @@
 // Auto-backup harian (TDD RED): 1x sehari saat app dibuka, retensi 7 file.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -22,8 +22,7 @@ function makeJurnal(i: number) {
   };
 }
 
-describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
-  it('stamp default memakai tanggal lokal WITA', () => {
+describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {  it('stamp default memakai tanggal lokal WITA', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-auto-'));
     try {
       const db = openDb(join(dir, 'pura.db'));
@@ -93,6 +92,75 @@ describe('autoBackupHarian: backup harian sekali sehari + retensi 7', () => {
       const files2 = readdirSync(bakDir).filter((f: string) => f.startsWith('auto-')).sort();
       expect(files2).toHaveLength(7);
       db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('DB-12 — auto-backup menolak DB yang tidak lolos audit', () => {
+  /** Korupsi SQL langsung: jurnal dengan debit ≠ kredit. */
+  function korupsi(db: ReturnType<typeof openDb>): void {
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES ('j-rusak', '2026-09-09', '', 'Korupsi', 'UMUM', 'j-rusak', NULL,
+               '2026-10-29T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES ('j-rusak', '1001', 1000, 0, '')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES ('j-rusak', '4001', 0, 900, '')`,
+    ).run();
+  }
+
+  it('tidak membuat file backup dan pesan menyebut audit integritas', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-auto-audit-'));
+    try {
+      const db = openDb(join(dir, 'pura.db'));
+      try {
+        korupsi(db);
+        const bakDir = join(dir, 'backups');
+        const dest = join(bakDir, 'auto-2026-09-09.db');
+
+        expect(() => autoBackupHarian(db, bakDir, 7, '2026-09-09')).toThrow(
+          /audit integritas/i,
+        );
+        expect(existsSync(dest)).toBe(false);
+        // Tidak ada audit BACKUP-AUTO yang ditulis untuk backup yang batal.
+        const audit = db
+          .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE aksi = 'BACKUP-AUTO'")
+          .get() as { n: number };
+        expect(audit.n).toBe(0);
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('backup yang sudah ada untuk hari itu tidak ditulis ulang/diaudit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-auto-audit-lama-'));
+    try {
+      const db = openDb(join(dir, 'pura.db'));
+      try {
+        const bakDir = join(dir, 'backups');
+        mkdirSync(bakDir, { recursive: true });
+        const dest = join(bakDir, 'auto-2026-09-09.db');
+        writeFileSync(dest, 'backup-lama');
+        korupsi(db);
+
+        // Tidak ada pembuatan backup baru, jadi audit tidak dijalankan dan
+        // backup lama tidak disentuh.
+        expect(autoBackupHarian(db, bakDir, 7, '2026-09-09')).toBe(dest);
+        expect(readFileSync(dest, 'utf-8')).toBe('backup-lama');
+      } finally {
+        db.close();
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

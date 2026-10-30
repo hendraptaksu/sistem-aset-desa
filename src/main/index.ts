@@ -17,6 +17,7 @@ import { getIdleMenit } from '../db/repository.js';
 import { seedDev } from '../db/seed-dev.js';
 import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
+import { auditIntegritasSaatMulai } from './auditAwal.js';
 import { mulaiBackupPeriodik } from './backupPeriodik.js';
 import { buatLoggerApp, type LoggerApp } from './logApp.js';
 import {
@@ -366,6 +367,10 @@ function mulaiAplikasi(): void {
     });
     if (!dbDibuka) return;
     db = dbDibuka;
+    // DB-12: audit integritas saat startup, SEBELUM backup otomatis. Temuan
+    // hanya dicatat ke log dan tidak memblokir aplikasi; backup yang gagal audit
+    // akan dibatalkan oleh auditSebelumBackup (fail-safe seperti restore).
+    auditIntegritasSaatMulai(db, loggerMain());
     // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
     try {
       const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);

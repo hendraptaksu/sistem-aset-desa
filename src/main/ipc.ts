@@ -41,6 +41,7 @@ import {
   serahkanPanjar,
 } from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
+import { auditIntegritas } from '../db/integritas.js';
 import { AKUN_PIUTANG, KAS_KODES } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
@@ -969,6 +970,17 @@ export function registerIpc(deps: IpcDeps): void {
       const limit = Math.min(500, Math.max(1, Math.trunc(angka(f?.limit, 50))));
       const offset = Math.max(0, Math.trunc(angka(f?.offset, 0)));
       return ok(listAuditLogPage(deps.db(), { aksi, mulai, sampai, limit, offset }));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+  // DB-12: audit integritas read-only untuk layar/pesan. Handler ini hanya
+  // membaca; tidak ada catatAudit, perbaikan, atau penulisan apa pun.
+  daftarkan('audit:integritas', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(auditIntegritas(deps.db()));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }

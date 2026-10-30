@@ -80,6 +80,39 @@ function korupsiJurnalTidakSeimbang(
   ).run(id);
 }
 
+/**
+ * Korupsi langsung lewat SQL: dua jurnal balik untuk satu jurnal asli.
+ * Unique index v14 sengaja dihapus untuk mensimulasikan kerusakan file.
+ */
+function korupsiReversalGanda(db: Database.Database, idAsli: string): void {
+  db.exec('DROP INDEX IF EXISTS ux_jurnal_reversal');
+  const insJurnal = db.prepare(
+    `INSERT INTO jurnal
+       (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+     VALUES (?, '2025-03-01', ?, ?, ?, ?, ?, '2026-10-29T00:00:00.000Z')`,
+  );
+  const insBaris = db.prepare(
+    `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+     VALUES (?, ?, ?, ?, '')`,
+  );
+  insJurnal.run(idAsli, `JU-${idAsli}`, 'Asli', 'UMUM', idAsli, null);
+  insBaris.run(idAsli, '1001', 1_000, 0);
+  insBaris.run(idAsli, '4005', 0, 1_000);
+  for (const nomor of [1, 2]) {
+    const idBalik = `${idAsli}-rev${nomor}`;
+    insJurnal.run(
+      idBalik,
+      `JU-${idBalik}`,
+      `Reversal ${nomor}`,
+      'REVERSAL',
+      idAsli,
+      idAsli,
+    );
+    insBaris.run(idBalik, '4005', 1_000, 0);
+    insBaris.run(idBalik, '1001', 0, 1_000);
+  }
+}
+
 describe('P0-7 — validasi tutup buku (murni)', () => {
   it('menolak tahun berjalan/berikutnya dan bukan bilangan bulat (K2)', () => {
     const ctx = { sekarang: SEKARANG, tutup: [], tahunAdaJurnal: [] };
@@ -469,6 +502,24 @@ describe('AKT-10 — tutup buku menolak jika audit integritas gagal', () => {
       expect(listTutupBuku(db)).toHaveLength(0);
       expect(audit(db)).toHaveLength(0);
       expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual(jumlahJurnal);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('preview memakai pemeriksaan DB-12: reversal ganda memblokir tutup buku', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-seimbang-2025', '2025-02-01', masuk('4005', 1_000_000));
+      korupsiReversalGanda(db, 'j-rusak-reversal');
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+
+      expect(pratinjau.boleh).toBe(false);
+      expect(pratinjau.errors.join(' ')).toContain('REVERSAL_GANDA');
+      expect(pratinjau.temuanIntegritas.map((t) => t.kode)).toContain('REVERSAL_GANDA');
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(audit(db)).toHaveLength(0);
     } finally {
       db.close();
     }

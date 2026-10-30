@@ -171,7 +171,7 @@ function buatFixtureV11(path: string): void {
       `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
        VALUES (?, ?, ?, ?, 1)`,
     );
-    insAkun.run('1001', 'KAS', 'ASET', 'DEBIT');
+    insAkun.run('1001', 'KAS', 'AKTIVA', 'DEBIT');
     insAkun.run('2050', 'HUTANG LAIN-LAIN', 'KEWAJIBAN', 'KREDIT');
     insAkun.run('3000', 'MODAL', 'EKUITAS', 'KREDIT');
     insAkun.run('4001', 'PENDAPATAN', 'PENDAPATAN', 'KREDIT');
