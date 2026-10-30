@@ -2,7 +2,7 @@
 // AUD-31 — versi, README, dan istilah baru.
 // Fokus: file ada, istilah kunci tersedia, dan contoh path di dokumen cocok
 // dengan helper `tentukanLokasiData` (bukan snapshot seluruh file).
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -39,7 +39,6 @@ describe('AUD-31 — versi, README, dan arsip ERD', () => {
       'npm run build',
       'npm run dist:win',
       'pura.db',
-      'attachments',
       'backups',
       'Backup Lengkap',
       'POC',
@@ -85,7 +84,6 @@ describe('P2-8 — panduan pengguna', () => {
       'Simpan PDF',
       'Troubleshooting',
       'pura.db',
-      'attachments',
       'backups',
       'JU-',
       'Neraca Saldo',
@@ -135,7 +133,7 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
   });
 
   it('DB-31: dokumen tidak lagi menawarkan Rekonsiliasi Bank', () => {
-    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, baca('lampiran-bukti.md')]) {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, PORTABLE]) {
       expect(dokumen).not.toContain('Rekonsiliasi Bank');
     }
   });
@@ -175,6 +173,17 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
     expect(PENGGUNA).toMatch(/nama kreditur|kreditur/i);
     expect(PEMERIKSAAN).toContain('Catat Utang');
   });
+
+  it('DB-37: dokumen tidak lagi menawarkan modul lampiran/attachments', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, PORTABLE]) {
+      expect(dokumen).not.toMatch(/\blampiran\b/i);
+      expect(dokumen).not.toContain('attachments');
+    }
+    // Panduan lama sudah dihapus, bukan dibiarkan menyesatkan.
+    expect(existsSync(join(docsDir, 'lampiran-bukti.md'))).toBe(false);
+    expect(PENGGUNA).toContain('Backup Lengkap');
+    expect(README).toContain('manifest.json');
+  });
 });
 
 describe('AKT-27 — dokumentasi akun legacy, tutup buku, dan reversal', () => {
@@ -210,7 +219,6 @@ describe('P2-8 — panduan portable', () => {
     expect(PORTABLE).toContain('2026-10-27');
     expect(PORTABLE).toContain('%APPDATA%\\Keuangan Pura Dalem Puri');
     expect(PORTABLE).toContain('<folder exe>\\data\\pura.db');
-    expect(PORTABLE).toContain('attachments');
     expect(PORTABLE).toContain('backups');
     expect(PORTABLE).toMatch(/dua salinan portable dari folder berbeda/i);
     expect(PORTABLE).toMatch(/jangan menyalin hanya file `?\.exe`?/i);
@@ -234,14 +242,13 @@ describe('P2-8 — konsistensi path dokumen dengan helper', () => {
     for (const path of [
       lokasi.dataDir,
       lokasi.dbPath,
-      lokasi.attachmentsDir,
       lokasi.backupsDir,
     ]) {
       expect(PORTABLE, path).toContain(path);
     }
   });
 
-  it('contoh portable menaruh data/attachments/backups di folder exe', () => {
+  it('contoh portable menaruh data/backups di folder exe', () => {
     const lokasi = tentukanLokasiData({
       userDataDir: userDataWin,
       portableDir: portableDirWin,
@@ -253,7 +260,6 @@ describe('P2-8 — konsistensi path dokumen dengan helper', () => {
     for (const path of [
       lokasi.dataDir,
       lokasi.dbPath,
-      lokasi.attachmentsDir,
       lokasi.backupsDir,
     ]) {
       expect(PORTABLE, path).toContain(path);

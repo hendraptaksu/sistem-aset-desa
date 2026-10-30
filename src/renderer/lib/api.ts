@@ -8,7 +8,6 @@ import type {
   JurnalBaris,
   JurnalBarisInput,
   JurnalHeaderInput,
-  LampiranJurnal,
   Panjar,
   PanjarItem,
   TutupBuku,
@@ -28,7 +27,6 @@ export type {
   ArusKasHasil,
   BukuBesarHasil,
   LabaRugiHasil,
-  LampiranJurnal,
   ModeNeracaSaldo,
   NeracaHasil,
   NeracaSaldoModeHasil,
@@ -36,7 +34,7 @@ export type {
 export type { LokasiData };
 
 /** Nama folder tetap yang boleh dibuka dari layar Pengaturan (P2-8). */
-export type JenisFolderLokasiApi = 'data' | 'backups' | 'attachments';
+export type JenisFolderLokasiApi = 'data' | 'backups';
 
 type Ok<T> = { ok: true; data: T };
 type Fail = { ok: false; error: string; perluAlasan?: boolean; perluKonfirmasi?: boolean };
@@ -77,19 +75,6 @@ export type FilterJurnalCariApi = {
 export type JurnalCariPage = {
   rows: JurnalLengkap[];
   total: number;
-};
-
-/** Pratinjau lampiran; `dataUrl` hanya tersedia untuk gambar ≤ 5 MB. */
-export type PreviewLampiranApi = {
-  dataUrl?: string;
-  mime: string;
-  namaAsli: string;
-};
-
-/** Hasil dialog unggah lampiran; `saved:false` = operator membatalkan. */
-export type UploadLampiranApi = {
-  saved: boolean;
-  lampiran?: LampiranJurnal;
 };
 
 /** Filter periode layar Laba Rugi & Arus Kas (P1-9). */
@@ -305,22 +290,7 @@ export const api = {
       input,
       opsi,
     ),
-  // ---- Lampiran bukti jurnal (P2-4) ----
-  /** Metadata lampiran satu jurnal; file fisik ada di folder aplikasi. */
-  lampiranList: (jurnalId: string) =>
-    call<LampiranJurnal[]>('lampiran:list', jurnalId),
-  /** Dialog unggah di main; batalkan = `{ saved:false }`. */
-  lampiranUpload: (jurnalId: string) =>
-    call<UploadLampiranApi>('lampiran:upload', jurnalId),
-  /** Pratinjau gambar inline (≤ 5 MB); PDF hanya metadata, buka via OS. */
-  lampiranPreview: (id: string) =>
-    call<PreviewLampiranApi>('lampiran:preview', id),
-  /** Buka file lampiran dengan aplikasi OS; path divalidasi di main. */
-  lampiranOpen: (id: string) =>
-    call<{ opened: boolean }>('lampiran:open', id),
-  /** Hapus metadata + file (best-effort); audit LAMPIRAN-HAPUS. */
-  lampiranDelete: (id: string) =>
-    call<{ deleted: boolean; id: string }>('lampiran:delete', id),
+  // ---- Panjar & tutup buku (P1-5) ----
   panjarList: (status?: 'OPEN' | 'CLOSED') => call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
   panjarCreate: (
@@ -385,20 +355,17 @@ export const api = {
   savePdf: (req: { htmlB64: string; defaultName: string; landscape?: boolean }) =>
     call<{ saved: boolean; path: string }>('file:save-pdf', req),
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
-  /** Backup lengkap satu folder: DB + lampiran + manifest. */
-  backupLengkap: () =>
-    call<{ saved: boolean; path: string; jumlahLampiran: number }>('backup:lengkap'),
+  /** Backup lengkap satu folder: DB + manifest. */
+  backupLengkap: () => call<{ saved: boolean; path: string }>('backup:lengkap'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupStatus: () => call<{ path: string }>('backup:status'),
   backupImport: () => call<{ restored: boolean; path: string; preRestorePath?: string }>('backup:import'),
-  /** Restore lengkap: DB + lampiran + manifest dari satu folder backup. */
+  /** Restore lengkap: DB + manifest dari satu folder backup. */
   backupRestoreLengkap: () =>
     call<{
       restored: boolean;
       path: string;
       preRestorePath?: string;
-      preRestoreAttachmentsPath?: string;
-      jumlahLampiran: number;
     }>('backup:restore-lengkap'),
 };
 

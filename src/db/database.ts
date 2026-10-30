@@ -23,8 +23,8 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  *          dan sisa SELALU dihitung dari jurnal lewat core/reports.ts.
  * - 7    = rekonsiliasi bank (P2-2). Hanya saldo menurut rekening koran yang
  *          disimpan; saldo buku, selisih, dan daftar mutasi dihitung dari jurnal.
- * - 8    = lampiran bukti jurnal (P2-4). Hanya metadata; file fisik ada di
- *          `<userData>/attachments` dan TIDAK ikut backup `.db`.
+ * - 8    = tabel legacy `lampiran_jurnal` (P2-4). Modul lampiran dihapus pada
+ *          DB-37; tabelnya sengaja dipertahankan sampai migrasi DB-33.
  * - 9    = integritas jurnal (AUD-23): trigger menolak baris debit+kredit
  *          sekaligus dan menolak update/delete jurnal; nomor bukti unik per
  *          tahun (bukan global).
@@ -225,9 +225,8 @@ CREATE TABLE IF NOT EXISTS rekonsiliasi_bank (
 CREATE INDEX IF NOT EXISTS idx_rekonsiliasi_akun_tanggal
   ON rekonsiliasi_bank(akun_kode, tanggal);
 
--- Lampiran bukti jurnal (P2-4). HANYA metadata: file fisik tinggal di folder
--- <userData>/attachments dan TIDAK ikut backup .db. nama_simpan relatif
--- terhadap folder itu; DB tidak pernah menyimpan path absolut.
+-- Tabel legacy lampiran_jurnal (P2-4). Modul lampiran dihapus pada DB-37 dan
+-- tabel ini tidak dipakai lagi; DDL dipertahankan sampai drop eksplisit DB-33.
 CREATE TABLE IF NOT EXISTS lampiran_jurnal (
   id TEXT PRIMARY KEY,
   jurnal_id TEXT NOT NULL,

@@ -268,3 +268,55 @@ describe('DB-23b — master Pihak + jurnal_pihak dihapus dari UI/API', () => {
     expect(AUDIT_DETAIL).toContain("a.startsWith('PIHAK-DELETE')");
   });
 });
+
+describe('DB-37 — modul Lampiran dihapus dari UI/API/IPC', () => {
+  const DETAIL = baca('src/renderer/components/DetailJurnalModal.tsx');
+  const DASHBOARD = baca('src/renderer/components/DashboardTab.tsx');
+  const PENGATURAN = baca('src/renderer/components/PengaturanTab.tsx');
+
+  it('detail jurnal tidak lagi punya tombol/modal lampiran', () => {
+    expect(DETAIL).not.toMatch(/lampiran/i);
+    expect(DETAIL).not.toContain('Unggah');
+    expect(DETAIL).not.toContain('Pratinjau:');
+    // Bagian inti detail jurnal tetap ada.
+    expect(DETAIL).toContain('Detail Jurnal');
+    expect(DETAIL).toContain('Tanggal:');
+    expect(DETAIL).toContain('Total:');
+  });
+
+  it('API renderer dan IPC tidak mengekspos channel lampiran:*', () => {
+    expect(API).not.toContain('lampiran:');
+    expect(API).not.toContain('lampiranList');
+    expect(API).not.toContain('jumlahLampiran');
+    expect(IPC).not.toContain('lampiran:');
+    expect(IPC).not.toContain('validasiIdLampiran');
+    expect(VALIDATION).not.toContain('validasiIdLampiran');
+  });
+
+  it('backup/restore UI hanya menyebut database + manifest', () => {
+    for (const layar of [DASHBOARD, PENGATURAN]) {
+      expect(layar).not.toMatch(/lampiran/i);
+      expect(layar).not.toContain('attachments');
+    }
+    expect(DASHBOARD).toContain('Backup Lengkap');
+    expect(DASHBOARD).toContain('Restore Lengkap');
+    expect(DASHBOARD).toContain('manifest.json');
+  });
+
+  it('modul, test, dan dokumen lampiran sudah dihapus', () => {
+    for (const path of [
+      'src/core/lampiran.ts',
+      'src/db/lampiran.ts',
+      'src/features/lampiran/lampiran.ts',
+      'tests/lampiran.test.ts',
+      'docs/lampiran-bukti.md',
+    ]) {
+      expect(existsSync(join(ROOT, path)), `${path} tidak ada`).toBe(false);
+    }
+  });
+
+  it('label audit lama LAMPIRAN-* tetap tersedia untuk riwayat', () => {
+    expect(AUDIT_DETAIL).toContain("a.startsWith('LAMPIRAN-TAMBAH')");
+    expect(AUDIT_DETAIL).toContain("a.startsWith('LAMPIRAN-HAPUS')");
+  });
+});

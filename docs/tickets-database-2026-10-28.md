@@ -113,7 +113,7 @@
 | DB-34 | P1 | S | Audit integritas: reversal, tipe akun, tabel opsional | DB-33 | [ ] |
 | DB-35 | P0 | S | Baseline dokumen/test hijau | — | [x] |
 | DB-36 | P1 | S | LPD: pembayaran link-only, tanpa duplikasi nominal | DB-16b | [x] |
-| DB-37 | P1 | M | Hapus modul Lampiran (UI/API/backup/test) | DB-02 | [ ] |
+| DB-37 | P1 | M | Hapus modul Lampiran (UI/API/backup/test) | DB-02 | [x] |
 | DB-38 | P1 | S | Migrasi tengah tahun: saldo awal + laba periode pertama | — | [ ] |
 
 **Backlog P2 yang belum dipecah detail:** rebuild `grup_id` → `koreksi_dari`,
@@ -1081,7 +1081,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     hanya menyimpan `jurnal_id` + `angsuran_id`; nominal dibaca dari jurnal.
     Tidak perlu tiket terpisah.
 
-- [ ] **DB-37 — Hapus modul Lampiran (UI/API/backup/test)** · P1 · M
+- [x] **DB-37 — Hapus modul Lampiran (UI/API/backup/test)** · P1 · M
   - **Konteks:** client tidak butuh bukti foto/PDF. Lampiran menambah tabel,
     folder, kompresi, dan logika backup/restore. Panjar tetap dipakai dan
     ditangani DB-18/19/20.
@@ -1099,6 +1099,19 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     typecheck + test + build hijau.
   - **Test:** `tests/backup-restore.test.ts`, test menu/detail jurnal.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** tombol/modal Lampiran Bukti di detail jurnal,
+    `core/lampiran.ts`, `db/lampiran.ts`, `features/lampiran/lampiran.ts`,
+    5 channel IPC `lampiran:*`, `validasiIdLampiran`, tipe/API renderer,
+    validator lampiran, `tests/lampiran.test.ts`, dan `docs/lampiran-bukti.md`
+    dihapus. `LokasiData` tidak lagi membawa `attachmentsDir`; `app:buka-folder`
+    hanya menerima `data`/`backups`. Backup Lengkap sekarang hanya membuat
+    `pura.db` + `manifest.json` (tanpa `jumlahLampiran`/folder `attachments`);
+    Restore Lengkap hanya mengganti database dan mengabaikan folder
+    `attachments` pada backup lama. Tabel `lampiran_jurnal` dan label audit
+    legacy `LAMPIRAN-*` sengaja dipertahankan sampai DB-33. Regression test
+    backup/restore, IPC, lokasi data, dan dokumen ditambahkan. Baseline sebelum
+    ticket 684 test/55 file; setelah DB-37 `npm run typecheck` bersih,
+    `npm test` **676 test/54 file hijau**, dan `npm run build` berhasil.
   - **Dependency:** DB-02.
 
 - [ ] **DB-38 — Migrasi tengah tahun: saldo awal + laba periode pertama** · P1 · S

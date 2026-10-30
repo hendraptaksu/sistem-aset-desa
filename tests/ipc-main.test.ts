@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -62,7 +63,6 @@ function buatEnv(): Env {
     mode: 'INSTALLED' as const,
     dataDir,
     dbPath: dbFile,
-    attachmentsDir: join(dir, 'attachments'),
     backupsDir: join(dataDir, 'backups'),
   };
   const rendererFile = join(dir, 'out', 'renderer', 'index.html');
@@ -88,7 +88,6 @@ function buatEnv(): Env {
       openPaths.push(path);
       return '';
     },
-    lampiranDir: () => lokasi.attachmentsDir,
     lokasiData: () => lokasi,
     pengirim: { rendererFile },
     // Tanggal tetap agar K2 (tutup hanya tahun selesai) deterministik.
@@ -165,11 +164,6 @@ const CHANNEL_IPC = [
   'jurnal:nomor-berikutnya',
   'jurnal:posting',
   'jurnal:reverse',
-  'lampiran:delete',
-  'lampiran:list',
-  'lampiran:open',
-  'lampiran:preview',
-  'lampiran:upload',
   'laporan:arus-kas',
   'laporan:buku-besar',
   'laporan:jurnal-akun',
@@ -200,11 +194,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 55 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 50 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(55);
+    expect(env.handlers.size).toBe(50);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(55);
+    expect(CHANNEL_IPC).toHaveLength(50);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -337,7 +331,7 @@ describe('DB-23a/DB-23b — akun 1050 data lama tetap butuh konfirmasi', () => {
 });
 
 describe('P2-8 — info lokasi & buka folder', () => {
-  it('mengembalikan lokasi deps dan hanya membuka tiga folder tetap', async () => {
+  it('mengembalikan lokasi deps dan hanya membuka dua folder tetap', async () => {
     const env = buatEnv();
 
     const info = await env.panggil('app:info-lokasi');
@@ -346,22 +340,21 @@ describe('P2-8 — info lokasi & buka folder', () => {
       mode: 'INSTALLED',
       dataDir: join(env.dir, 'data'),
       dbPath: join(env.dir, 'data', 'pura.db'),
-      attachmentsDir: join(env.dir, 'attachments'),
       backupsDir: join(env.dir, 'data', 'backups'),
     });
 
-    const buka = await env.panggil('app:buka-folder', 'attachments');
+    const buka = await env.panggil('app:buka-folder', 'backups');
     expect(buka.ok, buka.error).toBe(true);
     expect(buka.data).toEqual({
       opened: true,
-      jenis: 'attachments',
-      path: join(env.dir, 'attachments'),
+      jenis: 'backups',
+      path: join(env.dir, 'data', 'backups'),
     });
-    expect(env.openPaths).toEqual([join(env.dir, 'attachments')]);
-    expect(existsSync(join(env.dir, 'attachments'))).toBe(true);
+    expect(env.openPaths).toEqual([join(env.dir, 'data', 'backups')]);
+    expect(existsSync(join(env.dir, 'data', 'backups'))).toBe(true);
 
-    // Path dari renderer tidak pernah diterima, hanya tiga nama folder tetap.
-    for (const jenis of ['../../etc', '/tmp', 'data/../../', '', null]) {
+    // Path dari renderer tidak pernah diterima, hanya dua nama folder tetap.
+    for (const jenis of ['attachments', '../../etc', '/tmp', 'data/../../', '', null]) {
       const salah = await env.panggil('app:buka-folder', jenis);
       expect(salah.ok).toBe(false);
     }
@@ -413,8 +406,8 @@ describe('AUD-17 — hardening backup:auto dan pengirim IPC', () => {
   });
 });
 
-describe('AUD-11 — IPC backup lengkap (DB + lampiran)', () => {
-  it('membuat subfolder bertanggal, menyalin lampiran, dan menulis audit', async () => {
+describe('AUD-11 / DB-37 — IPC backup lengkap (DB + manifest)', () => {
+  it('membuat subfolder bertanggal berisi DB + manifest dan menulis audit', async () => {
     const env = buatEnv();
     await env.panggil(
       'jurnal:posting',
@@ -429,11 +422,6 @@ describe('AUD-11 — IPC backup lengkap (DB + lampiran)', () => {
       { konfirmasiTanpaSaldoAwal: true },
     );
 
-    const attachments = join(env.dir, 'attachments');
-    mkdirSync(attachments, { recursive: true });
-    writeFileSync(join(attachments, 'foto.jpg'), 'isi-foto');
-    writeFileSync(join(attachments, 'bukti.pdf'), 'isi-pdf');
-
     const induk = join(env.dir, 'tujuan-backup');
     mkdirSync(induk, { recursive: true });
     env.openQueue.push({ canceled: false, filePaths: [induk] });
@@ -442,32 +430,35 @@ describe('AUD-11 — IPC backup lengkap (DB + lampiran)', () => {
 
     // now() test = 2026-10-23T08:00Z = 16:00 WITA.
     const dest = join(induk, 'pura-backup-2026-10-23-1600');
-    expect(hasil.data).toEqual({ saved: true, path: dest, jumlahLampiran: 2 });
+    expect(hasil.data).toEqual({ saved: true, path: dest });
     expect(existsSync(join(dest, 'pura.db'))).toBe(true);
-    expect(existsSync(join(dest, 'attachments', 'foto.jpg'))).toBe(true);
-    expect(existsSync(join(dest, 'attachments', 'bukti.pdf'))).toBe(true);
+    expect(existsSync(join(dest, 'attachments'))).toBe(false);
+    expect(readdirSync(dest).sort()).toEqual(['manifest.json', 'pura.db']);
     const manifest = JSON.parse(
       readFileSync(join(dest, 'manifest.json'), 'utf-8'),
     ) as Record<string, unknown>;
-    expect(manifest).toMatchObject({ jumlahLampiran: 2 });
+    expect(manifest).toMatchObject({ daftarFile: ['pura.db'] });
+    expect(manifest).not.toHaveProperty('jumlahLampiran');
 
     const audit = await env.panggil('audit:list', { aksi: 'BACKUP-LENGKAP' });
     expect(audit.ok, audit.error).toBe(true);
     expect(audit.data.rows[0]).toMatchObject({ aksi: 'BACKUP-LENGKAP' });
-    expect(JSON.parse(audit.data.rows[0].data_baru_json)).toMatchObject({
-      path: dest,
-      jumlahLampiran: 2,
-    });
+    const dataBaru = JSON.parse(audit.data.rows[0].data_baru_json) as Record<
+      string,
+      unknown
+    >;
+    expect(dataBaru).toMatchObject({ path: dest });
+    expect(dataBaru).not.toHaveProperty('jumlahLampiran');
 
     // Dialog batal = bukan error dan tidak membuat backup baru.
     const batal = await env.panggil('backup:lengkap');
     expect(batal.ok, batal.error).toBe(true);
-    expect(batal.data).toEqual({ saved: false, path: '', jumlahLampiran: 0 });
+    expect(batal.data).toEqual({ saved: false, path: '' });
   });
 });
 
-describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
-  it('memulihkan DB & lampiran, mencatat audit, dan mengunci sesi lagi', async () => {
+describe('AUD-12 / DB-37 — IPC restore lengkap (database)', () => {
+  it('memulihkan DB, mencatat audit, dan mengunci sesi lagi', async () => {
     const env = buatEnv();
     expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
 
@@ -485,11 +476,6 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
     );
     expect(postingLama.ok, postingLama.error).toBe(true);
 
-    const attachments = join(env.dir, 'attachments');
-    mkdirSync(attachments, { recursive: true });
-    writeFileSync(join(attachments, 'foto.jpg'), 'isi-foto');
-    writeFileSync(join(attachments, 'bukti.pdf'), 'isi-pdf');
-
     const induk = join(env.dir, 'tujuan-restore');
     mkdirSync(induk, { recursive: true });
     env.openQueue.push({ canceled: false, filePaths: [induk] });
@@ -497,7 +483,7 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
     expect(backup.ok, backup.error).toBe(true);
     expect(backup.data.saved).toBe(true);
 
-    // Data aktif berubah setelah backup: jurnal tambahan + lampiran berbeda.
+    // Data aktif berubah setelah backup: jurnal tambahan.
     const postingBaru = await env.panggil(
       'jurnal:posting',
       {
@@ -511,8 +497,6 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
       { konfirmasiTanpaSaldoAwal: true },
     );
     expect(postingBaru.ok, postingBaru.error).toBe(true);
-    writeFileSync(join(attachments, 'foto.jpg'), 'setelah-backup');
-    writeFileSync(join(attachments, 'baru.jpg'), 'lampiran-ekstra');
 
     const dbSebelumRestore = env.db();
     env.openQueue.push({ canceled: false, filePaths: [backup.data.path] });
@@ -527,27 +511,12 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
         'backups',
         'pre-restore-2026-10-23-1600.db',
       ),
-      preRestoreAttachmentsPath: join(
-        env.dir,
-        'attachments-pre-restore-2026-10-23-1600',
-      ),
-      jumlahLampiran: 2,
     });
+    expect(hasil.data).not.toHaveProperty('jumlahLampiran');
+    expect(hasil.data).not.toHaveProperty('preRestoreAttachmentsPath');
     expect(env.setDbCalls).toHaveLength(1);
     expect(env.setDbCalls[0]).toBe(env.db());
     expect(env.db()).not.toBe(dbSebelumRestore);
-
-    // Lampiran aktif kembali ke isi backup; lampiran lama tersimpan di cadangan.
-    expect(readFileSync(join(attachments, 'foto.jpg'), 'utf-8')).toBe('isi-foto');
-    expect(readFileSync(join(attachments, 'bukti.pdf'), 'utf-8')).toBe('isi-pdf');
-    expect(existsSync(join(attachments, 'baru.jpg'))).toBe(false);
-    expect(existsSync(hasil.data.preRestoreAttachmentsPath)).toBe(true);
-    expect(
-      readFileSync(join(hasil.data.preRestoreAttachmentsPath, 'foto.jpg'), 'utf-8'),
-    ).toBe('setelah-backup');
-    expect(
-      readFileSync(join(hasil.data.preRestoreAttachmentsPath, 'baru.jpg'), 'utf-8'),
-    ).toBe('lampiran-ekstra');
     expect(existsSync(hasil.data.preRestorePath)).toBe(true);
 
     // AUD-14: sesi terkunci lagi setelah restore; PIN aktif tetap berlaku.
@@ -566,17 +535,21 @@ describe('AUD-12 — IPC restore lengkap (DB + lampiran)', () => {
     const audit = await env.panggil('audit:list', { aksi: 'RESTORE-LENGKAP' });
     expect(audit.ok, audit.error).toBe(true);
     expect(audit.data.rows[0]).toMatchObject({ aksi: 'RESTORE-LENGKAP' });
-    expect(JSON.parse(audit.data.rows[0].data_baru_json)).toMatchObject({
+    const dataBaru = JSON.parse(audit.data.rows[0].data_baru_json) as Record<
+      string,
+      unknown
+    >;
+    expect(dataBaru).toMatchObject({
       sumber: backup.data.path,
       pre_restore_db: hasil.data.preRestorePath,
-      pre_restore_attachments: hasil.data.preRestoreAttachmentsPath,
-      jumlahLampiran: 2,
     });
+    expect(dataBaru).not.toHaveProperty('pre_restore_attachments');
+    expect(dataBaru).not.toHaveProperty('jumlahLampiran');
 
     // Dialog batal = bukan error dan tidak mengubah apa pun.
     const batal = await env.panggil('backup:restore-lengkap');
     expect(batal.ok, batal.error).toBe(true);
-    expect(batal.data).toEqual({ restored: false, path: '', jumlahLampiran: 0 });
+    expect(batal.data).toEqual({ restored: false, path: '' });
   });
 });
 

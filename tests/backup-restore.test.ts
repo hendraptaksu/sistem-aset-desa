@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import pkg from '../package.json';
 import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
@@ -48,11 +48,9 @@ import {
   setupPin,
 } from '../src/main/kunci.js';
 
-// AUD-15: kontrol test untuk menggagalkan rename tmp -> dest. AUD-12:
-// `gagalSalinLampiran` menggagalkan copy lampiran di tengah restore. Semua
-// fungsi fs lain tetap memakai implementasi asli.
+// AUD-15: kontrol test untuk menggagalkan rename tmp -> dest. Semua fungsi fs
+// lain tetap memakai implementasi asli.
 const kontrolRename = vi.hoisted(() => ({ gagalTmp: false }));
-const kontrolSalin = vi.hoisted(() => ({ gagalLampiran: false }));
 
 vi.mock('node:fs', async (importOriginal) => {
   const asli = await importOriginal<typeof import('node:fs')>();
@@ -62,11 +60,6 @@ vi.mock('node:fs', async (importOriginal) => {
       if (kontrolRename.gagalTmp && from.includes('.tmp-'))
         throw Object.assign(new Error('EPERM simulasi: rename backup gagal'), { code: 'EPERM' });
       return asli.renameSync(from, to);
-    },
-    copyFileSync: (from: string, to: string) => {
-      if (kontrolSalin.gagalLampiran && to.includes('attachments'))
-        throw Object.assign(new Error('EPERM simulasi: salin lampiran gagal'), { code: 'EPERM' });
-      return asli.copyFileSync(from, to);
     },
   };
 });
@@ -114,31 +107,20 @@ function buatKandidatTidakSeimbang(path: string): void {
   }
 }
 
-/** Buat folder backup lengkap dari DB sumber sementara + isi lampiran. */
+/** Buat folder backup lengkap (DB + manifest) dari DB sumber sementara. */
 function siapkanBackupLengkap(
   root: string,
   idJurnal: string,
-  isiLampiran: Record<string, string>,
 ): { backupDir: string; sumber: Database.Database } {
   const sumberPath = join(root, 'sumber.db');
   const sumber = openDb(sumberPath);
   insertJurnalTervalidasi(sumber, jurnal(idJurnal).header, jurnal(idJurnal).baris);
 
-  const lampiranSumber = join(root, 'sumber-lampiran');
-  mkdirSync(lampiranSumber, { recursive: true });
-  for (const [nama, isi] of Object.entries(isiLampiran)) {
-    const target = join(lampiranSumber, nama);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, isi);
-  }
-
   const backupDir = join(root, 'backup-lengkap');
   buatBackupLengkap({
     db: sumber,
     dbPath: sumberPath,
-    attachmentsDir: lampiranSumber,
     destDir: backupDir,
-    stamp: 'uji',
   });
   return { backupDir, sumber };
 }
@@ -289,8 +271,8 @@ describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan b
   });
 });
 
-describe('AUD-11 — backup lengkap: DB + lampiran + manifest', () => {
-  it('menyalin DB dan 2 lampiran; manifest valid; DB backup memuat data WAL terbaru', () => {
+describe('AUD-11 / DB-37 — backup lengkap: DB + manifest', () => {
+  it('membuat folder berisi pura.db + manifest; DB backup memuat data WAL terbaru', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-aud11-'));
     let db: Database.Database | null = null;
     let cek: Database.Database | null = null;
@@ -303,29 +285,14 @@ describe('AUD-11 — backup lengkap: DB + lampiran + manifest', () => {
       // Transaksi terbaru masih di WAL (belum checkpoint, koneksi terbuka).
       expect(existsSync(`${dbPath}-wal`)).toBe(true);
 
-      const attachmentsDir = join(dir, 'lampiran');
-      mkdirSync(join(attachmentsDir, 'nested'), { recursive: true });
-      writeFileSync(join(attachmentsDir, 'foto.jpg'), 'isi-foto');
-      writeFileSync(join(attachmentsDir, 'nested', 'bukti.pdf'), 'isi-pdf');
-
       const destDir = join(dir, 'tujuan', 'pura-backup-2026-10-27-1530');
-      const hasil = buatBackupLengkap({
-        db,
-        dbPath,
-        attachmentsDir,
-        destDir,
-        stamp: '2026-10-27-1530',
-      });
+      const hasil = buatBackupLengkap({ db, dbPath, destDir });
 
       expect(hasil.destDir).toBe(destDir);
       expect(existsSync(join(destDir, 'pura.db'))).toBe(true);
-      expect(existsSync(join(destDir, 'attachments', 'foto.jpg'))).toBe(true);
-      expect(
-        existsSync(join(destDir, 'attachments', 'nested', 'bukti.pdf')),
-      ).toBe(true);
-      expect(readFileSync(join(destDir, 'attachments', 'foto.jpg'), 'utf-8')).toBe(
-        'isi-foto',
-      );
+      // DB-37: tidak ada folder attachments; isi backup hanya DB + manifest.
+      expect(readdirSync(destDir).sort()).toEqual(['manifest.json', 'pura.db']);
+      expect(existsSync(join(destDir, 'attachments'))).toBe(false);
 
       const manifest = JSON.parse(
         readFileSync(join(destDir, 'manifest.json'), 'utf-8'),
@@ -333,14 +300,10 @@ describe('AUD-11 — backup lengkap: DB + lampiran + manifest', () => {
       expect(manifest).toMatchObject({
         versiApp: pkg.version,
         schemaVersion: SCHEMA_VERSION,
-        jumlahLampiran: 2,
         ukuranDb: statSync(join(destDir, 'pura.db')).size,
-        daftarFile: [
-          'pura.db',
-          'attachments/foto.jpg',
-          'attachments/nested/bukti.pdf',
-        ],
+        daftarFile: ['pura.db'],
       });
+      expect(manifest).not.toHaveProperty('jumlahLampiran');
       expect(typeof manifest.dibuat).toBe('string');
       expect(Number.isNaN(Date.parse(String(manifest.dibuat)))).toBe(false);
       expect(hasil.manifest).toEqual(manifest);
@@ -355,24 +318,20 @@ describe('AUD-11 — backup lengkap: DB + lampiran + manifest', () => {
     }
   });
 
-  it('lampiran tidak ada tetap menghasilkan folder attachments kosong + manifest 0', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-aud11-kosong-'));
+  it('menolak folder tujuan yang sudah berisi file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud11-isi-'));
     let db: Database.Database | null = null;
     try {
       const dbPath = join(dir, 'pura.db');
-      db = openDb(dbPath);
+      const koneksi = openDb(dbPath);
+      db = koneksi;
       const destDir = join(dir, 'backup');
-      const hasil = buatBackupLengkap({
-        db,
-        dbPath,
-        attachmentsDir: join(dir, 'attachments-tidak-ada'),
-        destDir,
-        stamp: '2026-10-27-1531',
-      });
+      mkdirSync(destDir, { recursive: true });
+      writeFileSync(join(destDir, 'lama.txt'), 'isi');
 
-      expect(readdirSync(join(destDir, 'attachments'))).toEqual([]);
-      expect(hasil.manifest.jumlahLampiran).toBe(0);
-      expect(hasil.manifest.daftarFile).toEqual(['pura.db']);
+      expect(() => buatBackupLengkap({ db: koneksi, dbPath, destDir })).toThrow(
+        /sudah berisi file/i,
+      );
     } finally {
       db?.close();
       rmSync(dir, { recursive: true, force: true });
@@ -845,14 +804,14 @@ describe('AUD-14 — restore mempertahankan PIN DB aktif', () => {
   });
 });
 
-describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
+describe('AUD-12 / DB-37 — restore lengkap: database atomik', () => {
   beforeEach(() => {
     sesi.terbuka = false;
     sesi.gagal = 0;
     sesi.blokirSampai = 0;
   });
 
-  it('restore sukses: DB & lampiran berganti, PIN aktif dipertahankan, cadangan lama utuh', () => {
+  it('restore sukses: DB berganti, PIN aktif dipertahankan, cadangan lama utuh', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-aud12-ok-'));
     let aktif: Database.Database | null = null;
     let sumber: Database.Database | null = null;
@@ -860,20 +819,13 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
     try {
       const dataDir = join(dir, 'data');
       const aktifPath = join(dataDir, 'pura.db');
-      const attachmentsDir = join(dir, 'attachments');
       aktif = openDb(aktifPath);
       expect(setupPin(aktif, '111111')).toBeNull();
       const saltAktif = getPengaturan(aktif, KUNCI_PIN_SALT);
       const hashAktif = getPengaturan(aktif, KUNCI_PIN_HASH);
       insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
-      mkdirSync(join(attachmentsDir, 'nested'), { recursive: true });
-      writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
-      writeFileSync(join(attachmentsDir, 'nested', 'lama.pdf'), 'isi-lama-pdf');
 
-      const siap = siapkanBackupLengkap(dir, 'baru', {
-        'baru.jpg': 'isi-baru',
-        'nested/bukti.pdf': 'isi-bukti',
-      });
+      const siap = siapkanBackupLengkap(dir, 'baru');
       sumber = siap.sumber;
       sumber.close();
       sumber = null;
@@ -882,7 +834,6 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       const hasil = restoreLengkap({
         db: aktif,
         dbPath: aktifPath,
-        attachmentsDir,
         backupDir: siap.backupDir,
         dirBackup: join(dataDir, 'backups'),
         stamp: 'restore-uji',
@@ -895,31 +846,10 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       expect(hasil.preRestorePath).toBe(
         join(dataDir, 'backups', 'pre-restore-restore-uji.db'),
       );
-      expect(hasil.preRestoreAttachmentsPath).toBe(
-        join(dir, 'attachments-pre-restore-restore-uji'),
-      );
-      expect(hasil.jumlahLampiran).toBe(2);
 
-      // Lampiran aktif sudah berganti seluruhnya; tidak ada sisa lampiran lama.
-      expect(readdirSync(attachmentsDir).sort()).toEqual(['baru.jpg', 'nested']);
-      expect(readFileSync(join(attachmentsDir, 'baru.jpg'), 'utf-8')).toBe('isi-baru');
-      expect(readFileSync(join(attachmentsDir, 'nested', 'bukti.pdf'), 'utf-8')).toBe(
-        'isi-bukti',
-      );
-      expect(existsSync(join(attachmentsDir, 'lama.jpg'))).toBe(false);
-
-      // Cadangan pra-restore berisi DB dan lampiran lama.
+      // Cadangan pra-restore berisi DB lama.
       cekLama = openDb(hasil.preRestorePath);
       expect(listJurnal(cekLama).map((j) => j.id)).toEqual(['lama']);
-      expect(
-        readFileSync(join(hasil.preRestoreAttachmentsPath, 'lama.jpg'), 'utf-8'),
-      ).toBe('isi-lama');
-      expect(
-        readFileSync(
-          join(hasil.preRestoreAttachmentsPath, 'nested', 'lama.pdf'),
-          'utf-8',
-        ),
-      ).toBe('isi-lama-pdf');
 
       // AUD-14: PIN DB aktif tetap berlaku, PIN backup tidak dipakai.
       expect(getPengaturan(aktif, KUNCI_PIN_SALT)).toBe(saltAktif);
@@ -938,19 +868,16 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
     }
   });
 
-  it('manifest rusak ditolak tanpa menyentuh DB atau lampiran aktif', () => {
+  it('manifest rusak ditolak tanpa menyentuh DB aktif', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-aud12-manifest-'));
     let aktif: Database.Database | null = null;
     let sumber: Database.Database | null = null;
     try {
       const aktifPath = join(dir, 'data', 'pura.db');
-      const attachmentsDir = join(dir, 'attachments');
       aktif = openDb(aktifPath);
       insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
-      mkdirSync(attachmentsDir, { recursive: true });
-      writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
 
-      const siap = siapkanBackupLengkap(dir, 'baru', { 'baru.jpg': 'isi-baru' });
+      const siap = siapkanBackupLengkap(dir, 'baru');
       sumber = siap.sumber;
       sumber.close();
       sumber = null;
@@ -964,7 +891,6 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       const hasil = restoreLengkap({
         db: aktif,
         dbPath: aktifPath,
-        attachmentsDir,
         backupDir: siap.backupDir,
         dirBackup: join(dir, 'data', 'backups'),
         stamp: 'manifest-rusak',
@@ -975,10 +901,6 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
       expect(hasil.error).toMatch(/manifest/i);
 
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
-      expect(readFileSync(join(attachmentsDir, 'lama.jpg'), 'utf-8')).toBe('isi-lama');
-      expect(existsSync(join(dir, 'attachments-pre-restore-manifest-rusak'))).toBe(
-        false,
-      );
       expect(existsSync(join(dir, 'data', 'backups', 'pre-restore-manifest-rusak.db'))).toBe(
         false,
       );
@@ -989,118 +911,70 @@ describe('AUD-12 — restore lengkap: DB + lampiran atomik', () => {
     }
   });
 
-  it('DB valid tetapi folder attachments hilang ditolak', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-aud12-attach-'));
-    let aktif: Database.Database | null = null;
-    let sumber: Database.Database | null = null;
-    try {
-      const aktifPath = join(dir, 'data', 'pura.db');
-      const attachmentsDir = join(dir, 'attachments');
-      aktif = openDb(aktifPath);
-      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
-      mkdirSync(attachmentsDir, { recursive: true });
-      writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
-
-      const siap = siapkanBackupLengkap(dir, 'baru', { 'baru.jpg': 'isi-baru' });
-      sumber = siap.sumber;
-      sumber.close();
-      sumber = null;
-      expect(validasiKandidatRestore(join(siap.backupDir, 'pura.db'))).toEqual({
-        valid: true,
-      });
-      rmSync(join(siap.backupDir, 'attachments'), { recursive: true, force: true });
-
-      const hasil = restoreLengkap({
-        db: aktif,
-        dbPath: aktifPath,
-        attachmentsDir,
-        backupDir: siap.backupDir,
-        dirBackup: join(dir, 'data', 'backups'),
-        stamp: 'tanpa-attachments',
-      });
-      expect(hasil.ok).toBe(false);
-      if (hasil.ok) throw new Error('seharusnya ditolak');
-      expect(hasil.db).toBe(aktif);
-      expect(hasil.error).toMatch(/attachments|lampiran/i);
-
-      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
-      expect(readdirSync(attachmentsDir)).toEqual(['lama.jpg']);
-      expect(existsSync(join(dir, 'attachments-pre-restore-tanpa-attachments'))).toBe(
-        false,
-      );
-    } finally {
-      sumber?.close();
-      aktif?.close();
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('kegagalan saat menyalin lampiran mengembalikan DB dan lampiran lama', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-aud12-gagal-'));
+  it('backup lama dengan folder attachments diterima; lampiran diabaikan dan tidak disentuh', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-aud12-legacy-'));
     let aktif: Database.Database | null = null;
     let sumber: Database.Database | null = null;
     try {
       const dataDir = join(dir, 'data');
       const aktifPath = join(dataDir, 'pura.db');
-      const attachmentsDir = join(dir, 'attachments');
+      const attachmentsAktif = join(dir, 'attachments');
       aktif = openDb(aktifPath);
       insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
-      mkdirSync(attachmentsDir, { recursive: true });
-      writeFileSync(join(attachmentsDir, 'lama.jpg'), 'isi-lama');
+      mkdirSync(attachmentsAktif, { recursive: true });
+      writeFileSync(join(attachmentsAktif, 'aktif.jpg'), 'milik-instalasi-aktif');
 
-      const siap = siapkanBackupLengkap(dir, 'baru', {
-        'baru.jpg': 'isi-baru',
-        'nested/bukti.pdf': 'isi-bukti',
-      });
+      const siap = siapkanBackupLengkap(dir, 'baru');
       sumber = siap.sumber;
       sumber.close();
       sumber = null;
 
-      kontrolSalin.gagalLampiran = true;
-      let hasil;
-      try {
-        hasil = restoreLengkap({
-          db: aktif,
-          dbPath: aktifPath,
-          attachmentsDir,
-          backupDir: siap.backupDir,
-          dirBackup: join(dataDir, 'backups'),
-          stamp: 'restore-gagal',
-        });
-      } finally {
-        kontrolSalin.gagalLampiran = false;
-      }
+      // Simulasikan folder backup versi lama: manifest masih mencatat lampiran
+      // dan folder attachments/ masih ada.
+      const backupAttachments = join(siap.backupDir, 'attachments');
+      mkdirSync(backupAttachments, { recursive: true });
+      writeFileSync(join(backupAttachments, 'lama.jpg'), 'isi-lampiran-lama');
+      writeFileSync(
+        join(siap.backupDir, 'manifest.json'),
+        `${JSON.stringify(
+          {
+            versiApp: pkg.version,
+            schemaVersion: SCHEMA_VERSION,
+            dibuat: new Date().toISOString(),
+            jumlahLampiran: 1,
+            ukuranDb: statSync(join(siap.backupDir, 'pura.db')).size,
+            daftarFile: ['pura.db', 'attachments/lama.jpg'],
+          },
+          null,
+          2,
+        )}\n`,
+        'utf-8',
+      );
+      expect(validasiBackupLengkap(siap.backupDir).valid).toBe(true);
 
-      expect(hasil.ok).toBe(false);
-      if (hasil.ok) throw new Error('seharusnya gagal');
-      expect(hasil.error).toMatch(/data lama tetap dipakai/i);
+      const hasil = restoreLengkap({
+        db: aktif,
+        dbPath: aktifPath,
+        backupDir: siap.backupDir,
+        dirBackup: join(dataDir, 'backups'),
+        stamp: 'backup-lama',
+      });
+      expect(hasil.ok, hasil.ok ? '' : hasil.error).toBe(true);
+      if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
-      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
 
-      // Folder lampiran lama kembali utuh; salinan parsial dibersihkan.
-      expect(readdirSync(attachmentsDir)).toEqual(['lama.jpg']);
-      expect(readFileSync(join(attachmentsDir, 'lama.jpg'), 'utf-8')).toBe('isi-lama');
-      expect(existsSync(join(attachmentsDir, 'baru.jpg'))).toBe(false);
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['baru']);
+      // Folder lampiran aktif tidak ikut diganti/dihapus.
+      expect(readdirSync(attachmentsAktif)).toEqual(['aktif.jpg']);
+      expect(readFileSync(join(attachmentsAktif, 'aktif.jpg'), 'utf-8')).toBe(
+        'milik-instalasi-aktif',
+      );
+      // Folder attachments di backup lama tetap ada, hanya tidak dipulihkan.
+      expect(existsSync(join(backupAttachments, 'lama.jpg'))).toBe(true);
       expect(
         readdirSync(dir).filter((f) => f.startsWith('attachments-pre-restore-')),
       ).toEqual([]);
-      expect(existsSync(`${aktifPath}.restore-tmp`)).toBe(false);
-
-      // Cadangan DB sebelum restore tetap ada dan berisi data lama.
-      const preRestore = join(dataDir, 'backups', 'pre-restore-restore-gagal.db');
-      expect(existsSync(preRestore)).toBe(true);
-      const cek = openDb(preRestore);
-      try {
-        expect(listJurnal(cek).map((j) => j.id)).toEqual(['lama']);
-      } finally {
-        cek.close();
-      }
-
-      // DB aktif di disk juga sudah kembali ke data lama dan bisa ditulis.
-      insertJurnalTervalidasi(aktif, jurnal('lagi').header, jurnal('lagi').baris);
-      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama', 'lagi']);
     } finally {
-      kontrolSalin.gagalLampiran = false;
       sumber?.close();
       aktif?.close();
       rmSync(dir, { recursive: true, force: true });

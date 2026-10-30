@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -35,16 +35,7 @@ test(
     const workDir = await mkdtemp(join(tmpdir(), 'pura-smoke-'));
     const profileDir = join(workDir, 'profile');
     const dbPath = join(workDir, 'pura.db');
-    const gambarUji = join(workDir, 'lampiran-ui09.png');
     await mkdir(artifacts, { recursive: true });
-    // PNG 1x1 untuk menguji pratinjau lampiran bertumpuk (UI-09).
-    await writeFile(
-      gambarUji,
-      Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-        'base64',
-      ),
-    );
 
     /** @type {import('playwright-core').ElectronApplication | undefined} */
     let app;
@@ -292,30 +283,9 @@ test(
       await dialogJurnal.waitFor({ state: 'detached' });
       await tungguFokusTeks('Lihat');
 
-      // Pratinjau lampiran adalah modal kedua: Escape hanya menutup pratinjau
-      // dan fokus kembali ke tombol Lihat di dalam Detail.
+      // Screenshot detail jurnal setelah semua perilaku dialog diuji.
       await page.keyboard.press('Enter');
       await dialogJurnal.waitFor();
-      await app.evaluate(({ dialog }, filePath) => {
-        dialog.showOpenDialog = async () => ({
-          canceled: false,
-          filePaths: [filePath],
-        });
-      }, gambarUji);
-      await dialogJurnal.getByRole('button', { name: 'Unggah Lampiran' }).click();
-      await dialogJurnal
-        .getByText('Lampiran bukti tersimpan.')
-        .waitFor({ timeout: 15_000 });
-      await dialogJurnal.getByRole('button', { name: 'Lihat', exact: true }).click();
-      const pratinjau = page.getByRole('dialog', {
-        name: 'Pratinjau: lampiran-ui09.png',
-      });
-      await pratinjau.waitFor({ timeout: 15_000 });
-      assert.ok(await fokusDiDialog(), 'Fokus harus masuk pratinjau lampiran');
-      await page.keyboard.press('Escape');
-      await pratinjau.waitFor({ state: 'detached' });
-      await dialogJurnal.waitFor();
-      await tungguFokusTeks('Lihat');
       await page.screenshot({
         path: join(artifacts, '08-modal-detail-jurnal.png'),
         fullPage: true,
@@ -339,8 +309,8 @@ test(
       throw err;
     } finally {
       await app?.close().catch(() => {});
-      // Saat gagal, data uji jangan dihapus agar bisa diperiksa (DB, backup,
-      // lampiran). Folder sementara tetap aman karena berada di tmpdir.
+      // Saat gagal, data uji jangan dihapus agar bisa diperiksa (DB, backup).
+      // Folder sementara tetap aman karena berada di tmpdir.
       if (gagal || process.env.SMOKE_KEEP === '1') {
         t.diagnostic(`Folder uji disimpan: ${workDir}`);
       } else {

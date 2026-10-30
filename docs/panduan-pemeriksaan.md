@@ -57,8 +57,8 @@ transaksi aslinya.
   - `1050 PIUTANG LAIN LAIN` hanya untuk **data lama**. Alur input piutang sudah
     dihapus; jangan membuat jurnal 1050 baru. Koreksi saldo lama hanya lewat
     Jurnal Umum akuntan pendamping.
-- **Lampiran bukti** ada untuk transaksi material (foto kuitansi/PDF). Lampiran
-  tidak mengubah angka; hanya bukti pendukung.
+- **Dokumen bukti** transaksi material disimpan di arsip fisik; aplikasi tidak
+  menyimpan foto/PDF bukti.
 
 ### Tanda bahaya
 
@@ -272,7 +272,7 @@ Buka **Pengaturan → Riwayat Audit**.
 - Klik **Lihat** untuk melihat data sebelum/sesudah.
 - Aksi penting yang harus muncul: pembuatan jurnal, `REVERSAL`,
   `KOREKSI-ISI-ULANG`, `TUTUP`/`TUTUP-ULANG`, `SALDO-AWAL`, `PANJAR`,
-  `BACKUP`/`RESTORE`, perubahan `PENGATURAN`, serta tambah/hapus lampiran.
+  `BACKUP`/`RESTORE`, dan perubahan `PENGATURAN`.
 - Audit tidak pernah menyimpan PIN, salt, atau hash PIN.
 
 Gunakan audit untuk menjawab: siapa/apa yang berubah, kapan, dan dengan alasan
@@ -309,7 +309,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 
 - [ ] Jurnal Umum: semua transaksi punya tanggal, keterangan, nomor bukti, dan
       lawan akun yang wajar.
-- [ ] Bukti/lampiran tersedia untuk transaksi material.
+- [ ] Dokumen bukti transaksi material tersedia di arsip fisik.
 - [ ] Buku Besar: saldo awal/berjalan/akhir konsisten.
 - [ ] Neraca Saldo: **selisih 0**; mode tahun berjalan/kumulatif sesuai tujuan
       pemeriksaan dan baris laba ditahan sudah dipahami.
@@ -317,5 +317,5 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 - [ ] Neraca: aset = kewajiban + ekuitas.
 - [ ] Arus Kas cocok dengan mutasi kas/bank.
 - [ ] Audit: koreksi dan tutup buku punya alasan.
-- [ ] Backup Lengkap (DB + lampiran) sudah dibuat, atau backup `.db` **dan**
-      folder `attachments` disalin terpisah.
+- [ ] Backup Lengkap (`pura.db` + `manifest.json`) atau Backup Export `.db`
+      sudah dibuat.

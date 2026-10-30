@@ -7,18 +7,16 @@ import { tentukanLokasiData } from '../src/main/lokasiData.js';
 describe('P2-8 — lokasi data installer (POSIX)', () => {
   const userData = posix.join('/home', 'budi', '.config', 'Keuangan Pura Dalem Puri');
 
-  it('menaruh DB & backup di <userData>/data dan lampiran di <userData>/attachments', () => {
+  it('menaruh DB & backup di <userData>/data', () => {
     const lokasi = tentukanLokasiData({ userDataDir: userData });
 
     expect(lokasi).toEqual({
       mode: 'INSTALLED',
       dataDir: posix.join(userData, 'data'),
       dbPath: posix.join(userData, 'data', 'pura.db'),
-      attachmentsDir: posix.join(userData, 'attachments'),
       backupsDir: posix.join(userData, 'data', 'backups'),
     });
     expect(lokasi.dbPath.endsWith(posix.join('data', 'pura.db'))).toBe(true);
-    expect(lokasi.attachmentsDir.endsWith('attachments')).toBe(true);
     expect(lokasi.backupsDir.endsWith(posix.join('data', 'backups'))).toBe(true);
   });
 });
@@ -40,7 +38,6 @@ describe('P2-8 — lokasi data installer (Windows)', () => {
       mode: 'INSTALLED',
       dataDir: win32.join(userData, 'data'),
       dbPath: win32.join(userData, 'data', 'pura.db'),
-      attachmentsDir: win32.join(userData, 'attachments'),
       backupsDir: win32.join(userData, 'data', 'backups'),
     });
     expect(lokasi.dbPath).toContain(win32.sep);
@@ -49,7 +46,7 @@ describe('P2-8 — lokasi data installer (Windows)', () => {
 });
 
 describe('P2-8 — lokasi data portable (POSIX & Windows)', () => {
-  it('menaruh data, lampiran, dan backup di dalam folder exe (POSIX)', () => {
+  it('menaruh data dan backup di dalam folder exe (POSIX)', () => {
     const portableDir = posix.join('/media', 'flashdisk', 'Keuangan Pura Dalem Puri');
     const lokasi = tentukanLokasiData({
       userDataDir: posix.join('/home', 'budi', '.config', 'Keuangan Pura Dalem Puri'),
@@ -60,7 +57,6 @@ describe('P2-8 — lokasi data portable (POSIX & Windows)', () => {
       mode: 'PORTABLE',
       dataDir: posix.join(portableDir, 'data'),
       dbPath: posix.join(portableDir, 'data', 'pura.db'),
-      attachmentsDir: posix.join(portableDir, 'attachments'),
       backupsDir: posix.join(portableDir, 'backups'),
     });
   });
@@ -76,7 +72,6 @@ describe('P2-8 — lokasi data portable (POSIX & Windows)', () => {
       mode: 'PORTABLE',
       dataDir: win32.join(portableDir, 'data'),
       dbPath: win32.join(portableDir, 'data', 'pura.db'),
-      attachmentsDir: win32.join(portableDir, 'attachments'),
       backupsDir: win32.join(portableDir, 'backups'),
     });
     expect(lokasi.dbPath).toBe(win32.join('D:', 'Keuangan Pura Dalem Puri', 'data', 'pura.db'));
@@ -98,7 +93,6 @@ describe('P2-8 — override PURA_DB (dev/test)', () => {
       mode: 'OVERRIDE',
       dataDir: posix.join('/repo', 'data'),
       dbPath: overrideDbPath,
-      attachmentsDir: posix.join(userData, 'attachments'),
       backupsDir: posix.join('/repo', 'data', 'backups'),
     });
   });
@@ -112,7 +106,6 @@ describe('P2-8 — override PURA_DB (dev/test)', () => {
       mode: 'OVERRIDE',
       dataDir: win32.join('E:', 'PURA', 'data dev'),
       dbPath: overrideWin,
-      attachmentsDir: win32.join(userDataWin, 'attachments'),
       backupsDir: win32.join('E:', 'PURA', 'data dev', 'backups'),
     });
 

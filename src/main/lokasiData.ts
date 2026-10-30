@@ -1,14 +1,12 @@
 // Lokasi data aplikasi (P2-8) — modul murni, tanpa Electron.
 //
-// Satu tempat untuk memutuskan di mana database, lampiran, dan backup tinggal
+// Satu tempat untuk memutuskan di mana database dan backup tinggal
 // agar UI, dokumentasi, dan main process tidak saling berbeda:
 // - PORTABLE  : electron-builder portable menetapkan PORTABLE_EXECUTABLE_DIR.
 //               Semua data ikut folder exe supaya bisa dibawa di flashdisk.
-// - INSTALLED : installer NSIS biasa. DB & backup di <userData>/data, lampiran
-//               di <userData>/attachments (perilaku lama P2-4 dipertahankan).
-// - OVERRIDE  : PURA_DB (dev/test) tetap menang. DB di path pilihan; lampiran
-//               tetap di <userData>/attachments dan backup di samping DB,
-//               persis perilaku dev sebelum P2-8.
+// - INSTALLED : installer NSIS biasa. DB & backup di <userData>/data.
+// - OVERRIDE  : PURA_DB (dev/test) tetap menang. DB di path pilihan; backup di
+//               samping DB, persis perilaku dev sebelum P2-8.
 //
 // Modul ini sengaja memilih `path.win32`/`path.posix` berdasarkan bentuk path
 // masuk, bukan platform host. Dengan begitu aturan Windows dapat diuji di
@@ -25,8 +23,6 @@ export type LokasiData = {
   dataDir: string;
   /** File database SQLite aktif. */
   dbPath: string;
-  /** Folder file lampiran bukti (TIDAK ikut backup .db). */
-  attachmentsDir: string;
   /** Folder backup otomatis/manual internal. */
   backupsDir: string;
 };
@@ -69,8 +65,7 @@ export function tentukanLokasiData(opsi: OpsiLokasiData): LokasiData {
     throw new Error('Folder data aplikasi (userData) wajib diisi.');
   }
 
-  // 1. PURA_DB menang (dev/test). Lampiran tetap di userData seperti P2-4;
-  //    backup di samping DB seperti perilaku lama.
+  // 1. PURA_DB menang (dev/test); backup di samping DB seperti perilaku lama.
   const overrideDbPath = teksNilai(opsi.overrideDbPath);
   if (overrideDbPath) {
     const dataDir = folderInduk(overrideDbPath);
@@ -78,7 +73,6 @@ export function tentukanLokasiData(opsi: OpsiLokasiData): LokasiData {
       mode: 'OVERRIDE',
       dataDir,
       dbPath: overrideDbPath,
-      attachmentsDir: gabung(userDataDir, 'attachments'),
       backupsDir: gabung(dataDir, 'backups'),
     };
   }
@@ -91,18 +85,16 @@ export function tentukanLokasiData(opsi: OpsiLokasiData): LokasiData {
       mode: 'PORTABLE',
       dataDir,
       dbPath: gabung(dataDir, 'pura.db'),
-      attachmentsDir: gabung(portableDir, 'attachments'),
       backupsDir: gabung(portableDir, 'backups'),
     };
   }
 
-  // 3. Installer NSIS: DB & backup di <userData>/data, lampiran di <userData>.
+  // 3. Installer NSIS: DB & backup di <userData>/data.
   const dataDir = gabung(userDataDir, 'data');
   return {
     mode: 'INSTALLED',
     dataDir,
     dbPath: gabung(dataDir, 'pura.db'),
-    attachmentsDir: gabung(userDataDir, 'attachments'),
     backupsDir: gabung(dataDir, 'backups'),
   };
 }

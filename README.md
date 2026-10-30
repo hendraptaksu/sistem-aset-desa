@@ -8,7 +8,7 @@ angka turunan yang disimpan mati.
 - **Versi:** 2.0.0
 - **Teknologi:** Electron + React + TypeScript + SQLite (`better-sqlite3`)
 - **Platform:** Windows (installer NSIS dan portable); dev juga bisa di macOS/Linux
-- **Data:** satu file `pura.db` per instalasi, ditambah folder lampiran bukti
+- **Data:** satu file `pura.db` per instalasi
 
 > **Status: POC / pra-produksi.** Aplikasi sudah dipakai untuk pengujian dan
 > hardening, tetapi **belum dinyatakan production-ready**. Jangan jadikan satu-
@@ -38,10 +38,8 @@ angka turunan yang disimpan mati.
   (reversal) + alasan**, dengan jejak audit.
 - Laporan: Buku Besar, Neraca Saldo (tahun berjalan/kumulatif), Laba Rugi,
   Neraca, Arus Kas, dan Panjar.
-- Lampiran bukti (foto/PDF) disimpan di folder `attachments`, bukan di dalam
-  database.
-- Backup database memakai `VACUUM INTO`; tersedia **Backup Lengkap** yang
-  menyertakan database + lampiran + `manifest.json`.
+- Backup database memakai `VACUUM INTO`; tersedia **Backup Lengkap** berisi
+  database + `manifest.json` dalam satu folder.
 - Aplikasi selalu terkunci saat dibuka, memiliki auto-kunci idle, dan kunci
   otomatis saat laptop sleep/lock-screen.
 
@@ -69,7 +67,7 @@ angka turunan yang disimpan mati.
 │ src/core/* — logika murni    │  │ src/db/* — akses SQLite           │
 │ forms, posting, reports,     │  │ database.ts (DDL + migrasi v9),   │
 │ reversal, periode, pin,      │  │ repository, jurnal, panjar,       │
-│ tutup, pengaturan            │  │ lampiran, laporan, seed-dev       │
+│ tutup, pengaturan            │  │ laporan, seed-dev                 │
 └──────────────────────────────┘  └─────────────┬─────────────────────┘
                                                  │
                                     ┌────────────▼────────────┐
@@ -93,7 +91,7 @@ Prinsip yang dijaga:
    single-entry lama sudah dibuang; migrasi bersifat idempotent dan backup
    pra-upgrade tetap dibuat.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
-   dan folder `attachments` di mesin yang sama.
+   di mesin yang sama.
 
 ---
 
@@ -121,26 +119,24 @@ dibaca saat `npm run dev`; aplikasi terpasang memakai lokasi data standar.
 
 Nama folder mengikuti `productName`: **Keuangan Pura Dalem Puri**.
 
-| Mode | Database | Lampiran | Backup internal |
-|---|---|---|---|
-| Installer Windows | `%APPDATA%\Keuangan Pura Dalem Puri\data\pura.db` | `%APPDATA%\Keuangan Pura Dalem Puri\attachments` | `%APPDATA%\Keuangan Pura Dalem Puri\data\backups` |
-| Portable Windows | `<folder exe>\data\pura.db` | `<folder exe>\attachments` | `<folder exe>\backups` |
-| Dev (`PURA_DB`) | path dari `PURA_DB`, contoh `./data/pura-dev.db` | `<userData>\attachments` | `backups` di samping database |
+| Mode | Database | Backup internal |
+|---|---|---|
+| Installer Windows | `%APPDATA%\Keuangan Pura Dalem Puri\data\pura.db` | `%APPDATA%\Keuangan Pura Dalem Puri\data\backups` |
+| Portable Windows | `<folder exe>\data\pura.db` | `<folder exe>\backups` |
+| Dev (`PURA_DB`) | path dari `PURA_DB`, contoh `./data/pura-dev.db` | `backups` di samping database |
 
 Lokasi persis selalu bisa dilihat di **Pengaturan → Lokasi Data & Backup**.
 Rincian ada di `docs/panduan-portable.md`.
 
-### Peringatan backup lampiran
+### Backup dan restore
 
 - **Backup Export .db** dan backup otomatis `auto-YYYY-MM-DD.db` **hanya**
-  menyalin database. File di folder `attachments` **tidak ikut**.
-- **Backup Lengkap (DB + lampiran)** menghasilkan satu folder berisi
-  `pura.db`, folder `attachments/`, dan `manifest.json`. Pakai ini untuk arsip
-  jangka panjang atau pindah laptop.
-- **Restore Import .db** hanya memulihkan database; **Restore Lengkap**
-  memulihkan database dan lampiran dari folder hasil Backup Lengkap.
-- Menyalin hanya `pura.db` ke laptop lain akan membuat metadata lampiran
-  menunjuk file yang tidak ada. Selalu simpan `.db` dan `attachments` bersama.
+  menyalin database.
+- **Backup Lengkap** menghasilkan satu folder berisi `pura.db` dan
+  `manifest.json`. Pakai ini untuk arsip jangka panjang atau pindah laptop.
+- **Restore Import .db** memulihkan database dari satu file; **Restore Lengkap**
+  memulihkan database dari folder hasil Backup Lengkap. Keduanya memvalidasi
+  kandidat dan mencadangkan database aktif lebih dulu.
 - Backup **tidak terenkripsi**. Simpan di media yang aman dan pisahkan dari
   laptop (flashdisk/Drive) secara rutin.
 
@@ -166,7 +162,6 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/panduan-pengguna.md` — panduan operator harian.
 - `docs/panduan-pemeriksaan.md` — panduan akuntan/pemeriksa.
 - `docs/panduan-portable.md` — installer vs portable dan pindah laptop.
-- `docs/lampiran-bukti.md` — aturan foto/PDF bukti jurnal.
 - `docs/arah-akuntansi.md` — keputusan arah double-entry.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.

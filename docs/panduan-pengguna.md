@@ -11,7 +11,6 @@ jurnal, jadi tidak ada saldo atau laba yang “disimpan mati”.
 > Dokumen pendamping:
 > - `docs/panduan-pemeriksaan.md` — untuk akuntan pendamping.
 > - `docs/panduan-portable.md` — lokasi data installer vs portable dan cara pindah laptop.
-> - `docs/lampiran-bukti.md` — aturan foto/PDF bukti jurnal.
 
 ---
 
@@ -37,9 +36,9 @@ memfokuskannya kembali.
 
 ## 2. Alur harian (SOP singkat)
 
-Prinsipnya: **catat saat kejadian**, lalu lampirkan bukti bila ada. Operator tidak
-perlu menghitung debit/kredit; sistem menyusun jurnalnya dan menampilkan
-pratinjau sebelum menyimpan.
+Prinsipnya: **catat saat kejadian**, lalu simpan bukti fisik di tempat aman.
+Operator tidak perlu menghitung debit/kredit; sistem menyusun jurnalnya dan
+menampilkan pratinjau sebelum menyimpan.
 
 > **Peringatan wajib alasan.** Di form Transaksi, Jurnal Umum, Saldo Awal, dan
 > Panjar, peringatan (mis. kas/bank akan minus, atau realisasi panjar melebihi
@@ -168,18 +167,7 @@ Tanggal balik boleh diubah secara eksplisit, termasuk ke tahun berbeda; aplikasi
 tidak memblokir, tetapi menampilkan peringatan kuning bila tanggal balik dan
 tanggal pengganti jatuh di tahun berbeda. Baca peringatan itu sebelum melanjutkan.
 
-### 2.7 Lampiran bukti
-
-Foto kuitansi/nota atau PDF ditempelkan per jurnal:
-
-1. Buka **Jurnal Umum** → **Lihat** pada jurnal yang dituju.
-2. Di bagian **Lampiran Bukti**, tekan **Unggah Lampiran**.
-3. Pilih JPG/JPEG/PNG/WEBP/PDF, maksimal 10 MB per file.
-
-Lampiran disimpan sebagai file di folder `attachments`, **bukan** di dalam file
-database. Karena itu lampiran **tidak ikut backup `.db`** — lihat bagian 5.
-
-### 2.8 Daftar Akun (tambah/ubah/nonaktifkan akun)
+### 2.7 Daftar Akun (tambah/ubah/nonaktifkan akun)
 
 Menu **Daftar Akun** menampilkan seluruh COA yang dipakai aplikasi. Di sini
 operator dapat mengelola akun **Beban** atau **Pendapatan** baru tanpa menunggu
@@ -216,8 +204,8 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
 - Buka **Dashboard**, periksa **Saldo Kas & Bank**, **Laba/Rugi tahun berjalan**,
   dan badge **Neraca Saldo: Seimbang**.
 - Periksa **Jurnal Terakhir** dan **Backup Terakhir**.
-- Lakukan **Backup Lengkap (DB + lampiran)** ke flashdisk/Drive. Alternatifnya:
-  **Backup Export .db** lalu salin folder `attachments` ke media yang sama.
+- Lakukan **Backup Lengkap** ke flashdisk/Drive. Alternatifnya:
+  **Backup Export .db** untuk menyimpan satu file database.
 
 ### Bulanan
 
@@ -227,9 +215,9 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
    tahun berjalan, laba tahun sebelumnya diringkas pada baris
    **Laba ditahan sebelum periode** — baris ini bukan akun yang bisa diposting.
 2. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
-3. Buat **Backup Lengkap** (DB + lampiran) dalam satu folder bertanggal,
-   misalnya `backup-2026-10-31`. Bila memakai Backup Export `.db`, salin folder
-   `attachments` secara terpisah ke folder yang sama.
+3. Buat **Backup Lengkap** dalam satu folder bertanggal,
+   misalnya `backup-2026-10-31`. Alternatifnya, simpan satu file
+   **Backup Export .db**.
 4. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
    bulanan. Tidak ada tutup buku bulanan di aplikasi ini.
 
@@ -266,34 +254,27 @@ tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.
 | Yang dibackup | Letaknya | Backup Export `.db` | Backup Lengkap |
 |---|---|---|---|
 | Database | file `pura.db` | ya — inilah file backup | ya |
-| Lampiran bukti | folder `attachments` | **tidak** | ya |
 | Backup otomatis | folder `backups` | bukan sumber data, hanya salinan | bukan sumber data |
 
 - **Backup otomatis harian:** aplikasi membuat `auto-YYYY-MM-DD.db` di folder
   `backups` saat dibuka (dan saat aplikasi dibiarkan terbuka), menyimpan 7 file
-  terakhir. Backup ini **hanya database**, tanpa lampiran.
+  terakhir.
 - **Backup Export .db:** **Dashboard → Backup Export .db**, lalu pilih lokasi
-  penyimpanan (flashdisk/Drive). Sebaiknya beri nama bertanggal. Ini juga
-  **hanya database**.
-- **Backup Lengkap (DB + lampiran):** **Dashboard → Backup Lengkap**, lalu pilih
-  folder induk. Aplikasi membuat satu folder berisi `pura.db`, folder
-  `attachments`, dan `manifest.json`. Pakai cara ini untuk arsip jangka panjang
-  atau pindah laptop.
-- **Backup lampiran manual:** buka **Pengaturan → Lokasi Data & Backup → Buka
-  Folder** pada folder lampiran, lalu salin seluruh isinya.
+  penyimpanan (flashdisk/Drive). Sebaiknya beri nama bertanggal.
+- **Backup Lengkap:** **Dashboard → Backup Lengkap**, lalu pilih folder induk.
+  Aplikasi membuat satu folder berisi `pura.db` dan `manifest.json`. Pakai cara
+  ini untuk arsip jangka panjang atau pindah laptop.
 
-Simpan `.db` dan folder lampiran dalam **satu folder backup bertanggal**. File
-`.db` saja tidak cukup untuk memulihkan foto/PDF bukti. Backup **tidak
-terenkripsi**; simpan di media yang aman dan pisahkan dari laptop.
+Simpan backup dalam **satu folder bertanggal**. Backup **tidak terenkripsi**;
+simpan di media yang aman dan pisahkan dari laptop.
 
-### 5.2 Restore database dan lampiran
+### 5.2 Restore database
 
 Ada dua pilihan di **Dashboard**:
 
-- **Restore Lengkap (DB + lampiran)** — pilih folder hasil **Backup Lengkap**
-  (yang berisi `manifest.json`). Database dan lampiran dipulihkan bersama.
-- **Restore Import .db** — hanya memulihkan database dari satu file `.db`.
-  Folder `attachments` tidak ikut berubah.
+- **Restore Lengkap** — pilih folder hasil **Backup Lengkap** (yang berisi
+  `manifest.json` dan `pura.db`).
+- **Restore Import .db** — memulihkan database dari satu file `.db`.
 
 Langkah umum:
 
@@ -301,13 +282,8 @@ Langkah umum:
 2. Buka **Dashboard**, pilih tombol restore yang sesuai.
 3. Baca peringatan, lalu pilih file `.db` atau folder backup lengkap.
 4. Sistem memvalidasi isi backup dan membuat cadangan data lama lebih dulu
-   (`pre-restore-<waktu>.db`, dan untuk restore lengkap juga salinan lampiran
-   lama), lalu mengganti data aktif.
-5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa
-   lampiran.
-
-Bila hanya memakai **Restore Import .db**, folder `attachments` harus disalin
-kembali secara terpisah.
+   (`pre-restore-<waktu>.db`), lalu mengganti data aktif.
+5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
 
 ### 5.3 Ganti laptop
 
@@ -317,16 +293,13 @@ kembali secara terpisah.
    flashdisk/Drive.
 2. Di laptop baru: pasang aplikasi, buat PIN, lalu
    **Dashboard → Restore Lengkap** dan pilih folder backup tadi.
-3. Buka aplikasi, periksa beberapa jurnal dan pastikan lampiran bisa dibuka.
+3. Buka aplikasi dan periksa beberapa jurnal serta **Neraca Saldo**.
 
-Bila memakai **Backup Export .db**, restore hanya database; salin folder
-`attachments` dari laptop lama ke folder lampiran laptop baru secara terpisah
-(lokasi persis ada di `docs/panduan-portable.md` atau di
-**Pengaturan → Lokasi Data & Backup**).
+Bila memakai **Backup Export .db**, restore hanya database dari file tersebut.
 
 **Cara portable:** tutup aplikasi, lalu salin **seluruh folder portable**
-(file `.exe`, `data`, `attachments`, `backups`) ke flashdisk/laptop baru. Jangan
-hanya menyalin file `.exe`.
+(file `.exe`, `data`, `backups`) ke flashdisk/laptop baru. Jangan hanya
+menyalin file `.exe`.
 
 ---
 
@@ -364,7 +337,6 @@ hanya menyalin file `.exe`.
 | **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan tutup buku. Periksa Jurnal Umum dan hubungi pendamping. |
 | **Aplikasi terkunci** | Sesi PIN habis karena idle. | Masukkan PIN kembali. |
 | **Terlalu banyak salah** | PIN salah 5 kali. | Tunggu 60 detik, lalu coba lagi dengan hati-hati. |
-| **File lampiran tidak ditemukan** | Metadata ada, file fisik tidak ada di folder `attachments`. | Salin kembali folder lampiran dari backup, atau unggah ulang filenya. |
 | **Backup gagal** | Media penyimpanan penuh/tidak bisa ditulis. | Ganti lokasi simpan, pastikan flashdisk tidak dikunci, coba lagi. |
 | **Database dibuat versi lebih baru** | File backup berasal dari aplikasi versi lebih baru. | Perbarui aplikasi di laptop ini, jangan memaksa restore. |
 | **Tahun belum boleh ditutup** | Tutup buku hanya untuk tahun yang sudah selesai. | Tutup tahun lalu lebih dulu; tahun berjalan jangan ditutup. |
@@ -396,11 +368,10 @@ perlu mengatur ukuran kertas manual.
 | Layar minta PIN terus | PIN salah/blokir sementara, atau auto-kunci terlalu pendek. Tunggu, lalu ubah idle di Pengaturan. |
 | Laporan tidak berubah setelah input | Pastikan tanggal jurnal masuk rentang/cut-off laporan, lalu muat ulang laporan. |
 | Angka kas berbeda dengan uang fisik | Periksa Buku Besar akun kas, cari jurnal yang salah, lalu gunakan **Koreksi** (bukan hapus). |
-| Lampiran tidak bisa dibuka | Pastikan folder `attachments` ada dan file tidak dipindah. Pulihkan dari backup lampiran. |
 | Restore berhenti di tengah | Jangan tutup aplikasi. Tunggu; bila gagal, aplikasi otomatis memakai data lama dan menampilkan pesan. |
-| Portable dipindah ke laptop lain tetapi data kosong | Yang disalin hanya `.exe`. Salin seluruh folder portable (`data`, `attachments`, `backups`). |
+| Portable dipindah ke laptop lain tetapi data kosong | Yang disalin hanya `.exe`. Salin seluruh folder portable (`data`, `backups`). |
 | Aplikasi portable tidak bisa menulis | Jangan taruh di folder read-only seperti `Program Files` atau folder jaringan. Pindahkan ke folder biasa, mis. `D:\Keuangan Pura`. |
 | Komputer mati saat input | Buka aplikasi lagi; data yang sudah tersimpan ada di `pura.db`, data yang belum ditekan Simpan tidak tersimpan. |
 
 Bila masalah tidak selesai: **jangan menghapus `pura.db`**. Backup dulu file
-`.db` dan folder `attachments`, lalu hubungi akuntan pendamping/pengembang.
+`.db`, lalu hubungi akuntan pendamping/pengembang.

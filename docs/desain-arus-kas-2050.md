@@ -765,8 +765,7 @@ tidak harus 687, tetapi semua test lama yang relevan harus tetap hijau.
 
 Cari semua `expect(SCHEMA_VERSION).toBe(9)` dan `user_version` 9, lalu ubah ke
 10 sesuai versi baru. File yang saat ini memuat assertion tersebut antara lain:
-`tests/migrasi-v9.test.ts`, `tests/rekonsiliasi.test.ts`, `tests/pihak.test.ts`,
-`tests/jurnal.test.ts`, `tests/lampiran.test.ts`, dan test lain yang memakai
+`tests/migrasi-v9.test.ts`, `tests/jurnal.test.ts`, dan test lain yang memakai
 `SCHEMA_VERSION`. Jangan hanya mengubah satu file lalu meninggalkan assertion
 lain merah.
 
@@ -781,7 +780,7 @@ lain merah.
 | Backup v9 → aplikasi v10 | **Boleh.** Restore lolos validasi versi; `openDb` menaikkan `user_version` ke 10 dan meng-upsert akun 2060. Jurnal lama tidak berubah. |
 | Backup v10 → aplikasi v10 | **Boleh.** Manifest `schemaVersion: 10`, akun 2060 sudah ada. |
 | Backup v10 → aplikasi v9 | **Ditolak** oleh `validasiKandidatRestore`/`validasiBackupLengkap` karena `schemaVersion > SCHEMA_VERSION` aplikasi lama. Ini disengaja agar aplikasi lama tidak menulis transaksi baru ke akun yang belum dipahaminya. |
-| Restore gagal di tengah | Mekanisme restore yang ada mengembalikan DB/lampiran lama; tidak ada perubahan pada mekanisme ini. |
+| Restore gagal di tengah | Mekanisme restore yang ada mengembalikan DB lama; tidak ada perubahan pada mekanisme ini. |
 | Reklasifikasi | Jurnal baru + audit; backup setelah reklasifikasi memuat jurnal tersebut. Backup sebelum reklasifikasi tetap valid, hanya belum memuat reklasifikasi. |
 
 ### 9.2 Rollback

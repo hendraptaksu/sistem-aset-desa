@@ -85,19 +85,6 @@ export type JurnalHeaderInput = {
   created_at?: string;
 };
 
-// ---- Lampiran bukti jurnal (P2-4) ----
-// HANYA metadata. Isi file disimpan di `<userData>/attachments`, bukan di DB,
-// dan TIDAK ikut backup `.db`. `nama_simpan` relatif terhadap folder tersebut.
-export type LampiranJurnal = {
-  id: string;
-  jurnal_id: string;
-  nama_asli: string;
-  nama_simpan: string;
-  mime: string;
-  ukuran: number; // byte
-  created_at: string; // ISO datetime
-};
-
 // ---- Legacy Pihak & hutang (P1-5 / DB-23a / DB-23b) ----
 // Tipe read-only untuk membaca tabel legacy `pihak`/`jurnal_pihak`. Sejak
 // DB-23b tidak ada UI/API/IPC yang menulis atau menghitung subledger pihak;

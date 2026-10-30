@@ -2,16 +2,15 @@
 //
 // Modul ini sengaja TIDAK mengimpor Electron runtime. Semua ketergantungan
 // main-process (koneksi DB yang bisa berganti setelah restore, dialog native,
-// tulis file, cetak PDF, buka file OS, folder lampiran) masuk lewat `IpcDeps`
+// tulis file, cetak PDF, buka file OS) masuk lewat `IpcDeps`
 // sehingga seluruh alur create → reverse → tutup → backup → restore bisa
 // diuji dengan vitest tanpa Electron.
 
 import type Database from 'better-sqlite3';
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
   catatAudit,
-  getJurnal,
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
   hapusAkun,
@@ -42,19 +41,6 @@ import {
   serahkanPanjar,
 } from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
-import {
-  getLampiran,
-  hapusLampiran,
-  listLampiran,
-  tambahLampiran,
-} from '../db/lampiran.js';
-import {
-  dataUrlLampiran,
-  hapusFileLampiran,
-  pathFileLampiran,
-  simpanLampiranDenganMetadata,
-} from '../features/lampiran/lampiran.js';
-import { validasiLampiran } from '../core/lampiran.js';
 import { AKUN_PIUTANG, KAS_KODES } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
@@ -106,7 +92,6 @@ import {
   validasiFilterNeraca,
   validasiFilterNeracaSaldo,
   validasiIdJurnal,
-  validasiIdLampiran,
   validasiRentangLaporan,
   validasiTanggalOpsional,
 } from './validation.js';
@@ -150,8 +135,7 @@ export type IpcDeps = {
   printPdf(html: string, filePath: string, landscape?: boolean): Promise<void>;
   /** `shell.openPath`; string kosong = berhasil, selain itu pesan galat OS. */
   openPath(path: string): Promise<string>;
-  lampiranDir(): string;
-  /** Lokasi data final (P2-8): folder data, DB, lampiran, backup. */
+  /** Lokasi data final (P2-8): folder data, DB, dan backup. */
   lokasiData(): LokasiData;
   /**
    * AUD-34: logger main untuk alur backup/restore. Opsional agar test IPC
@@ -178,7 +162,6 @@ export function registerIpc(deps: IpcDeps): void {
     perluAlasan,
     perluKonfirmasi,
   });
-  const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
   /** AKT-02: hanya `true` eksplisit dari renderer yang dianggap konfirmasi. */
   const bacaKonfirmasiTanpaSaldoAwal = (opsi: unknown): boolean =>
@@ -244,8 +227,6 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat menyimpan koreksi. Jurnal asli tidak diubah; coba lagi atau hubungi pendamping.';
   const GAGAL_PANJAR =
     'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_LAMPIRAN =
-    'Terjadi kesalahan saat memproses lampiran. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_TUTUP =
     'Terjadi kesalahan saat memproses tutup buku. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
@@ -354,13 +335,12 @@ export function registerIpc(deps: IpcDeps): void {
   };
 
   // ---- Lokasi data & folder (P2-8) ----
-  // Renderer hanya boleh meminta tiga nama folder tetap; TIDAK PERNAH path.
-  const JENIS_FOLDER_LOKASI = ['data', 'backups', 'attachments'] as const;
+  // Renderer hanya boleh meminta dua nama folder tetap; TIDAK PERNAH path.
+  const JENIS_FOLDER_LOKASI = ['data', 'backups'] as const;
   type JenisFolderLokasi = (typeof JENIS_FOLDER_LOKASI)[number];
   const folderLokasi = (lokasi: LokasiData, jenis: JenisFolderLokasi): string => {
     if (jenis === 'data') return lokasi.dataDir;
-    if (jenis === 'backups') return lokasi.backupsDir;
-    return lokasi.attachmentsDir;
+    return lokasi.backupsDir;
   };
 
   daftarkan('app:info-lokasi', () => {
@@ -385,7 +365,7 @@ export function registerIpc(deps: IpcDeps): void {
       }
       const lokasi = deps.lokasiData();
       const folder = folderLokasi(lokasi, jenis as JenisFolderLokasi);
-      // Folder backup/lampiran mungkin belum ada pada pemakaian pertama.
+      // Folder backup mungkin belum ada pada pemakaian pertama.
       mkdirSync(folder, { recursive: true });
       const galat = await deps.openPath(folder);
       if (galat) return fail('Folder tidak bisa dibuka. Coba lagi atau hubungi pendamping.');
@@ -797,140 +777,6 @@ export function registerIpc(deps: IpcDeps): void {
     },
   );
 
-  // ---- Lampiran bukti jurnal (P2-4) ----
-  // Renderer hanya mengirim ID jurnal/lampiran, TIDAK PERNAH path absolut.
-  // File fisik disimpan di `<userData>/attachments`; DB hanya metadata.
-  daftarkan('lampiran:list', (_e, jurnalId: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdJurnal(jurnalId);
-      if (!bentuk.ok) return fail(bentuk.error);
-      return ok(listLampiran(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('lampiran:upload', async (_e, jurnalId: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdJurnal(jurnalId);
-      if (!bentuk.ok) return fail(bentuk.error);
-      if (!getJurnal(deps.db(), bentuk.input)) return fail('Jurnal tidak ditemukan.');
-
-      const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-        title: 'Pilih lampiran bukti jurnal',
-        filters: [
-          { name: 'Foto atau PDF', extensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'] },
-        ],
-        properties: ['openFile'],
-      });
-      if (canceled || filePaths.length === 0) return ok({ saved: false });
-
-      const sumber = filePaths[0]!;
-      const namaAsli = basename(sumber);
-      let ukuran = 0;
-      try {
-        ukuran = statSync(sumber).size;
-      } catch {
-        return fail('File lampiran tidak bisa dibaca. Coba pilih file lain.');
-      }
-      // Validasi awal sebelum menyalin file besar ke folder aplikasi.
-      const cek = validasiLampiran({ namaAsli, ukuran });
-      if (!cek.ok) return fail(cek.error);
-
-      const id = uid('lamp');
-      const dir = deps.lampiranDir();
-      const meta = simpanLampiranDenganMetadata(
-        dir,
-        sumber,
-        namaAsli,
-        id,
-        (file) =>
-          tambahLampiran(deps.db(), {
-            id,
-            jurnal_id: bentuk.input,
-            nama_asli: file.namaAsli,
-            nama_simpan: file.namaSimpan,
-            mime: file.mime,
-            ukuran: file.ukuran,
-          }),
-      );
-      return ok({ saved: true, lampiran: meta });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  daftarkan('lampiran:preview', (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdLampiran(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const meta = getLampiran(deps.db(), bentuk.input);
-      if (!meta) return fail('Lampiran tidak ditemukan.');
-
-      // PDF tidak di-inline; renderer memakai tombol Buka (aplikasi OS).
-      if (!meta.mime.startsWith('image/')) {
-        return ok({ mime: meta.mime, namaAsli: meta.nama_asli });
-      }
-      let dataUrl: string | null = null;
-      try {
-        dataUrl = dataUrlLampiran(deps.lampiranDir(), meta.nama_simpan, meta.mime);
-      } catch (e) {
-        return fail(pesanError(e, 'File lampiran tidak ditemukan di folder aplikasi.'));
-      }
-      return ok({
-        mime: meta.mime,
-        namaAsli: meta.nama_asli,
-        ...(dataUrl ? { dataUrl } : {}),
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  daftarkan('lampiran:open', async (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdLampiran(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const meta = getLampiran(deps.db(), bentuk.input);
-      if (!meta) return fail('Lampiran tidak ditemukan.');
-
-      // pathFileLampiran memvalidasi nama relatif & memastikan file ada di
-      // dalam folder attachments sebelum dibuka.
-      const path = pathFileLampiran(deps.lampiranDir(), meta.nama_simpan);
-      const galat = await deps.openPath(path);
-      if (galat) {
-        return fail('File lampiran tidak bisa dibuka. Pastikan aplikasi pembukanya tersedia.');
-      }
-      return ok({ opened: true });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  daftarkan('lampiran:delete', (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdLampiran(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const meta = hapusLampiran(deps.db(), bentuk.input);
-      if (!meta) return fail('Lampiran tidak ditemukan.');
-      // Metadata + audit sudah terhapus atomik; file dihapus best-effort.
-      hapusFileLampiran(deps.lampiranDir(), meta.nama_simpan);
-      return ok({ deleted: true, id: meta.id });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
   // ---- Utang usaha sederhana (DB-23b) ----
   // Form Catat/Bayar Utang Usaha memakai `jurnal:posting` dengan jenis HUTANG;
   // tidak ada lagi IPC master pihak / pemetaan `jurnal_pihak`.
@@ -1270,8 +1116,8 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // Backup lengkap: satu folder berisi DB (VACUUM INTO) + semua lampiran +
-  // manifest. Folder induk dipilih user; subfolder memakai waktu lokal WITA.
+  // Backup lengkap: satu folder berisi DB (VACUUM INTO) + manifest.
+  // Folder induk dipilih user; subfolder memakai waktu lokal WITA.
   daftarkan('backup:lengkap', async () => {
     try {
       const k = perluBuka();
@@ -1280,8 +1126,7 @@ export function registerIpc(deps: IpcDeps): void {
         properties: ['openDirectory', 'createDirectory'],
         title: 'Pilih folder induk untuk backup lengkap',
       });
-      if (canceled || !filePaths?.[0])
-        return ok({ saved: false, path: '', jumlahLampiran: 0 });
+      if (canceled || !filePaths?.[0]) return ok({ saved: false, path: '' });
 
       const stamp = stampBackupLokal(sekarang());
       let destDir = join(filePaths[0], `pura-backup-${stamp}`);
@@ -1294,7 +1139,6 @@ export function registerIpc(deps: IpcDeps): void {
       const hasil = buatBackupLengkap({
         db: deps.db(),
         dbPath: deps.dbPath(),
-        attachmentsDir: deps.lampiranDir(),
         destDir,
       });
       catatAudit(deps.db(), {
@@ -1302,17 +1146,13 @@ export function registerIpc(deps: IpcDeps): void {
         alasan: `Backup lengkap ke ${basename(hasil.destDir)}`,
         baru: {
           path: hasil.destDir,
-          jumlahLampiran: hasil.manifest.jumlahLampiran,
           ukuranDb: hasil.manifest.ukuranDb,
         },
       });
-      deps.log?.info(
-        `Backup lengkap dibuat: ${basename(hasil.destDir)} (${hasil.manifest.jumlahLampiran} lampiran)`,
-      );
+      deps.log?.info(`Backup lengkap dibuat: ${basename(hasil.destDir)}`);
       return ok({
         saved: true,
         path: hasil.destDir,
-        jumlahLampiran: hasil.manifest.jumlahLampiran,
       });
     } catch (e) {
       deps.log?.error('Backup lengkap gagal', e);
@@ -1407,9 +1247,9 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // AUD-12: restore satu folder backup lengkap (DB + lampiran + manifest).
-  // Cadangan DB & folder lampiran lama dibuat sebelum ada yang ditimpa;
-  // restoreLengkap mengembalikan keduanya bila salah satu tahap gagal.
+  // AUD-12 / DB-37: restore satu folder backup lengkap (DB + manifest).
+  // Folder `attachments` dari backup lama diabaikan; hanya database yang
+  // dipulihkan. restoreLengkap mengembalikan DB lama bila penukaran gagal.
   daftarkan('backup:restore-lengkap', async () => {
     try {
       const k = perluBuka();
@@ -1418,14 +1258,12 @@ export function registerIpc(deps: IpcDeps): void {
         properties: ['openDirectory'],
         title: 'Pilih folder backup lengkap (berisi manifest.json)',
       });
-      if (canceled || !filePaths?.[0])
-        return ok({ restored: false, path: '', jumlahLampiran: 0 });
+      if (canceled || !filePaths?.[0]) return ok({ restored: false, path: '' });
 
       const sumber = filePaths[0]!;
       const hasil = restoreLengkap({
         db: deps.db(),
         dbPath: deps.dbPath(),
-        attachmentsDir: deps.lampiranDir(),
         backupDir: sumber,
         dirBackup: deps.lokasiData().backupsDir,
         stamp: stampBackupLokal(sekarang()),
@@ -1443,8 +1281,6 @@ export function registerIpc(deps: IpcDeps): void {
           baru: {
             sumber,
             pre_restore_db: hasil.preRestorePath,
-            pre_restore_attachments: hasil.preRestoreAttachmentsPath,
-            jumlahLampiran: hasil.jumlahLampiran,
           },
         });
       } catch (e) {
@@ -1453,14 +1289,12 @@ export function registerIpc(deps: IpcDeps): void {
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
       kunciLagi();
       deps.log?.info(
-        `Restore lengkap berhasil dari ${basename(sumber)}; ${hasil.jumlahLampiran} lampiran dipulihkan`,
+        `Restore lengkap berhasil dari ${basename(sumber)}; cadangan pra-restore: ${basename(hasil.preRestorePath)}`,
       );
       return ok({
         restored: true,
         path: deps.dbPath(),
         preRestorePath: hasil.preRestorePath,
-        preRestoreAttachmentsPath: hasil.preRestoreAttachmentsPath,
-        jumlahLampiran: hasil.jumlahLampiran,
       });
     } catch (e) {
       deps.log?.error('Restore lengkap gagal', e);

@@ -246,7 +246,6 @@ function buatIpcDeps(): IpcDeps {
     writeFile: (path, data) => writeFileSync(path, data),
     printPdf: printPdfKeFile,
     openPath: (path) => shell.openPath(path),
-    lampiranDir: () => lokasiData().attachmentsDir,
     lokasiData,
     log: loggerMain() ?? undefined,
     // AUD-17: frame pengirim yang sah = renderer build atau dev origin.

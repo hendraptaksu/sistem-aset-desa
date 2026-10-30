@@ -120,9 +120,7 @@ export function DashboardTab({
       try {
         const r = await api.backupLengkap();
         if (r.saved) {
-          setInfo(
-            `Backup lengkap tersimpan: ${r.path} (${r.jumlahLampiran} lampiran)`,
-          );
+          setInfo(`Backup lengkap tersimpan: ${r.path}`);
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -164,9 +162,7 @@ export function DashboardTab({
         const r = await api.backupRestoreLengkap();
         if (r.restored) {
           setInfo(
-            `Restore lengkap OK (${r.jumlahLampiran} lampiran). Cadangan data lama: ${
-              r.preRestorePath ?? '-'
-            }; lampiran lama: ${r.preRestoreAttachmentsPath ?? '-'}. Data dimuat ulang…`,
+            `Restore lengkap OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
           );
           await muatData(cutoff);
         }
@@ -528,13 +524,13 @@ export function DashboardTab({
               >
                 {jenisSibuk === 'backup-lengkap'
                   ? 'Membuat backup lengkap…'
-                  : 'Backup Lengkap (DB + lampiran)'}
+                  : 'Backup Lengkap'}
               </Button>
             </div>
             <p className="mt-3 text-sm text-stone-600">
-              Backup lengkap menyimpan satu folder berisi <code>pura.db</code>, semua
-              lampiran bukti, dan <code>manifest.json</code> — pakai ini untuk arsip
-              atau pindah laptop. Backup Export .db hanya berisi database.
+              Backup lengkap menyimpan satu folder berisi <code>pura.db</code> dan{' '}
+              <code>manifest.json</code> — pakai ini untuk arsip atau pindah
+              laptop. Backup Export .db hanya berisi database.
             </p>
           </section>
 
@@ -566,14 +562,13 @@ export function DashboardTab({
               >
                 {jenisSibuk === 'restore-lengkap'
                   ? 'Memulihkan lengkap…'
-                  : 'Restore Lengkap (DB + lampiran)'}
+                  : 'Restore Lengkap'}
               </Button>
             </div>
             <p className="mt-3 text-sm text-stone-700">
-              Restore Import .db memulihkan database saja; lampiran tetap di folder
-              aplikasi. Restore Lengkap memulihkan database <b>dan</b> lampiran dari
-              folder hasil Backup Lengkap; data lama disimpan sebagai cadangan lebih
-              dulu.
+              Restore Import .db memulihkan database dari satu file. Restore
+              Lengkap memulihkan database dari folder hasil Backup Lengkap; data
+              lama disimpan sebagai cadangan lebih dulu.
             </p>
           </section>
         </div>
@@ -589,11 +584,11 @@ export function DashboardTab({
             {jenisSibuk === 'backup'
               ? 'Sedang membuat backup…'
               : jenisSibuk === 'backup-lengkap'
-                ? 'Sedang menyalin database dan lampiran…'
+                ? 'Sedang menyalin database…'
                 : jenisSibuk === 'restore'
                   ? 'Sedang memulihkan data…'
                   : jenisSibuk === 'restore-lengkap'
-                    ? 'Sedang memulihkan database dan lampiran…'
+                    ? 'Sedang memulihkan database…'
                     : 'Sedang memuat data…'}
           </p>
         )}
@@ -624,18 +619,17 @@ export function DashboardTab({
 
       {konfirmasiRestoreLengkap && (
         <KonfirmasiModal
-          judul="Pulihkan database dan lampiran?"
+          judul="Pulihkan database dari backup lengkap?"
           deskripsi={
             <>
               <p>
-                Database <b>dan seluruh lampiran</b> yang sekarang aktif akan diganti
-                dengan isi folder backup lengkap yang Anda pilih.
+                Database yang sekarang aktif akan <b>diganti</b> dengan isi folder
+                backup lengkap yang Anda pilih.
               </p>
               <p className="text-sm text-stone-600">
-                Sistem mencadangkan database dan folder lampiran saat ini lebih dulu.
-                Setelah restore selesai, layar dimuat ulang dan aplikasi terkunci
-                kembali. Pastikan folder berisi <code>manifest.json</code>,{' '}
-                <code>pura.db</code>, dan folder <code>attachments</code>.
+                Sistem mencadangkan database saat ini lebih dulu. Setelah restore
+                selesai, layar dimuat ulang dan aplikasi terkunci kembali. Pastikan
+                folder berisi <code>manifest.json</code> dan <code>pura.db</code>.
               </p>
             </>
           }
