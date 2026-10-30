@@ -211,9 +211,14 @@ function terapkanMigrasiSingleEntryLama(
 }
 
 /**
- * AUD-23 — aturan integritas v9. Dijalankan setiap `migrasi()` agar DB lama
- * (v8) ikut terlindungi dan DB yang sudah v9 tetap konsisten bila trigger
- * hilang. Semua perintah idempoten:
+ * AUD-23 / DB-07 — aturan integritas v9. Dijalankan setiap `migrasi()` agar DB
+ * lama (v8) ikut terlindungi dan DB yang sudah v9 tetap konsisten bila trigger
+ * hilang. Semua trigger selalu dibuat ulang dengan `DROP TRIGGER IF EXISTS` +
+ * `CREATE TRIGGER` (bukan varian `IF NOT EXISTS`) supaya perubahan isi trigger
+ * di versi aplikasi baru benar-benar berlaku pada DB lama. DROP dan
+ * CREATE berjalan di dalam transaksi `migrasi()`; bila langkah berikutnya gagal,
+ * rollback mengembalikan definisi trigger lama, bukan menghilangkannya.
+ * Semua perintah idempoten:
  * - index global lama dibuang (nomor bukti kini unik PER TAHUN);
  * - trigger menolak baris dengan debit & kredit sekaligus;
  * - trigger menolak update/delete jurnal dan barisnya (koreksi lewat reversal).
@@ -226,39 +231,45 @@ function terapkanAturanV9(db: Database.Database): void {
       ON jurnal(substr(tanggal, 1, 4), no_bukti COLLATE NOCASE)
       WHERE no_bukti <> '';
 
-    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_satu_sisi_insert
+    DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
+    CREATE TRIGGER trg_jurnal_baris_satu_sisi_insert
     BEFORE INSERT ON jurnal_baris
     WHEN NEW.debit > 0 AND NEW.kredit > 0
     BEGIN
       SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_satu_sisi_update
+    DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
+    CREATE TRIGGER trg_jurnal_baris_satu_sisi_update
     BEFORE UPDATE ON jurnal_baris
     WHEN NEW.debit > 0 AND NEW.kredit > 0
     BEGIN
       SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_jurnal_immutable_update
+    DROP TRIGGER IF EXISTS trg_jurnal_immutable_update;
+    CREATE TRIGGER trg_jurnal_immutable_update
     BEFORE UPDATE ON jurnal
     BEGIN
       SELECT RAISE(ABORT, 'Jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_jurnal_immutable_delete
+    DROP TRIGGER IF EXISTS trg_jurnal_immutable_delete;
+    CREATE TRIGGER trg_jurnal_immutable_delete
     BEFORE DELETE ON jurnal
     BEGIN
       SELECT RAISE(ABORT, 'Jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_immutable_update
+    DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_update;
+    CREATE TRIGGER trg_jurnal_baris_immutable_update
     BEFORE UPDATE ON jurnal_baris
     BEGIN
       SELECT RAISE(ABORT, 'Baris jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_jurnal_baris_immutable_delete
+    DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_delete;
+    CREATE TRIGGER trg_jurnal_baris_immutable_delete
     BEFORE DELETE ON jurnal_baris
     BEGIN
       SELECT RAISE(ABORT, 'Baris jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');

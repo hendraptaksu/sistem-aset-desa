@@ -75,7 +75,7 @@
 | DB-04 | P0 | S | Unique saldo awal + status saldo awal | — | [x] |
 | DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [x] |
 | DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [x] |
-| DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [ ] |
+| DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [x] |
 | DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
 | DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [x] |
 | DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [ ] |
@@ -297,7 +297,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run typecheck` bersih; `npm test` **722 test/59 file hijau**
     (baseline 717/58); `npm run build` berhasil.
 
-- [ ] **DB-07 — Trigger migrasi: drop/create, bukan `IF NOT EXISTS`** · P0 · S
+- [x] **DB-07 — Trigger migrasi: drop/create, bukan `IF NOT EXISTS`** · P0 · S
   - **Konteks:** `CREATE TRIGGER IF NOT EXISTS` membuat perubahan isi trigger
     di versi baru tidak pernah berlaku pada DB lama.
   - **Langkah:**
@@ -308,6 +308,23 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** SQL trigger di `sqlite_master` sesuai kode terbaru.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** DB-06.
+  - **Bukti 2026-10-30:** Seluruh 6 trigger v9 (`trg_jurnal_baris_satu_sisi_*`,
+    `trg_jurnal_*`, `trg_jurnal_baris_immutable_*`) sekarang dibuat ulang
+    dengan `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` di
+    `terapkanAturanV9()`; 3 trigger v11 (`trg_audit_log_*`,
+    `trg_tutup_buku_immutable_delete`) memang sudah memakai pola yang sama.
+    Kesembilan trigger dibuat ulang setiap `openDb()`/`migrasi()` di dalam
+    transaksi `migrasi()`, sehingga DB lama mendapat body terbaru dan rollback
+    migrasi yang gagal mengembalikan definisi lama. `SCHEMA_VERSION` tetap 13;
+    tidak ada perubahan data/tabel. Test baru `tests/db-07-trigger.test.ts` (6)
+    mencakup trigger lama bernama sama dengan body berbeda di DB v13 yang
+    diganti persis seperti DB baru, `migrasi()` langsung pada versi current,
+    semua 9 nama trigger, openDb/migrasi berulang tetap tepat satu per nama,
+    aturan integritas v9/v11 tetap menolak operasi terlarang, rollback migrasi
+    v13 gagal (duplikat SALDO_AWAL) mempertahankan definisi trigger lama dan
+    data, serta pemeriksaan sumber tidak ada `CREATE TRIGGER IF NOT EXISTS`.
+    `npm run typecheck` bersih; `npm test` **728 test/60 file hijau**
+    (baseline 722/59); `npm run build` berhasil.
 
 - [x] **DB-08 — Validasi restore: semua tabel + `foreign_key_check`** · P0 · S
   - **Konteks:** `TABEL_WAJIB_RESTORE` hanya 7 tabel inti; backup yang
