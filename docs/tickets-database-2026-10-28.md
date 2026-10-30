@@ -76,7 +76,7 @@
 | DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [ ] |
 | DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [ ] |
 | DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [ ] |
-| DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [ ] |
+| DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
 | DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [ ] |
 | DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [ ] |
 | DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [ ] |
@@ -246,7 +246,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Verifikasi:** typecheck + test.
   - **Dependency:** DB-06.
 
-- [ ] **DB-08 — Validasi restore: semua tabel + `foreign_key_check`** · P0 · S
+- [x] **DB-08 — Validasi restore: semua tabel + `foreign_key_check`** · P0 · S
   - **Konteks:** `TABEL_WAJIB_RESTORE` hanya 7 tabel inti; backup yang
     kehilangan `panjar`/`pihak`/`lampiran` bisa lolos. `integrity_check` tidak
     memeriksa foreign key.
@@ -259,6 +259,16 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** restore tidak pernah memasukkan DB dengan tabel hilang/FK rusak.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** —
+  - **Bukti 2026-10-30:** `TABEL_WAJIB_RESTORE` tetap 8 tabel current;
+    `tabelWajibRestore()` memakai daftar sesuai `user_version` kandidat (v2/v3
+    tanpa `panjar`/`panjar_item`, v4+ semua tabel current) sehingga backup v11
+    dengan tabel legacy tetap diterima. Setelah `integrity_check`,
+    `PRAGMA foreign_key_check` dijalankan dan kandidat ditolak bila ada baris
+    (pesan menyebut tabel/parent, bukan hanya audit). Test baru: v12 tanpa
+    `panjar` dan tanpa `panjar_item` ditolak, FK yatim ditolak, backup v11
+    dengan tabel legacy diterima; backup v12 sehat tetap diterima.
+    `npm run typecheck` bersih; `npm test` **686 test/55 file hijau**;
+    `npm run build` berhasil.
 
 - [ ] **DB-09 — Backup lengkap sebagai default / blokir restore `.db` berisiko** · P0 · M
   - **Konteks:** auto-backup harian hanya `.db`; lampiran ada di folder lain.

@@ -281,8 +281,11 @@ Langkah umum:
 1. Tutup pekerjaan lain; jangan menutup aplikasi saat restore berjalan.
 2. Buka **Dashboard**, pilih tombol restore yang sesuai.
 3. Baca peringatan, lalu pilih file `.db` atau folder backup lengkap.
-4. Sistem memvalidasi isi backup dan membuat cadangan data lama lebih dulu
-   (`pre-restore-<waktu>.db`), lalu mengganti data aktif.
+4. Sistem memvalidasi isi backup sebelum menyentuh data aktif: file SQLite
+   terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim, versi
+   skema tidak lebih baru dari aplikasi, tabel wajib untuk versi backup tersedia,
+   dan audit akuntansi tidak menemukan masalah. Setelah lolos, sistem membuat
+   cadangan data lama (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
 5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
 
 ### 5.3 Ganti laptop

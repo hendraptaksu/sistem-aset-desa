@@ -75,14 +75,13 @@ function jurnal(id: string, tanggal = '2026-09-09') {
 }
 
 /**
- * AKT-11: kandidat yang valid secara SQLite tetapi gagal audit akuntansi.
- * Berisi jurnal tidak seimbang sekaligus akun asing (baris 9999).
+ * AKT-11: kandidat yang valid secara SQLite/FK tetapi gagal audit akuntansi.
+ * Jurnal tidak seimbang memakai akun yang valid agar tidak tertangkap cek FK
+ * DB-08 lebih dulu.
  */
 function buatKandidatTidakSeimbang(path: string): void {
   const db = openDb(path);
   try {
-    // Seed lewat SQL langsung agar bisa melanggar FK akun dan keseimbangan.
-    db.pragma('foreign_keys = OFF');
     db.prepare(
       `INSERT INTO jurnal
          (id, tanggal, no_bukti, keterangan, jenis, grup_id, created_at)
@@ -100,7 +99,40 @@ function buatKandidatTidakSeimbang(path: string): void {
        VALUES (?, ?, ?, ?, '')`,
     );
     baris.run('j-tidak-seimbang', '1001', 100_000, 0);
-    baris.run('j-tidak-seimbang', '9999', 0, 90_000);
+    baris.run('j-tidak-seimbang', '4007', 0, 90_000);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * DB-08: kandidat sehat secara akuntansi tetapi punya baris foreign key yatim
+ * (`jurnal.reversal_of` menunjuk jurnal yang tidak ada). Dibuat dengan FK
+ * enforcement dimatikan agar SQLite mau menyimpan baris rusak.
+ */
+function buatKandidatFkOrphan(path: string): void {
+  const db = openDb(path);
+  try {
+    db.pragma('foreign_keys = OFF');
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES (?, ?, ?, ?, 'UMUM', ?, ?, ?)`,
+    ).run(
+      'j-yatim',
+      '2026-09-11',
+      'JU-DB08',
+      'Uji foreign key yatim',
+      'g-db08',
+      'j-tidak-ada',
+      '2026-09-11T00:00:00.000Z',
+    );
+    const baris = db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES (?, ?, ?, ?, '')`,
+    );
+    baris.run('j-yatim', '1001', 10_000, 0);
+    baris.run('j-yatim', '4007', 0, 10_000);
   } finally {
     db.pragma('foreign_keys = ON');
     db.close();
@@ -395,7 +427,7 @@ describe('P0-8 — validasiKandidatRestore: file sampah ditolak', () => {
 });
 
 describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi', () => {
-  it('menolak jurnal tidak seimbang/akun asing dan menerima backup sehat', () => {
+  it('menolak jurnal tidak seimbang dan menerima backup sehat', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-akt11-val-'));
     let db: Database.Database | null = null;
     try {
@@ -416,7 +448,6 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
       );
       expect(hasil.error).toMatch(/Ditemukan \d+ temuan integritas akuntansi/);
       expect(hasil.error).toContain('JURNAL_TIDAK_SEIMBANG');
-      expect(hasil.error).toContain('AKUN_TIDAK_DIKENAL');
     } finally {
       db?.close();
       rmSync(dir, { recursive: true, force: true });
@@ -454,6 +485,26 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama', 'baru']);
     } finally {
       aktif?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('DB-08 — validasiKandidatRestore: foreign key wajib bersih', () => {
+  it('menolak backup dengan baris foreign key yatim', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-db08-fk-'));
+    try {
+      const kandidatPath = join(dir, 'kandidat-fk-yatim.db');
+      buatKandidatFkOrphan(kandidatPath);
+
+      const hasil = validasiKandidatRestore(kandidatPath);
+      expect(hasil.valid).toBe(false);
+      if (hasil.valid) throw new Error('kandidat FK yatim seharusnya ditolak');
+      expect(hasil.error).toMatch(/pelanggaran foreign key/i);
+      expect(hasil.error).toContain('jurnal');
+      // DB-08 memeriksa FK lebih dulu, bukan hanya mengandalkan audit akuntansi.
+      expect(hasil.error).not.toContain('audit akuntansi');
+    } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });

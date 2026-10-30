@@ -158,29 +158,60 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
 }
 
 /**
- * Tabel wajib agar file dianggap backup aplikasi ini (skema v12).
- * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
- * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan; backup lama yang
- * masih memilikinya tetap diterima dan akan dimigrasikan saat dibuka.
+ * Tabel inti model double-entry yang sudah ada sejak skema v2.
+ * `audit_log` versi v2 belum punya kolom `data_baru_json`; migrasi menambahkannya.
  */
-export const TABEL_WAJIB_RESTORE = [
+const TABEL_WAJIB_V2 = [
   'akun',
   'jurnal',
   'jurnal_baris',
   'tutup_buku',
   'pengaturan',
   'audit_log',
+] as const;
+
+/**
+ * Tabel wajib agar file dianggap backup aplikasi ini (skema v12).
+ * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
+ * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan; backup lama yang
+ * masih memilikinya tetap diterima dan akan dimigrasikan saat dibuka.
+ */
+export const TABEL_WAJIB_RESTORE = [
+  ...TABEL_WAJIB_V2,
   'panjar',
   'panjar_item',
 ] as const;
 
+/**
+ * Tabel wajib untuk kandidat restore sesuai `user_version` kandidat.
+ * - v2/v3: belum punya tabel panjar, jadi hanya tabel inti yang diwajibkan.
+ * - v4–v12: semua tabel current wajib ada.
+ * - versi tak dikenal (<2): memakai daftar current agar file asing tetap
+ *   ditolak, bukan lolos karena tidak punya tabel apa pun.
+ * Tabel legacy v5–v8 (pihak, jurnal_pihak, aset, anggaran, rekonsiliasi_bank,
+ * lampiran_jurnal) tidak pernah diwajibkan; backup v11 yang masih memilikinya
+ * tetap diterima.
+ */
+export function tabelWajibRestore(versi: number): readonly string[] {
+  if (Number.isInteger(versi) && versi >= 2 && versi < 4) return TABEL_WAJIB_V2;
+  return TABEL_WAJIB_RESTORE;
+}
+
 export type ValidasiRestore = { valid: true } | { valid: false; error: string };
+
+type PelanggaranFk = {
+  table: string;
+  rowid: number | null;
+  parent: string;
+  fkid: number;
+};
 
 /**
  * Validasi kandidat restore SEBELUM menyentuh DB aktif:
  * file ada & berupa file, SQLite terbaca, `integrity_check` = ok, bukan dari
- * versi aplikasi yang lebih baru, semua tabel wajib ada, dan audit integritas
- * akuntansi (termasuk `PRAGMA foreign_key_check`) tidak menemukan masalah.
+ * versi aplikasi yang lebih baru, semua tabel wajib untuk versi kandidat ada,
+ * tidak ada pelanggaran foreign key, dan audit integritas akuntansi tidak
+ * menemukan masalah.
  */
 export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
   let kandidat: Database.Database | null = null;
@@ -211,15 +242,31 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
         name: string;
       }[]).map((r) => r.name),
     );
-    const kurang = TABEL_WAJIB_RESTORE.filter((t) => !tabel.has(t));
+    const kurang = tabelWajibRestore(versi).filter((t) => !tabel.has(t));
     if (kurang.length > 0)
       return {
         valid: false,
         error: `File ini bukan backup aplikasi ini (tabel ${kurang.join(', ')} tidak ditemukan).`,
       };
 
+    // DB-08: `integrity_check` tidak memeriksa foreign key. Tolak kandidat yang
+    // punya baris yatim, termasuk baris di tabel legacy yang akan dimigrasikan.
+    const pelanggaranFk = kandidat.pragma('foreign_key_check') as PelanggaranFk[];
+    if (pelanggaranFk.length > 0) {
+      const rincian = pelanggaranFk
+        .slice(0, 5)
+        .map((r) => `tabel ${r.table} baris ${r.rowid ?? '-'} -> ${r.parent}`)
+        .join(', ');
+      const sisa = pelanggaranFk.length > 5 ? ` (+${pelanggaranFk.length - 5} lainnya)` : '';
+      return {
+        valid: false,
+        error:
+          `File backup rusak: ada ${pelanggaranFk.length} pelanggaran foreign key ` +
+          `(${rincian}${sisa}). Pilih file backup lain.`,
+      };
+    }
+
     // AKT-11: backup yang lolos SQLite belum tentu sehat secara akuntansi.
-    // `auditIntegritas` juga menjalankan `PRAGMA foreign_key_check`.
     const audit = auditIntegritas(kandidat);
     if (!audit.ok) {
       const rincian = audit.temuan

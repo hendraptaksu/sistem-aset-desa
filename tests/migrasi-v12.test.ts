@@ -477,27 +477,47 @@ describe('DB-33 — restore & backup lintas versi', () => {
     }
   });
 
-  it('menolak backup v12 yang kehilangan panjar_item', () => {
-    const dir = tmpDir('pura-v12-wajib-');
-    const asli = join(dir, 'asli.db');
-    const kurang = join(dir, 'kurang.db');
-    const db = openDb(asli);
+  it.each(['panjar_item', 'panjar'] as const)(
+    'menolak backup v12 yang kehilangan %s',
+    (tabelHilang) => {
+      const dir = tmpDir('pura-v12-wajib-');
+      const asli = join(dir, 'asli.db');
+      const kurang = join(dir, 'kurang.db');
+      const db = openDb(asli);
+      try {
+        backupVacuumInto(db, kurang);
+      } finally {
+        db.close();
+      }
+
+      const rusak = new Database(kurang);
+      try {
+        rusak.exec(`DROP TABLE ${tabelHilang}`);
+      } finally {
+        rusak.close();
+      }
+
+      const hasil = validasiKandidatRestore(kurang);
+      expect(hasil.valid).toBe(false);
+      if (!hasil.valid) expect(hasil.error).toContain(tabelHilang);
+    },
+  );
+
+  it('menerima backup v11 yang masih memiliki tabel legacy', () => {
+    const dir = tmpDir('pura-v12-v11-legacy-');
+    const path = join(dir, 'v11.db');
+    buatFixtureV11(path);
+
+    const cek = new Database(path, { readonly: true });
     try {
-      backupVacuumInto(db, kurang);
+      expect(versi(cek)).toBe(11);
+      for (const lama of TABEL_DIHAPUS_V12) expect(daftarTabel(cek)).toContain(lama);
     } finally {
-      db.close();
+      cek.close();
     }
 
-    const rusak = new Database(kurang);
-    try {
-      rusak.exec('DROP TABLE panjar_item');
-    } finally {
-      rusak.close();
-    }
-
-    const hasil = validasiKandidatRestore(kurang);
-    expect(hasil.valid).toBe(false);
-    if (!hasil.valid) expect(hasil.error).toMatch(/panjar_item/);
+    // Tabel legacy tidak diwajibkan, tetapi keberadaannya tidak menolak restore.
+    expect(validasiKandidatRestore(path)).toEqual({ valid: true });
   });
 
   it('membuat backup untuk setiap kenaikan versi, termasuk jalur hipotetis v12 → v13', () => {

@@ -137,7 +137,8 @@ Rincian ada di `docs/panduan-portable.md`.
   `manifest.json`. Pakai ini untuk arsip jangka panjang atau pindah laptop.
 - **Restore Import .db** memulihkan database dari satu file; **Restore Lengkap**
   memulihkan database dari folder hasil Backup Lengkap. Keduanya memvalidasi
-  kandidat dan mencadangkan database aktif lebih dulu.
+  kandidat (termasuk foreign key dan tabel wajib sesuai versi skema) dan
+  mencadangkan database aktif lebih dulu.
 - Backup **tidak terenkripsi**. Simpan di media yang aman dan pisahkan dari
   laptop (flashdisk/Drive) secara rutin.
 - **Migrasi skema.** Saat database lama dibuka, aplikasi membuat
