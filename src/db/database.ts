@@ -5,6 +5,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
+import { JENIS_JURNAL } from '../core/posting.js';
 import { AKUN_HUTANG_USAHA, COA } from './coa.js';
 
 /**
@@ -41,8 +42,13 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  * - 13   = satu jurnal SALDO_AWAL (DB-04): partial unique index
  *          `ux_jurnal_saldo_awal`; migrasi berhenti bila DB lama sudah berisi
  *          lebih dari satu SALDO_AWAL agar data tidak dihapus/diubah diam-diam.
+ * - 14   = constraint jurnal di DB (DB-10): partial unique index
+ *          `ux_jurnal_reversal` (satu jurnal hanya boleh punya satu reversal)
+ *          + trigger `BEFORE INSERT` yang menolak `jenis` tak dikenal dan
+ *          tanggal yang tidak berbentuk YYYY-MM-DD. Migrasi berhenti bila DB
+ *          lama sudah berisi `reversal_of` duplikat; data tidak diubah.
  */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -58,9 +64,11 @@ export const PESAN_DB_VERSI_BARU =
  * tidak pernah dibuang berdasarkan bentuk kolom (DB-06).
  * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
  * `terapkanAturanV9()` agar DB lama ikut termigrasi dan idempoten.
- * Unique index saldo awal v13 sengaja dibuat `terapkanMigrasiV13()` SETELAH
- * pemeriksaan duplikat, bukan di DDL ini, agar DB bermasalah tidak langsung
- * gagal dengan error UNIQUE tanpa pesan migrasi yang jelas.
+ * Unique index saldo awal v13 dan unique reversal v14 sengaja dibuat oleh
+ * `terapkanMigrasiV13()`/`terapkanMigrasiV14()` SETELAH pemeriksaan duplikat,
+ * bukan di DDL ini, agar DB bermasalah tidak langsung gagal dengan error UNIQUE
+ * tanpa pesan migrasi yang jelas. Trigger validasi jurnal v14 juga dibuat di
+ * migrasi (DROP + CREATE), bukan di DDL, mengikuti pola DB-07.
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -381,6 +389,69 @@ function terapkanMigrasiV13(db: Database.Database): void {
   `);
 }
 
+/** DB-10: pesan migrasi saat DB lama berisi `reversal_of` duplikat. */
+export const PESAN_DUPLIKAT_REVERSAL =
+  'Migrasi v14 dibatalkan: ditemukan lebih dari satu jurnal dengan reversal_of yang sama. ' +
+  'Satu jurnal hanya boleh dikoreksi satu kali. Perbaiki duplikat secara manual; ' +
+  'tidak ada data yang dihapus atau diubah.';
+
+/** DB-10: pesan trigger untuk jenis jurnal di luar daftar resmi. */
+export const PESAN_JENIS_JURNAL_DB =
+  'Jenis jurnal tidak dikenal. Gunakan jenis jurnal resmi aplikasi.';
+
+/** DB-10: pesan trigger untuk tanggal yang tidak berbentuk YYYY-MM-DD. */
+export const PESAN_TANGGAL_JURNAL_DB =
+  'Tanggal jurnal harus berformat YYYY-MM-DD.';
+
+/** Daftar jenis jurnal resmi, disinkronkan langsung dari posting layer. */
+const JENIS_JURNAL_SQL = JENIS_JURNAL.map((jenis) => `'${jenis}'`).join(', ');
+
+/**
+ * DB-10 — constraint jurnal v14.
+ *
+ * 1. Periksa `reversal_of` duplikat SEBELUM membuat unique index. Bila ada,
+ *    lempar error agar transaksi `migrasi()` rollback penuh: `user_version`
+ *    tidak naik dan tidak ada data yang dihapus/diubah.
+ * 2. Pasang partial unique index agar dua reversal untuk jurnal yang sama
+ *    ditolak DB, termasuk INSERT mentah yang melewati repository.
+ * 3. Pasang ulang trigger validasi `BEFORE INSERT` dengan pola DROP + CREATE
+ *    (DB-07). Trigger hanya pertahanan terakhir: `jenis` wajib salah satu dari
+ *    `JENIS_JURNAL` dan `tanggal` wajib berbentuk `YYYY-MM-DD`. Tabel `jurnal`
+ *    TIDAK direbuild di sini.
+ *
+ * Idempoten: index memakai `IF NOT EXISTS`, trigger selalu dibuat ulang, dan
+ * pemeriksaan duplikat aman dijalankan berulang.
+ */
+function terapkanMigrasiV14(db: Database.Database): void {
+  const duplikat = db
+    .prepare(
+      `SELECT reversal_of
+       FROM jurnal
+       WHERE reversal_of IS NOT NULL
+       GROUP BY reversal_of
+       HAVING COUNT(*) > 1
+       LIMIT 1`,
+    )
+    .get() as { reversal_of: string } | undefined;
+  if (duplikat) throw new Error(PESAN_DUPLIKAT_REVERSAL);
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_reversal
+      ON jurnal(reversal_of)
+      WHERE reversal_of IS NOT NULL;
+
+    DROP TRIGGER IF EXISTS trg_jurnal_validasi_insert;
+    CREATE TRIGGER trg_jurnal_validasi_insert
+    BEFORE INSERT ON jurnal
+    BEGIN
+      SELECT RAISE(ABORT, '${PESAN_JENIS_JURNAL_DB}')
+      WHERE NEW.jenis NOT IN (${JENIS_JURNAL_SQL});
+      SELECT RAISE(ABORT, '${PESAN_TANGGAL_JURNAL_DB}')
+      WHERE NEW.tanggal NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]';
+    END;
+  `);
+}
+
 /**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
@@ -402,6 +473,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan aturan v11 (audit append-only, tutup buku tidak bisa dihapus).
  * - Menerapkan migrasi v12 (drop tabel modul yang sudah dihapus).
  * - Menerapkan migrasi v13 (unique index satu jurnal SALDO_AWAL).
+ * - Menerapkan migrasi v14 (unique reversal + trigger validasi jurnal).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -421,6 +493,7 @@ export function migrasi(db: Database.Database): number {
     terapkanAturanV11(db);
     terapkanMigrasiV12(db);
     terapkanMigrasiV13(db);
+    terapkanMigrasiV14(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

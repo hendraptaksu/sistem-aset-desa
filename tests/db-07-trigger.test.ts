@@ -3,7 +3,7 @@
 // Fokus:
 // - DB yang sudah current tetapi berisi trigger lama dengan body berbeda
 //   mendapat body dari kode terbaru setelah `openDb`/`migrasi`.
-// - Semua trigger aplikasi (v9 + v11) ada tepat satu setelah dibuka berulang.
+// - Semua trigger aplikasi (v9 + v11 + v14) ada tepat satu setelah dibuka berulang.
 // - Aturan integritas tetap menolak operasi terlarang setelah trigger diganti.
 // - Migrasi yang gagal (duplikat SALDO_AWAL) rollback tanpa kehilangan trigger;
 //   definisi lama tetap utuh.
@@ -35,6 +35,7 @@ const TRIGGER_APP = [
   'trg_jurnal_baris_satu_sisi_update',
   'trg_jurnal_immutable_delete',
   'trg_jurnal_immutable_update',
+  'trg_jurnal_validasi_insert',
   'trg_tutup_buku_immutable_delete',
 ] as const;
 

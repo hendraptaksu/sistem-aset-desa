@@ -2,7 +2,8 @@
 //
 // Fokus:
 // - DB menolak SALDO_AWAL kedua (partial unique index), termasuk INSERT mentah.
-// - DB v9/v12 dengan tepat satu SALDO_AWAL naik ke v13 tanpa kehilangan data.
+// - DB v9/v12 dengan tepat satu SALDO_AWAL naik ke versi skema saat ini tanpa
+//   kehilangan data.
 // - DB v12 dengan duplikat SALDO_AWAL menghentikan migrasi, rollback utuh,
 //   user_version tidak naik, dan tidak ada data/tabel yang hilang.
 // - `sudahAdaSaldoAwal()` / `statusSaldoAwal()` tidak menganggap jurnal harian
@@ -232,15 +233,15 @@ describe('DB-04 — unique index saldo awal', () => {
 
 describe('DB-04 — migrasi v13', () => {
   it.each([9, 12] as const)(
-    'DB v%s dengan tepat satu SALDO_AWAL naik ke v13 tanpa kehilangan data',
+    'DB v%s dengan tepat satu SALDO_AWAL naik ke versi skema saat ini tanpa kehilangan data',
     (versiLama) => {
       const path = join(tmpDir(`pura-db04-v${versiLama}-`), 'pura.db');
       buatFixture(path, { versi: versiLama, jumlahSaldoAwal: 1, jurnalBiasa: 1 });
 
       const db = openDb(path);
       try {
-        expect(SCHEMA_VERSION).toBe(13);
-        expect(versi(db)).toBe(13);
+        expect(SCHEMA_VERSION).toBe(14);
+        expect(versi(db)).toBe(14);
         expect(indeksSaldoAwal(db)?.name).toBe('ux_jurnal_saldo_awal');
         expect(jumlahJurnal(db)).toBe(2);
         expect(
@@ -257,7 +258,7 @@ describe('DB-04 — migrasi v13', () => {
       // Buka ulang: idempoten, index tidak dobel, saldo awal tidak bertambah.
       const db2 = openDb(path);
       try {
-        expect(versi(db2)).toBe(13);
+        expect(versi(db2)).toBe(14);
         expect(
           db2
             .prepare(
@@ -272,11 +273,11 @@ describe('DB-04 — migrasi v13', () => {
     },
   );
 
-  it('DB v13 baru langsung memiliki unique index saldo awal', () => {
+  it('DB baru langsung memiliki unique index saldo awal', () => {
     const path = join(tmpDir('pura-db04-baru-'), 'pura.db');
     const db = openDb(path);
     try {
-      expect(versi(db)).toBe(13);
+      expect(versi(db)).toBe(SCHEMA_VERSION);
       expect(indeksSaldoAwal(db)?.sql).toMatch(/WHERE jenis = 'SALDO_AWAL'/);
     } finally {
       db.close();

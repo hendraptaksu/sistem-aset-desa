@@ -87,14 +87,15 @@ Prinsip yang dijaga:
    dari jurnal, bukan dari tabel saldo/laba tersimpan.
 3. **Logika akuntansi murni** ada di `src/core/` supaya mudah diuji tanpa
    Electron. Lapisan `src/db/` mengurus SQL; `src/main/` mengurus IPC/OS.
-4. **Skema v13** (lihat `SCHEMA_VERSION` di `src/db/database.ts`). Tabel
+4. **Skema v14** (lihat `SCHEMA_VERSION` di `src/db/database.ts`). Tabel
    single-entry lama (`transaksi`/`coa`) hanya dibersihkan dari DB asli v0–v2;
    tabel modul yang sudah dihapus dibuang oleh migrasi v12 idempoten.
    `panjar`, `panjar_item`, dan `tutup_buku` tidak pernah dibuang berdasarkan
    bentuk kolom. Backup pra-upgrade (`pre-upgrade-*.db`) dibuat untuk setiap
    kenaikan versi sebelum migrasi berjalan. Sejak v13 hanya boleh ada satu
-   jurnal `SALDO_AWAL`; migrasi berhenti tanpa mengubah data bila DB lama
-   berisi duplikat.
+   jurnal `SALDO_AWAL`; sejak v14 satu jurnal hanya boleh punya satu reversal
+   dan DB menolak insert dengan jenis/tanggal tidak valid. Migrasi berhenti
+   tanpa mengubah data bila DB lama berisi duplikat.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
    di mesin yang sama.
 
@@ -147,8 +148,9 @@ Rincian ada di `docs/panduan-portable.md`.
   laptop (flashdisk/Drive) secara rutin.
 - **Migrasi skema.** Saat database lama dibuka, aplikasi membuat
   `pre-upgrade-*.db` di folder `backups` lebih dulu, lalu menjalankan migrasi
-  idempoten. Skema v13 membuang tabel modul yang sudah dihapus pada v12 dan
-  menegakkan satu jurnal saldo awal; `jurnal`, `jurnal_baris`, `panjar`,
+  idempoten. Skema v14 membuang tabel modul yang sudah dihapus pada v12,
+  menegakkan satu jurnal saldo awal (v13), serta satu reversal per jurnal dan
+  validasi jenis/tanggal insert jurnal (v14); `jurnal`, `jurnal_baris`, `panjar`,
   `panjar_item`, `tutup_buku`, `audit_log`, dan `pengaturan` tidak ikut dibuang.
 
 ---

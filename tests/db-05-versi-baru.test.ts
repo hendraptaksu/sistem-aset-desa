@@ -91,7 +91,7 @@ function buatDbVersi(
 }
 
 describe('DB-05 — openDb menolak DB versi lebih baru', () => {
-  it('menolak file DB v14 tanpa mengubah byte, DDL, atau meninggalkan koneksi terbuka', () => {
+  it('menolak file DB versi lebih baru tanpa mengubah byte, DDL, atau meninggalkan koneksi terbuka', () => {
     const path = join(tmpDir('pura-db05-file-'), 'pura.db');
     buatDbVersi(path, SCHEMA_VERSION + 1);
     const sebelum = readFileSync(path);
@@ -164,7 +164,7 @@ describe('DB-05 — openDb menolak DB versi lebih baru', () => {
         nilai: 'tetap',
       });
       expect(db.prepare('SELECT id FROM sentinel').all()).toEqual([{ id: 'tetap' }]);
-      // Migrasi v13 berjalan pada DB lama.
+      // Migrasi ke versi skema saat ini berjalan pada DB lama.
       expect(
         db
           .prepare(

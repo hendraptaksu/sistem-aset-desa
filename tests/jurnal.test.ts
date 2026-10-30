@@ -7,7 +7,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
+import {
+  PESAN_JENIS_JURNAL_DB,
+  PESAN_TANGGAL_JURNAL_DB,
+  SCHEMA_VERSION,
+  openDb,
+} from '../src/db/database.js';
+import { JENIS_JURNAL } from '../src/core/posting.js';
 import {
   getJurnal,
   getJurnalDetail,
@@ -50,7 +56,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('membuat tabel jurnal + jurnal_baris dan menaikkan user_version ke versi skema', () => {
     const { db } = freshDb();
     try {
-      expect(SCHEMA_VERSION).toBe(13);
+      expect(SCHEMA_VERSION).toBe(14);
       expect(versi(db)).toBe(SCHEMA_VERSION);
       const tabel = db
         .prepare(
@@ -271,6 +277,89 @@ describe('P0-2 — skema jurnal double-entry', () => {
       expect(ids({ limit: 1, offset: 2 })).toEqual(['j-3']);
       expect(ids({ offset: 2 })).toEqual(['j-3', 'j-4']);
       expect(ids({ limit: 0 })).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('DB-10 — constraint jurnal di DB', () => {
+  const insertMentah = (
+    db: ReturnType<typeof openDb>,
+    id: string,
+    tanggal: string,
+    jenis: string,
+    reversalOf: string | null = null,
+  ): void => {
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES (?, ?, '', ?, ?, ?, ?, '2026-01-01T00:00:00.000Z')`,
+    ).run(id, tanggal, `Uji ${id}`, jenis, id, reversalOf);
+  };
+
+  it('menolak reversal kedua untuk jurnal yang sama lewat unique index', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        { id: 'j-asli', tanggal: '2026-02-01', keterangan: 'Jurnal asli' },
+        pasangan('1001', '4005'),
+      );
+
+      expect(() => insertMentah(db, 'j-balik-1', '2026-02-02', 'REVERSAL', 'j-asli')).not.toThrow();
+      expect(() => insertMentah(db, 'j-balik-2', '2026-02-03', 'REVERSAL', 'j-asli')).toThrow(
+        /UNIQUE constraint failed: jurnal\.reversal_of|ux_jurnal_reversal/,
+      );
+
+      expect(listJurnal(db).map((j) => j.id)).toEqual(['j-asli', 'j-balik-1']);
+      expect(
+        db.prepare('SELECT COUNT(*) AS n FROM jurnal WHERE reversal_of IS NOT NULL').get(),
+      ).toEqual({ n: 1 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak jenis tidak dikenal dan tanggal salah bentuk dengan pesan Indonesia', () => {
+    const { db } = freshDb();
+    try {
+      expect(() => insertMentah(db, 'j-jenis', '2026-01-02', 'NGARANG')).toThrow(
+        PESAN_JENIS_JURNAL_DB,
+      );
+      // Bentuk harus persis YYYY-MM-DD, bukan tanggal yang hanya "mirip".
+      expect(() => insertMentah(db, 'j-tgl-1', '02-01-2026', 'UMUM')).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(() => insertMentah(db, 'j-tgl-2', '2026-1-02', 'UMUM')).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(() => insertMentah(db, 'j-tgl-3', '2026-01-02T00:00:00Z', 'UMUM')).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual({ n: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menerima seluruh JENIS_JURNAL resmi dan jurnal normal tetap tersimpan', () => {
+    const { db } = freshDb();
+    try {
+      for (const jenis of JENIS_JURNAL) {
+        expect(() => insertMentah(db, `j-${jenis}`, '2026-01-02', jenis)).not.toThrow();
+      }
+      expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual({
+        n: JENIS_JURNAL.length,
+      });
+
+      // Jalur aplikasi (repository) juga tidak terhalang trigger.
+      const jurnal = insertJurnalTervalidasi(
+        db,
+        { id: 'j-normal', tanggal: '2026-03-01', keterangan: 'Jurnal normal' },
+        pasangan('1001', '4005'),
+      );
+      expect(jurnal.jenis).toBe('UMUM');
     } finally {
       db.close();
     }

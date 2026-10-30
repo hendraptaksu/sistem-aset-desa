@@ -78,7 +78,7 @@
 | DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [x] |
 | DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
 | DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [x] |
-| DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [ ] |
+| DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [x] |
 | DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [ ] |
 | DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [ ] |
 | DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [ ] |
@@ -380,7 +380,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `tests/ipc-main.test.ts`. `npm run typecheck` bersih; `npm test`
     **693 test/56 file hijau**; `npm run build` berhasil.
 
-- [ ] **DB-10 — Constraint jurnal: unique reversal + validasi insert** · P0 · S
+- [x] **DB-10 — Constraint jurnal: unique reversal + validasi insert** · P0 · S
   - **Konteks:** `reversal_of` tidak unik; dua reversal bisa ditulis lewat SQL.
     `jurnal` tidak punya validasi DB untuk jenis/tanggal.
   - **Langkah:**
@@ -395,6 +395,29 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** `tests/jurnal.test.ts` + `tests/migrasi-v9.test.ts`.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** —
+  - **Bukti 2026-10-30:** `SCHEMA_VERSION` 13 → 14. Migrasi v14 memeriksa
+    `jurnal.reversal_of` non-null yang duplikat SEBELUM membuat index; bila ada,
+    migrasi berhenti dengan pesan Indonesia, transaksi rollback penuh
+    (`user_version` tetap 13, jurnal/index/trigger tidak berubah), dan tidak ada
+    data yang dihapus/diubah. Partial unique index `ux_jurnal_reversal` aktif
+    untuk DB baru maupun DB lama. Trigger `trg_jurnal_validasi_insert`
+    (`BEFORE INSERT ON jurnal`) dibuat ulang dengan pola DROP + CREATE (DB-07);
+    daftar `jenis` diimpor langsung dari `JENIS_JURNAL` di
+    `src/core/posting.ts` agar tidak ada salinan yang melenceng. Validasi
+    tanggal memakai GLOB kelas digit
+    `[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]` (bukan `GLOB '____-__-__'`:
+    di SQLite `_` adalah karakter literal pada GLOB) sehingga bentuk
+    `YYYY-MM-DD` benar-benar ditegakkan. Tidak ada rebuild tabel `jurnal`.
+    Test baru `tests/db-10-jurnal-constraint.test.ts` (3) mencakup migrasi v13
+    sehat → v14, idempotensi index/trigger, sinkronisasi daftar `JENIS_JURNAL`,
+    dan fixture v13 dengan `reversal_of` duplikat yang gagal tanpa mengubah
+    data. Tiga test DB-10 ditambahkan di `tests/jurnal.test.ts` untuk unique
+    index (reversal kedua ditolak lewat SQL mentah), pesan Indonesia untuk
+    `jenis`/tanggal invalid, serta seluruh `JENIS_JURNAL` dan jurnal normal yang
+    tetap lolos. Ekspektasi versi/trigger di `tests/db-04`, `db-05`, `db-07`,
+    `migrasi-v9/v10/v11/v12`, serta README diperbarui. `npm run typecheck`
+    bersih; `npm test` **734 test/61 file hijau** (baseline 728/60);
+    `npm run build` berhasil.
 
 - [ ] **DB-11 — Constraint akun: unique nama + validasi tipe/posisi** · P0 · S
   - **Konteks:** `akun.tipe`/`posisi_normal` hanya divalidasi kode; typo bisa
