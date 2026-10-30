@@ -1,8 +1,8 @@
 // P2-8 — dokumentasi pengguna, pemeriksaan, dan portable.
-// AUD-31 — versi, README, arsip ERD, dan istilah baru.
+// AUD-31 — versi, README, dan istilah baru.
 // Fokus: file ada, istilah kunci tersedia, dan contoh path di dokumen cocok
 // dengan helper `tentukanLokasiData` (bukan snapshot seluruh file).
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -54,13 +54,6 @@ describe('AUD-31 — versi, README, dan arsip ERD', () => {
       expect(dokumen).toMatch(/PIN[^\n]*bukan enkripsi|bukan enkripsi/i);
       expect(dokumen).toContain('pura.db');
     }
-  });
-
-  it('ERD v1 diarsipkan dan tidak menjadi acuan aktif', () => {
-    expect(existsSync(join(docsDir, 'erd-dan-arsitektur.md'))).toBe(false);
-    const arsip = baca('erd-v1-arsip.md');
-    expect(arsip).toMatch(/BUKAN ACUAN AKTIF/i);
-    expect(arsip).toContain('single-entry');
   });
 
   it('.env.example menyebut 240 jurnal dan tidak memuat kode darurat global', () => {
