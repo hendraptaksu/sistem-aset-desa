@@ -186,6 +186,23 @@ update aplikasi:
    **Jurnal Umum**, dan laporan.
 4. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
 
+Lima akun hasil persetujuan 2026-10-30 sudah tersedia otomatis dan **tidak
+menggantikan** akun lama:
+
+- **5060 PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)** — Beban. Akun lama
+  **5010 BAGA SUAR (TELPON, LISTRIK, PDAM)** tetap aktif.
+- **5061 PENGELUARAN ARTOS (UPACARA)** — Beban. Akun lama **5050 BIAYA
+  LAIN-LAIN** tetap aktif.
+- **5062 PENGELUARAN BANTEN RUTIN (HARIAN)** — Beban. Akun lama **5004 BAGA
+  UPAKARA** tetap aktif.
+- **4060 PENDAPATAN WEWEDALAN (UPACARA)** — Pendapatan. Akun lama **4008
+  PENDAPATAN PUNIA** dan **4041 PENDAPATAN SESARI** tetap aktif.
+- **4006 PENDAPATAN PARKIR BPD (KHUSUS)** — Pendapatan. Akun lama **4005
+  PENDAPATAN PARKIR** tetap aktif.
+
+Pilih akun yang paling spesifik untuk transaksi baru. Jangan menonaktifkan akun
+lama hanya karena akun baru tersedia; keduanya boleh dipakai sesuai kebutuhan.
+
 Untuk akun tambahan yang sudah ada:
 
 - **Ubah** — memperbaiki nama akun. Kode dan jenis akun tetap agar histori

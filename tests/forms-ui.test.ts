@@ -493,6 +493,43 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).not.toContain('PENDAPATAN PARKIR');
     expect(html).not.toContain('3000 — MODAL');
   });
+
+  it('menampilkan lima akun baru DB-13 di form Terima/Bayar, akun lama tetap ada', () => {
+    const terima = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'TERIMA',
+        coa: COA,
+        memuat: false,
+      }),
+    );
+    for (const label of [
+      '4006 — PENDAPATAN PARKIR BPD (KHUSUS)',
+      '4060 — PENDAPATAN WEWEDALAN (UPACARA)',
+    ]) {
+      expect(terima).toContain(label);
+    }
+    expect(terima).toContain('4005 — PENDAPATAN PARKIR');
+    expect(terima).toContain('4008 — PENDAPATAN PUNIA');
+    expect(terima).toContain('4041 — PENDAPATAN SESARI');
+
+    const bayar = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR',
+        coa: COA,
+        memuat: false,
+      }),
+    );
+    for (const label of [
+      '5060 — PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)',
+      '5061 — PENGELUARAN ARTOS (UPACARA)',
+      '5062 — PENGELUARAN BANTEN RUTIN (HARIAN)',
+    ]) {
+      expect(bayar).toContain(label);
+    }
+    expect(bayar).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
+    expect(bayar).toContain('5004 — BAGA UPAKARA');
+    expect(bayar).toContain('5050 — BIAYA LAIN-LAIN');
+  });
 });
 
 function dasarPindah(over: Partial<FormPindahDana> = {}): FormPindahDana {

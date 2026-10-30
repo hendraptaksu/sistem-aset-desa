@@ -8,9 +8,9 @@
 // double-entry 2026-10-04 dan 2060 HUTANG USAHA (AKT-20) untuk memisahkan utang
 // usaha dari pinjaman. `docs/KODE AKUN.xlsx` adalah **arsip client 48 akun** yang
 // tidak boleh diubah tanpa persetujuan; xlsx bukan sumber mesin dan tidak ikut
-// menerima akun baru. Akun baru (termasuk 5060/5061/5062/4060/4006 pada DB-13)
-// ditambahkan ke CSV lalu ke COA, sehingga persamaan tetap CSV + 2 ekstensi.
-// Rincian keputusan ada di `docs/sumber-coa.md`.
+// menerima akun baru. Lima akun DB-13 (5060/5061/5062/4060/4006) sudah
+// ditambahkan ke CSV lalu ke COA, sehingga persamaan tetap CSV (53 baris) +
+// 2 ekstensi = 55 akun. Rincian keputusan ada di `docs/sumber-coa.md`.
 //
 // Catatan:
 // - Tidak ada kode 1000. Kas tunai = 1001 KAS.
@@ -20,7 +20,10 @@
 // - 1050 PIUTANG = aktiva non-kas. BUKAN dompet (isAkunKas('1050') = false).
 // - 2050 HUTANG LAIN-LAIN = pinjaman/legacy; 2060 HUTANG USAHA = pembelian kredit.
 // - 2060 adalah ekstensi sistem di luar CSV, seperti 1040. Baseline CSV resmi
-//   48 akun; akun tambahan yang disetujui ditambahkan ke CSV di belakang baseline.
+//   48 akun; lima akun DB-13 ditambahkan di belakang baseline menjadi 53 baris.
+// - Lima akun DB-13 adalah TAMBAHAN, bukan pengganti akun lama. Nama diberi
+//   pembeda agar operator tidak salah pilih: 5010/5050/5004/4008/4041/4005
+//   tetap ada dan tetap aktif.
 // - 3001 berlaku "MULAI 10 MARET 2018" (jangkar awal pembukuan).
 // - Nama disalin persis dari CSV termasuk singkatan (SHUTLE, PEDAPATAN).
 
@@ -123,6 +126,7 @@ export const COA: Coa[] = [
   akunBaru('4003', 'PEDAPATAN KIOS', 'PENDAPATAN'),
   akunBaru('4004', 'PENDAPATAN SHUTLE BUS', 'PENDAPATAN'),
   akunBaru('4005', 'PENDAPATAN PARKIR', 'PENDAPATAN'),
+  akunBaru('4006', 'PENDAPATAN PARKIR BPD (KHUSUS)', 'PENDAPATAN'),
   akunBaru('4007', 'PENDAPATAN KONTRAKAN', 'PENDAPATAN'),
   akunBaru('4008', 'PENDAPATAN PUNIA', 'PENDAPATAN'),
   akunBaru('4009', 'PENDAPATAN BUNGA BANK', 'PENDAPATAN'),
@@ -130,6 +134,7 @@ export const COA: Coa[] = [
   akunBaru('4041', 'PENDAPATAN SESARI', 'PENDAPATAN'),
   akunBaru('4042', 'DANA PEMBANGUNAN / SHU DARI LPD', 'PENDAPATAN'),
   akunBaru('4050', 'PENDAPATAN LAIN LAIN', 'PENDAPATAN'),
+  akunBaru('4060', 'PENDAPATAN WEWEDALAN (UPACARA)', 'PENDAPATAN'),
   // Beban / Baga
   akunBaru('5000', 'BIAYA KESEKRETARIATAN', 'BEBAN'),
   akunBaru('5001', 'BAGA KASUKERTAN', 'BEBAN'),
@@ -146,6 +151,10 @@ export const COA: Coa[] = [
   akunBaru('5031', 'BIAYA PROYEK', 'BEBAN'),
   akunBaru('5040', 'BIAYA ADMINISTRASI DAN PAJAK BANK', 'BEBAN'),
   akunBaru('5050', 'BIAYA LAIN-LAIN', 'BEBAN'),
+  // Lima akun DB-13: tambahan di atas baseline 48, bukan pengganti akun lama.
+  akunBaru('5060', 'PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)', 'BEBAN'),
+  akunBaru('5061', 'PENGELUARAN ARTOS (UPACARA)', 'BEBAN'),
+  akunBaru('5062', 'PENGELUARAN BANTEN RUTIN (HARIAN)', 'BEBAN'),
 ];
 
 /** Semua dompet kas/bank. 1040 (panjar) & 1050 (piutang) sengaja TIDAK termasuk. */

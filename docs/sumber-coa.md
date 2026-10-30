@@ -1,6 +1,7 @@
-# Sumber COA — keputusan DB-13a
+# Sumber COA — keputusan DB-13a dan DB-13
 
-**Tanggal keputusan:** 2026-10-30
+**Tanggal keputusan:** 2026-10-30 (DB-13a); lima akun baru disetujui dan
+ditambahkan pada DB-13, 2026-10-30.
 **Status:** berlaku untuk DB-13, DB-13b, dan seterusnya.
 
 ## Keputusan
@@ -23,7 +24,15 @@ Ekstensi sistem saat ini **hanya dua**:
 | 1040 | UANG PANJAR (KAS DI MUKA) | Kebutuhan double-entry panjar (2026-10-04) |
 | 2060 | HUTANG USAHA | Memisahkan utang usaha dari pinjaman 2050 (AKT-20) |
 
-Jadi untuk baseline sekarang: **48 baris CSV + 2 ekstensi = 50 akun COA**.
+Jadi untuk kondisi sekarang:
+
+```text
+48 akun baseline client + 5 akun tambahan DB-13 + 2 ekstensi sistem = 55 akun COA
+```
+
+`KODE AKUN.csv` berisi **53 baris data**: 48 baris baseline client + lima akun
+DB-13. `docs/KODE AKUN.xlsx` tetap **48 akun baseline** dan tidak menerima akun
+baru.
 
 ## Peran setiap file
 
@@ -39,32 +48,47 @@ pemeriksaan manusia dan pembanding test. CSV juga tidak dibaca runtime — COA
 statis di `src/db/coa.ts` yang dipakai aplikasi, dan test memastikan keduanya
 identik.
 
-## Baseline 48 akun dan akun baru
+## Baseline 48 akun dan lima akun tambahan
 
-- `docs/KODE AKUN.xlsx` memuat **48 akun baseline** dan **tidak boleh diubah**
-  dalam DB-13a. Isinya identik dengan 48 baris pertama `KODE AKUN.csv`.
+- `docs/KODE AKUN.xlsx` memuat **48 akun baseline** dan **tidak boleh diubah**.
+  Isinya identik dengan 48 baris pertama `KODE AKUN.csv`.
 - Lima akun yang disetujui 2026-10-30 — **5060, 5061, 5062, 4060, 4006** —
-  **belum** ditambahkan di DB-13a. DB-13 akan menambahkannya ke `KODE AKUN.csv`
-  dan `src/db/coa.ts`, bukan ke xlsx.
+  ditambahkan pada DB-13 ke `KODE AKUN.csv` (baris 49–53) dan `src/db/coa.ts`,
+  **bukan** ke xlsx.
+- Lima akun ini adalah **tambahan, bukan pengganti** akun lama. Akun lama
+  `5010`, `5050`, `5004`, `4008`, `4041`, dan `4005` **tetap ada dan tetap
+  aktif**. Namanya sengaja diberi pembeda agar operator tidak salah pilih.
 - DB-13b nanti menambahkan **5063** dengan cara yang sama.
 - Karena akun baru selalu ditambahkan di belakang CSV, xlsx tetap arsip 48 akun
   dan persamaan `COA = CSV + 2 ekstensi` tetap berlaku.
+
+| Kode | Nama di CSV/COA | Tipe | Posisi normal | Pembeda dari akun lama |
+|---|---|---|---|---|
+| 5060 | PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL) | BEBAN | DEBIT | 5010 BAGA SUAR (TELPON, LISTRIK, PDAM) tetap ada |
+| 5061 | PENGELUARAN ARTOS (UPACARA) | BEBAN | DEBIT | 5050 BIAYA LAIN-LAIN tetap ada |
+| 5062 | PENGELUARAN BANTEN RUTIN (HARIAN) | BEBAN | DEBIT | 5004 BAGA UPAKARA tetap ada |
+| 4060 | PENDAPATAN WEWEDALAN (UPACARA) | PENDAPATAN | KREDIT | 4008 PUNIA / 4041 SESARI tetap ada |
+| 4006 | PENDAPATAN PARKIR BPD (KHUSUS) | PENDAPATAN | KREDIT | 4005 PENDAPATAN PARKIR tetap ada |
 
 ## Penjaga regresi
 
 `tests/coa.test.ts` menegakkan:
 
-1. `KODE AKUN.csv` ada, berisi 48 baris, dan setiap kode+nama cocok persis
+1. `KODE AKUN.csv` ada, berisi 53 baris, dan setiap kode+nama cocok persis
    dengan COA.
 2. `docs/KODE AKUN.xlsx` ada, bisa dibaca dengan `exceljs`, berisi tepat 48
    akun, sama dengan 48 baris pertama CSV, dan setiap akunnya ada identik di COA.
 3. File xlsx tidak berubah: SHA-256 harus
    `c9a3f9f674f57ead20c1747bac25a16939f64acad6ea6aa6a9286fae4faae6b6`.
-4. COA tepat sama dengan baris CSV + ekstensi sistem 1040/2060; tidak ada akun
-   liar, dan ekstensi tidak boleh muncul di CSV.
+4. COA tepat sama dengan 53 baris CSV + ekstensi sistem 1040/2060 = 55 akun;
+   tidak ada akun liar, dan ekstensi tidak boleh muncul di CSV.
 5. Tidak ada kode atau nama duplikat di COA maupun CSV.
-6. Dokumen ini tetap ada dan mencatat keputusan, angka 48, 1040, 2060, serta
-   hash arsip.
+6. Lima akun DB-13 punya kode, nama, tipe, dan posisi normal yang benar; akun
+   lama yang mirip tidak di-rename atau dinonaktifkan.
+7. Setelah `openDb`/seed, kelima akun muncul di `listAkun` dan akun lama tetap
+   aktif.
+8. Dokumen ini tetap ada dan mencatat keputusan, angka 48/53/55, kode 1040,
+   2060, 5060, 5061, 5062, 4060, 4006, serta hash arsip.
 
 ## Cara mengubah dengan aman
 

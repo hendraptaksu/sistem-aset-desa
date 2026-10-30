@@ -49,6 +49,64 @@ const XLSX_BASELINE_JUMLAH = 48;
 const XLSX_BASELINE_SHA256 =
   'c9a3f9f674f57ead20c1747bac25a16939f64acad6ea6aa6a9286fae4faae6b6';
 
+/** DB-13: CSV baseline 48 + 5 akun baru = 53 baris; COA = 53 + 2 ekstensi = 55. */
+const CSV_BASELINE_JUMLAH = 48;
+const CSV_JUMLAH = 53;
+const COA_JUMLAH = 55;
+
+/** Lima akun baru, dalam urutan baris CSV 49–53 (urutan persetujuan client). */
+const AKUN_DB13_CSV = [
+  { kode: '5060', nama: 'PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)' },
+  { kode: '5061', nama: 'PENGELUARAN ARTOS (UPACARA)' },
+  { kode: '5062', nama: 'PENGELUARAN BANTEN RUTIN (HARIAN)' },
+  { kode: '4060', nama: 'PENDAPATAN WEWEDALAN (UPACARA)' },
+  { kode: '4006', nama: 'PENDAPATAN PARKIR BPD (KHUSUS)' },
+] as const;
+
+/** Bentuk COA lengkap kelima akun baru, urut kode seperti array COA. */
+const AKUN_DB13_COA = [
+  {
+    kode: '4006',
+    nama: 'PENDAPATAN PARKIR BPD (KHUSUS)',
+    tipe: 'PENDAPATAN',
+    posisi_normal: 'KREDIT',
+  },
+  {
+    kode: '4060',
+    nama: 'PENDAPATAN WEWEDALAN (UPACARA)',
+    tipe: 'PENDAPATAN',
+    posisi_normal: 'KREDIT',
+  },
+  {
+    kode: '5060',
+    nama: 'PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)',
+    tipe: 'BEBAN',
+    posisi_normal: 'DEBIT',
+  },
+  {
+    kode: '5061',
+    nama: 'PENGELUARAN ARTOS (UPACARA)',
+    tipe: 'BEBAN',
+    posisi_normal: 'DEBIT',
+  },
+  {
+    kode: '5062',
+    nama: 'PENGELUARAN BANTEN RUTIN (HARIAN)',
+    tipe: 'BEBAN',
+    posisi_normal: 'DEBIT',
+  },
+] as const;
+
+/** Akun lama yang mirip tetap ada dan tidak diganti/dinonaktifkan oleh DB-13. */
+const AKUN_LAMA_TETAP = [
+  { kode: '5010', nama: 'BAGA SUAR (TELPON, LISTRIK, PDAM)' },
+  { kode: '5050', nama: 'BIAYA LAIN-LAIN' },
+  { kode: '5004', nama: 'BAGA UPAKARA' },
+  { kode: '4008', nama: 'PENDAPATAN PUNIA' },
+  { kode: '4041', nama: 'PENDAPATAN SESARI' },
+  { kode: '4005', nama: 'PENDAPATAN PARKIR' },
+] as const;
+
 /** Parser CSV sederhana (cukup untuk KODE AKUN.csv; mendukung tanda kutip). */
 function parseCsvLine(line: string): string[] {
   const out: string[] = [];
@@ -109,7 +167,7 @@ async function bacaXlsx(): Promise<{ kode: string; nama: string }[]> {
 describe('COA P0-1', () => {
   it('memuat semua kode & nama dari KODE AKUN.csv secara persis', () => {
     const csv = bacaCsv();
-    expect(csv).toHaveLength(48);
+    expect(csv).toHaveLength(CSV_JUMLAH);
     for (const { kode, nama } of csv) {
       expect(kode, `kode CSV tidak 4 digit: ${kode}`).toMatch(/^\d{4}$/);
       expect(akun(kode), `akun ${kode} hilang dari COA`).toMatchObject({ kode, nama });
@@ -124,13 +182,44 @@ describe('COA P0-1', () => {
     const xlsx = await bacaXlsx();
     expect(xlsx).toHaveLength(XLSX_BASELINE_JUMLAH);
     const csv = bacaCsv();
-    // Baseline xlsx harus sama dengan 48 baris pertama CSV; akun baru selalu
+    // Baseline xlsx harus sama dengan 48 baris pertama CSV; lima akun DB-13
     // ditambahkan di belakang CSV sehingga arsip lama tetap utuh.
+    expect(csv.slice(0, CSV_BASELINE_JUMLAH)).toHaveLength(XLSX_BASELINE_JUMLAH);
     expect(xlsx).toEqual(csv.slice(0, XLSX_BASELINE_JUMLAH));
 
     // Baseline subset: setiap akun arsip wajib ada identik di COA.
     for (const { kode, nama } of xlsx) {
       expect(akun(kode), `akun arsip ${kode} hilang dari COA`).toMatchObject({ kode, nama });
+    }
+  });
+
+  it('menambahkan lima akun DB-13 di baris CSV 49–53 tanpa mengganti akun lama', () => {
+    const csv = bacaCsv();
+    expect(csv.slice(CSV_BASELINE_JUMLAH)).toEqual([...AKUN_DB13_CSV]);
+
+    // Bentuk COA: tipe + posisi normal benar, dan nama pembeda persis.
+    for (const diharapkan of AKUN_DB13_COA) {
+      expect(akun(diharapkan.kode), `akun DB-13 ${diharapkan.kode} hilang`).toEqual(diharapkan);
+    }
+
+    // Posisi COA mengikuti urutan kode di dalam kelompoknya.
+    const kodeCoa = COA.map((c) => c.kode);
+    expect(kodeCoa.indexOf('4006')).toBe(kodeCoa.indexOf('4005') + 1);
+    expect(kodeCoa.indexOf('4060')).toBe(kodeCoa.indexOf('4050') + 1);
+    expect(kodeCoa.indexOf('5060')).toBe(kodeCoa.indexOf('5050') + 1);
+    expect(kodeCoa.indexOf('5061')).toBe(kodeCoa.indexOf('5060') + 1);
+    expect(kodeCoa.indexOf('5062')).toBe(kodeCoa.indexOf('5061') + 1);
+
+    // Akun lama yang mirip tidak di-rename, tidak dihapus, dan tetap bisa diposting.
+    for (const lama of AKUN_LAMA_TETAP) {
+      expect(akun(lama.kode)).toMatchObject({ kode: lama.kode, nama: lama.nama });
+      expect(akunBolehDiposting(lama.kode), `${lama.kode} tidak boleh dinonaktifkan`).toBe(true);
+    }
+
+    // Nama baru harus berbeda tegas dari semua nama lama.
+    const namaLama = new Set(AKUN_LAMA_TETAP.map((a) => a.nama.toUpperCase()));
+    for (const baru of AKUN_DB13_CSV) {
+      expect(namaLama.has(baru.nama.toUpperCase())).toBe(false);
     }
   });
 
@@ -146,7 +235,8 @@ describe('COA P0-1', () => {
     const diharapkan = new Map(
       [...csv, ...ekstensi].map(({ kode, nama }) => [kode, { kode, nama }]),
     );
-    expect(diharapkan.size).toBe(csv.length + ekstensi.length);
+    expect(diharapkan.size).toBe(CSV_JUMLAH + ekstensi.length);
+    expect(diharapkan.size).toBe(COA_JUMLAH);
     expect(COA).toHaveLength(diharapkan.size);
 
     for (const c of COA) {
@@ -185,8 +275,16 @@ describe('COA P0-1', () => {
       'KODE AKUN.xlsx',
       'sumber mesin',
       '48',
+      '53',
+      '55',
       '1040',
       '2060',
+      '5060',
+      '5061',
+      '5062',
+      '4060',
+      '4006',
+      'tambahan',
       XLSX_BASELINE_SHA256,
     ]) {
       expect(dokumen, `docs/sumber-coa.md harus menyebut "${istilah}"`).toContain(istilah);
@@ -288,6 +386,42 @@ describe('COA P0-1', () => {
     expect(akunBolehDiposting('')).toBe(false);
     // Status aktif dari master DB diteruskan pemanggil.
     expect(akunBolehDiposting('4005', false)).toBe(false);
+  });
+
+  it('lima akun DB-13 muncul di listAkun setelah seed DB, akun lama tetap aktif', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-coa-db13-'));
+    try {
+      const db = openDb(join(dir, 'pura.db'));
+      try {
+        const rows = listAkun(db);
+        expect(rows).toHaveLength(COA_JUMLAH);
+        expect(listAkun(db, { aktif: true })).toHaveLength(COA_JUMLAH);
+
+        for (const diharapkan of AKUN_DB13_COA) {
+          expect(getAkun(db, diharapkan.kode)).toEqual({ ...diharapkan, aktif: true });
+        }
+
+        // listAkun mengurutkan kode; posisi akun baru mengikuti kode di COA.
+        const posisi = (kode: string): number => rows.findIndex((r) => r.kode === kode);
+        expect(posisi('4006')).toBe(posisi('4005') + 1);
+        expect(posisi('4060')).toBe(posisi('4050') + 1);
+        expect(posisi('5060')).toBe(posisi('5050') + 1);
+        expect(posisi('5061')).toBe(posisi('5060') + 1);
+        expect(posisi('5062')).toBe(posisi('5061') + 1);
+
+        for (const lama of AKUN_LAMA_TETAP) {
+          expect(getAkun(db, lama.kode), `${lama.kode} harus tetap ada`).toMatchObject({
+            kode: lama.kode,
+            nama: lama.nama,
+            aktif: true,
+          });
+        }
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('menyimpan daftar akun ke tabel akun saat openDb (upsert)', () => {

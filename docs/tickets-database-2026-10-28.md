@@ -2,11 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-30 (setelah DB-12 + DB-13a):** `npm run typecheck`
-> bersih; `npm test` **767 test / 63 file hijau**. `docs/panduan-portable.md`
-> dipulihkan; test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai.
-> Angka **737/58** di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum
-> mulai.
+> **Baseline terakhir 2026-10-30 (setelah DB-13):** `npm run typecheck` bersih;
+> `npm test` **770 test / 63 file hijau**. `docs/panduan-portable.md` dipulihkan;
+> test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai. Angka
+> **737/58** di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum mulai.
 >
 > Prinsip yang tidak boleh dilanggar:
 > - Jurnal + jurnal_baris adalah satu-satunya sumber angka.
@@ -51,19 +50,18 @@
 
 ### Kondisi working tree 2026-10-30
 
-- `KODE AKUN.csv` **ada kembali** (48 akun) dan `docs/KODE AKUN.xlsx` isinya
-  identik. **DB-13a selesai:** CSV ditetapkan sebagai sumber mesin, xlsx tetap
-  arsip client yang tidak diubah, dan `coa.ts` dijaga = CSV + 2 ekstensi sistem
-  lewat `docs/sumber-coa.md` + `tests/coa.test.ts`.
-- `docs/KODE AKUN.xlsx` **belum** memuat 5 akun baru (5060, 5061, 5062, 4060,
-  4006). Kelimanya **disetujui 2026-10-30** sebagai tambahan di atas baseline;
-  kerjakan DB-13 dan beri nama pembeda agar tidak salah pilih (Lampiran C).
+- `KODE AKUN.csv` berisi **53 akun** (48 baseline client + 5 tambahan DB-13) dan
+  `docs/KODE AKUN.xlsx` tetap arsip **48 akun** yang tidak diubah. **DB-13a
+  selesai:** CSV ditetapkan sebagai sumber mesin, xlsx tetap arsip client, dan
+  `coa.ts` dijaga = CSV + 2 ekstensi sistem lewat `docs/sumber-coa.md` +
+  `tests/coa.test.ts`.
+- **DB-13 selesai:** lima akun baru (5060, 5061, 5062, 4060, 4006) sudah ada di
+  CSV baris 49–53 dan COA dengan nama pembeda (Lampiran C). Akun lama
+  5010/5050/5004/4008/4041/4005 tidak di-rename atau dinonaktifkan.
+- `docs/KODE AKUN.xlsx` tetap **tidak** memuat lima akun tambahan tersebut;
+  akun baru tidak ditambahkan ke xlsx.
 - `docs/panduan-portable.md` sudah dipulihkan dari git; `docs/erd-v1-arsip.md`
   sengaja tidak dipulihkan dan test arsipnya dihapus. Baseline sudah hijau
-  (DB-35).
-- Belum ada perubahan kode produksi untuk fitur; DB-13a hanya menambah
-  konstanta dokumentasi `KODE_EKSTENSI_SISTEM` + penjaga test, belum menambah
-  akun baru. Perubahan 2026-10-30 lainnya sebatas dokumen + test dokumentasi
   (DB-35).
 
 ---
@@ -86,7 +84,7 @@
 | DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [x] |
 | DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [x] |
 | DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [x] |
-| DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [ ] |
+| DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [x] |
 | DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [ ] |
 | DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [ ] |
 | DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [ ] |
@@ -542,7 +540,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     hijau** (baseline 763/63); `npm run build` berhasil.
   - **Dependency:** —
 
-- [ ] **DB-13 — Tambah 5 akun COA baru** · P1 · S
+- [x] **DB-13 — Tambah 5 akun COA baru** · P1 · S
   - **Konteks:** client menyetujui 5 akun baru dan menyatakan semuanya kategori
     berbeda dari akun lama: 5060, 5061, 5062 (BEBAN), 4060, 4006 (PENDAPATAN).
   - **Langkah:**
@@ -561,6 +559,21 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** `tests/coa.test.ts`, `tests/akun.test.ts`.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-13a.
+  - **Bukti 2026-10-30:** Lima akun ditambahkan ke `KODE AKUN.csv` sebagai
+    baris 49–53 (format client/CRLF dan quoting dipertahankan) dan ke
+    `src/db/coa.ts`: 5060 `PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)`,
+    5061 `PENGELUARAN ARTOS (UPACARA)`, 5062 `PENGELUARAN BANTEN RUTIN
+    (HARIAN)` (BEBAN/DEBIT); 4060 `PENDAPATAN WEWEDALAN (UPACARA)` dan 4006
+    `PENDAPATAN PARKIR BPD (KHUSUS)` (PENDAPATAN/KREDIT). Akun lama
+    5010/5050/5004/4008/4041/4005 tidak di-rename, tidak dihapus, dan tidak
+    dinonaktifkan. `docs/KODE AKUN.xlsx` tidak disentuh (tetap 48 akun, hash
+    sama); COA sekarang 53 baris CSV + 2 ekstensi = 55 akun. Tidak ada
+    perubahan skema/`SCHEMA_VERSION`, `data/`, atau jurnal. `tests/coa.test.ts`
+    menambah penjaga CSV 53/COA 55, bentuk/nama/tipe/posisi lima akun, akun lama
+    tetap aktif, `listAkun` setelah seed DB, dan dokumen sumber;
+    `tests/forms-ui.test.ts` menambah regresi tampilan kelima akun di form
+    Terima/Bayar. `npm run typecheck` bersih; `npm test` **770 test/63 file
+    hijau** (baseline 767/63); `npm run build` berhasil.
 
 - [ ] **DB-13b — Tambah 5063 BEBAN BUNGA PINJAMAN** · P1 · S
   - **Konteks:** CSV client tidak punya akun bunga. `5050` adalah BIAYA
