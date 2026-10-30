@@ -85,50 +85,6 @@ export type JurnalHeaderInput = {
   created_at?: string;
 };
 
-// ---- Legacy Pihak & hutang (P1-5 / DB-23a / DB-23b) ----
-// Tipe read-only untuk membaca tabel legacy `pihak`/`jurnal_pihak`. Sejak
-// DB-23b tidak ada UI/API/IPC yang menulis atau menghitung subledger pihak;
-// tabelnya baru dihapus oleh DB-33. Field 1050/piutang juga hanya data lama.
-
-export type Pihak = {
-  id: string;
-  nama: string;
-  catatan: string;
-  created_at: string; // ISO
-};
-
-export type JurnalPihak = {
-  jurnal_id: string;
-  pihak_id: string;
-  /** 2050 HUTANG LAIN-LAIN (pinjaman), 2060 HUTANG USAHA, atau 1050 lama. */
-  akun_kode: string;
-};
-
-/** Saldo per pihak, turunan jurnal (bukan kolom tersimpan). */
-export type PihakSaldo = Pihak & {
-  /** 1050 lama: debit − kredit (positif = masih menjadi piutang). */
-  piutang: number;
-  /** Total hutang: pinjaman 2050 + utang usaha 2060. */
-  hutang: number;
-  /** 2050: kredit − debit (positif = pinjaman yang masih harus dibayar). */
-  pinjaman: number;
-  /** 2060: kredit − debit (positif = utang usaha yang masih harus dibayar). */
-  hutangUsaha: number;
-  /** piutang − hutang; negatif berarti kewajiban pihak lebih besar. */
-  neto: number;
-};
-
-/** Riwayat jurnal satu pihak untuk layar drill-down. */
-export type JurnalPihakTampil = Jurnal & {
-  pihak_id: string;
-  /** Akun pihak pada jurnal ini (2050/2060, atau 1050 lama). */
-  akun_pihak: string;
-  /** Mutasi pada akun pihak tersebut. */
-  debit: number;
-  kredit: number;
-  baris: JurnalBaris[];
-};
-
 export type TutupBuku = {
   tahun: number;
   created_at: string; // ISO

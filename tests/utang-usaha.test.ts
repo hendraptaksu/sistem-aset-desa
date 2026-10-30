@@ -4,8 +4,8 @@
 // - Catat Utang Usaha: D BEBAN / K 2060, nama kreditur di keterangan.
 // - Bayar Utang Usaha: D 2060 / K kas.
 // - Jurnal seimbang, laporan tetap benar, dan tidak ada metadata pihak baru.
-// - Data legacy `jurnal_pihak` tetap terbaca dan reversal jurnal lama tetap jalan
-//   walau pemetaan tidak lagi disalin.
+// - DB-33: tabel legacy `pihak`/`jurnal_pihak` sudah dibuang; reversal jurnal
+//   lama tetap jalan tanpa metadata subledger.
 
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
@@ -244,18 +244,20 @@ describe('DB-23b — alur utang usaha end-to-end', () => {
         arus.rows.find((r) => r.jurnal_id === 'j-bayar-utang-db')?.kelompok,
       ).toBe('OPERASI');
 
-      // Tidak ada metadata pihak baru untuk jurnal baru.
+      // DB-33: tidak ada tabel metadata pihak lagi untuk jurnal baru.
       expect(
-        db.prepare('SELECT COUNT(*) AS c FROM jurnal_pihak').get(),
-      ).toEqual({ c: 0 });
+        db
+          .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jurnal_pihak'")
+          .get(),
+      ).toBeUndefined();
     } finally {
       db.close();
     }
   });
 });
 
-describe('DB-23b — data legacy jurnal_pihak', () => {
-  it('reversal jurnal pihak lama tetap tersimpan walau pemetaan tidak disalin', () => {
+describe('DB-33 — tabel legacy pihak sudah dibuang', () => {
+  it('reversal jurnal 2050 tetap jalan tanpa tabel pihak/jurnal_pihak', () => {
     const db = dbDenganKas();
     try {
       const lama = postingJurnal(db, {
@@ -269,13 +271,13 @@ describe('DB-23b — data legacy jurnal_pihak', () => {
       });
       expect(lama.tersimpan, lama.errors.join(' ')).toBe(true);
 
-      // Simulasikan data sebelum DB-23b: master pihak + pemetaan jurnal.
-      db.prepare(
-        'INSERT INTO pihak (id, nama, catatan, created_at) VALUES (?, ?, ?, ?)',
-      ).run('p-lama', 'Banjar Lama', 'Data legacy', '2026-01-01T00:00:00.000Z');
-      db.prepare(
-        'INSERT INTO jurnal_pihak (jurnal_id, pihak_id, akun_kode) VALUES (?, ?, ?)',
-      ).run('j-pihak-lama', 'p-lama', '2050');
+      const tabel = (
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+          name: string;
+        }[]
+      ).map((t) => t.name);
+      expect(tabel).not.toContain('pihak');
+      expect(tabel).not.toContain('jurnal_pihak');
 
       const balik = reverseJurnal(db, 'j-pihak-lama', 'Koreksi pinjaman lama', {
         id: 'j-pihak-lama-balik',
@@ -283,24 +285,8 @@ describe('DB-23b — data legacy jurnal_pihak', () => {
       });
       expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
 
-      // Jurnal asli utuh, dan baris legacy tetap ada.
+      // Jurnal asli utuh; koreksi hanya menambah jurnal balik.
       expect(getJurnal(db, 'j-pihak-lama')).not.toBeNull();
-      expect(
-        db
-          .prepare(
-            'SELECT jurnal_id, pihak_id, akun_kode FROM jurnal_pihak ORDER BY jurnal_id',
-          )
-          .all(),
-      ).toEqual([
-        { jurnal_id: 'j-pihak-lama', pihak_id: 'p-lama', akun_kode: '2050' },
-      ]);
-      // Pemetaan tidak lagi disalin ke jurnal balik (DB-23b).
-      expect(
-        db
-          .prepare("SELECT 1 FROM jurnal_pihak WHERE jurnal_id = 'j-pihak-lama-balik'")
-          .get(),
-      ).toBeUndefined();
-
       expect(saldoAkun(listBarisJurnal(db), '2050')).toBe(0);
       expect(neracaSaldo(listBarisJurnal(db)).selisih).toBe(0);
       expect(listJurnal(db).map((j) => j.id).sort()).toEqual([

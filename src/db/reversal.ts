@@ -145,8 +145,8 @@ export function reverseJurnal(
   );
 
   const simpan = db.transaction(() => {
-    // DB-23b: metadata subledger pihak tidak lagi disalin. Data legacy
-    // dibiarkan apa adanya; reversal hanya membuat jurnal balik seperti biasa.
+    // Metadata subledger pihak sudah tidak ada sejak skema v12 (DB-23b/DB-33).
+    // Reversal hanya membuat jurnal balik seperti biasa.
     return postingJurnal(db, rencana.input!, {
       konfirmasiPeringatan: opsi.konfirmasiPeringatan,
       audit: [audit],

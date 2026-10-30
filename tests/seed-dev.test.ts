@@ -48,13 +48,14 @@ function semuaBaris(db: ReturnType<typeof openDb>): unknown[] {
     .all();
 }
 
-function jumlahPihak(db: ReturnType<typeof openDb>): number {
-  return (db.prepare('SELECT COUNT(*) AS c FROM pihak').get() as { c: number }).c;
-}
-
-function jumlahMapping(db: ReturnType<typeof openDb>): number {
-  return (db.prepare('SELECT COUNT(*) AS c FROM jurnal_pihak').get() as { c: number }).c;
-}
+const TABEL_DIHAPUS = [
+  'rekonsiliasi_bank',
+  'anggaran',
+  'aset',
+  'lampiran_jurnal',
+  'jurnal_pihak',
+  'pihak',
+] as const;
 
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -79,11 +80,12 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
           // P1-4: metadata panjar v2 (bukan tabel single-entry lama).
           'panjar',
           'panjar_item',
-          // DB-23b: tabel legacy tetap ada sampai migrasi DB-33.
-          'pihak',
-          'jurnal_pihak',
         ]),
       );
+      // DB-33: tabel modul lama sudah dibuang oleh migrasi v12.
+      for (const lama of TABEL_DIHAPUS) {
+        expect(tabel, `tabel ${lama} seharusnya tidak ada`).not.toContain(lama);
+      }
       // tutup_buku v2 tidak menyimpan laba sebagai sumber angka.
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
       expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'backup_path', 'catatan']));
@@ -210,14 +212,9 @@ describe('P0-3 — seed jurnal dev', () => {
     const { db } = freshDb();
     try {
       expect(seedDev(db)).toBe(240);
-      // DB-23b: seed tidak membuat master pihak / pemetaan baru.
-      expect(jumlahPihak(db)).toBe(0);
-      expect(jumlahMapping(db)).toBe(0);
 
       expect(seedDev(db)).toBe(0);
       expect(listJurnal(db)).toHaveLength(240);
-      expect(jumlahPihak(db)).toBe(0);
-      expect(jumlahMapping(db)).toBe(0);
 
       const lain = freshDb();
       try {
@@ -231,8 +228,6 @@ describe('P0-3 — seed jurnal dev', () => {
         );
         expect(seedDev(lain.db)).toBe(0);
         expect(listJurnal(lain.db).map((j) => j.id)).toEqual(['asli-1']);
-        expect(jumlahPihak(lain.db)).toBe(0);
-        expect(jumlahMapping(lain.db)).toBe(0);
       } finally {
         lain.db.close();
       }
@@ -249,8 +244,6 @@ describe('P0-3 — seed jurnal dev', () => {
       seedDev(b.db);
       expect(listJurnal(b.db)).toEqual(listJurnal(a.db));
       expect(semuaBaris(b.db)).toEqual(semuaBaris(a.db));
-      expect(jumlahPihak(b.db)).toBe(jumlahPihak(a.db));
-      expect(jumlahMapping(b.db)).toBe(jumlahMapping(a.db));
     } finally {
       a.db.close();
       b.db.close();
@@ -258,8 +251,8 @@ describe('P0-3 — seed jurnal dev', () => {
   });
 });
 
-describe('DB-23b — seed dev hutang tanpa master pihak', () => {
-  it('menulis kreditur di keterangan dan tidak membuat baris pihak/mapping', () => {
+describe('DB-23b/DB-33 — seed dev hutang tanpa tabel pihak', () => {
+  it('menulis kreditur di keterangan dan tidak membuat tabel legacy', () => {
     const { db } = freshDb();
     try {
       seedDev(db);
@@ -270,8 +263,10 @@ describe('DB-23b — seed dev hutang tanpa master pihak', () => {
         expect(j.keterangan).toMatch(/Koperasi Desa Sari|Toko Bangunan Jaya/);
       }
 
-      expect(jumlahPihak(db)).toBe(0);
-      expect(jumlahMapping(db)).toBe(0);
+      const tabel = namaTabel(db);
+      for (const lama of TABEL_DIHAPUS) {
+        expect(tabel).not.toContain(lama);
+      }
       expect(saldoAkun(listBarisJurnal(db), '1050')).toBe(0);
       expect(saldoAkun(listBarisJurnal(db), '2050')).toBeGreaterThan(0);
     } finally {

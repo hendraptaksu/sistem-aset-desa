@@ -1126,9 +1126,13 @@ describe('DB-23b — IPC mencatat utang usaha 2060 tanpa master pihak', () => {
     expect(bb2050.ok, bb2050.error).toBe(true);
     expect(bb2050.data.saldoAkhir).toBe(500_000);
 
+    // DB-33: tabel metadata pihak sudah dibuang dari skema.
     expect(
-      (env.db().prepare('SELECT COUNT(*) AS c FROM jurnal_pihak').get() as { c: number }).c,
-    ).toBe(0);
+      env
+        .db()
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jurnal_pihak'")
+        .get(),
+    ).toBeUndefined();
   });
 });
 

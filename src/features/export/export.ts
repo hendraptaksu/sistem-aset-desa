@@ -157,7 +157,12 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
   return dest;
 }
 
-/** Tabel yang wajib ada agar file dianggap backup aplikasi ini (skema v2). */
+/**
+ * Tabel wajib agar file dianggap backup aplikasi ini (skema v12).
+ * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
+ * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan; backup lama yang
+ * masih memilikinya tetap diterima dan akan dimigrasikan saat dibuka.
+ */
 export const TABEL_WAJIB_RESTORE = [
   'akun',
   'jurnal',
@@ -165,9 +170,8 @@ export const TABEL_WAJIB_RESTORE = [
   'tutup_buku',
   'pengaturan',
   'audit_log',
-  // Tabel legacy; modul Inventaris Aset sudah dihapus (DB-32). Wajib tetap ada
-  // sampai migrasi DB-33 membuang tabel + entri ini bersamaan.
-  'aset',
+  'panjar',
+  'panjar_item',
 ] as const;
 
 export type ValidasiRestore = { valid: true } | { valid: false; error: string };
@@ -405,29 +409,34 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
 }
 
 /**
- * Backup otomatis SEBELUM migrasi/reset skema (mis. DB v1 single-entry yang
- * tabel lamanya akan dibuang oleh `openDb`). Mengembalikan '' bila DB belum ada
+ * Backup otomatis SEBELUM migrasi skema. Dibuat untuk SETIAP kenaikan versi
+ * (`user_version` < versi tujuan), bukan hanya bila tabel legacy tertentu ada.
+ * File yang belum punya tabel (DB baru/kosong) dan DB in-memory dilewati agar
+ * tidak membuat backup kosong. Mengembalikan '' bila DB belum ada, kosong,
  * atau sudah versi terbaru. Best-effort: pemanggil boleh mencatat kegagalan.
+ *
+ * `versiTarget` hanya untuk pengujian jalur hipotetis (mis. v12 → v13); produksi
+ * selalu memakai `SCHEMA_VERSION`.
  */
 export function backupPraUpgrade(
   dbPath: string,
   dirBackup = join(dirname(dbPath), 'backups'),
   stamp = new Date().toISOString().replace(/[:.]/g, '-'),
+  versiTarget = SCHEMA_VERSION,
 ): string {
-  if (!existsSync(dbPath)) return '';
+  if (!dbPath || dbPath === ':memory:' || !existsSync(dbPath)) return '';
   let probe: Database.Database | null = null;
   try {
     probe = new Database(dbPath, { fileMustExist: true });
     const versi = Number(probe.pragma('user_version', { simple: true }) ?? 0);
-    if (versi >= SCHEMA_VERSION) return '';
-    const adaTabelLama = Boolean(
-      probe
-        .prepare(
-          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name IN ('transaksi', 'panjar', 'coa') LIMIT 1",
-        )
-        .get(),
+    if (versi >= versiTarget) return '';
+    // DB yang benar-benar kosong (baru dibuat, belum ada tabel) tidak perlu
+    // backup pra-upgrade. DB lama dengan versi rendah tetap dibackup walau
+    // tidak punya tabel legacy tertentu.
+    const adaTabel = Boolean(
+      probe.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").get(),
     );
-    if (!adaTabelLama) return '';
+    if (!adaTabel) return '';
     return backupVacuumInto(probe, join(dirBackup, `pre-upgrade-${stamp}.db`));
   } finally {
     try {

@@ -16,15 +16,14 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  * - 4    = metadata panjar v2 (P1-4): `panjar` + `panjar_item` menyimpan
  *          dokumen serah/pertanggungjawaban, bukan saldo/laba. Jurnal tetap
  *          satu-satunya sumber angka.
- * - 5    = master pihak + penghubung jurnal-pihak (P1-5). Sejak DB-23b fitur
- *          ini dihapus dari UI/API; tabel `pihak`/`jurnal_pihak` sengaja
- *          dipertahankan sebagai data legacy sampai migrasi DB-33.
- * - 6    = pagu anggaran per tahun (P2-1). Hanya pagu yang disimpan; realisasi
- *          dan sisa SELALU dihitung dari jurnal lewat core/reports.ts.
- * - 7    = rekonsiliasi bank (P2-2). Hanya saldo menurut rekening koran yang
- *          disimpan; saldo buku, selisih, dan daftar mutasi dihitung dari jurnal.
- * - 8    = tabel legacy `lampiran_jurnal` (P2-4). Modul lampiran dihapus pada
- *          DB-37; tabelnya sengaja dipertahankan sampai migrasi DB-33.
+ * - 5    = master pihak + penghubung jurnal-pihak (P1-5). Fitur dihapus dari
+ *          UI/API pada DB-23b; tabelnya dibuang oleh migrasi v12 (DB-33).
+ * - 6    = pagu anggaran per tahun (P2-1). Modul dihapus pada DB-24; tabelnya
+ *          dibuang oleh migrasi v12 (DB-33).
+ * - 7    = rekonsiliasi bank (P2-2). Modul dihapus pada DB-31; tabelnya
+ *          dibuang oleh migrasi v12 (DB-33).
+ * - 8    = tabel legacy `lampiran_jurnal` (P2-4). Modul dihapus pada DB-37;
+ *          tabelnya dibuang oleh migrasi v12 (DB-33).
  * - 9    = integritas jurnal (AUD-23): trigger menolak baris debit+kredit
  *          sekaligus dan menolak update/delete jurnal; nomor bukti unik per
  *          tahun (bukan global).
@@ -35,13 +34,17 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  *          trigger menolak update/delete `audit_log` dan delete `tutup_buku`.
  *          Update `tutup_buku` tetap diizinkan karena tutup ulang memakai
  *          `ON CONFLICT DO UPDATE`.
+ * - 12   = drop tabel modul yang sudah dihapus (DB-33): rekonsiliasi_bank,
+ *          anggaran, aset, lampiran_jurnal, jurnal_pihak, lalu pihak.
+ *          Jurnal/panjar/tutup buku/audit/pengaturan tetap dipertahankan.
  */
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
- * DDL dasar v2–v8. Sengaja hanya berisi tabel model baru + tabel pendukung
- * (pengaturan PIN). Tabel `aset` hanya disisakan untuk DB lama sampai migrasi
- * DB-33 menghapusnya; modul Inventaris Aset sudah tidak dipakai.
+ * DDL dasar v2–v12. Hanya berisi tabel model baru + tabel pendukung
+ * (pengaturan PIN). Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset,
+ * anggaran, rekonsiliasi_bank, lampiran_jurnal) TIDAK dibuat lagi; migrasi v12
+ * (DB-33) membuangnya dari DB lama.
  * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
  * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
@@ -89,31 +92,6 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 
--- Tabel legacy master pihak (P1-5). DB-23b menghapus UI/API-nya; tabel tetap
--- dibuat agar DB lama/backup tetap terbaca dan tidak kehilangan data. DB-33
--- yang akan menghapusnya. Tidak ada saldo tersimpan.
-CREATE TABLE IF NOT EXISTS pihak (
-  id TEXT PRIMARY KEY,
-  nama TEXT NOT NULL,
-  catatan TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pihak_nama_unik
-  ON pihak(nama COLLATE NOCASE);
-
--- Tabel legacy penghubung jurnal ke pihak. Tidak lagi ditulis oleh aplikasi
--- (termasuk reversal) sejak DB-23b; baris lama dibiarkan apa adanya.
-CREATE TABLE IF NOT EXISTS jurnal_pihak (
-  jurnal_id TEXT NOT NULL,
-  pihak_id TEXT NOT NULL,
-  akun_kode TEXT NOT NULL,
-  PRIMARY KEY (jurnal_id, akun_kode),
-  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
-  FOREIGN KEY (pihak_id) REFERENCES pihak(id),
-  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
-);
-CREATE INDEX IF NOT EXISTS idx_jurnal_pihak_pihak ON jurnal_pihak(pihak_id);
-
 -- Tutup buku v2: hanya penanda + kunci + catatan. Laba selalu dihitung dari jurnal
 -- (P0-7), bukan disimpan sebagai sumber angka.
 CREATE TABLE IF NOT EXISTS tutup_buku (
@@ -139,27 +117,6 @@ CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
   nilai TEXT NOT NULL DEFAULT ''
 );
-
--- Tabel legacy DB-32: modul Inventaris Aset sudah dihapus dari UI/API; tabel
--- disisakan agar DB lama tetap terbaca sampai dibuang oleh migrasi DB-33.
-CREATE TABLE IF NOT EXISTS aset (
-  id TEXT PRIMARY KEY,
-  kode TEXT NOT NULL UNIQUE,
-  nama TEXT NOT NULL,
-  jenis TEXT NOT NULL DEFAULT 'LAINNYA',
-  luas_m2 REAL,
-  lokasi TEXT NOT NULL DEFAULT '',
-  status_hukum TEXT NOT NULL DEFAULT '',
-  tahun_perolehan INTEGER,
-  asal_usul TEXT NOT NULL DEFAULT '',
-  kondisi TEXT NOT NULL DEFAULT 'BAIK',
-  keterangan TEXT NOT NULL DEFAULT '',
-  nilai_sen INTEGER,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_aset_jenis ON aset(jenis);
-CREATE INDEX IF NOT EXISTS idx_aset_kode ON aset(kode);
 
 -- Panjar v2 (P1-4): dokumen serah & pertanggungjawaban.
 -- Angka saldo/realisasi TIDAK disimpan di sini; laporan tetap dihitung dari
@@ -193,51 +150,6 @@ CREATE TABLE IF NOT EXISTS panjar_item (
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
 );
 CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
-
--- Pagu anggaran per tahun (P2-1). HANYA pagu yang disimpan; realisasi, sisa,
--- dan % tidak pernah menjadi kolom/tabel — semuanya dihitung ulang dari jurnal.
--- Satu akun hanya punya satu pagu per tahun (PRIMARY KEY), simpan = upsert.
-CREATE TABLE IF NOT EXISTS anggaran (
-  tahun INTEGER NOT NULL,
-  akun_kode TEXT NOT NULL,
-  nominal INTEGER NOT NULL CHECK (nominal >= 0),
-  created_at TEXT,
-  updated_at TEXT,
-  PRIMARY KEY (tahun, akun_kode),
-  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
-);
-CREATE INDEX IF NOT EXISTS idx_anggaran_akun ON anggaran(akun_kode);
-
--- Rekonsiliasi bank (P2-2). HANYA saldo menurut rekening koran yang disimpan.
--- Saldo buku, selisih, status cocok, dan daftar mutasi TIDAK disimpan: semuanya
--- dihitung ulang dari jurnal supaya tidak basi saat ada koreksi.
-CREATE TABLE IF NOT EXISTS rekonsiliasi_bank (
-  id TEXT PRIMARY KEY,
-  akun_kode TEXT NOT NULL,
-  tanggal TEXT NOT NULL,
-  saldo_bank INTEGER NOT NULL CHECK (saldo_bank >= 0),
-  catatan TEXT NOT NULL DEFAULT '',
-  selesai INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  selesai_at TEXT,
-  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
-);
-CREATE INDEX IF NOT EXISTS idx_rekonsiliasi_akun_tanggal
-  ON rekonsiliasi_bank(akun_kode, tanggal);
-
--- Tabel legacy lampiran_jurnal (P2-4). Modul lampiran dihapus pada DB-37 dan
--- tabel ini tidak dipakai lagi; DDL dipertahankan sampai drop eksplisit DB-33.
-CREATE TABLE IF NOT EXISTS lampiran_jurnal (
-  id TEXT PRIMARY KEY,
-  jurnal_id TEXT NOT NULL,
-  nama_asli TEXT NOT NULL,
-  nama_simpan TEXT NOT NULL UNIQUE,
-  mime TEXT NOT NULL,
-  ukuran INTEGER NOT NULL CHECK (ukuran >= 0),
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_lampiran_jurnal ON lampiran_jurnal(jurnal_id);
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {
@@ -255,8 +167,8 @@ function kolomTabel(db: Database.Database, nama: string): string[] {
  * K6: POC, data single-entry lama dibuang. Hapus `transaksi`/`coa` dan panjar
  * bentuk v1 (tanpa jurnal_open_id). Panjar bentuk v2 (P1-4) dipertahankan agar
  * metadata dokumen tidak hilang saat aplikasi dibuka ulang.
- * `pengaturan` (PIN) dan tabel legacy `aset` sengaja dipertahankan sampai
- * migrasi DB-33; modul aset sendiri sudah dihapus di DB-32.
+ * `pengaturan` (PIN) dipertahankan. Tabel modul yang sudah dihapus dibuang oleh
+ * `terapkanMigrasiV12()` (DB-33), bukan di sini.
  */
 function buangTabelLama(db: Database.Database): void {
   db.exec('DROP TABLE IF EXISTS transaksi');
@@ -390,16 +302,49 @@ function terapkanAturanV11(db: Database.Database): void {
 }
 
 /**
+ * DB-33 — tabel modul yang sudah dihapus dan disetujui untuk dibuang pada v12.
+ * Urutan WAJIB child dulu agar aman dengan `foreign_keys = ON`: `jurnal_pihak`
+ * dan `lampiran_jurnal` adalah anak, `pihak` adalah induk. Index/trigger milik
+ * tabel ikut terhapus otomatis oleh SQLite.
+ */
+export const TABEL_DIHAPUS_V12 = [
+  'rekonsiliasi_bank',
+  'anggaran',
+  'aset',
+  'lampiran_jurnal',
+  'jurnal_pihak',
+  'pihak',
+] as const;
+
+/**
+ * DB-33 — migrasi v12 idempoten: buang hanya tabel yang sudah disetujui.
+ * `DROP TABLE IF EXISTS` membuat langkah ini aman dijalankan berulang kali.
+ * Jangan menambahkan tabel akuntansi inti (`akun`, `jurnal`, `jurnal_baris`,
+ * `tutup_buku`, `audit_log`, `pengaturan`, `panjar`, `panjar_item`) ke daftar
+ * ini. Dijalankan di dalam transaksi `migrasi()`.
+ */
+function terapkanMigrasiV12(db: Database.Database): void {
+  for (const tabel of TABEL_DIHAPUS_V12) {
+    db.exec(`DROP TABLE IF EXISTS ${tabel}`);
+  }
+}
+
+/**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
+ * - Menolak DB yang dibuat aplikasi versi lebih baru SEBELUM DDL apa pun.
  * - Selalu membersihkan tabel single-entry lama (P0-3).
  * - Membuat seluruh DDL v2 bila belum ada.
  * - Menerapkan aturan integritas v9 (trigger + unique index per tahun).
  * - Menerapkan kontrak COA v10 (akun 2060 idempoten, tanpa DDL).
  * - Menerapkan aturan v11 (audit append-only, tutup buku tidak bisa dihapus).
+ * - Menerapkan migrasi v12 (drop tabel modul yang sudah dihapus).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
   const versiAwal = Number(db.pragma('user_version', { simple: true }) ?? 0);
+  if (versiAwal > SCHEMA_VERSION) {
+    throw new Error('Database dibuat aplikasi versi lebih baru. Perbarui aplikasi.');
+  }
   const siapkan = db.transaction(() => {
     buangTabelLama(db);
     db.exec(DDL);
@@ -411,6 +356,7 @@ export function migrasi(db: Database.Database): number {
     terapkanAturanV9(db);
     terapkanKontrakV10(db);
     terapkanAturanV11(db);
+    terapkanMigrasiV12(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }
@@ -419,6 +365,11 @@ export function migrasi(db: Database.Database): number {
   return Number(db.pragma('user_version', { simple: true }));
 }
 
+/**
+ * Buka DB aplikasi. Pemanggil produksi (main) WAJIB memanggil
+ * `backupPraUpgrade()` lebih dulu untuk setiap kenaikan versi; modul ini tidak
+ * mengurus path folder backup agar tidak terjadi impor melingkar.
+ */
 export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database.Database {
   // better-sqlite3 tidak membuat folder induk — pastikan ada dulu.
   // (PURA_DB default `./data/...` dan folder `data/` di-gitignore sehingga

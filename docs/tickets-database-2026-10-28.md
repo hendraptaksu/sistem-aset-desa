@@ -109,7 +109,7 @@
 | DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
 | DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
 | DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [x] |
-| DB-33 | P0 | M | Migrasi v12: drop tabel yang disetujui + guard/backup | DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37 | [ ] |
+| DB-33 | P0 | M | Migrasi v12: drop tabel yang disetujui + guard/backup | DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37 | [x] |
 | DB-34 | P1 | S | Audit integritas: reversal, tipe akun, tabel opsional | DB-33 | [ ] |
 | DB-35 | P0 | S | Baseline dokumen/test hijau | — | [x] |
 | DB-36 | P1 | S | LPD: pembayaran link-only, tanpa duplikasi nominal | DB-16b | [x] |
@@ -1031,7 +1031,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     berhasil.
   - **Dependency:** DB-02 (konfirmasi tidak ada migrasi data lama).
 
-- [ ] **DB-33 — Migrasi v12: drop tabel yang disetujui + guard/backup** · P0 · M
+- [x] **DB-33 — Migrasi v12: drop tabel yang disetujui + guard/backup** · P0 · M
   - **Konteks:** setelah fitur dihapus, tabelnya menjadi beban. Namun drop
     tabel tanpa backup/guard bisa menghilangkan data. `migrasi()` juga belum
     menolak DB versi lebih baru.
@@ -1055,6 +1055,22 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     test & build hijau.
   - **Test:** `tests/migrasi-v12.test.ts` (baru) + backup/restore + seed.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** `migrasi()` menolak `user_version > SCHEMA_VERSION`
+    sebelum DDL dengan pesan “Database dibuat aplikasi versi lebih baru.
+    Perbarui aplikasi.”; `openDb()` menutup koneksi lewat jalur error yang ada.
+    `SCHEMA_VERSION` 11 → 12. Migrasi v12 idempoten membuang
+    `rekonsiliasi_bank`, `anggaran`, `aset`, `lampiran_jurnal`, `jurnal_pihak`,
+    lalu `pihak` dalam satu transaksi; DDL legacy dihapus dari `DDL`.
+    `backupPraUpgrade()` sekarang membuat backup untuk setiap kenaikan versi
+    (bukan berdasarkan nama tabel), melewati DB in-memory/kosong, dan punya
+    parameter target versi untuk uji jalur v12 → v13. `TABEL_WAJIB_RESTORE`
+    menjadi 8 tabel aktif (termasuk `panjar`/`panjar_item`, tanpa `aset`).
+    Test baru `tests/migrasi-v12.test.ts` mencakup v11 dengan data di semua
+    tabel legacy, fresh v12, penolakan v13 tanpa mengubah file, restore v12,
+    backup v11/v12, dan idempotensi. Test migrasi/backup/seed/invariant/utang
+    usaha/IPC disesuaikan; README memuat catatan migrasi v12. Baseline sebelum
+    ticket 676 test/54 file; setelah DB-33 `npm run typecheck` bersih,
+    `npm test` **683 test/55 file hijau**, dan `npm run build` berhasil.
   - **Dependency:** DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37.
 
 - [ ] **DB-34 — Audit integritas: reversal, tipe akun, tabel opsional** · P1 · S

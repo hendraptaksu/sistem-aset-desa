@@ -459,12 +459,13 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
   });
 });
 
-describe('P0-8 — backupPraUpgrade: simpan DB lama sebelum tabel single-entry dibuang', () => {
-  it('membuat pre-upgrade untuk DB v1 dan tidak membuat untuk DB v2', () => {
+describe('P0-8/DB-33 — backupPraUpgrade: simpan DB lama sebelum migrasi', () => {
+  it('membuat pre-upgrade untuk DB v1 dan untuk versi lama tanpa tabel legacy', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-upgrade-'));
     let lamaDb: Database.Database | null = null;
     let probe: Database.Database | null = null;
     let dbV2: Database.Database | null = null;
+    let versiLamaDb: Database.Database | null = null;
     try {
       // DB v1 tiruan: punya tabel single-entry `transaksi`, user_version = 1.
       const lamaPath = join(dir, 'lama.db');
@@ -487,13 +488,27 @@ describe('P0-8 — backupPraUpgrade: simpan DB lama sebelum tabel single-entry d
       probe.close();
       probe = null;
 
-      // DB v2 tidak perlu backup pra-upgrade.
+      // DB v11 tanpa tabel legacy tetap dibuatkan backup (dulu bergantung nama tabel).
+      const v11Path = join(dir, 'v11.db');
+      versiLamaDb = new Database(v11Path);
+      versiLamaDb.exec("CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT NOT NULL DEFAULT '')");
+      versiLamaDb.pragma('user_version = 11');
+      versiLamaDb.close();
+      versiLamaDb = null;
+      expect(backupPraUpgrade(v11Path, join(dir, 'backups'), 'v11')).toBe(
+        join(dir, 'backups', 'pre-upgrade-v11.db'),
+      );
+
+      // DB baru yang sudah versi terbaru tidak perlu backup pra-upgrade.
       const v2Path = join(dir, 'v2.db');
       dbV2 = openDb(v2Path);
       expect(backupPraUpgrade(v2Path, join(dir, 'backups'), 'v2')).toBe('');
+      // In-memory tidak pernah menyentuh file backup.
+      expect(backupPraUpgrade(':memory:', join(dir, 'backups'), 'mem')).toBe('');
     } finally {
       probe?.close();
       lamaDb?.close();
+      versiLamaDb?.close();
       dbV2?.close();
       rmSync(dir, { recursive: true, force: true });
     }
@@ -613,7 +628,7 @@ describe('P0-8 — restoreDbAman', () => {
         CREATE TABLE tutup_buku (tahun INTEGER PRIMARY KEY);
         CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT);
         CREATE TABLE audit_log (id TEXT PRIMARY KEY);
-        CREATE TABLE aset (id TEXT PRIMARY KEY);
+        CREATE TABLE panjar_item (id INTEGER PRIMARY KEY, panjar_id TEXT, jurnal_id TEXT);
       `);
       rusak.close();
 

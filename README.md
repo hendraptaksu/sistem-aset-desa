@@ -87,9 +87,10 @@ Prinsip yang dijaga:
    dari jurnal, bukan dari tabel saldo/laba tersimpan.
 3. **Logika akuntansi murni** ada di `src/core/` supaya mudah diuji tanpa
    Electron. Lapisan `src/db/` mengurus SQL; `src/main/` mengurus IPC/OS.
-4. **Skema v9** (lihat `SCHEMA_VERSION` di `src/db/database.ts`). Tabel
-   single-entry lama sudah dibuang; migrasi bersifat idempotent dan backup
-   pra-upgrade tetap dibuat.
+4. **Skema v12** (lihat `SCHEMA_VERSION` di `src/db/database.ts`). Tabel
+   single-entry lama dan tabel modul yang sudah dihapus dibuang oleh migrasi
+   idempoten; backup pra-upgrade (`pre-upgrade-*.db`) dibuat untuk setiap
+   kenaikan versi sebelum migrasi berjalan.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
    di mesin yang sama.
 
@@ -139,6 +140,11 @@ Rincian ada di `docs/panduan-portable.md`.
   kandidat dan mencadangkan database aktif lebih dulu.
 - Backup **tidak terenkripsi**. Simpan di media yang aman dan pisahkan dari
   laptop (flashdisk/Drive) secara rutin.
+- **Migrasi skema.** Saat database lama dibuka, aplikasi membuat
+  `pre-upgrade-*.db` di folder `backups` lebih dulu, lalu menjalankan migrasi
+  idempoten. Skema v12 membuang tabel modul yang sudah dihapus; `jurnal`,
+  `jurnal_baris`, `panjar`, `panjar_item`, `tutup_buku`, `audit_log`, dan
+  `pengaturan` tidak ikut dibuang.
 
 ---
 

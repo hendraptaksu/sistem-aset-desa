@@ -337,15 +337,24 @@ describe('P0-10 — DB v2 fresh + seed dev', () => {
         'akun',
         'audit_log',
         'tutup_buku',
+        'pengaturan',
         'panjar',
         'panjar_item',
-        'pihak',
-        'jurnal_pihak',
       ]) {
         expect(tabel, `tabel ${wajib} wajib ada`).toContain(wajib);
       }
       for (const lama of ['transaksi', 'coa']) {
         expect(tabel, `tabel single-entry ${lama} tidak boleh ada`).not.toContain(lama);
+      }
+      for (const lama of [
+        'rekonsiliasi_bank',
+        'anggaran',
+        'aset',
+        'lampiran_jurnal',
+        'jurnal_pihak',
+        'pihak',
+      ]) {
+        expect(tabel, `tabel legacy ${lama} tidak boleh ada`).not.toContain(lama);
       }
       expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
