@@ -1,9 +1,9 @@
 // AKT-20 — migrasi v9 → v10: pemisahan akun utang usaha 2060.
 //
 // Fokus:
-// - DB v9 lama dibuka aplikasi saat ini: user_version v12, akun 2060 di-seed,
+// - DB v9 lama dibuka aplikasi saat ini: user_version v13, akun 2060 di-seed,
 //   jurnal 2050 lama utuh, dan migrasi idempoten saat dibuka ulang.
-// - Backup v9 tetap bisa direstore; DB hasil restore ikut menjadi v12.
+// - Backup v9 tetap bisa direstore; DB hasil restore ikut menjadi v13.
 // - Kandidat backup dari versi lebih baru ditolak (guard downgrade).
 
 import Database from 'better-sqlite3';
@@ -107,8 +107,8 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(12);
-      expect(versi(db)).toBe(12);
+      expect(SCHEMA_VERSION).toBe(13);
+      expect(versi(db)).toBe(13);
       expect(getAkun(db, AKUN_HUTANG_USAHA)).toMatchObject({
         kode: '2060',
         nama: 'HUTANG USAHA',
@@ -133,7 +133,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     // Buka ulang: idempoten, akun 2060 tidak tergandakan.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(12);
+      expect(versi(db2)).toBe(13);
       expect(
         db2.prepare("SELECT COUNT(*) AS n FROM akun WHERE kode = '2060'").get(),
       ).toEqual({ n: 1 });
@@ -164,7 +164,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
       if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
 
-      expect(versi(aktif)).toBe(12);
+      expect(versi(aktif)).toBe(13);
       expect(getAkun(aktif, AKUN_HUTANG_USAHA)?.nama).toBe('HUTANG USAHA');
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v9-awal', 'j-v9-hutang']);
       expect(
@@ -177,14 +177,14 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     }
   });
 
-  it('backup dari skema lebih baru (v13) ditolak sebelum restore', () => {
+  it('backup dari skema lebih baru (v14) ditolak sebelum restore', () => {
     const dir = tmpDir('pura-v10-baru-');
     const path = join(dir, 'baru.db');
     buatFixtureV9(path);
 
     const db = new Database(path);
     try {
-      db.pragma('user_version = 13');
+      db.pragma('user_version = 14');
     } finally {
       db.close();
     }

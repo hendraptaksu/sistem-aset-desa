@@ -72,7 +72,7 @@
 | DB-01 | P0 | MANUAL | Klarifikasi client: arti hutang + overlap COA + modul | — | [x] |
 | DB-02 | P1 | MANUAL | Klarifikasi lampiran, Jurnal Umum, Import, Anggaran | — | [x] |
 | DB-03 | P0 | M | Pisahkan endpoint posting manual vs form terpandu | — | [x] |
-| DB-04 | P0 | S | Unique saldo awal + status saldo awal | — | [ ] |
+| DB-04 | P0 | S | Unique saldo awal + status saldo awal | — | [x] |
 | DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [ ] |
 | DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [ ] |
 | DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [ ] |
@@ -200,7 +200,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run typecheck` bersih; `npm test` **703 test/56 file hijau**;
     `npm run build` berhasil.
 
-- [ ] **DB-04 — Unique saldo awal + status saldo awal** · P0 · S
+- [x] **DB-04 — Unique saldo awal + status saldo awal** · P0 · S
   - **Konteks:** `statusSaldoAwal()` memakai `COUNT(*) FROM jurnal`; satu jurnal
     biasa/import membuat wizard terkunci. DB juga tidak mencegah dua jurnal
     `SALDO_AWAL`.
@@ -216,6 +216,20 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** unique index aktif; migrasi aman; status UI konsisten.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** —
+  - **Bukti 2026-10-30:** `SCHEMA_VERSION` 12 → 13. Migrasi v13 menghitung
+    `jurnal` berjenis `SALDO_AWAL` lebih dulu; bila >1 migrasi berhenti dengan
+    pesan Indonesia dan transaksi rollback penuh (`user_version` tetap 12,
+    jurnal/tabel legacy utuh), tanpa menghapus atau mengubah data. Partial
+    unique index `ux_jurnal_saldo_awal` aktif untuk DB baru maupun DB lama.
+    Helper `sudahAdaSaldoAwal(db)` membaca eksistensi jurnal `SALDO_AWAL`;
+    `statusSaldoAwal()` kini terkunci hanya bila saldo awal sudah ada, sehingga
+    jurnal harian biasa tidak mengunci wizard. Kebijakan simpan “hanya saat DB
+    kosong” tetap di `simpanSaldoAwal()` (AKT-01/02). Test baru
+    `tests/db-04-saldo-awal-unik.test.ts` (6) mencakup insert kedua ditolak DB,
+    migrasi v9/v12 dengan satu saldo awal, duplikat v12 rollback, dan status
+    helper; ekspektasi `SCHEMA_VERSION` di seluruh test migrasi diperbarui.
+    `npm run typecheck` bersih; `npm test` **709 test/57 file hijau**;
+    `npm run build` berhasil.
 
 - [ ] **DB-05 — Tolak DB yang dibuat versi aplikasi lebih baru** · P0 · S
   - **Konteks:** `openDb()` menjalankan DDL/trigger lama pada DB dengan

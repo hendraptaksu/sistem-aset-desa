@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
+  getJurnal,
   getJurnalDetail,
   insertJurnalTervalidasi,
   listAuditLog,
@@ -568,7 +569,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
     }
   });
 
-  it('AKT-22: SALDO_AWAL pengganti hanya boleh bila jurnal asli SALDO_AWAL', () => {
+  it('AKT-22/DB-04: SALDO_AWAL pengganti hanya untuk asli SALDO_AWAL dan tetap ditolak unique index', () => {
     const db = freshDb();
     try {
       modal(db);
@@ -598,7 +599,10 @@ describe('P0-6 — koreksi & isi ulang', () => {
       expect(getJurnalDetail(db, 'j-parkir-jadi-awal')).toBeNull();
       expect(listAuditLog(db)).toEqual([]);
 
-      const diterima = koreksiDanIsiUlang(
+      // DB-04: jurnal asli SALDO_AWAL tetap ada, sehingga pengganti bertipe
+      // SALDO_AWAL akan menjadi saldo awal kedua dan ditolak DB. Transaksi
+      // reversal + audit harus rollback utuh.
+      const ditolakDb = koreksiDanIsiUlang(
         db,
         'j-modal',
         'Nominal saldo awal salah, seharusnya 900rb',
@@ -614,12 +618,12 @@ describe('P0-6 — koreksi & isi ulang', () => {
         { id: 'j-modal-balik', tanggal: '2026-01-01' },
       );
 
-      expect(diterima.tersimpan, diterima.errors.join(' ')).toBe(true);
-      expect(diterima.jurnalBaru).toMatchObject({
-        grup_id: 'j-modal',
-        reversal_of: null,
-        jenis: 'SALDO_AWAL',
-      });
+      expect(ditolakDb.tersimpan).toBe(false);
+      expect(ditolakDb.errors.join(' ')).toMatch(/UNIQUE|saldo awal/i);
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getJurnalDetail(db, 'j-modal-balik')).toBeNull();
+      expect(getJurnalDetail(db, 'j-modal-baru')).toBeNull();
+      expect(getJurnal(db, 'j-modal')?.jenis).toBe('SALDO_AWAL');
     } finally {
       db.close();
     }

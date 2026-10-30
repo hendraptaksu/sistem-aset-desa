@@ -1205,7 +1205,7 @@ describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
     }
   });
 
-  it('tetap mengizinkan SALDO_AWAL, termasuk yang memuat akun P&L (dikecualikan)', () => {
+  it('SALDO_AWAL pertama boleh memuat akun P&L; SALDO_AWAL kedua ditolak DB', () => {
     const { db } = freshDb();
     try {
       const saldoAwal = postingSaldoAwal(db, {
@@ -1216,10 +1216,11 @@ describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
           keterangan: 'Saldo awal',
           jenis: 'SALDO_AWAL',
         }),
-        baris: pasangan('1001', '3000', 1_000_000),
+        baris: pasangan('5000', '3000', 10_000),
       });
       expect(saldoAwal.tersimpan, saldoAwal.errors.join(' ')).toBe(true);
 
+      // DB-04: partial unique index hanya mengizinkan satu jurnal SALDO_AWAL.
       const campuran = postingSaldoAwal(db, {
         header: header({
           id: 'j-saldo-awal-campuran',
@@ -1228,11 +1229,12 @@ describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
           keterangan: 'Saldo awal campuran',
           jenis: 'SALDO_AWAL',
         }),
-        baris: pasangan('5000', '3000', 10_000),
+        baris: pasangan('1001', '3000', 1_000_000),
       });
-      expect(campuran.tersimpan, campuran.errors.join(' ')).toBe(true);
+      expect(campuran.tersimpan).toBe(false);
+      expect(campuran.errors.join(' ')).toMatch(/UNIQUE|saldo awal/i);
 
-      expect(jumlahJurnal(db)).toBe(2);
+      expect(jumlahJurnal(db)).toBe(1);
     } finally {
       db.close();
     }

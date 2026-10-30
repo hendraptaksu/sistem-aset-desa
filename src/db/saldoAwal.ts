@@ -3,7 +3,9 @@
 // Prinsip:
 // - Saldo awal hanya boleh dibuat SEKALI, saat tabel `jurnal` masih kosong.
 //   Pemeriksaan jumlah jurnal dilakukan DI DALAM transaksi DB yang sama dengan
-//   penulisan jurnal (race-safe), bukan hanya di UI.
+//   penulisan jurnal (race-safe), bukan hanya di UI. DB-04 menambahkan unique
+//   index sebagai penjaga terakhir serta status UI berbasis eksistensi
+//   SALDO_AWAL (jurnal harian biasa tidak mengunci wizard).
 // - Hasilnya tetap satu jurnal double-entry seimbang (jenis SALDO_AWAL); tidak
 //   ada tabel saldo/angka turunan. Laporan selalu dihitung dari jurnal.
 // - Audit `SALDO-AWAL` ditulis atomik bersama jurnal lewat `postingSaldoAwal`.
@@ -43,12 +45,30 @@ function hitungJurnal(db: Database.Database): number {
   return Number(row.total);
 }
 
-/** Status wizard: hanya boleh saat belum ada jurnal sama sekali. */
+/**
+ * DB-04: apakah jurnal SALDO_AWAL sudah pernah dibuat. Deteksi memakai
+ * eksistensi baris (didukung `ux_jurnal_saldo_awal`), bukan jumlah seluruh
+ * jurnal. Dengan demikian jurnal harian biasa tidak dianggap saldo awal.
+ */
+export function sudahAdaSaldoAwal(db: Database.Database): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 FROM jurnal WHERE jenis = 'SALDO_AWAL' LIMIT 1").get(),
+  );
+}
+
+/**
+ * Status wizard untuk UI: terkunci hanya bila SALDO_AWAL sudah ada.
+ * `jumlahJurnal` tetap jumlah seluruh jurnal agar informasi status transparan.
+ *
+ * Catatan: kebijakan simpan "hanya saat DB kosong" TIDAK diubah di sini
+ * (AKT-01/AKT-02); `simpanSaldoAwal()` tetap menolak bila sudah ada jurnal apa
+ * pun. Status ini hanya mendeteksi apakah saldo awal sudah pernah dibuat.
+ */
 export function statusSaldoAwal(db: Database.Database): StatusSaldoAwal {
   const jumlahJurnal = hitungJurnal(db);
-  return jumlahJurnal === 0
-    ? { boleh: true, jumlahJurnal }
-    : { boleh: false, jumlahJurnal, alasan: PESAN_SALDO_AWAL_SUDAH_ADA };
+  return sudahAdaSaldoAwal(db)
+    ? { boleh: false, jumlahJurnal, alasan: PESAN_SALDO_AWAL_SUDAH_ADA }
+    : { boleh: true, jumlahJurnal };
 }
 
 function hasilGagal(pesan: string): HasilPosting {

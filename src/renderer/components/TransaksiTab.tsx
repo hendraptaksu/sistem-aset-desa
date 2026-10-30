@@ -148,17 +148,17 @@ export function TransaksiTab({
             )}
             {saldoStatus?.boleh && (
               <p className="mt-2 text-sm text-emerald-800">
-                Belum ada jurnal. Wizard Saldo Awal bisa dipakai satu kali.
+                Belum ada saldo awal. Wizard Saldo Awal bisa dipakai satu kali.
               </p>
             )}
             {saldoStatus && !saldoStatus.boleh && (
               <p className="mt-2 text-sm text-stone-600">
                 {saldoStatus.alasan ??
-                  'Saldo awal hanya bisa diisi saat belum ada jurnal. Gunakan koreksi/jurnal biasa.'}
+                  'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.'}
               </p>
             )}
             {!saldoStatus && !statusSaldoErr && (
-              <p className="mt-2 text-sm text-stone-500">Memeriksa status jurnal…</p>
+              <p className="mt-2 text-sm text-stone-500">Memeriksa status saldo awal…</p>
             )}
             {pesanSaldo && (
               <div className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
@@ -169,16 +169,16 @@ export function TransaksiTab({
           <div className="flex flex-col items-end gap-2">
             <Badge tone={saldoStatus?.boleh ? 'green' : 'stone'}>
               {saldoStatus?.boleh
-                ? 'Belum ada jurnal'
+                ? 'Belum ada saldo awal'
                 : saldoStatus
-                  ? 'Sudah ada jurnal'
+                  ? 'Sudah ada saldo awal'
                   : 'Memuat status'}
             </Badge>
             <Button
               disabled={!saldoStatus?.boleh || memuat}
               title={
                 saldoStatus && !saldoStatus.boleh
-                  ? 'Saldo awal hanya bisa diisi saat belum ada jurnal.'
+                  ? 'Saldo awal sudah pernah dibuat.'
                   : undefined
               }
               onClick={() => setWizardOpen(true)}
@@ -279,7 +279,7 @@ export function TransaksiTab({
               boleh: false,
               jumlahJurnal: (s?.jumlahJurnal ?? 0) + 1,
               alasan:
-                'Saldo awal hanya bisa diisi saat belum ada jurnal. Gunakan koreksi/jurnal biasa.',
+                'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.',
             }));
             void muatStatusSaldo();
           }}

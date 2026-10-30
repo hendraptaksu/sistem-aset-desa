@@ -171,7 +171,7 @@ const TABEL_WAJIB_V2 = [
 ] as const;
 
 /**
- * Tabel wajib agar file dianggap backup aplikasi ini (skema v12).
+ * Tabel wajib agar file dianggap backup aplikasi ini (skema v13).
  * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
  * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan; backup lama yang
  * masih memilikinya tetap diterima dan akan dimigrasikan saat dibuka.
@@ -462,7 +462,7 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
  * tidak membuat backup kosong. Mengembalikan '' bila DB belum ada, kosong,
  * atau sudah versi terbaru. Best-effort: pemanggil boleh mencatat kegagalan.
  *
- * `versiTarget` hanya untuk pengujian jalur hipotetis (mis. v12 → v13); produksi
+ * `versiTarget` hanya untuk pengujian jalur hipotetis (mis. v13 → v14); produksi
  * selalu memakai `SCHEMA_VERSION`.
  */
 export function backupPraUpgrade(

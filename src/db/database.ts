@@ -37,8 +37,11 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  * - 12   = drop tabel modul yang sudah dihapus (DB-33): rekonsiliasi_bank,
  *          anggaran, aset, lampiran_jurnal, jurnal_pihak, lalu pihak.
  *          Jurnal/panjar/tutup buku/audit/pengaturan tetap dipertahankan.
+ * - 13   = satu jurnal SALDO_AWAL (DB-04): partial unique index
+ *          `ux_jurnal_saldo_awal`; migrasi berhenti bila DB lama sudah berisi
+ *          lebih dari satu SALDO_AWAL agar data tidak dihapus/diubah diam-diam.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * DDL dasar v2–v12. Hanya berisi tabel model baru + tabel pendukung
@@ -49,6 +52,9 @@ export const SCHEMA_VERSION = 12;
  * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
  * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
  * `terapkanAturanV9()` agar DB lama ikut termigrasi dan idempoten.
+ * Unique index saldo awal v13 sengaja dibuat `terapkanMigrasiV13()` SETELAH
+ * pemeriksaan duplikat, bukan di DDL ini, agar DB bermasalah tidak langsung
+ * gagal dengan error UNIQUE tanpa pesan migrasi yang jelas.
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -329,6 +335,31 @@ function terapkanMigrasiV12(db: Database.Database): void {
   }
 }
 
+/** DB-04: pesan migrasi saat DB lama berisi lebih dari satu jurnal SALDO_AWAL. */
+export const PESAN_DUPLIKAT_SALDO_AWAL =
+  'Migrasi v13 dibatalkan: ditemukan lebih dari satu jurnal SALDO_AWAL. ' +
+  'Hanya satu saldo awal yang diizinkan. Perbaiki duplikat secara manual; ' +
+  'tidak ada data yang dihapus atau diubah.';
+
+/**
+ * DB-04 — migrasi v13 idempoten: pastikan hanya ada satu jurnal SALDO_AWAL.
+ * Hitung duplikat SEBELUM membuat index. Bila duplikat ada, lempar error agar
+ * transaksi `migrasi()` rollback (user_version tidak naik, data tidak berubah).
+ * Jangan pernah menghapus/mengubah jurnal di sini.
+ */
+function terapkanMigrasiV13(db: Database.Database): void {
+  const row = db
+    .prepare("SELECT COUNT(*) AS total FROM jurnal WHERE jenis = 'SALDO_AWAL'")
+    .get() as { total: number };
+  if (Number(row.total) > 1) throw new Error(PESAN_DUPLIKAT_SALDO_AWAL);
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_saldo_awal
+      ON jurnal(jenis)
+      WHERE jenis = 'SALDO_AWAL';
+  `);
+}
+
 /**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
  * - Menolak DB yang dibuat aplikasi versi lebih baru SEBELUM DDL apa pun.
@@ -338,6 +369,7 @@ function terapkanMigrasiV12(db: Database.Database): void {
  * - Menerapkan kontrak COA v10 (akun 2060 idempoten, tanpa DDL).
  * - Menerapkan aturan v11 (audit append-only, tutup buku tidak bisa dihapus).
  * - Menerapkan migrasi v12 (drop tabel modul yang sudah dihapus).
+ * - Menerapkan migrasi v13 (unique index satu jurnal SALDO_AWAL).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -357,6 +389,7 @@ export function migrasi(db: Database.Database): number {
     terapkanKontrakV10(db);
     terapkanAturanV11(db);
     terapkanMigrasiV12(db);
+    terapkanMigrasiV13(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

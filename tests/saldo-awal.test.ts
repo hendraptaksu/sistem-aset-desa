@@ -18,6 +18,7 @@ import {
   PESAN_SALDO_AWAL_SUDAH_ADA,
   simpanSaldoAwal,
   statusSaldoAwal,
+  sudahAdaSaldoAwal,
 } from '../src/db/saldoAwal.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { reverseJurnal } from '../src/db/reversal.js';
@@ -252,6 +253,7 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
       expect(status.boleh).toBe(false);
       expect(status.jumlahJurnal).toBe(1);
       expect(status.alasan).toBe(PESAN_SALDO_AWAL_SUDAH_ADA);
+      expect(sudahAdaSaldoAwal(db)).toBe(true);
 
       const baris = listBarisJurnal(db);
       expect(saldoAkun(baris, '1001')).toBe(RP(5_000_000));
@@ -351,12 +353,13 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
         jumlahJurnal: 1,
         alasan: PESAN_SALDO_AWAL_SUDAH_ADA,
       });
+      expect(sudahAdaSaldoAwal(db)).toBe(true);
     } finally {
       db.close();
     }
   });
 
-  it('menolak bila sudah ada jurnal biasa/balik meski bukan buatan wizard', () => {
+  it('jurnal biasa/balik tidak dianggap saldo awal; simpan tetap menolak karena kebijakan DB kosong', () => {
     const db = openDb(':memory:');
     try {
       insertJurnalTervalidasi(
@@ -369,8 +372,11 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
         },
         [D('1001', RP(1_000_000)), K(AKUN_MODAL, RP(1_000_000))],
       );
-      expect(statusSaldoAwal(db).boleh).toBe(false);
+      // DB-04: status wizard hanya terkunci bila SALDO_AWAL sudah ada.
+      expect(sudahAdaSaldoAwal(db)).toBe(false);
+      expect(statusSaldoAwal(db)).toEqual({ boleh: true, jumlahJurnal: 1 });
 
+      // Kebijakan "hanya saat DB kosong" tetap berlaku di jalur simpan.
       const sebelumBalik = simpanSaldoAwal(
         db,
         buatJurnalSaldoAwal({
@@ -379,13 +385,15 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
         }).input,
       );
       expect(sebelumBalik.tersimpan).toBe(false);
+      expect(sebelumBalik.errors.join(' ')).toMatch(/belum ada jurnal/);
 
       const balik = reverseJurnal(db, 'j-lama', 'Uji jurnal balik', {
         id: 'j-lama-balik',
         tanggal: '2026-01-02',
       });
       expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
-      expect(statusSaldoAwal(db).boleh).toBe(false);
+      expect(sudahAdaSaldoAwal(db)).toBe(false);
+      expect(statusSaldoAwal(db)).toEqual({ boleh: true, jumlahJurnal: 2 });
 
       const sesudahBalik = simpanSaldoAwal(
         db,
@@ -609,7 +617,7 @@ describe('P1-6 — validasi bentuk input IPC & UI', () => {
     );
     expect(html).toContain('Saldo Awal Pembukuan');
     expect(html).toContain('Wizard Saldo Awal');
-    expect(html).toContain('Memeriksa status jurnal');
+    expect(html).toContain('Memeriksa status saldo awal');
     const tombol = html
       .split('<button')
       .find((s) => s.includes('>Wizard Saldo Awal</button>'));
