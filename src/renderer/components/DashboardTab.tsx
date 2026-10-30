@@ -42,7 +42,8 @@ export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
     >
       <p className="font-semibold">{pesan}</p>
       <p className="mt-1 text-sm">
-        Gunakan tombol Backup Export .db atau Backup Lengkap di bawah.
+        Gunakan tombol <b>Backup Lengkap</b> (disarankan), atau Backup Export .db
+        untuk kebutuhan lanjutan.
       </p>
     </div>
   );
@@ -61,6 +62,7 @@ export function DashboardTab({
     null | 'muat' | 'backup' | 'backup-lengkap' | 'restore' | 'restore-lengkap'
   >(null);
   const [konfirmasiRestore, setKonfirmasiRestore] = useState(false);
+  const [konfirmasiRestoreFinal, setKonfirmasiRestoreFinal] = useState(false);
   const [konfirmasiRestoreLengkap, setKonfirmasiRestoreLengkap] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
 
@@ -136,8 +138,10 @@ export function DashboardTab({
       setInfo(null);
       setJenisSibuk('restore');
       setKonfirmasiRestore(false);
+      setKonfirmasiRestoreFinal(false);
       try {
-        const r = await api.backupImport();
+        // DB-09: konfirmasi eksplisit wajib; main menolak tanpa ini.
+        const r = await api.backupImport(true);
         if (r.restored) {
           setInfo(
             `Restore OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
@@ -457,7 +461,9 @@ export function DashboardTab({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Backup Terakhir</h3>
-                  <p className="text-sm text-stone-600">Cadangan otomatis harian</p>
+                  <p className="text-sm text-stone-600">
+                    Cadangan otomatis harian (satu file .db)
+                  </p>
                 </div>
                 <Badge tone={ringkasan.tone}>
                   {!data.backupTerakhir
@@ -514,23 +520,20 @@ export function DashboardTab({
               Menyimpan salinan aman; data aktif tidak berubah.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
-                {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db'}
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={sibuk}
-                onClick={() => void backupLengkap()}
-              >
+              <Button disabled={sibuk} onClick={() => void backupLengkap()}>
                 {jenisSibuk === 'backup-lengkap'
                   ? 'Membuat backup lengkap…'
-                  : 'Backup Lengkap'}
+                  : 'Backup Lengkap (disarankan)'}
+              </Button>
+              <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
+                {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db (lanjutan)'}
               </Button>
             </div>
             <p className="mt-3 text-sm text-stone-600">
-              Backup lengkap menyimpan satu folder berisi <code>pura.db</code> dan{' '}
-              <code>manifest.json</code> — pakai ini untuk arsip atau pindah
-              laptop. Backup Export .db hanya berisi database.
+              <b>Backup Lengkap</b> adalah jalur yang disarankan: satu folder
+              berisi <code>pura.db</code> dan <code>manifest.json</code> untuk
+              arsip atau pindah laptop. <b>Backup Export .db</b> hanya berisi
+              database dan tidak punya manifest.
             </p>
           </section>
 
@@ -549,26 +552,32 @@ export function DashboardTab({
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
-                variant="danger-outline"
-                disabled={sibuk}
-                onClick={() => setKonfirmasiRestore(true)}
-              >
-                {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
-              </Button>
-              <Button
-                variant="danger-outline"
+                variant="danger"
                 disabled={sibuk}
                 onClick={() => setKonfirmasiRestoreLengkap(true)}
               >
                 {jenisSibuk === 'restore-lengkap'
                   ? 'Memulihkan lengkap…'
-                  : 'Restore Lengkap'}
+                  : 'Restore Lengkap (disarankan)'}
+              </Button>
+              <Button
+                variant="danger-outline"
+                disabled={sibuk}
+                onClick={() => setKonfirmasiRestore(true)}
+              >
+                {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db (lanjutan)'}
               </Button>
             </div>
             <p className="mt-3 text-sm text-stone-700">
-              Restore Import .db memulihkan database dari satu file. Restore
-              Lengkap memulihkan database dari folder hasil Backup Lengkap; data
-              lama disimpan sebagai cadangan lebih dulu.
+              <b>Restore Lengkap</b> adalah jalur yang disarankan: memulihkan
+              database dari folder hasil Backup Lengkap dan memeriksa{' '}
+              <code>manifest.json</code>. <b>Restore Import .db</b> adalah jalur
+              lanjutan yang <b>hanya memulihkan database</b> dari satu file,
+              tanpa validasi manifest.
+            </p>
+            <p className="mt-2 text-sm font-semibold text-red-900">
+              Data lama selalu dicadangkan lebih dulu sebagai{' '}
+              <code>pre-restore-&lt;waktu&gt;.db</code>.
             </p>
           </section>
         </div>
@@ -596,23 +605,50 @@ export function DashboardTab({
 
       {konfirmasiRestore && (
         <KonfirmasiModal
-          judul="Pulihkan data dari backup?"
+          judul="Peringatan: Restore .db adalah jalur lanjutan"
           deskripsi={
             <>
               <p>
-                Data yang sekarang aktif akan <b>diganti</b> dengan isi file backup
-                yang Anda pilih.
+                <b>Restore Import .db hanya memulihkan database</b> dari satu file.
+                Jalur ini <b>tidak memeriksa manifest.json</b> dan tidak memastikan
+                Anda memilih folder hasil Backup Lengkap.
+              </p>
+              <p className="text-sm text-stone-600">
+                Gunakan <b>Restore Lengkap</b> bila folder backup masih tersedia.
+                Jalur .db sebaiknya dipakai hanya bila diminta pendamping.
+              </p>
+            </>
+          }
+          labelYa="Saya mengerti, lanjut"
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiRestore(false)}
+          onKonfirmasi={() => {
+            setKonfirmasiRestore(false);
+            setKonfirmasiRestoreFinal(true);
+          }}
+        />
+      )}
+
+      {konfirmasiRestoreFinal && (
+        <KonfirmasiModal
+          judul="Konfirmasi terakhir: pulihkan dari file .db?"
+          deskripsi={
+            <>
+              <p>
+                Data yang sekarang aktif akan <b>diganti</b> dengan isi file .db
+                yang Anda pilih. <b>Hanya database yang dipulihkan</b>;
+                manifest.json tidak divalidasi.
               </p>
               <p className="text-sm text-stone-600">
                 Sistem membuat cadangan otomatis data saat ini lebih dulu. Setelah
                 restore selesai, layar dimuat ulang. Pastikan file .db berasal dari
-                aplikasi ini.
+                aplikasi ini dan Anda benar-benar ingin memakai jalur lanjutan ini.
               </p>
             </>
           }
-          labelYa="Pilih file & pulihkan"
+          labelYa="Pilih file .db & pulihkan"
           sibuk={sibuk}
-          onBatal={() => setKonfirmasiRestore(false)}
+          onBatal={() => setKonfirmasiRestoreFinal(false)}
           onKonfirmasi={() => void restore()}
         />
       )}
@@ -624,12 +660,13 @@ export function DashboardTab({
             <>
               <p>
                 Database yang sekarang aktif akan <b>diganti</b> dengan isi folder
-                backup lengkap yang Anda pilih.
+                backup lengkap yang Anda pilih. Ini jalur yang <b>disarankan</b>.
               </p>
               <p className="text-sm text-stone-600">
-                Sistem mencadangkan database saat ini lebih dulu. Setelah restore
-                selesai, layar dimuat ulang dan aplikasi terkunci kembali. Pastikan
-                folder berisi <code>manifest.json</code> dan <code>pura.db</code>.
+                Sistem mencadangkan database saat ini lebih dulu, lalu memeriksa
+                manifest sebelum memulihkan. Setelah restore selesai, layar dimuat
+                ulang dan aplikasi terkunci kembali. Pastikan folder berisi{' '}
+                <code>manifest.json</code> dan <code>pura.db</code>.
               </p>
             </>
           }

@@ -560,15 +560,27 @@ export function PengaturanTab({
             </div>
 
             <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-              <p className="font-semibold">Cara backup manual yang benar:</p>
+              <p className="font-semibold">Cara backup manual yang disarankan:</p>
               <ol className="mt-1 list-decimal space-y-1 pl-5">
                 <li>Di Dashboard, tekan <b>Backup Lengkap</b> lalu simpan foldernya ke flashdisk/Drive.</li>
-                <li>Alternatifnya, tekan <b>Backup Export .db</b> untuk menyimpan satu file database.</li>
-                <li>Simpan backup dalam folder bertanggal, mis. <code>backup-2026-10-23</code>.</li>
+                <li>Simpan folder backup bertanggal, mis. <code>backup-2026-10-23</code>.</li>
+                <li>Untuk memulihkan, gunakan <b>Restore Lengkap</b> dan pilih folder tersebut.</li>
               </ol>
               <p className="mt-2">
-                Backup lengkap berisi <code>pura.db</code> dan <code>manifest.json</code>.
-                Bila memakai Backup Export .db, file itu sudah cukup untuk memulihkan seluruh pembukuan.
+                <b>Backup Lengkap</b> berisi <code>pura.db</code> dan{' '}
+                <code>manifest.json</code>; manifest itulah yang diperiksa saat
+                Restore Lengkap.
+              </p>
+              <p className="mt-2">
+                <b>Backup Export .db (lanjutan)</b> hanya berisi database, tanpa
+                manifest. <b>Restore Import .db</b> juga hanya memulihkan database
+                dan tidak memvalidasi manifest, sehingga selalu meminta konfirmasi
+                tambahan. Pakai jalur ini hanya bila diminta pendamping.
+              </p>
+              <p className="mt-2">
+                Backup otomatis harian sengaja berupa satu file{' '}
+                <code>auto-YYYY-MM-DD.db</code> karena aplikasi tidak menyimpan
+                file bukti terpisah. Backup otomatis bukan pengganti Backup Lengkap.
               </p>
               {lokasi.mode === 'PORTABLE' && (
                 <p className="mt-2">

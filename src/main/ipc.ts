@@ -169,6 +169,16 @@ export function registerIpc(deps: IpcDeps): void {
     opsi !== null &&
     !Array.isArray(opsi) &&
     (opsi as { konfirmasiTanpaSaldoAwal?: unknown }).konfirmasiTanpaSaldoAwal === true;
+  /**
+   * DB-09: restore `.db` adalah jalur lanjutan yang hanya mengganti database.
+   * Renderer wajib mengirim `true` eksplisit setelah dua peringatan; panggilan
+   * langsung tanpa konfirmasi ditolak sebelum dialog file dibuka.
+   */
+  const bacaKonfirmasiRestoreDb = (opsi: unknown): boolean =>
+    typeof opsi === 'object' &&
+    opsi !== null &&
+    !Array.isArray(opsi) &&
+    (opsi as { konfirmasiRestoreDb?: unknown }).konfirmasiRestoreDb === true;
   /** AKT-06: hanya string dari renderer yang diteruskan sebagai alasan. */
   const bacaTeksOpsi = (opsi: unknown, kunci: string): string | undefined => {
     if (typeof opsi !== 'object' || opsi === null || Array.isArray(opsi)) return undefined;
@@ -1202,10 +1212,20 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Restore .db via open dialog: validasi kandidat → cadangkan DB aktif →
   // tukar file atomik → buka ulang → audit. Kegagalan tidak merusak DB lama.
-  daftarkan('backup:import', async () => {
+  // DB-09: jalur ini sengaja dipertahankan sebagai alternatif lanjutan. Ia
+  // hanya memulihkan database dan tidak memvalidasi `manifest.json` seperti
+  // Restore Lengkap, jadi renderer wajib mengirim konfirmasi eksplisit.
+  daftarkan('backup:import', async (_e, opsi: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
+      if (!bacaKonfirmasiRestoreDb(opsi)) {
+        return fail(
+          'Restore .db adalah jalur lanjutan dan berisiko: hanya memulihkan database, tanpa validasi manifest.json. Gunakan Restore Lengkap bila tersedia. Konfirmasi peringatan terlebih dahulu.',
+          false,
+          true,
+        );
+      }
       const { canceled, filePaths } = await deps.dialog.showOpenDialog({
         filters: [{ name: 'SQLite DB', extensions: ['db'] }],
         properties: ['openFile'],

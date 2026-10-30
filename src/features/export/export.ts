@@ -496,7 +496,16 @@ export function backupPraUpgrade(
 
 // ---- Auto-backup harian (1x sehari saat app dibuka, retensi N file) ----
 
-/** Backup harian aman saat DB terbuka (VACUUM INTO, bukan copy mentah WAL). Idempoten per stamp. */
+/**
+ * Backup harian aman saat DB terbuka (VACUUM INTO, bukan copy mentah WAL).
+ * Idempoten per stamp.
+ *
+ * DB-09: backup otomatis harian sengaja tetap satu file `.db`. Sejak DB-37
+ * aplikasi tidak lagi menyimpan folder/file bukti terpisah, jadi tidak ada
+ * muatan lain yang bisa tertinggal yatim. Backup ini adalah jaring pemulihan
+ * cepat, bukan pengganti Backup Lengkap (`pura.db` + `manifest.json`) yang
+ * dipakai untuk arsip dan pindah laptop.
+ */
 export function autoBackupHarian(
   db: Database.Database,
   dir: string,

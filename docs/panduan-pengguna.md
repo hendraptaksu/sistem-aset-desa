@@ -204,8 +204,9 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
 - Buka **Dashboard**, periksa **Saldo Kas & Bank**, **Laba/Rugi tahun berjalan**,
   dan badge **Neraca Saldo: Seimbang**.
 - Periksa **Jurnal Terakhir** dan **Backup Terakhir**.
-- Lakukan **Backup Lengkap** ke flashdisk/Drive. Alternatifnya:
-  **Backup Export .db** untuk menyimpan satu file database.
+- Lakukan **Backup Lengkap** ke flashdisk/Drive — ini jalur yang disarankan.
+  **Backup Export .db** hanya untuk kebutuhan lanjutan (satu file database,
+  tanpa manifest).
 
 ### Bulanan
 
@@ -216,8 +217,8 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
    **Laba ditahan sebelum periode** — baris ini bukan akun yang bisa diposting.
 2. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
 3. Buat **Backup Lengkap** dalam satu folder bertanggal,
-   misalnya `backup-2026-10-31`. Alternatifnya, simpan satu file
-   **Backup Export .db**.
+   misalnya `backup-2026-10-31`. Ini jalur utama; jangan mengandalkan satu file
+   **Backup Export .db** kecuali diminta pendamping.
 4. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
    bulanan. Tidak ada tutup buku bulanan di aplikasi ini.
 
@@ -251,19 +252,25 @@ tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.
 
 ### 5.1 Apa yang harus dibackup
 
-| Yang dibackup | Letaknya | Backup Export `.db` | Backup Lengkap |
+| Yang dibackup | Letaknya | Backup Lengkap (disarankan) | Backup Export `.db` (lanjutan) |
 |---|---|---|---|
-| Database | file `pura.db` | ya — inilah file backup | ya |
-| Backup otomatis | folder `backups` | bukan sumber data, hanya salinan | bukan sumber data |
+| Database | file `pura.db` | ya | ya — hanya database |
+| Manifest | file `manifest.json` | ya | tidak ada |
+| Backup otomatis | folder `backups` | bukan sumber data, hanya salinan | bukan sumber data, hanya salinan |
 
-- **Backup otomatis harian:** aplikasi membuat `auto-YYYY-MM-DD.db` di folder
-  `backups` saat dibuka (dan saat aplikasi dibiarkan terbuka), menyimpan 7 file
-  terakhir.
-- **Backup Export .db:** **Dashboard → Backup Export .db**, lalu pilih lokasi
-  penyimpanan (flashdisk/Drive). Sebaiknya beri nama bertanggal.
-- **Backup Lengkap:** **Dashboard → Backup Lengkap**, lalu pilih folder induk.
-  Aplikasi membuat satu folder berisi `pura.db` dan `manifest.json`. Pakai cara
-  ini untuk arsip jangka panjang atau pindah laptop.
+- **Backup otomatis harian:** aplikasi membuat satu file `auto-YYYY-MM-DD.db`
+  di folder `backups` saat dibuka (dan saat aplikasi dibiarkan terbuka),
+  menyimpan 7 file terakhir. Backup ini **sengaja berupa satu file database**
+  karena aplikasi tidak lagi menyimpan file bukti terpisah; tidak ada folder
+  lain yang perlu ikut disalin. Backup otomatis adalah jaring pemulihan cepat,
+  **bukan pengganti Backup Lengkap**.
+- **Backup Lengkap (disarankan):** **Dashboard → Backup Lengkap**, lalu pilih
+  folder induk. Aplikasi membuat satu folder berisi `pura.db` dan
+  `manifest.json`. Pakai cara ini untuk arsip jangka panjang, pindah laptop,
+  atau sebelum perubahan besar.
+- **Backup Export .db (lanjutan):** **Dashboard → Backup Export .db**, lalu
+  pilih lokasi penyimpanan (flashdisk/Drive). File ini hanya berisi database
+  dan **tidak punya manifest**. Gunakan hanya bila diminta pendamping.
 
 Simpan backup dalam **satu folder bertanggal**. Backup **tidak terenkripsi**;
 simpan di media yang aman dan pisahkan dari laptop.
@@ -272,19 +279,25 @@ simpan di media yang aman dan pisahkan dari laptop.
 
 Ada dua pilihan di **Dashboard**:
 
-- **Restore Lengkap** — pilih folder hasil **Backup Lengkap** (yang berisi
-  `manifest.json` dan `pura.db`).
-- **Restore Import .db** — memulihkan database dari satu file `.db`.
+- **Restore Lengkap (disarankan)** — pilih folder hasil **Backup Lengkap** yang
+  berisi `manifest.json` dan `pura.db`. Manifest diperiksa lebih dulu, sehingga
+  aplikasi tahu folder itu memang backup lengkap.
+- **Restore Import .db (lanjutan/berisiko)** — memulihkan database dari satu
+  file `.db`. Jalur ini **hanya memulihkan database**, **tidak memvalidasi
+  manifest.json**, dan selalu meminta dua konfirmasi. Gunakan hanya bila folder
+  Backup Lengkap tidak tersedia atau Anda diminta pendamping.
 
 Langkah umum:
 
 1. Tutup pekerjaan lain; jangan menutup aplikasi saat restore berjalan.
-2. Buka **Dashboard**, pilih tombol restore yang sesuai.
-3. Baca peringatan, lalu pilih file `.db` atau folder backup lengkap.
+2. Buka **Dashboard** dan pilih **Restore Lengkap** (disarankan). Untuk file
+   `.db`, pilih **Restore Import .db** dan baca peringatan lanjutannya.
+3. Baca peringatan, lalu pilih folder backup lengkap atau file `.db`.
 4. Sistem memvalidasi isi backup sebelum menyentuh data aktif: file SQLite
    terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim, versi
    skema tidak lebih baru dari aplikasi, tabel wajib untuk versi backup tersedia,
-   dan audit akuntansi tidak menemukan masalah. Setelah lolos, sistem membuat
+   dan audit akuntansi tidak menemukan masalah. Restore Lengkap juga memeriksa
+   `manifest.json`; Restore Import .db tidak. Setelah lolos, sistem membuat
    cadangan data lama (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
 5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
 
@@ -298,7 +311,10 @@ Langkah umum:
    **Dashboard → Restore Lengkap** dan pilih folder backup tadi.
 3. Buka aplikasi dan periksa beberapa jurnal serta **Neraca Saldo**.
 
-Bila memakai **Backup Export .db**, restore hanya database dari file tersebut.
+Bila terpaksa memakai **Backup Export .db**, ingat bahwa restore hanya
+memulihkan database dari file tersebut: manifest tidak ada, tidak ada validasi
+manifest, dan aplikasi meminta konfirmasi tambahan. Jalur **Backup Lengkap →
+Restore Lengkap** tetap yang paling aman.
 
 **Cara portable:** tutup aplikasi, lalu salin **seluruh folder portable**
 (file `.exe`, `data`, `backups`) ke flashdisk/laptop baru. Jangan hanya

@@ -665,7 +665,7 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
     // 5. Restore: koneksi DB diganti lewat deps.setDb, data tetap utuh.
     const dbSebelumRestore = env.db();
     env.openQueue.push({ canceled: false, filePaths: [backupPath] });
-    const impor = await env.panggil('backup:import');
+    const impor = await env.panggil('backup:import', { konfirmasiRestoreDb: true });
     expect(impor.ok, impor.error).toBe(true);
     expect(impor.data).toMatchObject({ restored: true });
     expect(env.setDbCalls).toHaveLength(1);
@@ -824,7 +824,7 @@ describe('P2-7 — error handling IPC', () => {
     const sampah = join(env.dir, 'sampah.db');
     writeFileSync(sampah, 'ini bukan database sqlite');
     env.openQueue.push({ canceled: false, filePaths: [sampah] });
-    const impor = await env.panggil('backup:import');
+    const impor = await env.panggil('backup:import', { konfirmasiRestoreDb: true });
 
     expect(impor.ok).toBe(false);
     expect(impor.error).toMatch(/tidak bisa dibaca|rusak/i);
@@ -1228,5 +1228,66 @@ describe('AUD-18 — auto-lock main & aktivitas sesi', () => {
     const backup = await env.panggil('backup:export');
     expect(backup.ok, backup.error).toBe(true);
     expect(operasiPanjangAktif()).toBe(false);
+  });
+});
+
+describe('DB-09 — restore .db wajib konfirmasi lanjutan eksplisit', () => {
+  it('menolak tanpa konfirmasi sebelum dialog, lalu berhasil saat dikonfirmasi', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-db09-awal',
+          tanggal: '2026-10-30',
+          keterangan: 'Jurnal sebelum backup .db',
+        },
+        baris: [D('1001', 100_000), K('4007', 100_000)],
+      },
+      { konfirmasiTanpaSaldoAwal: true },
+    );
+    expect(awal.ok, awal.error).toBe(true);
+
+    const backupPath = join(env.dir, 'backup-db09.db');
+    env.saveQueue.push({ canceled: false, filePath: backupPath });
+    expect((await env.panggil('backup:export')).ok).toBe(true);
+
+    const tambahan = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-db09-tambahan',
+          tanggal: '2026-10-30',
+          keterangan: 'Jurnal setelah backup .db',
+        },
+        baris: [D('1001', 25_000), K('4007', 25_000)],
+      },
+      { konfirmasiTanpaSaldoAwal: true },
+    );
+    expect(tambahan.ok, tambahan.error).toBe(true);
+
+    const dbSebelum = env.db();
+    env.openQueue.push({ canceled: false, filePaths: [backupPath] });
+
+    const tanpaKonfirmasi = await env.panggil('backup:import');
+    expect(tanpaKonfirmasi.ok).toBe(false);
+    expect(tanpaKonfirmasi.perluKonfirmasi).toBe(true);
+    expect(tanpaKonfirmasi.error).toMatch(/hanya memulihkan database/i);
+    expect(tanpaKonfirmasi.error).toMatch(/manifest\.json/i);
+    expect(tanpaKonfirmasi.error).toMatch(/Restore Lengkap/i);
+    // Gate terjadi sebelum dialog: antrean dialog masih utuh dan DB belum diganti.
+    expect(env.openQueue).toHaveLength(1);
+    expect(env.setDbCalls).toHaveLength(0);
+    expect(env.db()).toBe(dbSebelum);
+
+    const hasil = await env.panggil('backup:import', {
+      konfirmasiRestoreDb: true,
+    });
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hasil.data).toMatchObject({ restored: true });
+    expect(env.setDbCalls).toHaveLength(1);
+    expect((await env.panggil('jurnal:list', {})).data.map((j: { id: string }) => j.id)).toEqual([
+      'j-db09-awal',
+    ]);
   });
 });

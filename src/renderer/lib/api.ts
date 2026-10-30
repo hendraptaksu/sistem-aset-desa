@@ -359,7 +359,15 @@ export const api = {
   backupLengkap: () => call<{ saved: boolean; path: string }>('backup:lengkap'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupStatus: () => call<{ path: string }>('backup:status'),
-  backupImport: () => call<{ restored: boolean; path: string; preRestorePath?: string }>('backup:import'),
+  /**
+   * Restore `.db` (jalur lanjutan). Main menolak panggilan tanpa konfirmasi
+   * eksplisit karena hanya database yang dipulihkan, tanpa validasi manifest.
+   */
+  backupImport: (konfirmasiRestoreDb: boolean) =>
+    call<{ restored: boolean; path: string; preRestorePath?: string }>(
+      'backup:import',
+      { konfirmasiRestoreDb },
+    ),
   /** Restore lengkap: DB + manifest dari satu folder backup. */
   backupRestoreLengkap: () =>
     call<{

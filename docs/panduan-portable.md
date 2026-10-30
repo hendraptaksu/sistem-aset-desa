@@ -107,19 +107,22 @@ seluruh transaksi tertulis ke `pura.db`.
 1. Di laptop lama: **Dashboard → Backup Lengkap**, simpan foldernya ke
    flashdisk.
 2. Di laptop baru: pasang aplikasi installer, buat PIN, lalu
-   **Dashboard → Restore Lengkap** dan pilih folder backup tadi.
+   **Dashboard → Restore Lengkap (disarankan)** dan pilih folder backup tadi.
 3. Buka aplikasi dan periksa jurnal serta **Neraca Saldo**.
 
-Bila memakai **Backup Export .db**: simpan file `.db`, lalu di laptop baru
-gunakan **Restore Import .db** dari file tersebut.
+Bila terpaksa memakai **Backup Export .db** (jalur lanjutan): simpan file `.db`,
+lalu di laptop baru gunakan **Restore Import .db**. Jalur ini **hanya
+memulihkan database**, tidak memvalidasi `manifest.json`, dan meminta
+konfirmasi tambahan. **Backup Lengkap → Restore Lengkap** tetap yang disarankan.
 
 ### 3.3 Installer → portable (atau sebaliknya)
 
-- Dari installer ke portable: buat backup `.db`, jalankan portable sekali agar
-  folder `data`/`backups` terbentuk, tutup aplikasi, lalu gunakan
-  **Restore Import .db** dari dalam aplikasi portable.
-- Dari portable ke installer: gunakan **Restore Import .db** di aplikasi
-  installer.
+- Dari installer ke portable: buat **Backup Lengkap**, jalankan portable sekali
+  agar folder `data`/`backups` terbentuk, tutup aplikasi, lalu gunakan
+  **Restore Lengkap** dari dalam aplikasi portable.
+- Dari portable ke installer: gunakan **Restore Lengkap** di aplikasi installer.
+- Bila memakai file `.db` (lanjutan), gunakan **Restore Import .db** dan baca
+  peringatan konfirmasi tambahannya.
 - Selalu backup dulu sebelum memindahkan file secara manual.
 
 ---
@@ -132,11 +135,16 @@ gunakan **Restore Import .db** dari file tersebut.
 | Backup internal (opsional) | `%APPDATA%\Keuangan Pura Dalem Puri\data\backups` | `<folder exe>\backups` |
 
 - Backup otomatis harian menyimpan maksimal 7 file `auto-YYYY-MM-DD.db` di folder
-  `backups`.
-- Backup manual lewat **Dashboard → Backup Export .db** memakai `VACUUM INTO`,
-  aman dilakukan saat aplikasi terbuka.
-- **Backup Lengkap** di Dashboard menghasilkan satu folder berisi `pura.db` dan
-  `manifest.json`; gunakan **Restore Lengkap** untuk memulihkannya.
+  `backups`. Ini **sengaja berupa satu file database** karena aplikasi tidak
+  menyimpan file bukti terpisah; tidak ada folder lain yang perlu ikut disalin.
+  Backup otomatis bukan pengganti Backup Lengkap.
+- **Backup Lengkap** (disarankan) di Dashboard menghasilkan satu folder berisi
+  `pura.db` dan `manifest.json`; gunakan **Restore Lengkap** untuk
+  memulihkannya. Manifest diperiksa sebelum database diganti.
+- Backup manual lewat **Dashboard → Backup Export .db (lanjutan)** memakai
+  `VACUUM INTO`, aman dilakukan saat aplikasi terbuka. File ini hanya berisi
+  database, tanpa manifest. **Restore Import .db** juga hanya memulihkan
+  database, tidak memvalidasi manifest, dan meminta konfirmasi tambahan.
 - Simpan backup dalam satu folder bertanggal, misalnya `backup-2026-10-23`.
 - Jangan mengandalkan hanya folder `backups`: folder itu ada di laptop yang sama.
   Salin ke media lain (flashdisk/Drive).

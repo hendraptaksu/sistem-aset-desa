@@ -77,7 +77,7 @@
 | DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [ ] |
 | DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [ ] |
 | DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
-| DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [ ] |
+| DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [x] |
 | DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [ ] |
 | DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [ ] |
 | DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [ ] |
@@ -270,7 +270,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run typecheck` bersih; `npm test` **686 test/55 file hijau**;
     `npm run build` berhasil.
 
-- [ ] **DB-09 — Backup lengkap sebagai default / blokir restore `.db` berisiko** · P0 · M
+- [x] **DB-09 — Backup lengkap sebagai default / blokir restore `.db` berisiko** · P0 · M
   - **Konteks:** auto-backup harian hanya `.db`; lampiran ada di folder lain.
     Restore `.db` bisa meninggalkan lampiran yatim atau metadata menunjuk file
     hilang.
@@ -286,6 +286,19 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** tidak ada restore yang meninggalkan lampiran yatim tanpa peringatan.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-02.
+  - **Bukti 2026-10-30:** Setelah DB-37/DB-33 tidak ada lampiran maupun
+    `lampiran_jurnal`, sehingga backup lengkap diverifikasi tetap hanya berisi
+    `pura.db` + `manifest.json` (tanpa folder lampiran) dan restore lengkap
+    hanya memulihkan database serta mengabaikan folder lampiran legacy tanpa
+    menyentuhnya. UI Dashboard menempatkan **Restore Lengkap / Backup Lengkap**
+    sebagai jalur utama; `Backup Export .db` dan `Restore Import .db` ditandai
+    lanjutan, dan restore `.db` memakai dua konfirmasi + gate IPC
+    `konfirmasiRestoreDb: true` (ditolak sebelum dialog tanpa itu). Auto-backup
+    harian **sengaja tetap satu file `.db`** karena tidak ada muatan lampiran;
+    retensi/`lastAutoBackup` tidak diubah dan perilaku ini didokumentasikan.
+    Test baru `tests/db-09-backup-lengkap.test.ts` (6) + gate IPC di
+    `tests/ipc-main.test.ts`. `npm run typecheck` bersih; `npm test`
+    **693 test/56 file hijau**; `npm run build` berhasil.
 
 - [ ] **DB-10 — Constraint jurnal: unique reversal + validasi insert** · P0 · S
   - **Konteks:** `reversal_of` tidak unik; dua reversal bisa ditulis lewat SQL.
