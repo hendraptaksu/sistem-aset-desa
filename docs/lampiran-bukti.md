@@ -37,7 +37,7 @@ menyimpan isi file.
 ## Cara unggah
 
 1. Buka **Jurnal Umum** (atau laporan yang bisa di-drill-down: Buku Besar,
-   Arus Kas, Laba Rugi, Rekonsiliasi Bank).
+   Arus Kas, Laba Rugi).
 2. Klik **Lihat** pada jurnal yang dituju.
 3. Di bagian **Lampiran Bukti**, klik **Unggah Lampiran**.
 4. Pilih file JPG/JPEG/PNG/WEBP/PDF. Sistem menolak jenis file lain atau file

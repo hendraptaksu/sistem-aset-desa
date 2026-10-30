@@ -116,7 +116,6 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
       'Laba Rugi',
       'Neraca',
       'Arus Kas',
-      'Rekonsiliasi Bank',
       'Anggaran',
       'reversal',
       'tutup buku',
@@ -133,6 +132,12 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
       'selisih 0',
     ]) {
       expect(PEMERIKSAAN, `istilah "${istilah}"`).toContain(istilah);
+    }
+  });
+
+  it('DB-31: dokumen tidak lagi menawarkan Rekonsiliasi Bank', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, baca('lampiran-bukti.md')]) {
+      expect(dokumen).not.toContain('Rekonsiliasi Bank');
     }
   });
 });

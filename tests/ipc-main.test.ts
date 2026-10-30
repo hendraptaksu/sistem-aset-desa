@@ -209,10 +209,6 @@ const CHANNEL_IPC = [
   'pihak:rekon',
   'pihak:saldo',
   'pihak:update',
-  'rekonsiliasi:create',
-  'rekonsiliasi:detail',
-  'rekonsiliasi:list',
-  'rekonsiliasi:selesai',
   'saldo-awal:posting',
   'saldo-awal:status',
   'saldo:list',
@@ -222,11 +218,18 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 77 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 73 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(77);
+    expect(env.handlers.size).toBe(73);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(77);
+    expect(CHANNEL_IPC).toHaveLength(73);
+  });
+
+  it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
+    const env = buatEnv();
+    expect([...env.handlers.keys()].filter((kanal) => kanal.startsWith('rekonsiliasi:'))).toEqual(
+      [],
+    );
   });
 });
 

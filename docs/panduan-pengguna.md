@@ -259,15 +259,12 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
    buku saja, atau **Kumulatif sejak awal** untuk seluruh riwayat. Pada mode
    tahun berjalan, laba tahun sebelumnya diringkas pada baris
    **Laba ditahan sebelum periode** — baris ini bukan akun yang bisa diposting.
-2. Bandingkan saldo bank di aplikasi dengan rekening koran lewat menu
-   **Rekonsiliasi Bank**. Isi saldo menurut rekening koran; selisih dihitung
-   sistem.
-3. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
-4. Periksa **Anggaran** vs realisasi bila pagu tahunan sudah diisi.
-5. Buat **Backup Lengkap** (DB + lampiran) dalam satu folder bertanggal,
+2. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
+3. Periksa **Anggaran** vs realisasi bila pagu tahunan sudah diisi.
+4. Buat **Backup Lengkap** (DB + lampiran) dalam satu folder bertanggal,
    misalnya `backup-2026-10-31`. Bila memakai Backup Export `.db`, salin folder
    `attachments` secara terpisah ke folder yang sama.
-6. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
+5. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
    bulanan. Tidak ada tutup buku bulanan di aplikasi ini.
 
 ---

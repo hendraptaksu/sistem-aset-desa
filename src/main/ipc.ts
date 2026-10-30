@@ -66,12 +66,6 @@ import {
   simpanAnggaran,
 } from '../db/anggaran.js';
 import {
-  buatRekonsiliasi,
-  getRekonsiliasiDetail,
-  listRekonsiliasi,
-  selesaikanRekonsiliasi,
-} from '../db/rekonsiliasi.js';
-import {
   getLampiran,
   hapusLampiran,
   listLampiran,
@@ -143,9 +137,6 @@ import {
   validasiBentukPengaturanPembukuan,
   validasiBentukPihak,
   validasiBentukPostingPihak,
-  validasiBentukRekonsiliasiCreate,
-  validasiBentukRekonsiliasiList,
-  validasiBentukRekonsiliasiSelesai,
   validasiBentukSaldoAwal,
   validasiCutoffLaporan,
   validasiFilterAnggaran,
@@ -155,7 +146,6 @@ import {
   validasiFilterNeracaSaldo,
   validasiIdJurnal,
   validasiIdLampiran,
-  validasiIdRekonsiliasi,
   validasiRentangLaporan,
   validasiTanggalOpsional,
   validateAsetInput,
@@ -301,8 +291,6 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat menyimpan data aset. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_ANGGARAN =
     'Terjadi kesalahan saat menyimpan pagu anggaran. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_REKONSILIASI =
-    'Terjadi kesalahan saat memproses rekonsiliasi bank. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_LAMPIRAN =
     'Terjadi kesalahan saat memproses lampiran. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_TUTUP =
@@ -748,62 +736,6 @@ export function registerIpc(deps: IpcDeps): void {
       );
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  // ---- Rekonsiliasi bank (P2-2) ----
-  // Hanya saldo menurut rekening koran yang disimpan. Saldo buku, selisih,
-  // status cocok, dan daftar mutasi selalu dihitung ulang dari jurnal oleh
-  // core/rekonsiliasi.ts + core/reports.ts.
-  daftarkan('rekonsiliasi:list', (_e, f: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukRekonsiliasiList(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      return ok(listRekonsiliasi(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('rekonsiliasi:detail', (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdRekonsiliasi(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const detail = getRekonsiliasiDetail(deps.db(), bentuk.input);
-      if (!detail) return fail('Rekonsiliasi tidak ditemukan.');
-      return ok(detail);
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('rekonsiliasi:create', (_e, input: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukRekonsiliasiCreate(input);
-      if (!bentuk.ok) return fail(bentuk.error);
-      return ok(buatRekonsiliasi(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_REKONSILIASI));
-    }
-  });
-
-  daftarkan('rekonsiliasi:selesai', (_e, id: unknown, opsi: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentukId = validasiIdRekonsiliasi(id);
-      if (!bentukId.ok) return fail(bentukId.error);
-      const bentukOpsi = validasiBentukRekonsiliasiSelesai(opsi);
-      if (!bentukOpsi.ok) return fail(bentukOpsi.error);
-      return ok(selesaikanRekonsiliasi(deps.db(), bentukId.input, bentukOpsi.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_REKONSILIASI));
     }
   });
 

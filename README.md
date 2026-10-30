@@ -37,7 +37,7 @@ angka turunan yang disimpan mati.
 - Koreksi tidak pernah mengedit/menghapus jurnal lama: selalu **jurnal balik
   (reversal) + alasan**, dengan jejak audit.
 - Laporan: Buku Besar, Neraca Saldo (tahun berjalan/kumulatif), Laba Rugi,
-  Neraca, Arus Kas, Rekonsiliasi Bank, Anggaran, Panjar, dan aset/inventaris.
+  Neraca, Arus Kas, Anggaran, Panjar, dan aset/inventaris.
 - Lampiran bukti (foto/PDF) disimpan di folder `attachments`, bukan di dalam
   database.
 - Backup database memakai `VACUUM INTO`; tersedia **Backup Lengkap** yang
@@ -69,7 +69,7 @@ angka turunan yang disimpan mati.
 │ src/core/* — logika murni    │  │ src/db/* — akses SQLite           │
 │ forms, posting, reports,     │  │ database.ts (DDL + migrasi v9),   │
 │ reversal, periode, pin,      │  │ repository, jurnal, panjar, pihak,│
-│ tutup, anggaran, rekonsiliasi│  │ lampiran, laporan, seed-dev       │
+│ tutup, anggaran, pengaturan  │  │ lampiran, laporan, seed-dev       │
 └──────────────────────────────┘  └─────────────┬─────────────────────┘
                                                  │
                                     ┌────────────▼────────────┐

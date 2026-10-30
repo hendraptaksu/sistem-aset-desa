@@ -107,7 +107,7 @@
 | DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [ ] |
 | DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [ ] |
 | DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
-| DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [ ] |
+| DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
 | DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [ ] |
 | DB-33 | P0 | M | Migrasi v12: drop tabel yang disetujui + guard/backup | DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37 | [ ] |
 | DB-34 | P1 | S | Audit integritas: reversal, tipe akun, tabel opsional | DB-33 | [ ] |
@@ -873,7 +873,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     diperbarui lagi. Itu bagian dari tiket fitur masing-masing.
   - **Dependency:** —
 
-- [ ] **DB-31 — Hapus modul Rekonsiliasi Bank (UI/API/test)** · P1 · M
+- [x] **DB-31 — Hapus modul Rekonsiliasi Bank (UI/API/test)** · P1 · M
   - **Konteks:** user memutuskan membuang rekonsiliasi bank. Tabel
     `rekonsiliasi_bank` hanya menyimpan saldo rekening koran + status; bukan
     sumber angka. Saldo buku sudah bisa dilihat di Buku Besar/Neraca Saldo.
@@ -891,6 +891,12 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     jurnal.
   - **Test:** test menu/UI + `tests/ipc-main.test.ts` bila ada.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** tab/menu/komponen, 4 channel IPC, tipe/API renderer,
+    validator, `core/rekonsiliasi.ts`, `db/rekonsiliasi.ts`, dan
+    `tests/rekonsiliasi.test.ts` dihapus; label audit `REKONSILIASI-*` tetap.
+    Tabel `rekonsiliasi_bank` tidak disentuh (menunggu DB-33).
+    `npm run typecheck` bersih; `npm test` **728/58 hijau**; `npm run build`
+    berhasil.
   - **Dependency:** — (keputusan 2026-10-30).
 
 - [ ] **DB-32 — Hapus modul Inventaris Aset (UI/API/test)** · P1 · M

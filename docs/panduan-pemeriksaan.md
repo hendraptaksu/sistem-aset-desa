@@ -25,9 +25,8 @@ lama, melainkan membuat jurnal balik.
 4. **Laba Rugi** — pendapatan dan beban periode.
 5. **Neraca** — aset = kewajiban + ekuitas; cek laba berjalan & laba ditahan.
 6. **Arus Kas** — mutasi kas/bank metode langsung.
-7. **Rekonsiliasi Bank** — cocokkan saldo buku dengan rekening koran.
-8. **Anggaran** — bandingkan realisasi dengan pagu.
-9. **Riwayat Audit** — periksa koreksi, tutup buku, backup/restore, perubahan
+7. **Anggaran** — bandingkan realisasi dengan pagu.
+8. **Riwayat Audit** — periksa koreksi, tutup buku, backup/restore, perubahan
    pengaturan.
 
 Semua layar laporan bisa **drill-down**: klik baris/akun → daftar jurnal → detail
@@ -196,29 +195,7 @@ laporan menampilkannya sebagai mutasi internal sesuai tampilan aplikasi.
 
 ---
 
-## 8. Rekonsiliasi Bank
-
-Buka **Rekonsiliasi Bank**.
-
-1. Pilih akun kas/bank (hanya akun kas/bank; `1040` dan `1050` tidak boleh).
-2. Isi tanggal dan **saldo menurut rekening koran**.
-3. Aplikasi menampilkan **saldo buku** (dari jurnal), **selisih**, dan status
-   **Cocok/Lebih/Kurang**. Yang disimpan hanya saldo rekening koran; saldo buku
-   dan selisih selalu dihitung ulang.
-4. Bila selisih, isi catatan/alasan selisih, lalu simpan.
-5. Setelah ditelusuri, tekan **Tandai Selesai**. Ini hanya menandai rekonsiliasi
-   sudah diperiksa; **tidak mengubah jurnal**.
-
-Yang diperiksa:
-
-- Setoran/penarikan yang belum tercatat di aplikasi.
-- Biaya administrasi bank, bunga, atau pajak yang belum dijurnal.
-- Cek/transfer yang sudah dicatat tetapi belum cair di rekening koran.
-- Saldo awal rekonsiliasi sebelumnya.
-
----
-
-## 9. Anggaran & Realisasi
+## 8. Anggaran & Realisasi
 
 Buka **Anggaran**.
 
@@ -232,7 +209,7 @@ Buka **Anggaran**.
 
 ---
 
-## 10. Koreksi: reversal + isi ulang
+## 9. Koreksi: reversal + isi ulang
 
 **Jangan pernah mengedit atau menghapus jurnal yang sudah tersimpan.** Semua
 koreksi harus dapat diaudit.
@@ -274,7 +251,7 @@ wajib minimal 5 karakter.
 
 ---
 
-## 11. Tutup buku
+## 10. Tutup buku
 
 1. Pastikan **Neraca Saldo seimbang** dan laporan tahun tersebut sudah diperiksa.
 2. Buka **Tutup Buku**.
@@ -298,7 +275,7 @@ yang ditutup, bukan dari jurnal buatan operator.
 
 ---
 
-## 12. Audit
+## 11. Audit
 
 Buka **Pengaturan → Riwayat Audit**.
 
@@ -319,7 +296,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 
 ---
 
-## 13. Glosarium
+## 12. Glosarium
 
 | Istilah | Arti sederhana |
 |---|---|
@@ -339,7 +316,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 
 ---
 
-## 14. Checklist singkat sebelum menandatangani laporan
+## 13. Checklist singkat sebelum menandatangani laporan
 
 - [ ] Jurnal Umum: semua transaksi punya tanggal, keterangan, nomor bukti, dan
       lawan akun yang wajar.
@@ -350,7 +327,6 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 - [ ] Laba Rugi cocok dengan Buku Besar pendapatan/beban.
 - [ ] Neraca: aset = kewajiban + ekuitas.
 - [ ] Arus Kas cocok dengan mutasi kas/bank.
-- [ ] Rekonsiliasi Bank sudah ditandai selesai atau selisihnya dijelaskan.
 - [ ] Anggaran: realisasi dan sisa sudah diperiksa.
 - [ ] Audit: koreksi dan tutup buku punya alasan.
 - [ ] Backup Lengkap (DB + lampiran) sudah dibuat, atau backup `.db` **dan**
