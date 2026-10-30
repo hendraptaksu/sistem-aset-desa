@@ -256,6 +256,7 @@ export function JurnalTab({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="stone">Jurnal Umum</Badge>
             <Badge tone="green">Neraca Saldo selalu dihitung dari jurnal</Badge>
             {modeAkuntan && (
               <>
@@ -319,7 +320,9 @@ export function JurnalTab({
               }}
             />
           </Field>
-          <Field label="Jenis">
+          {/* Filter tampilan daftar; bukan pemilih jenis dokumen. Jurnal baru
+              dari editor selalu UMUM. */}
+          <Field label="Filter jenis">
             <Select
               value={fJenis}
               onChange={(e) => {

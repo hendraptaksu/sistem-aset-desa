@@ -587,7 +587,7 @@ export function FormTransaksiTerpandu({
     busyRef.current = true;
     setBusy(true);
     try {
-      const hasil = await api.jurnalPosting(input, {
+      const hasil = await api.transaksiPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
         ...opsiPeringatanApi(
           opsi.konfirmasi === true ? alasanPeringatan : undefined,

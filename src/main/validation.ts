@@ -175,6 +175,54 @@ const MAKS_BARIS_JURNAL = 500;
 const objek = (nilai: unknown): nilai is Record<string, unknown> =>
   typeof nilai === 'object' && nilai !== null && !Array.isArray(nilai);
 
+// ---------------------------------------------------------------------------
+// DB-03 — pemisahan jalur posting manual vs form terpandu
+// ---------------------------------------------------------------------------
+
+/** Jalur `jurnal:posting` hanya boleh menyimpan jurnal manual UMUM. */
+export const JENIS_MANUAL_DIIZINKAN: readonly JurnalJenis[] = ['UMUM'];
+
+/** Jenis dokumen yang boleh melewati `transaksi:posting` (form terpandu). */
+export const JENIS_TRANSAKSI_TERPANDU: readonly JurnalJenis[] = [
+  'TERIMA',
+  'BAYAR',
+  'TRANSFER',
+  'HUTANG',
+];
+
+const JALUR_JENIS_JURNAL: Partial<Record<JurnalJenis, string>> = {
+  PANJAR: 'menu Buku Panjar',
+  PIUTANG:
+    'koreksi data lama oleh akuntan pendamping; alur input piutang sudah dihapus',
+  HUTANG: 'form Transaksi terpandu (Catat/Bayar Utang Usaha)',
+  TERIMA: 'form Transaksi terpandu (Terima Uang)',
+  BAYAR: 'form Transaksi terpandu (Bayar/Beban)',
+  TRANSFER: 'form Transaksi terpandu (Pindah Dana)',
+  REVERSAL: 'menu Koreksi',
+  SALDO_AWAL: 'Wizard Saldo Awal',
+};
+
+/** Jenis mentah dari header, tanpa mempercayai objek lain dari renderer. */
+function bacaJenisMentah(nilai: unknown): string {
+  if (!objek(nilai) || !objek(nilai.header)) return '';
+  const jenis = nilai.header.jenis;
+  return typeof jenis === 'string' ? jenis.trim() : '';
+}
+
+/** DB-03: pesan seragam saat jalur manual mencoba jenis dokumen lain. */
+export function pesanJurnalUmumHanyaUmum(jenis: string): string {
+  const jalur =
+    JALUR_JENIS_JURNAL[jenis as JurnalJenis] ??
+    'jalurnya sendiri, bukan dari Jurnal Umum';
+  return `Jalur Jurnal Umum hanya menerima jenis UMUM. Jenis ${jenis} harus dicatat lewat ${jalur}.`;
+}
+
+/** DB-03: pesan untuk jenis di luar dokumen yang punya form terpandu. */
+export function pesanJenisTransaksiTidakDiizinkan(jenis: string): string {
+  const daftar = JENIS_TRANSAKSI_TERPANDU.join(', ');
+  return `Jalur transaksi terpandu hanya menerima jenis ${daftar}. Jenis ${jenis || 'kosong'} tidak boleh dikirim ke jalur ini.`;
+}
+
 export type BentukAkunBaru = {
   kode: string;
   nama: string;
@@ -403,10 +451,62 @@ function validasiBentukJurnal(
  * posting layer. IPC tidak boleh mempercayai objek mentah: semua field
  * dinormalisasi dan hanya field yang dikenal yang diteruskan.
  *
+ * DB-03: jalur manual (`jurnal:posting`) hanya menerima `jenis='UMUM'`.
+ * Jenis dokumen lain ditolak sebelum menyentuh DB, walaupun renderer
+ * mengirimnya langsung. Header tanpa jenis tetap dinormalisasi menjadi UMUM
+ * agar pemanggil lama/kompatibel tidak berubah diam-diam menjadi jenis lain.
+ *
  * `reversal_of` / `jenis=REVERSAL` sengaja ditolak karena jurnal balik wajib
  * lewat jalur koreksi (`jurnal:reverse`), bukan jalur simpan biasa.
  */
 export function validasiBentukJurnalInput(nilai: unknown): HasilBentukJurnalInput {
+  const jenisMentah = bacaJenisMentah(nilai);
+  // Tolak lebih dulu dengan pesan yang seragam + jalur yang benar. Bentuk yang
+  // rusak tetap ditangani validator di bawah; jenis asing tetap mendapat pesan
+  // "Jenis jurnal tidak dikenal" dari sana.
+  if (
+    jenisMentah &&
+    (JENIS_JURNAL as readonly string[]).includes(jenisMentah) &&
+    !(JENIS_MANUAL_DIIZINKAN as readonly string[]).includes(jenisMentah)
+  ) {
+    return { ok: false, error: pesanJurnalUmumHanyaUmum(jenisMentah) };
+  }
+
+  const hasil = validasiBentukJurnal(nilai, {
+    idWajib: true,
+    izinkanSaldoAwal: false,
+  });
+  if (!hasil.ok) return hasil;
+
+  return {
+    ok: true,
+    input: {
+      ...hasil.input,
+      header: { ...hasil.input.header, jenis: 'UMUM' },
+    },
+  };
+}
+
+/**
+ * DB-03: bentuk input untuk `transaksi:posting`, yaitu form terpandu yang
+ * menghasilkan dokumen TERIMA/BAYAR/TRANSFER/HUTANG. Panjar tetap lewat
+ * `panjar:*`, saldo awal lewat wizard, reversal lewat menu Koreksi, dan jurnal
+ * manual lewat `jurnal:posting` (UMUM saja).
+ */
+export function validasiBentukTransaksiInput(
+  nilai: unknown,
+): HasilBentukJurnalInput {
+  const jenisMentah = bacaJenisMentah(nilai);
+  if (
+    !jenisMentah ||
+    !(JENIS_TRANSAKSI_TERPANDU as readonly string[]).includes(jenisMentah)
+  ) {
+    return {
+      ok: false,
+      error: pesanJenisTransaksiTidakDiizinkan(jenisMentah),
+    };
+  }
+
   return validasiBentukJurnal(nilai, {
     idWajib: true,
     izinkanSaldoAwal: false,

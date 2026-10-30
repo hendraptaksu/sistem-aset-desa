@@ -90,6 +90,19 @@ export type OpsiKoreksiApi = {
   konfirmasiPeringatan?: boolean;
 };
 
+/** Opsi simpan jurnal bersama untuk jalur manual dan form terpandu. */
+export type OpsiPostingApi = {
+  konfirmasiPeringatan?: boolean;
+  /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
+  alasanPeringatan?: string;
+  /** AKT-07: backend wajib menolak alasan <5 karakter. */
+  wajibAlasanPeringatan?: boolean;
+  /** AKT-02: semua pintu input UI mengirim true. */
+  wajibSaldoAwal?: boolean;
+  /** Operator memilih "mulai tanpa saldo awal" pada sesi ini. */
+  konfirmasiTanpaSaldoAwal?: boolean;
+};
+
 /** Filter riwayat audit (P0-9). Tanggal YYYY-MM-DD, inklusif. */
 export type AuditFilterApi = {
   aksi?: string;
@@ -246,20 +259,21 @@ export const api = {
   /** Arus Kas metode langsung per periode (P1-9). */
   laporanArusKas: (f: FilterPeriodeApi = {}) =>
     call<ArusKasHasil>('laporan:arus-kas', f),
-  /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
+  /**
+   * DB-03: simpan transaksi dari form terpandu. Hanya menerima jenis
+   * TERIMA/BAYAR/TRANSFER/HUTANG; jurnal manual memakai `jurnalPosting`.
+   */
+  transaksiPosting: (
+    input: JurnalInput,
+    opsi: OpsiPostingApi = {},
+  ) => call<{ jurnal: Jurnal }>('transaksi:posting', input, opsi),
+  /**
+   * DB-03: simpan jurnal manual Jurnal Umum. Backend menolak semua jenis
+   * selain UMUM; dokumen lain harus lewat form/jalur khususnya.
+   */
   jurnalPosting: (
     input: JurnalInput,
-    opsi: {
-      konfirmasiPeringatan?: boolean;
-      /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
-      alasanPeringatan?: string;
-      /** AKT-07: backend wajib menolak alasan <5 karakter. */
-      wajibAlasanPeringatan?: boolean;
-      /** AKT-02: semua pintu input UI mengirim true. */
-      wajibSaldoAwal?: boolean;
-      /** Operator memilih "mulai tanpa saldo awal" pada sesi ini. */
-      konfirmasiTanpaSaldoAwal?: boolean;
-    } = {},
+    opsi: OpsiPostingApi = {},
   ) => call<{ jurnal: Jurnal }>('jurnal:posting', input, opsi),
   jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
     call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),

@@ -36,6 +36,11 @@ transaksi aslinya.
 
 ## 2. Jurnal Umum
 
+Jurnal baru dari layar **Jurnal Umum** selalu berjenis **`UMUM`**. Jenis
+dokumen lain (`TERIMA`, `BAYAR`, `TRANSFER`, `HUTANG`, `PANJAR`, `SALDO_AWAL`,
+`REVERSAL`) dibuat lewat form terpandu, Buku Panjar, Wizard Saldo Awal, atau
+menu Koreksi; aplikasi menolak jenis itu dari jalur Jurnal Umum.
+
 ### Yang diperiksa
 
 - **Tanggal** masuk akal dan tidak berada di masa depan yang tidak seharusnya.

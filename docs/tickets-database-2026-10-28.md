@@ -71,7 +71,7 @@
 | DB-00 | — | S | Baseline review database & peta temuan | — | [x] |
 | DB-01 | P0 | MANUAL | Klarifikasi client: arti hutang + overlap COA + modul | — | [x] |
 | DB-02 | P1 | MANUAL | Klarifikasi lampiran, Jurnal Umum, Import, Anggaran | — | [x] |
-| DB-03 | P0 | M | Pisahkan endpoint posting manual vs form terpandu | — | [ ] |
+| DB-03 | P0 | M | Pisahkan endpoint posting manual vs form terpandu | — | [x] |
 | DB-04 | P0 | S | Unique saldo awal + status saldo awal | — | [ ] |
 | DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [ ] |
 | DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [ ] |
@@ -165,7 +165,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
 
 ## Fase 1 — P0 integritas data
 
-- [ ] **DB-03 — Pisahkan endpoint posting manual vs form terpandu** · P0 · M
+- [x] **DB-03 — Pisahkan endpoint posting manual vs form terpandu** · P0 · M
   - **Konteks:** `TransaksiForm` dan `JurnalUmumEditor` sama-sama memakai
     `jurnal:posting`. Renderer bisa mengirim `jenis=PANJAR/PIUTANG/HUTANG`
     tanpa membuat metadata `panjar`/`jurnal_pihak`. `validasiJurnal()` hanya
@@ -186,6 +186,19 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `tests/ipc-validation.test.ts`.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** —
+  - **Bukti 2026-10-30:** IPC `transaksi:posting` ditambahkan untuk
+    `TransaksiForm` dengan alur simpan/nomor bukti/audit/bentuk respons yang
+    sama. `jurnal:posting` hanya menerima `jenis=UMUM`; PANJAR, PIUTANG, HUTANG,
+    REVERSAL, SALDO_AWAL, TERIMA, BAYAR, dan TRANSFER ditolak di validator
+    server + handler dengan pesan Indonesia yang menyebut jalur benar. Editor
+    Jurnal Umum menampilkan badge statis “Jurnal Umum”, tidak punya pemilih
+    jenis dokumen, dan selalu mengirim UMUM; filter “Filter jenis” di daftar
+    hanya untuk tampilan. `panjar:*` tetap jalur dokumen dan tidak ada
+    `pihak:posting` di kode produksi. Test baru/penyesuaian di
+    `tests/ipc-validation.test.ts`, `tests/ipc-main.test.ts`,
+    `tests/jurnal-form.test.ts`, dan `tests/forms-ui.test.ts`.
+    `npm run typecheck` bersih; `npm test` **703 test/56 file hijau**;
+    `npm run build` berhasil.
 
 - [ ] **DB-04 — Unique saldo awal + status saldo awal** · P0 · S
   - **Konteks:** `statusSaldoAwal()` memakai `COUNT(*) FROM jurnal`; satu jurnal

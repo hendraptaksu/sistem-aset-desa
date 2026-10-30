@@ -72,7 +72,9 @@ function barisEditorKosong(b: BarisEditor): boolean {
  *
  * Multi-baris debit/kredit dengan total live, autocomplete COA, template,
  * duplikat, serta keyboard-friendly (Tab/Enter/Esc). Penyimpanan tetap lewat
- * satu pintu `api.jurnalPosting`; semua aturan bisnis ada di posting layer.
+ * `api.jurnalPosting` (jalur manual) dan selalu UMUM; semua aturan bisnis ada
+ * di posting layer. Dokumen TERIMA/BAYAR/TRANSFER/HUTANG, panjar, saldo awal,
+ * dan koreksi memakai jalurnya masing-masing.
  */
 export function JurnalUmumEditor({
   coa,
@@ -419,6 +421,12 @@ export function JurnalUmumEditor({
       maxWidth="64rem"
     >
       <div className="-mt-1">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Badge tone="stone">Jurnal Umum</Badge>
+          <span className="text-sm text-stone-600">
+            Jalur manual ini hanya menyimpan jurnal UMUM.
+          </span>
+        </div>
         <ErrorBox msg={err} />
       </div>
 

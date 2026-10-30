@@ -21,7 +21,7 @@ import {
   type JurnalInput,
   type PostingContext,
 } from '../src/core/posting.js';
-import { validasiBentukJurnalInput } from '../src/main/validation.js';
+import { validasiBentukJurnalInput, validasiBentukTransaksiInput } from '../src/main/validation.js';
 import { openDb } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
@@ -144,7 +144,7 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
       tanggal: '2026-10-22',
       keterangan: 'Pendapatan parkir',
       no_bukti: 'JU-2026-0001',
-      jenis: 'TERIMA',
+      jenis: 'UMUM',
     },
     baris: [
       { akun_kode: '1001', debit: RP(150_000), kredit: 0 },
@@ -167,7 +167,7 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
       tanggal: '2026-10-22',
       keterangan: 'Pendapatan parkir',
       no_bukti: 'JU-2026-0001',
-      jenis: 'TERIMA',
+      jenis: 'UMUM',
     });
     expect(hasil.input.alasan).toBe('alasan uji');
     expect(hasil.input.header).not.toHaveProperty('grup_id');
@@ -218,6 +218,42 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
     });
     expect(jenisReversal.ok).toBe(false);
     if (!jenisReversal.ok) expect(jenisReversal.error).toMatch(/menu Koreksi/);
+  });
+
+  it('DB-03: manual hanya menerima UMUM; transaksi terpandu memakai validator sendiri', () => {
+    for (const jenis of [
+      'PANJAR',
+      'PIUTANG',
+      'HUTANG',
+      'TERIMA',
+      'BAYAR',
+      'TRANSFER',
+      'SALDO_AWAL',
+    ] as const) {
+      const manual = validasiBentukJurnalInput({
+        ...valid,
+        header: { ...valid.header, jenis },
+      });
+      expect(manual.ok, jenis).toBe(false);
+      if (!manual.ok) expect(manual.error).toMatch(/hanya menerima jenis UMUM/i);
+    }
+
+    for (const jenis of ['TERIMA', 'BAYAR', 'TRANSFER', 'HUTANG'] as const) {
+      const terpandu = validasiBentukTransaksiInput({
+        ...valid,
+        header: { ...valid.header, jenis },
+      });
+      expect(terpandu.ok, jenis).toBe(true);
+      if (terpandu.ok) expect(terpandu.input.header.jenis).toBe(jenis);
+    }
+
+    for (const jenis of ['UMUM', 'PANJAR', 'PIUTANG', 'REVERSAL', 'SALDO_AWAL'] as const) {
+      const terpandu = validasiBentukTransaksiInput({
+        ...valid,
+        header: { ...valid.header, jenis },
+      });
+      expect(terpandu.ok, jenis).toBe(false);
+    }
   });
 });
 

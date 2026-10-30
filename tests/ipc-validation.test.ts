@@ -19,6 +19,7 @@ import {
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukSaldoAwal,
+  validasiBentukTransaksiInput,
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
@@ -349,6 +350,79 @@ describe('P0-4 — kombinasi aturan', () => {
 });
 
 // ---------------------------------------------------------------------------
+// DB-03 — pemisahan validator jalur manual vs form terpandu di IPC.
+// ---------------------------------------------------------------------------
+
+describe('DB-03 — jalur manual hanya UMUM, transaksi terpandu hanya dokumennya', () => {
+  function bentuk(jenis?: JurnalJenis, baris = pasangan()) {
+    return {
+      header: header({
+        ...(jenis ? { jenis } : {}),
+      }),
+      baris,
+    };
+  }
+
+  it('manual menerima UMUM dan header tanpa jenis (dinormalisasi UMUM)', () => {
+    for (const input of [bentuk('UMUM'), bentuk()]) {
+      const hasil = validasiBentukJurnalInput(input);
+      expect(hasil.ok).toBe(true);
+      if (hasil.ok) expect(hasil.input.header.jenis).toBe('UMUM');
+    }
+  });
+
+  it('manual menolak PANJAR/PIUTANG/HUTANG/TERIMA/BAYAR/TRANSFER/SALDO_AWAL/REVERSAL', () => {
+    const ditolak: JurnalJenis[] = [
+      'PANJAR',
+      'PIUTANG',
+      'HUTANG',
+      'TERIMA',
+      'BAYAR',
+      'TRANSFER',
+      'SALDO_AWAL',
+      'REVERSAL',
+    ];
+    for (const jenis of ditolak) {
+      const hasil = validasiBentukJurnalInput(bentuk(jenis));
+      expect(hasil.ok, jenis).toBe(false);
+      if (!hasil.ok) {
+        expect(hasil.error, jenis).toMatch(/hanya menerima jenis UMUM/i);
+        expect(hasil.error, jenis).toContain(jenis);
+      }
+    }
+  });
+
+  it('transaksi terpandu menerima TERIMA/BAYAR/TRANSFER/HUTANG', () => {
+    for (const jenis of ['TERIMA', 'BAYAR', 'TRANSFER', 'HUTANG'] as const) {
+      const hasil = validasiBentukTransaksiInput(bentuk(jenis));
+      expect(hasil.ok, jenis).toBe(true);
+      if (hasil.ok) expect(hasil.input.header.jenis).toBe(jenis);
+    }
+  });
+
+  it('transaksi terpandu menolak UMUM, PANJAR, PIUTANG, SALDO_AWAL, REVERSAL, dan jenis kosong', () => {
+    for (const input of [
+      bentuk('UMUM'),
+      bentuk('PANJAR'),
+      bentuk('PIUTANG'),
+      bentuk('SALDO_AWAL'),
+      bentuk('REVERSAL'),
+      bentuk(),
+    ]) {
+      const hasil = validasiBentukTransaksiInput(input);
+      expect(hasil.ok).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toMatch(/hanya menerima jenis/i);
+    }
+  });
+
+  it('jenis asing tetap mendapat pesan jenis tidak dikenal', () => {
+    const manual = validasiBentukJurnalInput(bentuk('NGARANG' as JurnalJenis));
+    expect(manual.ok).toBe(false);
+    if (!manual.ok) expect(manual.error).toMatch(/Jenis jurnal tidak dikenal/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // P1-12 — validasi tanggal kalender seragam di semua jalur IPC utama.
 // ---------------------------------------------------------------------------
 
@@ -361,7 +435,7 @@ describe('P1-12 — tanggal kalender seragam', () => {
       tanggal: '2026-03-12',
       keterangan: 'Uji tanggal',
       no_bukti: 'JU-2026-9001',
-      jenis: 'TERIMA',
+      jenis: 'UMUM',
     },
     baris: pasangan(),
   };

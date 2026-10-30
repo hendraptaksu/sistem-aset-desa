@@ -86,6 +86,7 @@ import {
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
   validasiBentukSaldoAwal,
+  validasiBentukTransaksiInput,
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
@@ -573,15 +574,21 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // ---- Simpan jurnal dari form terpandu (P1-1) ----
-  // Satu-satunya jalur simpan jurnal baru di luar koreksi. Semua aturan bisnis
-  // tetap di posting layer; handler hanya memeriksa bentuk input dari renderer.
-  daftarkan('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) => {
+  // ---- Simpan jurnal baru: dua pintu terpisah (DB-03) ----
+  // `transaksi:posting` khusus form terpandu (TERIMA/BAYAR/TRANSFER/HUTANG),
+  // sedangkan `jurnal:posting` khusus jurnal manual berjenis UMUM. Keduanya
+  // memakai alur simpan yang sama agar nomor bukti, validasi, audit, dan bentuk
+  // respons tidak berbeda. Semua aturan bisnis tetap di posting layer.
+  const simpanJurnalBaru = (
+    input: unknown,
+    opsi: unknown,
+    validasiBentuk: (nilai: unknown) => ReturnType<typeof validasiBentukJurnalInput>,
+  ): unknown => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
 
-      const bentuk = validasiBentukJurnalInput(input);
+      const bentuk = validasiBentuk(input);
       if (!bentuk.ok) return fail(bentuk.error);
 
       const konfirmasiPeringatan =
@@ -646,7 +653,15 @@ export function registerIpc(deps: IpcDeps): void {
     } catch (e) {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
-  });
+  };
+
+  daftarkan('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) =>
+    simpanJurnalBaru(input, opsi, validasiBentukJurnalInput),
+  );
+
+  daftarkan('transaksi:posting', (_e, input: unknown, opsi: unknown = {}) =>
+    simpanJurnalBaru(input, opsi, validasiBentukTransaksiInput),
+  );
 
   // ---- Wizard Saldo Awal (P1-6) ----
   // Hanya sekali, saat tabel jurnal masih kosong. Renderer mengirim form mentah
@@ -788,8 +803,8 @@ export function registerIpc(deps: IpcDeps): void {
   );
 
   // ---- Utang usaha sederhana (DB-23b) ----
-  // Form Catat/Bayar Utang Usaha memakai `jurnal:posting` dengan jenis HUTANG;
-  // tidak ada lagi IPC master pihak / pemetaan `jurnal_pihak`.
+  // Form Catat/Bayar Utang Usaha memakai `transaksi:posting` dengan jenis
+  // HUTANG; tidak ada lagi IPC master pihak / pemetaan `jurnal_pihak`.
 
   daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
     const k = perluBuka();

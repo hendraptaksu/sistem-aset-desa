@@ -152,6 +152,12 @@ berubah lewat setoran/penarikan modal atau wizard Saldo Awal.
 Menu **Jurnal Umum** dipakai bila transaksi tidak cocok dengan form terpandu,
 atau untuk pemeriksaan. Di sini debit/kredit diisi manual:
 
+> **Jenis jurnal di layar ini selalu `UMUM`.** Transaksi harian (Terima Uang,
+> Bayar, Pindah Dana, Catat/Bayar Utang Usaha) harus lewat tab **Transaksi**;
+> panjar lewat **Buku Panjar**; koreksi lewat tombol **Koreksi**; dan saldo awal
+> lewat **Wizard Saldo Awal**. Aplikasi menolak jenis dokumen lain dari layar
+> Jurnal Umum.
+
 1. Pilih tanggal, isi keterangan dan nomor bukti (opsional; sistem menyarankan
    `JU-...`).
 2. Tambah baris akun, isi debit **atau** kredit. Total debit dan kredit tampil

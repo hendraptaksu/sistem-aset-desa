@@ -3,6 +3,8 @@
 // Semua nominal dalam SEN; jurnal tetap satu pintu lewat posting layer.
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { COA } from '../src/db/coa.js';
@@ -333,16 +335,41 @@ describe('P1-7 — template & duplikat jurnal', () => {
 });
 
 describe('P1-7 — smoke UI Jurnal Umum', () => {
+  const baca = (path: string): string =>
+    readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf-8');
+
   it('menampilkan tombol besar + Jurnal Baru hanya pada mode akuntan', () => {
     const modeAkuntan = renderToStaticMarkup(createElement(JurnalTab));
     expect(modeAkuntan).toContain('+ Jurnal Baru');
     expect(modeAkuntan).toContain('Mode akuntan');
     expect(modeAkuntan).toContain('Jurnal Umum');
+    expect(modeAkuntan).toContain('>Jurnal Umum</span>');
 
     const modeOperator = renderToStaticMarkup(
       createElement(JurnalTab, { modeAkuntan: false }),
     );
     expect(modeOperator).not.toContain('+ Jurnal Baru');
+  });
+
+  it('DB-03: editor menampilkan badge Jurnal Umum tanpa pemilih jenis dokumen', () => {
+    const html = renderToStaticMarkup(
+      createElement(JurnalUmumEditor, {
+        coa: COA,
+        onBatal: () => undefined,
+        onSelesai: () => undefined,
+      }),
+    );
+    expect(html).toContain('>Jurnal Umum</span>');
+    expect(html).toContain('Jalur manual ini hanya menyimpan jurnal UMUM.');
+
+    const editorSrc = baca('src/renderer/components/JurnalUmumEditor.tsx');
+    expect(editorSrc).not.toMatch(/jenis/i);
+    expect(editorSrc).not.toContain('value={jenis}');
+    expect(editorSrc).toContain('api.jurnalPosting');
+
+    const formSrc = baca('src/renderer/components/TransaksiForm.tsx');
+    expect(formSrc).toContain('api.transaksiPosting');
+    expect(formSrc).not.toContain('api.jurnalPosting');
   });
 
   it('merender editor multi-baris dengan autocomplete, template, dan tombol simpan nonaktif', () => {

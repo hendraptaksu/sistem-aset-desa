@@ -191,14 +191,15 @@ const CHANNEL_IPC = [
   'tutup:create',
   'tutup:list',
   'tutup:preview',
+  'transaksi:posting',
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 50 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 51 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(50);
+    expect(env.handlers.size).toBe(51);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(50);
+    expect(CHANNEL_IPC).toHaveLength(51);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -603,7 +604,7 @@ describe('P2-7 — alur create → reverse → tutup → backup → restore', ()
 
     // 3. Tutup buku tahun lalu (2025): preview + create + audit.
     const posting2025 = await env.panggil(
-      'jurnal:posting',
+      'transaksi:posting',
       {
         header: {
           id: 'j-pendapatan-2025',
@@ -907,12 +908,12 @@ describe('AKT-02 — IPC utang usaha/panjar ikut mewajibkan saldo awal pertama',
       baris: [D('5003', 500_000), K('2060', 500_000)],
     };
 
-    const ditolak = await env.panggil('jurnal:posting', req);
+    const ditolak = await env.panggil('transaksi:posting', req);
     expect(ditolak.ok).toBe(false);
     expect(ditolak.error).toMatch(/Belum ada saldo awal/);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
 
-    const lanjut = await env.panggil('jurnal:posting', req, {
+    const lanjut = await env.panggil('transaksi:posting', req, {
       konfirmasiTanpaSaldoAwal: true,
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
@@ -944,7 +945,170 @@ describe('AKT-02 — IPC utang usaha/panjar ikut mewajibkan saldo awal pertama',
   });
 });
 
-describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan', () => {
+describe('DB-03 — jurnal:posting manual hanya UMUM, transaksi:posting untuk form terpandu', () => {
+  it('menolak semua jenis dokumen di jalur manual tanpa menulis jurnal/audit', async () => {
+    const env = buatEnv();
+    const ditolak = [
+      'PANJAR',
+      'PIUTANG',
+      'HUTANG',
+      'REVERSAL',
+      'SALDO_AWAL',
+      'TERIMA',
+      'BAYAR',
+      'TRANSFER',
+    ] as const;
+
+    for (const jenis of ditolak) {
+      const hasil = await env.panggil(
+        'jurnal:posting',
+        {
+          header: {
+            id: `j-db03-tolak-${jenis}`,
+            tanggal: '2026-01-02',
+            keterangan: `Jenis ${jenis} tidak boleh lewat Jurnal Umum`,
+            jenis,
+          },
+          baris: [D('1001', 100_000), K('4005', 100_000)],
+        },
+        { konfirmasiTanpaSaldoAwal: true },
+      );
+      expect(hasil.ok, jenis).toBe(false);
+      expect(hasil.error, jenis).toMatch(/hanya menerima jenis UMUM/i);
+      expect(hasil.error, jenis).toContain(jenis);
+      expect((await env.panggil('jurnal:list', {})).data, jenis).toEqual([]);
+      expect((await env.panggil('audit:list', {})).data.rows, jenis).toEqual([]);
+    }
+
+    // Jalur manual tetap menerima UMUM dengan alur lama.
+    const manual = await env.panggil(
+      'jurnal:posting',
+      {
+        header: {
+          id: 'j-db03-umum',
+          tanggal: '2026-01-02',
+          keterangan: 'Jurnal manual UMUM',
+          jenis: 'UMUM',
+        },
+        baris: [D('1001', 100_000), K('4005', 100_000)],
+      },
+      { konfirmasiTanpaSaldoAwal: true },
+    );
+    expect(manual.ok, manual.error).toBe(true);
+    expect(manual.data.jurnal).toMatchObject({
+      id: 'j-db03-umum',
+      jenis: 'UMUM',
+      no_bukti: 'JU-2026-0001',
+    });
+  });
+
+  it('menyimpan Terima/Bayar/Transfer lewat transaksi:posting dengan nomor bukti + audit', async () => {
+    const env = buatEnv();
+
+    const terima = await env.panggil(
+      'transaksi:posting',
+      {
+        header: {
+          id: 'j-db03-terima',
+          tanggal: '2026-01-02',
+          keterangan: 'Pendapatan parkir DB-03',
+          jenis: 'TERIMA',
+        },
+        baris: [D('1001', 100_000), K('4005', 100_000)],
+      },
+      { konfirmasiTanpaSaldoAwal: true },
+    );
+    expect(terima.ok, terima.error).toBe(true);
+    expect(terima.data.jurnal).toMatchObject({
+      id: 'j-db03-terima',
+      jenis: 'TERIMA',
+      no_bukti: 'JU-2026-0001',
+    });
+
+    const bayar = await env.panggil('transaksi:posting', {
+      header: {
+        id: 'j-db03-bayar',
+        tanggal: '2026-01-03',
+        keterangan: 'Bayar listrik DB-03',
+        jenis: 'BAYAR',
+      },
+      baris: [D('5010', 40_000), K('1001', 40_000)],
+    });
+    expect(bayar.ok, bayar.error).toBe(true);
+    expect(bayar.data.jurnal).toMatchObject({
+      id: 'j-db03-bayar',
+      jenis: 'BAYAR',
+      no_bukti: 'JU-2026-0002',
+    });
+
+    const pindah = await env.panggil('transaksi:posting', {
+      header: {
+        id: 'j-db03-pindah',
+        tanggal: '2026-01-04',
+        keterangan: 'Pindah kas DB-03',
+        jenis: 'TRANSFER',
+      },
+      baris: [D('1029', 25_000), K('1001', 25_000)],
+    });
+    expect(pindah.ok, pindah.error).toBe(true);
+    expect(pindah.data.jurnal).toMatchObject({
+      id: 'j-db03-pindah',
+      jenis: 'TRANSFER',
+      no_bukti: 'JU-2026-0003',
+    });
+
+    const daftar = await env.panggil('jurnal:list', {});
+    expect(daftar.ok, daftar.error).toBe(true);
+    expect(daftar.data.map((j: { id: string }) => j.id)).toEqual([
+      'j-db03-terima',
+      'j-db03-bayar',
+      'j-db03-pindah',
+    ]);
+    for (const jurnal of daftar.data as {
+      id: string;
+      total_debit: number;
+      baris: { debit: number; kredit: number }[];
+    }[]) {
+      const debit = jurnal.baris.reduce((s, b) => s + b.debit, 0);
+      const kredit = jurnal.baris.reduce((s, b) => s + b.kredit, 0);
+      expect(debit, jurnal.id).toBe(jurnal.total_debit);
+      expect(kredit, jurnal.id).toBe(debit);
+      expect(debit, jurnal.id).toBeGreaterThan(0);
+    }
+
+    const audit = await env.panggil('audit:list', {});
+    expect(audit.ok, audit.error).toBe(true);
+    const aksi = (audit.data.rows as { aksi: string }[]).map((a) => a.aksi);
+    for (const id of ['j-db03-terima', 'j-db03-bayar', 'j-db03-pindah']) {
+      expect(aksi).toContain(`CREATE ${id}`);
+    }
+  });
+
+  it('menolak UMUM/PANJAR/PIUTANG di transaksi:posting tanpa menulis apa pun', async () => {
+    const env = buatEnv();
+    for (const jenis of ['UMUM', 'PANJAR', 'PIUTANG'] as const) {
+      const hasil = await env.panggil(
+        'transaksi:posting',
+        {
+          header: {
+            id: `j-db03-salah-jalur-${jenis}`,
+            tanggal: '2026-01-02',
+            keterangan: 'Jenis tidak sesuai jalur',
+            jenis,
+          },
+          baris: [D('1001', 100_000), K('4005', 100_000)],
+        },
+        { konfirmasiTanpaSaldoAwal: true },
+      );
+      expect(hasil.ok, jenis).toBe(false);
+      expect(hasil.error, jenis).toMatch(/hanya menerima jenis/i);
+    }
+    expect((await env.panggil('jurnal:list', {})).data).toEqual([]);
+    expect((await env.panggil('audit:list', {})).data.rows).toEqual([]);
+  });
+});
+
+describe('AKT-06 — transaksi:posting mewajibkan alasan saat konfirmasi peringatan', () => {
   it('menolak tanpa alasan, menerima dengan alasan, dan audit memuat override', async () => {
     const env = buatEnv();
 
@@ -969,7 +1133,7 @@ describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan
       baris: [D('5000', 150_000), K('1001', 150_000)],
     };
 
-    const tanpa = await env.panggil('jurnal:posting', bayar, {
+    const tanpa = await env.panggil('transaksi:posting', bayar, {
       konfirmasiPeringatan: true,
     });
     expect(tanpa.ok).toBe(false);
@@ -977,7 +1141,7 @@ describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan
     expect(tanpa.perluKonfirmasi).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
 
-    const pendek = await env.panggil('jurnal:posting', bayar, {
+    const pendek = await env.panggil('transaksi:posting', bayar, {
       konfirmasiPeringatan: true,
       alasanPeringatan: 'ok',
     });
@@ -986,7 +1150,7 @@ describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan
     expect(pendek.perluKonfirmasi).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
 
-    const tersimpan = await env.panggil('jurnal:posting', bayar, {
+    const tersimpan = await env.panggil('transaksi:posting', bayar, {
       konfirmasiPeringatan: true,
       alasanPeringatan: 'Kas minus disetujui pemilik',
     });
@@ -1080,7 +1244,7 @@ describe('DB-23b — IPC mencatat utang usaha 2060 tanpa master pihak', () => {
       ).ok,
     ).toBe(true);
 
-    const catat = await env.panggil('jurnal:posting', {
+    const catat = await env.panggil('transaksi:posting', {
       header: {
         id: 'j-utang-catat',
         tanggal: '2026-01-02',
@@ -1093,7 +1257,7 @@ describe('DB-23b — IPC mencatat utang usaha 2060 tanpa master pihak', () => {
     expect(catat.data.jurnal.jenis).toBe('HUTANG');
     expect(catat.data.jurnal.keterangan).toContain('Toko Bangunan Jaya');
 
-    const bayar = await env.panggil('jurnal:posting', {
+    const bayar = await env.panggil('transaksi:posting', {
       header: {
         id: 'j-utang-bayar',
         tanggal: '2026-01-03',
@@ -1104,14 +1268,14 @@ describe('DB-23b — IPC mencatat utang usaha 2060 tanpa master pihak', () => {
     });
     expect(bayar.ok, bayar.error).toBe(true);
 
-    // Pinjaman 2050 lama tetap bisa dikoreksi lewat Jurnal Umum; tidak ada
-    // master pihak baru, jadi tidak ada respons `alur`/`akunPihak`.
+    // Pinjaman 2050 lama tetap bisa dikoreksi lewat Jurnal Umum (UMUM); tidak
+    // ada master pihak baru, jadi tidak ada respons `alur`/`akunPihak`.
     const pinjam = await env.panggil('jurnal:posting', {
       header: {
         id: 'j-pinjam-2050',
         tanggal: '2026-01-04',
         keterangan: 'Terima pinjaman lama — Koperasi Desa',
-        jenis: 'HUTANG',
+        jenis: 'UMUM',
       },
       baris: [D('1001', 500_000), K('2050', 500_000)],
     });
