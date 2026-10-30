@@ -50,10 +50,10 @@ transaksi aslinya.
     kredit saat pertanggungjawaban;
   - pinjaman/utang → `2050` (pinjaman) atau `2060` (utang usaha) sesuai arah,
     bukan akun beban.
-  - form terpandu **Bayar** hanya menawarkan akun **BEBAN**; pembayaran panjar,
-    pembayaran pinjaman, atau pembayaran utang usaha harus lewat menu **Buku
-    Panjar** atau **Hutang**. Jurnal Umum tetap boleh memakai
-    `1040`/`2050`/`2060` untuk koreksi akuntan.
+  - form terpandu **Bayar** hanya menawarkan akun **BEBAN**; pembayaran panjar
+    lewat menu **Buku Panjar**, sedangkan pencatatan/pembayaran utang usaha lewat
+    kartu **Catat Utang** dan **Bayar Utang** di tab Transaksi. Jurnal Umum
+    tetap boleh memakai `1040`/`2050`/`2060` untuk koreksi akuntan.
   - `1050 PIUTANG LAIN LAIN` hanya untuk **data lama**. Alur input piutang sudah
     dihapus; jangan membuat jurnal 1050 baru. Koreksi saldo lama hanya lewat
     Jurnal Umum akuntan pendamping.
@@ -89,12 +89,12 @@ Akun yang paling sering diperiksa:
 - `1001 KAS`, akun LPD (1010–1036), dan `1029 BANK BPD UBUD`.
 - `1040 UANG PANJAR` — harus nol bila semua panjar sudah ditutup.
 - `2050 HUTANG LAIN-LAIN` (pinjaman/legacy) dan `2060 HUTANG USAHA` — cocokkan
-  dengan saldo per pihak di menu **Hutang**. Pembayaran `2060` masuk Arus Kas
-  Operasi; `2050` tetap Pendanaan. Saldo utang usaha lama yang masih di `2050`
-  juga tetap Pendanaan sampai direklasifikasi lewat jurnal yang diaudit.
+  dengan Buku Besar dan Neraca. Nama kreditur ada di keterangan jurnal, bukan di
+  daftar pihak. Pembayaran `2060` masuk Arus Kas Operasi; `2050` tetap
+  Pendanaan. Saldo utang usaha lama yang masih di `2050` juga tetap Pendanaan
+  sampai direklasifikasi lewat jurnal yang diaudit.
 - `1050 PIUTANG LAIN-LAIN` hanya dibaca untuk data lama; tidak ada lagi form
-  input piutang. Saldo 1050 lama tetap muncul di Buku Besar/Neraca/Arus Kas dan
-  baris rekonsiliasi `Aset lain lama (1050)` di menu **Hutang**.
+  input piutang. Saldo 1050 lama tetap muncul di Buku Besar/Neraca/Arus Kas.
 - `3000 MODAL` — hanya berubah karena setoran/penarikan modal atau Saldo Awal.
 - `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun **legacy** yang hanya
   ditampilkan untuk membaca data lama. Keduanya **tidak dapat diposting** lewat
@@ -232,12 +232,11 @@ Aturan penting:
 - Koreksi di periode yang sudah ditutup wajib alasan dan tercatat di audit.
 - Koreksi setelah tutup buku tidak boleh membuat Neraca selisih.
 
-**Peringatan dan alasan.** Peringatan seperti kas/bank akan minus, saldo pihak
-akan minus, atau realisasi panjar melebihi panjar tidak memblokir penyimpanan,
-tetapi wajib dikonfirmasi. Di form Transaksi, Jurnal Umum, Saldo Awal, Hutang,
-dan Panjar, konfirmasi baru bisa dilanjutkan setelah **alasan minimal 5
-karakter** diisi; alasan tercatat di Riwayat Audit. Alasan koreksi jurnal juga
-wajib minimal 5 karakter.
+**Peringatan dan alasan.** Peringatan seperti kas/bank akan minus atau realisasi
+panjar melebihi panjar tidak memblokir penyimpanan, tetapi wajib dikonfirmasi.
+Di form Transaksi, Jurnal Umum, Saldo Awal, dan Panjar, konfirmasi baru bisa
+dilanjutkan setelah **alasan minimal 5 karakter** diisi; alasan tercatat di
+Riwayat Audit. Alasan koreksi jurnal juga wajib minimal 5 karakter.
 
 ---
 

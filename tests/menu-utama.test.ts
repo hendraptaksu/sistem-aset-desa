@@ -70,8 +70,7 @@ describe('DB-32 — Inventaris Aset dihapus dari menu/UI', () => {
     for (const label of [
       'Dashboard',
       'Transaksi',
-      'Panjar',
-      'Hutang',
+      'Buku Panjar',
       'Buku Besar',
       'Neraca Saldo',
       'Laba Rugi',
@@ -211,5 +210,61 @@ describe('DB-25 — Import Excel dihapus dari menu/UI', () => {
 
   it('label audit lama IMPORT-EXCEL tetap tersedia', () => {
     expect(AUDIT_DETAIL).toContain("a.startsWith('IMPORT')");
+  });
+});
+
+describe('DB-23b — master Pihak + jurnal_pihak dihapus dari UI/API', () => {
+  const TRANSAKSI_TAB = baca('src/renderer/components/TransaksiTab.tsx');
+  const TRANSAKSI_FORM = baca('src/renderer/components/TransaksiForm.tsx');
+  const DASHBOARD = baca('src/renderer/components/DashboardTab.tsx');
+  const REPOSITORY = baca('src/db/repository.ts');
+  const REVERSAL = baca('src/db/reversal.ts');
+  const PENGGUNA = baca('docs/panduan-pengguna.md');
+
+  it('tidak lagi punya tab, menu, render, atau komponen Pihak/Hutang', () => {
+    expect(APP).not.toContain('PihakTab');
+    expect(APP).not.toContain("'pihak'");
+    expect(APP).not.toContain('HandCoins');
+    expect(existsSync(join(ROOT, 'src/renderer/components/PihakTab.tsx'))).toBe(false);
+    expect(existsSync(join(ROOT, 'src/core/pihak.ts'))).toBe(false);
+    expect(existsSync(join(ROOT, 'src/db/pihak.ts'))).toBe(false);
+    expect(existsSync(join(ROOT, 'tests/pihak.test.ts'))).toBe(false);
+  });
+
+  it('tidak mengekspos API/validator/IPC pihak:* atau pemetaan jurnal_pihak', () => {
+    expect(API).not.toMatch(/pihak/i);
+    expect(VALIDATION).not.toMatch(/pihak/i);
+    expect(IPC).not.toMatch(/pihak:/i);
+    expect(IPC).not.toContain('GAGAL_PIHAK');
+    expect(IPC).not.toContain('peringatanPihakTanpaMapping');
+    expect(REPOSITORY).not.toContain('jurnal_pihak');
+    expect(REVERSAL).not.toContain('salinMappingPihak');
+    expect(REVERSAL).not.toContain('jurnal_pihak');
+  });
+
+  it('form utang usaha sederhana tersedia di tab Transaksi dan Dashboard', () => {
+    for (const label of ['Catat Utang', 'Bayar Utang']) {
+      expect(TRANSAKSI_TAB, `kartu ${label}`).toContain(label);
+      expect(DASHBOARD, `pintasan ${label}`).toContain(label);
+    }
+    expect(TRANSAKSI_FORM).toContain('Catat Utang Usaha');
+    expect(TRANSAKSI_FORM).toContain('Bayar Utang Usaha');
+    expect(TRANSAKSI_FORM).toContain('Utang Usaha (2060)');
+    expect(TRANSAKSI_FORM).not.toContain('Pihak (wajib)');
+    expect(APP).not.toContain('Buka Hutang');
+  });
+
+  it('dokumen pengguna tidak lagi menawarkan master Pihak, tetapi menjelaskan form utang', () => {
+    expect(PENGGUNA).not.toMatch(/master pihak/i);
+    expect(PENGGUNA).toContain('Catat Utang Usaha');
+    expect(PENGGUNA).toContain('Bayar Utang Usaha');
+    expect(PENGGUNA).toContain('2060');
+    expect(PENGGUNA).toMatch(/nama kreditur|kreditur/i);
+  });
+
+  it('label audit lama PIHAK-* tetap tersedia untuk riwayat', () => {
+    expect(AUDIT_DETAIL).toContain("a.startsWith('PIHAK-CREATE')");
+    expect(AUDIT_DETAIL).toContain("a.startsWith('PIHAK-UPDATE')");
+    expect(AUDIT_DETAIL).toContain("a.startsWith('PIHAK-DELETE')");
   });
 });

@@ -233,8 +233,8 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
           input = buatJurnalBayar({
             ...dasar,
             akunKas: pick(rnd, ['1001', '1029']),
-            // Form Bayar terpandu hanya menerima akun BEBAN; 2050 lewat menu
-            // Piutang & Hutang dan diuji di tests/pihak.test.ts.
+            // Form Bayar terpandu hanya menerima akun BEBAN; utang usaha
+            // memakai form Catat/Bayar Utang (tests/utang-usaha.test.ts).
             akunLawan: pick(rnd, beban),
           });
         } else if (operasi === 2) {

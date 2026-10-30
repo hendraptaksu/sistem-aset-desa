@@ -194,8 +194,8 @@ export function buatJurnalBayar(form: FormBayar): JurnalInput {
   if (lawanData.kode === AKUN_PIUTANG)
     throw new Error(
       `Akun lawan Bayar ${lawanData.kode} — ${lawanData.nama} adalah aset lain lama; ` +
-        'alur piutang sudah dihapus. Gunakan menu Hutang untuk pinjaman/utang, ' +
-        'atau Jurnal Umum hanya untuk koreksi data lama.',
+        'alur piutang sudah dihapus. Gunakan kartu Catat Utang / Bayar Utang ' +
+        'untuk utang usaha, atau Jurnal Umum hanya untuk koreksi data lama.',
     );
   if (
     lawanData.kode === AKUN_PANJAR ||
@@ -204,7 +204,7 @@ export function buatJurnalBayar(form: FormBayar): JurnalInput {
   )
     throw new Error(
       `Akun lawan Bayar ${lawanData.kode} — ${lawanData.nama} tidak bisa dipakai di form Bayar terpandu. ` +
-        'Untuk panjar gunakan menu Buku Panjar; untuk pinjaman/utang gunakan menu Hutang.',
+        'Untuk panjar gunakan menu Buku Panjar; untuk pinjaman/utang gunakan kartu Catat Utang / Bayar Utang.',
     );
   if (lawanData.tipe !== 'BEBAN')
     throw new Error(
@@ -237,87 +237,29 @@ export function buatJurnalPanjarSerah(form: FormPanjarSerah): JurnalInput {
 }
 
 // ---------------------------------------------------------------------------
-// Form Hutang + pihak (P1-5 / DB-23a)
+// Form utang usaha sederhana (DB-23b)
 // ---------------------------------------------------------------------------
-// Empat alur baku (AKT-20): pinjaman memakai 2050, utang usaha memakai 2060.
-// Alur piutang 1050 sudah dihapus; akun 1050 hanya dipertahankan untuk data
-// lama dan laporan. Semua builder mengembalikan `{ input, pihakId }`; adapter
-// DB yang menyimpan penghubung jurnal → pihak.
+// Master pihak + `jurnal_pihak` sudah dihapus dari UI/API. Utang usaha non-LPD
+// cukup memakai nama kreditur di keterangan. Pinjaman LPD akan memakai modul
+// LPD tersendiri (DB-16); akun 2050 lama tetap terbaca di laporan.
 
-export type DasarFormPihak = DasarFormJurnal & {
-  /** Pihak (orang/lembaga) penerima pinjaman / pemberi pinjaman. WAJIB. */
-  pihakId: string;
-};
-
-/** 1. Terima pinjaman: D kas / K 2050 (pinjaman/legacy). */
-export type FormTerimaPinjaman = DasarFormPihak & {
-  akunKas: string;
-};
-
-/** 2. Bayar pinjaman: D 2050 / K kas. Alias lama `FormBayarHutang` dipertahankan. */
-export type FormBayarHutang = DasarFormPihak & {
-  akunKas: string;
-};
-
-export type FormBayarPinjaman = FormBayarHutang;
-
-/** 3. Beli/perbaikan barang secara kredit: D BEBAN / K 2060. */
-export type FormBeliKredit = DasarFormPihak & {
+/** Catat utang usaha: **D akun BEBAN / K 2060 HUTANG USAHA**. */
+export type FormCatatUtangUsaha = DasarFormJurnal & {
   /** Akun BEBAN, mis. 5003 BAGA WEWANGUNAN. */
   akunBeban: string;
 };
 
-/** 4. Bayar utang usaha: D 2060 / K kas. */
-export type FormBayarUtangUsaha = DasarFormPihak & {
+/** Bayar utang usaha: **D 2060 HUTANG USAHA / K kas**. */
+export type FormBayarUtangUsaha = DasarFormJurnal & {
   akunKas: string;
 };
 
-export type HasilJurnalPihak = {
-  input: JurnalInput;
-  pihakId: string;
-};
-
-function wajibPihak(pihakId: string): string {
-  const nilai = String(pihakId ?? '').trim();
-  if (!nilai) throw new Error('Pihak wajib dipilih untuk transaksi hutang/pinjaman.');
-  if (nilai.length > 200) throw new Error('ID pihak tidak valid.');
-  return nilai;
-}
-
-function hasilPihak(
-  dasar: DasarFormPihak,
-  jenis: JurnalJenis,
-  baris: JurnalBarisInput[],
-): HasilJurnalPihak {
-  return { input: susun(dasar, jenis, baris), pihakId: wajibPihak(dasar.pihakId) };
-}
-
-/** 1. Terima pinjaman dari pihak: **D kas / K 2050 HUTANG LAIN-LAIN**. */
-export function buatJurnalTerimaPinjaman(form: FormTerimaPinjaman): HasilJurnalPihak {
-  const nominal = wajibNominal(form.nominal);
-  const kas = akunKas(form.akunKas, 'Akun kas penerima', form.daftarAkun);
-  return hasilPihak(form, 'HUTANG', [
-    debit(kas, nominal),
-    kredit(AKUN_HUTANG, nominal),
-  ]);
-}
-
-/** 2. Bayar pinjaman kepada pihak: **D 2050 HUTANG LAIN-LAIN / K kas**. */
-export function buatJurnalBayarHutang(form: FormBayarHutang): HasilJurnalPihak {
-  const nominal = wajibNominal(form.nominal);
-  const kas = akunKas(form.akunKas, 'Akun kas sumber', form.daftarAkun);
-  return hasilPihak(form, 'HUTANG', [
-    debit(AKUN_HUTANG, nominal),
-    kredit(kas, nominal),
-  ]);
-}
-
 /**
- * 3. Beli/perbaikan barang secara kredit (kasus feedback): **D BEBAN / K 2060**.
+ * Catat pembelian/perbaikan yang dibayar belakangan: **D BEBAN / K 2060**.
  * Beban masuk Laba Rugi, utang usaha masuk Neraca, modal (3000) TIDAK berubah.
- * Pembayaran berikutnya memakai alur Bayar Utang Usaha agar arus kas OPERASI.
+ * Nama kreditur ditulis bebas di `keterangan`; tidak ada master pihak.
  */
-export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
+export function buatJurnalCatatUtangUsaha(form: FormCatatUtangUsaha): JurnalInput {
   const nominal = wajibNominal(form.nominal);
   const beban = akunCoa(form.akunBeban, 'Akun beban', form.daftarAkun);
   if (isAkunKas(beban.kode) || beban.kode === AKUN_PANJAR)
@@ -329,24 +271,27 @@ export function buatJurnalBeliKredit(form: FormBeliKredit): HasilJurnalPihak {
     beban.kode === AKUN_HUTANG ||
     beban.kode === AKUN_HUTANG_USAHA
   )
-    throw new Error(`Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban untuk pembelian kredit.`);
+    throw new Error(
+      `Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban untuk mencatat utang usaha.`,
+    );
   if (beban.tipe !== 'BEBAN')
     throw new Error(
-      `Akun ${beban.kode} — ${beban.nama} bukan akun BEBAN. Pembelian/perbaikan kredit harus memakai akun BEBAN.`,
+      `Akun ${beban.kode} — ${beban.nama} bukan akun BEBAN. Catat utang usaha harus memakai akun BEBAN.`,
     );
-  return hasilPihak(form, 'HUTANG', [
+  return susun(form, 'HUTANG', [
     debit(beban.kode, nominal),
     kredit(AKUN_HUTANG_USAHA, nominal),
   ]);
 }
 
-/** 4. Bayar utang usaha kepada pihak: **D 2060 HUTANG USAHA / K kas**. */
-export function buatJurnalBayarUtangUsaha(
-  form: FormBayarUtangUsaha,
-): HasilJurnalPihak {
+/**
+ * Bayar utang usaha: **D 2060 HUTANG USAHA / K kas**.
+ * Pembayaran ini masuk kelompok Operasi di laporan Arus Kas.
+ */
+export function buatJurnalBayarUtangUsaha(form: FormBayarUtangUsaha): JurnalInput {
   const nominal = wajibNominal(form.nominal);
   const kas = akunKas(form.akunKas, 'Akun kas sumber', form.daftarAkun);
-  return hasilPihak(form, 'HUTANG', [
+  return susun(form, 'HUTANG', [
     debit(AKUN_HUTANG_USAHA, nominal),
     kredit(kas, nominal),
   ]);

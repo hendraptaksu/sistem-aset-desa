@@ -191,14 +191,6 @@ const CHANNEL_IPC = [
   'panjar:list',
   'pengaturan:get',
   'pengaturan:simpan',
-  'pihak:create',
-  'pihak:delete',
-  'pihak:jurnal',
-  'pihak:list',
-  'pihak:posting',
-  'pihak:rekon',
-  'pihak:saldo',
-  'pihak:update',
   'saldo-awal:posting',
   'saldo-awal:status',
   'saldo:list',
@@ -208,11 +200,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 63 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 55 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(63);
+    expect(env.handlers.size).toBe(55);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(63);
+    expect(CHANNEL_IPC).toHaveLength(55);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -232,6 +224,13 @@ describe('P2-7 — registrasi handler IPC', () => {
     const kanal = [...env.handlers.keys()];
     expect(kanal.filter((k) => k.startsWith('anggaran:'))).toEqual([]);
     expect(kanal).not.toContain('laporan:anggaran');
+  });
+
+  it('DB-23b: channel pihak:* sudah tidak terdaftar', () => {
+    const env = buatEnv();
+    expect([...env.handlers.keys()].filter((kanal) => kanal.startsWith('pihak:'))).toEqual(
+      [],
+    );
   });
 });
 
@@ -299,14 +298,15 @@ describe('Daftar Akun — tambah akun lewat IPC', () => {
   });
 });
 
-describe('AUD-09 — peringatan jurnal 1050 lama/2050 tanpa pihak', () => {
-  it('posting 1050 lama minta konfirmasi (bukan error), lalu tetap terbaca di rekon', async () => {
+describe('DB-23a/DB-23b — akun 1050 data lama tetap butuh konfirmasi', () => {
+  it('posting 1050 lama minta konfirmasi (bukan error) dan tetap terbaca', async () => {
     const env = buatEnv();
     const input = {
       header: {
-        id: 'j-piutang-tanpa-pihak',
+        id: 'j-piutang-lama',
         tanggal: '2026-02-01',
-        keterangan: 'Piutang lama tanpa pihak',
+        keterangan: 'Piutang lama (koreksi data)',
+        jenis: 'UMUM',
       },
       baris: [D('1050', 100_000), K('3000', 100_000)],
     };
@@ -321,35 +321,18 @@ describe('AUD-09 — peringatan jurnal 1050 lama/2050 tanpa pihak', () => {
 
     const lanjut = await env.panggil('jurnal:posting', input, {
       konfirmasiPeringatan: true,
+      alasanPeringatan: 'Koreksi saldo piutang lama',
       konfirmasiTanpaSaldoAwal: true,
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
+    const daftar = await env.panggil('jurnal:list', {});
+    expect(daftar.ok, daftar.error).toBe(true);
+    expect(daftar.data).toHaveLength(1);
+    expect(daftar.data[0]).toMatchObject({ id: 'j-piutang-lama' });
 
-    const rekon = await env.panggil('pihak:rekon');
-    expect(rekon.ok, rekon.error).toBe(true);
-    expect(rekon.data).toMatchObject({
-      piutangAkun: 100_000,
-      piutangTeralokasi: 0,
-      piutangBelum: 100_000,
-    });
-    expect(rekon.data.jurnalBelum).toHaveLength(1);
-    expect(rekon.data.jurnalBelum[0]).toMatchObject({
-      jurnal_id: 'j-piutang-tanpa-pihak',
-      akun_kode: '1050',
-      nominal: 100_000,
-    });
-
-    // Cutoff opsional tetap divalidasi sebagai tanggal kalender.
-    const salah = await env.panggil('pihak:rekon', '2026-02-31');
-    expect(salah.ok).toBe(false);
-    expect(salah.error).toMatch(/tanggal/i);
-
-    const cutoff = await env.panggil('pihak:rekon', '2025-12-31');
-    expect(cutoff.ok, cutoff.error).toBe(true);
-    expect(cutoff.data).toMatchObject({
-      piutangAkun: 0,
-      piutangBelum: 0,
-    });
+    const bb = await env.panggil('laporan:buku-besar', { akun_kode: '1050' });
+    expect(bb.ok, bb.error).toBe(true);
+    expect(bb.data.saldoAkhir).toBe(100_000);
   });
 });
 
@@ -938,31 +921,25 @@ describe('AKT-01 — jurnal:posting mewajibkan saldo awal pertama', () => {
   });
 });
 
-describe('AKT-02 — IPC pihak/panjar ikut mewajibkan saldo awal pertama', () => {
-  it('pihak:posting menolak jurnal pertama lalu menerima flag mulai tanpa', async () => {
+describe('AKT-02 — IPC utang usaha/panjar ikut mewajibkan saldo awal pertama', () => {
+  it('form utang usaha menolak jurnal pertama lalu menerima flag mulai tanpa', async () => {
     const env = buatEnv();
-    const pihak = await env.panggil('pihak:create', { nama: 'Banjar Uji AKT-02' });
-    expect(pihak.ok, pihak.error).toBe(true);
-
     const req = {
-      pihakId: pihak.data.id,
-      input: {
-        header: {
-          id: 'j-pihak-akt02',
-          tanggal: '2026-02-01',
-          keterangan: 'Terima pinjaman dari pihak',
-          jenis: 'HUTANG',
-        },
-        baris: [D('1001', 500_000), K('2050', 500_000)],
+      header: {
+        id: 'j-utang-akt02',
+        tanggal: '2026-02-01',
+        keterangan: 'Catat utang usaha ke Toko Uji AKT-02',
+        jenis: 'HUTANG',
       },
+      baris: [D('5003', 500_000), K('2060', 500_000)],
     };
 
-    const ditolak = await env.panggil('pihak:posting', req);
+    const ditolak = await env.panggil('jurnal:posting', req);
     expect(ditolak.ok).toBe(false);
     expect(ditolak.error).toMatch(/Belum ada saldo awal/);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(0);
 
-    const lanjut = await env.panggil('pihak:posting', req, {
+    const lanjut = await env.panggil('jurnal:posting', req, {
       konfirmasiTanpaSaldoAwal: true,
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
@@ -1058,82 +1035,7 @@ describe('AKT-06 — jurnal:posting mewajibkan alasan saat konfirmasi peringatan
   });
 });
 
-describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
-  it('menolak tanpa alasan, menerima dengan alasan, dan audit memuat nominal', async () => {
-    const env = buatEnv();
-    expect(
-      (
-        await env.panggil(
-          'saldo-awal:posting',
-          {
-            tanggal: '2026-01-01',
-            keterangan: 'Saldo awal AKT-08',
-            saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
-          },
-          {},
-        )
-      ).ok,
-    ).toBe(true);
-
-    const pihak = await env.panggil('pihak:create', { nama: 'Pihak AKT-08' });
-    expect(pihak.ok, pihak.error).toBe(true);
-    const pihakId = pihak.data.id as string;
-
-    const pinjam = await env.panggil('pihak:posting', {
-      pihakId,
-      input: {
-        header: {
-          id: 'j-akt08-pinjam',
-          tanggal: '2026-01-02',
-          keterangan: 'Terima pinjaman AKT-08',
-          jenis: 'HUTANG',
-        },
-        baris: [D('1001', 400_000), K('2050', 400_000)],
-      },
-    });
-    expect(pinjam.ok, pinjam.error).toBe(true);
-
-    const lunas = {
-      pihakId,
-      input: {
-        header: {
-          id: 'j-akt08-lunas',
-          tanggal: '2026-01-03',
-          keterangan: 'Pembayaran melebihi saldo AKT-08',
-          jenis: 'HUTANG',
-        },
-        baris: [D('2050', 600_000), K('1001', 600_000)],
-      },
-    };
-
-    const tanpa = await env.panggil('pihak:posting', lunas, {
-      konfirmasiSaldo: true,
-    });
-    expect(tanpa.ok).toBe(false);
-    expect(tanpa.error).toMatch(/melebihi saldo pinjaman/i);
-    expect(tanpa.error).toMatch(/alasan minimal 5 karakter/i);
-    expect(tanpa.perluKonfirmasi).toBe(true);
-    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
-
-    const alasan = 'Overbalance disetujui pemilik';
-    const lanjut = await env.panggil('pihak:posting', lunas, {
-      konfirmasiSaldo: true,
-      alasanSaldo: alasan,
-    });
-    expect(lanjut.ok, lanjut.error).toBe(true);
-    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(3);
-
-    const audit = await env.panggil('audit:list', { aksi: 'HUTANG-BAYAR' });
-    expect(audit.ok, audit.error).toBe(true);
-    expect(audit.data.total).toBe(1);
-    const data = JSON.parse(audit.data.rows[0].data_baru_json) as {
-      nominalLebih: number;
-      alasanSaldo: string;
-    };
-    expect(data.nominalLebih).toBe(200_000);
-    expect(data.alasanSaldo).toBe(alasan);
-  });
-
+describe('AKT-08 — IPC meneruskan alasan override overrun panjar', () => {
   it('panjar:close menolak overrun tanpa alasan dan audit memuat alasanKurang', async () => {
     const env = buatEnv();
     expect(
@@ -1192,80 +1094,68 @@ describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
   });
 });
 
-describe('AKT-20 — IPC pihak mencatat utang usaha 2060 dan pinjaman 2050', () => {
-  it('menyimpan beli kredit + bayar utang usaha + pinjaman dengan audit yang benar', async () => {
+describe('DB-23b — IPC mencatat utang usaha 2060 tanpa master pihak', () => {
+  it('menyimpan catat utang + bayar utang dan tetap membaca 2050 lama', async () => {
     const env = buatEnv();
     expect(
       (
         await env.panggil('saldo-awal:posting', {
           tanggal: '2026-01-01',
-          keterangan: 'Saldo awal AKT-20',
+          keterangan: 'Saldo awal utang usaha',
           saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
         })
       ).ok,
     ).toBe(true);
 
-    const pihak = await env.panggil('pihak:create', { nama: 'Toko AKT-20' });
-    expect(pihak.ok, pihak.error).toBe(true);
-    const pihakId = pihak.data.id as string;
-
-    const kredit = await env.panggil('pihak:posting', {
-      pihakId,
-      input: {
-        header: {
-          id: 'j-akt20-kredit',
-          tanggal: '2026-01-02',
-          keterangan: 'Beli bahan kredit AKT-20',
-          jenis: 'HUTANG',
-        },
-        baris: [D('5003', 300_000), K('2060', 300_000)],
+    const catat = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-utang-catat',
+        tanggal: '2026-01-02',
+        keterangan: 'Beli bahan kredit — Toko Bangunan Jaya',
+        jenis: 'HUTANG',
       },
+      baris: [D('5003', 300_000), K('2060', 300_000)],
     });
-    expect(kredit.ok, kredit.error).toBe(true);
-    expect(kredit.data.alur).toBe('BELI_KREDIT');
-    expect(kredit.data.akunPihak).toBe('2060');
+    expect(catat.ok, catat.error).toBe(true);
+    expect(catat.data.jurnal.jenis).toBe('HUTANG');
+    expect(catat.data.jurnal.keterangan).toContain('Toko Bangunan Jaya');
 
-    const bayar = await env.panggil('pihak:posting', {
-      pihakId,
-      input: {
-        header: {
-          id: 'j-akt20-bayar-usaha',
-          tanggal: '2026-01-03',
-          keterangan: 'Bayar utang usaha AKT-20',
-          jenis: 'HUTANG',
-        },
-        baris: [D('2060', 200_000), K('1001', 200_000)],
+    const bayar = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-utang-bayar',
+        tanggal: '2026-01-03',
+        keterangan: 'Bayar utang usaha — Toko Bangunan Jaya',
+        jenis: 'HUTANG',
       },
+      baris: [D('2060', 200_000), K('1001', 200_000)],
     });
     expect(bayar.ok, bayar.error).toBe(true);
-    expect(bayar.data.alur).toBe('BAYAR_UTANG_USAHA');
-    expect(bayar.data.akunPihak).toBe('2060');
 
-    const pinjam = await env.panggil('pihak:posting', {
-      pihakId,
-      input: {
-        header: {
-          id: 'j-akt20-pinjam',
-          tanggal: '2026-01-04',
-          keterangan: 'Terima pinjaman AKT-20',
-          jenis: 'HUTANG',
-        },
-        baris: [D('1001', 500_000), K('2050', 500_000)],
+    // Pinjaman 2050 lama tetap bisa dikoreksi lewat Jurnal Umum; tidak ada
+    // master pihak baru, jadi tidak ada respons `alur`/`akunPihak`.
+    const pinjam = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-pinjam-2050',
+        tanggal: '2026-01-04',
+        keterangan: 'Terima pinjaman lama — Koperasi Desa',
+        jenis: 'HUTANG',
       },
+      baris: [D('1001', 500_000), K('2050', 500_000)],
     });
     expect(pinjam.ok, pinjam.error).toBe(true);
-    expect(pinjam.data.alur).toBe('TERIMA_PINJAMAN');
-    expect(pinjam.data.akunPihak).toBe('2050');
+    expect(pinjam.data).not.toHaveProperty('pihak');
+    expect(pinjam.data).not.toHaveProperty('alur');
 
-    const auditBaru = await env.panggil('audit:list', { aksi: 'HUTANG-USAHA-BAYAR' });
-    expect(auditBaru.ok, auditBaru.error).toBe(true);
-    expect(auditBaru.data.total).toBe(1);
-    const data = JSON.parse(auditBaru.data.rows[0].data_baru_json) as {
-      akun_kode: string;
-      alur: string;
-    };
-    expect(data.akun_kode).toBe('2060');
-    expect(data.alur).toBe('BAYAR_UTANG_USAHA');
+    const bb2060 = await env.panggil('laporan:buku-besar', { akun_kode: '2060' });
+    expect(bb2060.ok, bb2060.error).toBe(true);
+    expect(bb2060.data.saldoAkhir).toBe(100_000);
+    const bb2050 = await env.panggil('laporan:buku-besar', { akun_kode: '2050' });
+    expect(bb2050.ok, bb2050.error).toBe(true);
+    expect(bb2050.data.saldoAkhir).toBe(500_000);
+
+    expect(
+      (env.db().prepare('SELECT COUNT(*) AS c FROM jurnal_pihak').get() as { c: number }).c,
+    ).toBe(0);
   });
 });
 

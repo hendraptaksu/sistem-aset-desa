@@ -98,10 +98,10 @@ export type LampiranJurnal = {
   created_at: string; // ISO datetime
 };
 
-// ---- Pihak & hutang (P1-5 / DB-23a) ----
-// `pihak` hanya master nama; `jurnal_pihak` hanya metadata penghubung.
-// Saldo TIDAK disimpan — selalu dihitung dari baris jurnal 2050/2060.
-// Field 1050/piutang dipertahankan untuk membaca data lama.
+// ---- Legacy Pihak & hutang (P1-5 / DB-23a / DB-23b) ----
+// Tipe read-only untuk membaca tabel legacy `pihak`/`jurnal_pihak`. Sejak
+// DB-23b tidak ada UI/API/IPC yang menulis atau menghitung subledger pihak;
+// tabelnya baru dihapus oleh DB-33. Field 1050/piutang juga hanya data lama.
 
 export type Pihak = {
   id: string;

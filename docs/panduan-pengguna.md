@@ -41,10 +41,10 @@ Prinsipnya: **catat saat kejadian**, lalu lampirkan bukti bila ada. Operator tid
 perlu menghitung debit/kredit; sistem menyusun jurnalnya dan menampilkan
 pratinjau sebelum menyimpan.
 
-> **Peringatan wajib alasan.** Di form Transaksi, Jurnal Umum, Saldo Awal,
-> Hutang, dan Panjar, peringatan (mis. kas/bank akan minus, saldo pihak akan
-> minus, atau realisasi panjar melebihi panjar) hanya bisa dilanjutkan setelah
-> menulis **alasan minimal 5 karakter**. Alasan tercatat di Riwayat Audit.
+> **Peringatan wajib alasan.** Di form Transaksi, Jurnal Umum, Saldo Awal, dan
+> Panjar, peringatan (mis. kas/bank akan minus, atau realisasi panjar melebihi
+> panjar) hanya bisa dilanjutkan setelah menulis **alasan minimal 5 karakter**.
+> Alasan tercatat di Riwayat Audit.
 
 ### 2.1 Terima Uang
 
@@ -73,10 +73,10 @@ hanya menawarkan **akun beban** sebagai akun lawan.
 
 **Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`,
 `2050 HUTANG LAIN-LAIN`, maupun `2060 HUTANG USAHA`. Untuk panjar gunakan menu
-**Buku Panjar**; untuk pinjaman/utang gunakan menu **Hutang**. Akun
-`1050 PIUTANG LAIN LAIN` hanya dipertahankan untuk data lama dan tidak lagi
-punya form input piutang. Jurnal Umum tetap boleh memakai akun tersebut untuk
-koreksi oleh akuntan pendamping.
+**Buku Panjar**; untuk utang usaha gunakan kartu **Catat Utang** dan
+**Bayar Utang**. Akun `1050 PIUTANG LAIN LAIN` hanya dipertahankan untuk data
+lama dan tidak lagi punya form input piutang. Jurnal Umum tetap boleh memakai
+akun tersebut untuk koreksi oleh akuntan pendamping.
 
 ### 2.3 Pindah Dana
 
@@ -109,30 +109,34 @@ tidak basi (mis. panjar tetap CLOSED padahal `1040` sudah bersaldo lagi).
 Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
 **Batalkan panjar** masih backlog dan belum tersedia di aplikasi.
 
-### 2.5 Hutang
+### 2.5 Utang Usaha
 
-Buka menu **Hutang**. Form Bayar terpandu sengaja tidak menawarkan akun
-`2050`/`2060` agar setiap transaksi pinjaman/utang memiliki pihak yang jelas.
-Gunakan menu ini untuk semua alur berikut:
+Tidak ada daftar pihak. Utang usaha non-LPD dicatat lewat dua form sederhana di
+tab **Transaksi**. Nama kreditur (orang/toko/lembaga) cukup ditulis di
+**Keterangan**; sistem tidak menyimpan daftar pihak.
 
-| Kejadian | Jurnal yang dibuat sistem |
+| Form | Jurnal yang dibuat sistem |
 |---|---|
-| Menerima pinjaman | Debit kas / Kredit `2050 HUTANG LAIN-LAIN` |
-| Membayar pinjaman | Debit `2050 HUTANG LAIN-LAIN` / Kredit kas |
-| Beli/perbaikan barang secara kredit | Debit akun beban / Kredit `2060 HUTANG USAHA` |
-| Membayar utang usaha | Debit `2060 HUTANG USAHA` / Kredit kas |
+| **Catat Utang Usaha** | Debit akun beban / Kredit `2060 HUTANG USAHA` |
+| **Bayar Utang Usaha** | Debit `2060 HUTANG USAHA` / Kredit kas/bank |
 
-`2050` dipakai untuk pinjaman dan saldo lama; pembayarannya masuk kelompok
-**Pendanaan**. `2060` dipakai untuk utang usaha (pembelian/perbaikan kredit);
-pembayarannya masuk kelompok **Operasi** di laporan Arus Kas. Saldo utang usaha
-lama yang masih berada di `2050` tetap terbaca sebagai Pendanaan sampai
-akuntan memindahkannya lewat jurnal reklasifikasi; aplikasi tidak pernah
-memindahkan saldo lama secara otomatis.
+**Catat Utang Usaha** dipakai untuk pembelian atau perbaikan yang dibayar
+belakangan. Pilih akun beban (mis. `5003 BAGA WEWANGUNAN`), isi nominal, lalu
+tulis nama kreditur di keterangan — misalnya “Perbaikan gedung — utang ke Toko
+Bangunan Jaya”. Uang kas belum keluar dan modal `3000` tidak berubah.
 
-Pihak (nama orang/lembaga) wajib dipilih untuk pinjaman dan utang. Saldo per
-pihak dihitung dari jurnal, bukan diketik manual. Bila pembayaran melebihi saldo
-pihak, sistem memberi peringatan yang wajib dikonfirmasi dengan alasan minimal
-5 karakter.
+**Bayar Utang Usaha** dipakai saat utang dilunasi. Pilih kas/bank sumber dan
+tulis nama kreditur di keterangan — misalnya “Bayar utang bahan ke Toko
+Bangunan Jaya”. Pembayaran `2060` masuk kelompok **Operasi** di laporan Arus
+Kas.
+
+Saldo `2060` dihitung dari jurnal dan bisa diperiksa di Buku Besar atau Neraca.
+Tidak ada tabel saldo per pihak yang disimpan.
+
+`2050 HUTANG LAIN-LAIN` adalah pinjaman atau saldo lama; pembayarannya masuk
+kelompok **Pendanaan**. Pinjaman LPD akan memakai modul LPD tersendiri yang
+belum tersedia. Jangan membuat pinjaman baru lewat Jurnal Umum kecuali untuk
+koreksi oleh akuntan pendamping; saldo 2050 lama tetap terbaca di laporan.
 
 **Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
 tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada

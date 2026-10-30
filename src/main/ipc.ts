@@ -41,17 +41,6 @@ import {
   listPanjarV2,
   serahkanPanjar,
 } from '../db/panjar.js';
-import {
-  createPihak,
-  daftarJurnalPihak,
-  deletePihak,
-  listPihak,
-  postingPihak,
-  rekonsiliasiPihakDb,
-  saldoPerPihak,
-  updatePihak,
-} from '../db/pihak.js';
-import { peringatanPihakTanpaMapping } from '../core/pihak.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import {
   getLampiran,
@@ -66,7 +55,7 @@ import {
   simpanLampiranDenganMetadata,
 } from '../features/lampiran/lampiran.js';
 import { validasiLampiran } from '../core/lampiran.js';
-import { KAS_KODES } from '../db/coa.js';
+import { AKUN_PIUTANG, KAS_KODES } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
   saldoSemuaKas as saldoSemuaKasJurnal,
@@ -110,8 +99,6 @@ import {
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
-  validasiBentukPihak,
-  validasiBentukPostingPihak,
   validasiBentukSaldoAwal,
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
@@ -255,8 +242,6 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat memuat data. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_KOREKSI =
     'Terjadi kesalahan saat menyimpan koreksi. Jurnal asli tidak diubah; coba lagi atau hubungi pendamping.';
-  const GAGAL_PIHAK =
-    'Terjadi kesalahan saat menyimpan data pihak. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_PANJAR =
     'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_LAMPIRAN =
@@ -616,17 +601,25 @@ export function registerIpc(deps: IpcDeps): void {
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
       const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
-      // AUD-09/AKT-20: Jurnal Umum tidak punya metadata pihak. Beri peringatan
-      // (bukan error) agar akuntan sadar jurnal 2050/2060 (atau 1050 lama) akan
-      // tampil belum teralokasi.
+      // DB-23a/DB-23b: akun 1050 hanya dipertahankan untuk data lama. Jurnal
+      // baru yang menyentuhnya minta konfirmasi (bukan error) agar tidak menjadi
+      // pintu input piutang. Peringatan ini hanya untuk 1050; akun 2050/2060
+      // kini dipakai form utang sederhana tanpa master pihak.
       // Hanya dicek saat belum dikonfirmasi dan tidak ada error lain, sehingga
       // pesan validasi asli tetap diutamakan.
-      const peringatanPihak = peringatanPihakTanpaMapping(bentuk.input);
-      if (!konfirmasiPeringatan && peringatanPihak.length > 0) {
+      const peringatanAkunLama = bentuk.input.baris.some(
+        (b) => String(b.akun_kode ?? '').trim() === AKUN_PIUTANG,
+      )
+        ? [
+            'Jurnal memakai akun 1050 PIUTANG LAIN LAIN yang hanya dipertahankan ' +
+              'untuk data lama; alur piutang sudah dihapus.',
+          ]
+        : [];
+      if (!konfirmasiPeringatan && peringatanAkunLama.length > 0) {
         const validasi = validasiJurnalDb(deps.db(), bentuk.input);
         if (validasi.errors.length === 0) {
           return fail(
-            pesanValidasi([...validasi.peringatan, ...peringatanPihak]),
+            pesanValidasi([...validasi.peringatan, ...peringatanAkunLama]),
             false,
             true,
           );
@@ -938,140 +931,9 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // ---- Hutang + master pihak (P1-5 / DB-23a) ----
-  // Renderer tidak dipercaya: bentuk input dinormalisasi dulu, lalu adapter DB
-  // memvalidasi empat alur hutang baku + menyimpan jurnal/pemetaan pihak/audit
-  // atomik. Alur piutang 1050 sudah dihapus.
-  daftarkan('pihak:list', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listPihak(deps.db()));
-  });
-
-  daftarkan('pihak:saldo', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(saldoPerPihak(deps.db()));
-  });
-
-  // Rekonsiliasi saldo akun 1050/2050/2060 vs jurnal yang punya pihak. Cutoff
-  // opsional (YYYY-MM-DD) dan tidak menyimpan angka apa pun.
-  daftarkan('pihak:rekon', (_e, sampai: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const tanggal = validasiTanggalOpsional(sampai);
-      if (!tanggal.ok) return fail(tanggal.error);
-      return ok(rekonsiliasiPihakDb(deps.db(), tanggal.input || undefined));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('pihak:jurnal', (_e, id: string) => {
-    const k = perluBuka();
-    if (k) return fail(k);
-    const pihakId = String(id ?? '').trim();
-    if (!pihakId) return fail('Pihak wajib dipilih.');
-    return ok(daftarJurnalPihak(deps.db(), pihakId));
-  });
-
-  daftarkan('pihak:create', (_e, input: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukPihak(input);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const pihak = createPihak(deps.db(), bentuk.input);
-      return ok({ id: pihak.id, pihak });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('pihak:update', (_e, id: string, input: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const pihakId = String(id ?? '').trim();
-      if (!pihakId) return fail('Pihak yang akan diubah belum dipilih.');
-      const bentuk = validasiBentukPihak(input);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const pihak = updatePihak(deps.db(), pihakId, bentuk.input);
-      return ok({ id: pihak.id, pihak });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('pihak:delete', (_e, id: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const pihakId = String(id ?? '').trim();
-      if (!pihakId) return fail('Pihak yang akan dihapus belum dipilih.');
-      deletePihak(deps.db(), pihakId);
-      return ok({ id: pihakId });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('pihak:posting', (_e, req: unknown, opsi: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-
-      const bentuk = validasiBentukPostingPihak(req);
-      if (!bentuk.ok) return fail(bentuk.error);
-
-      const opts = typeof opsi === 'object' && opsi !== null ? opsi : {};
-      const hasil = postingPihak(deps.db(), {
-        pihakId: bentuk.input.pihakId,
-        input: bentuk.input.input,
-        konfirmasiPeringatan:
-          (opts as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
-        konfirmasiSaldo:
-          (opts as { konfirmasiSaldo?: unknown }).konfirmasiSaldo === true ||
-          (opts as { konfirmasi?: unknown }).konfirmasi === true,
-        // AKT-08: alasan override overbalance dan peringatan kas diteruskan ke
-        // adapter; adapter yang mewajibkan minimal 5 karakter.
-        alasanSaldo: bacaTeksOpsi(opsi, 'alasanSaldo'),
-        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
-        // AKT-02: pintu Hutang ikut mewajibkan saldo awal pertama.
-        wajibSaldoAwal: true,
-        konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
-      });
-
-      if (!hasil.tersimpan || !hasil.jurnal) {
-        const pesan =
-          pesanValidasi(hasil.errors) ||
-          pesanValidasi(hasil.peringatan) ||
-          'Transaksi hutang/pinjaman gagal disimpan.';
-        const perluAlasan = hasil.errors.some((m) =>
-          m.includes('Periode sudah ditutup'),
-        );
-        // AKT-08: penolakan "alasan kurang" tetap meminta konfirmasi ulang agar
-        // modal alasan di UI bisa menampilkan pesan dan operator memperbaikinya.
-        const perluKonfirmasi =
-          hasil.perluKonfirmasi &&
-          (hasil.errors.length === 0 ||
-            hasil.errors.every((m) =>
-              m.includes('wajib disertai alasan minimal 5 karakter'),
-            ));
-        return fail(pesan, perluAlasan, perluKonfirmasi);
-      }
-
-      return ok({
-        jurnal: hasil.jurnal,
-        pihak: hasil.pihak,
-        alur: hasil.alur,
-        akunPihak: hasil.akunPihak,
-        saldoSebelum: hasil.saldoSebelum,
-        saldoSesudah: hasil.saldoSesudah,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
+  // ---- Utang usaha sederhana (DB-23b) ----
+  // Form Catat/Bayar Utang Usaha memakai `jurnal:posting` dengan jenis HUTANG;
+  // tidak ada lagi IPC master pihak / pemetaan `jurnal_pihak`.
 
   daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
     const k = perluBuka();

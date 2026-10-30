@@ -235,10 +235,16 @@ describe('P1-1 — layar Transaksi', () => {
     expect(html).not.toContain('Segera hadir');
     expect(html).not.toContain('Jenis lain menyusul');
     expect(html).toContain('Buka Buku Panjar');
-    expect(html).toContain('Buka Hutang');
-    for (const label of ['Bayar', 'Pindah Dana', 'Panjar', 'Hutang']) {
+    for (const label of [
+      'Bayar',
+      'Pindah Dana',
+      'Catat Utang',
+      'Bayar Utang',
+      'Panjar',
+    ]) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Buka Hutang');
     expect(html).not.toContain('Piutang/Hutang');
     expect(html).not.toContain('Buka Piutang');
   });
@@ -293,7 +299,7 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
         /tidak bisa dipakai di form Bayar terpandu/,
       );
       expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
-        /Buku Panjar.*Hutang/,
+        /Buku Panjar.*Catat Utang/,
       );
     }
     // 1050 hanya aset lain lama; alur piutang sudah dihapus.
@@ -403,23 +409,19 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(kartuBayar).not.toContain('disabled');
     expect(kartuBayar).toContain('Siap dipakai');
     expect(html).toContain('Sedang dipakai');
-    // Panjar & Hutang kini menjadi pintasan tab, bukan slot disabled.
-    for (const [label, tujuan] of [
-      ['Panjar', 'Buka Buku Panjar'],
-      ['Hutang', 'Buka Hutang'],
-    ] as const) {
-      const kartu = html
-        .split('<button')
-        .find((s) => s.includes(`>${label}</span>`))
-        ?.split('</button>')[0];
-      expect(kartu).toBeDefined();
-      expect(kartu ?? '').not.toContain('disabled');
-      expect(kartu).toContain(tujuan);
-    }
+    // Panjar menjadi pintasan tab; form utang ada langsung di tab Transaksi.
+    const kartuPanjar = html
+      .split('<button')
+      .find((s) => s.includes('>Panjar</span>'))
+      ?.split('</button>')[0];
+    expect(kartuPanjar).toBeDefined();
+    expect(kartuPanjar ?? '').not.toContain('disabled');
+    expect(kartuPanjar).toContain('Buka Buku Panjar');
     expect(html).not.toContain('Segera hadir');
-    for (const label of ['Pindah Dana', 'Panjar', 'Hutang']) {
+    for (const label of ['Pindah Dana', 'Catat Utang', 'Bayar Utang', 'Panjar']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Buka Hutang');
     expect(html).not.toContain('Piutang/Hutang');
   });
 
@@ -443,8 +445,8 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).not.toContain('Anggaran');
     expect(html).not.toContain('menyusul');
     expect(html).toContain('Untuk panjar gunakan menu Buku Panjar');
-    expect(html).toContain('untuk pinjaman/utang gunakan menu Hutang');
-    // Hanya akun BEBAN yang menjadi lawan; panjar/hutang punya menu sendiri.
+    expect(html).toContain('untuk pinjaman/utang gunakan kartu Catat Utang / Bayar Utang');
+    // Hanya akun BEBAN yang menjadi lawan; panjar/utang punya kartu sendiri.
     expect(html).toContain('<optgroup label="Beban">');
     expect(html).not.toContain('<optgroup label="Hutang">');
     expect(html).not.toContain('Aset lain (panjar/piutang)');
@@ -647,9 +649,10 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
     expect(kartuPindah).not.toContain('disabled');
     expect(kartuPindah).toContain('Siap dipakai');
     expect(html).not.toContain('Segera hadir');
-    for (const label of ['Panjar', 'Hutang']) {
+    for (const label of ['Panjar', 'Catat Utang', 'Bayar Utang']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Buka Hutang');
     expect(html).not.toContain('Piutang/Hutang');
   });
 

@@ -1,5 +1,12 @@
 # Desain Pemisahan Arus Kas: Utang Usaha vs Pinjaman (2050)
 
+> **Catatan status (DB-23b, 2026-10-30):** dokumen ini adalah arsip keputusan
+> desain AKT-19/AKT-20. Master Pihak, UI subledger, dan penulisan
+> `jurnal_pihak` sudah **dihapus** pada DB-23b; form utang usaha sekarang
+> memakai akun 2060 + nama kreditur di keterangan. Bagian dokumen yang menyebut
+> menu/form Pihak atau pemetaan pihak hanya berlaku untuk data lama dan tidak
+> lagi menjadi rencana implementasi aktif.
+
 > **Tiket:** AKT-19 (P1) · **Tanggal:** 2026-10-29
 > **Sifat:** dokumen keputusan desain. Tidak ada kode produksi, data, atau jurnal
 > lama yang diubah pada tiket ini.

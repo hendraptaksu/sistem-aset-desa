@@ -32,7 +32,7 @@ const UKURAN = [
   { nama: '1024x680', width: 1024, height: 680 },
 ];
 
-/** 18 tab sesuai urutan sidebar. */
+/** Daftar tab yang diaudit (mengikuti menu sidebar yang tersedia). */
 const TAB = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'transaksi', label: 'Transaksi' },
@@ -42,7 +42,6 @@ const TAB = [
   { id: 'neraca-saldo', label: 'Neraca Saldo' },
   { id: 'aset', label: 'Inventaris Aset' },
   { id: 'panjar', label: 'Buku Panjar' },
-  { id: 'pihak', label: 'Piutang & Hutang' },
   { id: 'pembantu', label: 'Buku Pembantu' },
   { id: 'realisasi', label: 'Anggaran' },
   { id: 'rekonsiliasi', label: 'Rekonsiliasi Bank' },

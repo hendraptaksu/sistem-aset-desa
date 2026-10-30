@@ -2,19 +2,15 @@ import type { Coa, CoaTipe } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
 import type { PengaturanPembukuan } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
-import type { AlurPihak, RekonsiliasiPihak, SaldoPihak } from '../../core/pihak.js';
 import type {
   AuditLog,
   Jurnal,
   JurnalBaris,
   JurnalBarisInput,
   JurnalHeaderInput,
-  JurnalPihakTampil,
   LampiranJurnal,
   Panjar,
   PanjarItem,
-  Pihak,
-  PihakSaldo,
   TutupBuku,
 } from '../../core/types.js';
 import type {
@@ -325,40 +321,6 @@ export const api = {
   /** Hapus metadata + file (best-effort); audit LAMPIRAN-HAPUS. */
   lampiranDelete: (id: string) =>
     call<{ deleted: boolean; id: string }>('lampiran:delete', id),
-  // ---- Hutang + master pihak (P1-5 / DB-23a) ----
-  pihakList: () => call<Pihak[]>('pihak:list'),
-  pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),
-  /** Rekonsiliasi saldo akun 1050/2050/2060 vs jurnal yang sudah dipetakan ke pihak. */
-  pihakRekon: (sampai?: string) =>
-    call<RekonsiliasiPihak>('pihak:rekon', sampai),
-  pihakJurnal: (pihakId: string) =>
-    call<JurnalPihakTampil[]>('pihak:jurnal', pihakId),
-  pihakCreate: (input: { nama: string; catatan?: string }) =>
-    call<{ id: string; pihak: Pihak }>('pihak:create', input),
-  pihakUpdate: (id: string, input: { nama: string; catatan?: string }) =>
-    call<{ id: string; pihak: Pihak }>('pihak:update', id, input),
-  pihakDelete: (id: string) => call<{ id: string }>('pihak:delete', id),
-  pihakPosting: (
-    req: { pihakId: string; input: JurnalInput },
-    opsi: {
-      konfirmasiPeringatan?: boolean;
-      konfirmasiSaldo?: boolean;
-      /** AKT-08: alasan operasi saat pelunasan/pembayaran melebihi saldo pihak. */
-      alasanSaldo?: string;
-      /** AKT-08: alasan saat peringatan kas dari posting layer dikonfirmasi. */
-      alasanPeringatan?: string;
-      wajibSaldoAwal?: boolean;
-      konfirmasiTanpaSaldoAwal?: boolean;
-    } = {},
-  ) =>
-    call<{
-      jurnal: Jurnal;
-      pihak?: Pihak;
-      alur?: AlurPihak;
-      akunPihak?: string;
-      saldoSebelum?: SaldoPihak;
-      saldoSesudah?: SaldoPihak;
-    }>('pihak:posting', req, opsi),
   panjarList: (status?: 'OPEN' | 'CLOSED') => call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
   panjarCreate: (

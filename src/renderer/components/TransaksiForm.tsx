@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
 import {
   buatJurnalBayar,
+  buatJurnalBayarUtangUsaha,
+  buatJurnalCatatUtangUsaha,
   buatJurnalPindahDana,
   buatJurnalTerimaUang,
   type DasarFormJurnal,
@@ -43,7 +45,12 @@ import {
 } from '../../utils/pesanError.js';
 
 /** Jenis transaksi yang sudah punya form terpandu. */
-export type JenisFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
+export type JenisFormTransaksi =
+  | 'TERIMA'
+  | 'BAYAR'
+  | 'PINDAH'
+  | 'CATAT_UTANG'
+  | 'BAYAR_UTANG';
 
 /** Kolom yang sama untuk Terima Uang & Bayar (kas + akun lawan). */
 type FormTransaksi = DasarFormJurnal & {
@@ -92,7 +99,23 @@ type KonfigurasiPindah = KonfigurasiDasar & {
   mode: 'PINDAH';
 };
 
-type KonfigurasiForm = KonfigurasiKasLawan | KonfigurasiPindah;
+type KonfigurasiBebanUtang = KonfigurasiDasar & {
+  mode: 'BEBAN_UTANG';
+  labelBeban: string;
+  hintBeban: string;
+};
+
+type KonfigurasiBayarUtang = KonfigurasiDasar & {
+  mode: 'BAYAR_UTANG';
+  labelKas: string;
+  hintKas: string;
+};
+
+type KonfigurasiForm =
+  | KonfigurasiKasLawan
+  | KonfigurasiPindah
+  | KonfigurasiBebanUtang
+  | KonfigurasiBayarUtang;
 
 
 /** Pilihan awal akun lawan Bayar: 5010/5000, lalu beban pertama. */
@@ -101,6 +124,16 @@ function akunLawanAwalBayar(coa: Coa[]): string {
   return (
     beban.find((a) => a.kode === '5010')?.kode ??
     beban.find((a) => a.kode === '5000')?.kode ??
+    beban[0]?.kode ??
+    ''
+  );
+}
+
+/** Pilihan awal akun beban untuk Catat Utang Usaha: 5003, lalu beban pertama. */
+function akunBebanAwalUtang(coa: Coa[]): string {
+  const beban = coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false);
+  return (
+    beban.find((a) => a.kode === '5003')?.kode ??
     beban[0]?.kode ??
     ''
   );
@@ -143,7 +176,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     labelKas: 'Uang keluar dari',
     labelLawan: 'Untuk pembayaran',
     hintLawan:
-      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk pinjaman/utang gunakan menu Hutang.',
+      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk pinjaman/utang gunakan kartu Catat Utang / Bayar Utang.',
     placeholderKeterangan: 'cth: Bayar listrik bulan Oktober',
     keteranganPratinjau: 'Transaksi harian',
     labelTombol: 'Simpan Transaksi',
@@ -166,6 +199,29 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     keteranganPratinjau: 'Pindah dana',
     labelTombol: 'Simpan Pindah Dana',
   },
+  CATAT_UTANG: {
+    mode: 'BEBAN_UTANG',
+    judul: 'Catat Utang Usaha',
+    deskripsi:
+      'Catat pembelian atau perbaikan yang dibayar belakangan. Beban langsung masuk Laba Rugi dan Utang Usaha (2060) bertambah; uang kas belum keluar.',
+    placeholderKeterangan: 'cth: Perbaikan gedung — utang ke Toko Bangunan Jaya',
+    keteranganPratinjau: 'Pembelian/perbaikan kredit',
+    labelTombol: 'Simpan Catat Utang Usaha',
+    labelBeban: 'Akun beban (untuk Laba Rugi)',
+    hintBeban:
+      'Pilih akun beban, mis. 5003 BAGA WEWANGUNAN. Tulis nama kreditur di Keterangan.',
+  },
+  BAYAR_UTANG: {
+    mode: 'BAYAR_UTANG',
+    judul: 'Bayar Utang Usaha',
+    deskripsi:
+      'Catat pembayaran utang usaha (2060). Kas/bank berkurang dan masuk kelompok Operasi di Arus Kas, bukan Pendanaan.',
+    placeholderKeterangan: 'cth: Bayar utang bahan ke Toko Bangunan Jaya',
+    keteranganPratinjau: 'Pembayaran utang usaha',
+    labelTombol: 'Simpan Bayar Utang Usaha',
+    labelKas: 'Uang keluar dari',
+    hintKas: 'Pilih kas/bank sumber. Tulis nama kreditur di Keterangan.',
+  },
 };
 
 export function FormTransaksiTerpandu({
@@ -179,6 +235,8 @@ export function FormTransaksiTerpandu({
 }) {
   const konfigurasi = KONFIG[jenis];
   const pindah = konfigurasi.mode === 'PINDAH';
+  const bebanUtang = konfigurasi.mode === 'BEBAN_UTANG';
+  const bayarUtang = konfigurasi.mode === 'BAYAR_UTANG';
   const kasAwal = coa.find((a) => isAkunKas(a.kode) && a.aktif !== false)?.kode ?? '';
   const { setDirty } = useTabGuard();
 
@@ -188,9 +246,11 @@ export function FormTransaksiTerpandu({
 
   const [tanggal, setTanggal] = useState(tanggalLokal());
   const [akunKas, setAkunKas] = useState(kasAwal);
-  const [akunLawan, setAkunLawan] = useState(() =>
-    konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.akunLawanAwal(coa) : '',
-  );
+  const [akunLawan, setAkunLawan] = useState(() => {
+    if (konfigurasi.mode === 'KAS_LAWAN') return konfigurasi.akunLawanAwal(coa);
+    if (konfigurasi.mode === 'BEBAN_UTANG') return akunBebanAwalUtang(coa);
+    return '';
+  });
   const [akunKe, setAkunKe] = useState(
     () =>
       coa.find((a) => isAkunKas(a.kode) && a.aktif !== false && a.kode !== kasAwal)?.kode ?? '',
@@ -254,7 +314,13 @@ export function FormTransaksiTerpandu({
       setAkunLawan((sebelum) =>
         pilihan.some((a) => a.kode === sebelum) ? sebelum : lawanAwal,
       );
-    } else {
+    } else if (konfigurasi.mode === 'BEBAN_UTANG') {
+      const pilihan = coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false);
+      const lawanAwal = akunBebanAwalUtang(coa);
+      setAkunLawan((sebelum) =>
+        pilihan.some((a) => a.kode === sebelum) ? sebelum : lawanAwal,
+      );
+    } else if (konfigurasi.mode === 'PINDAH') {
       const tujuanAwal =
         kasAktif.find((a) => a.kode !== kasPertama)?.kode ?? '';
       setAkunKe((sebelum) =>
@@ -267,10 +333,17 @@ export function FormTransaksiTerpandu({
     () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
     [coa],
   );
-  const grupLawan = useMemo(
-    () => (konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.grupLawan(coa) : []),
-    [coa, konfigurasi],
-  );
+  const grupLawan = useMemo(() => {
+    if (konfigurasi.mode === 'KAS_LAWAN') return konfigurasi.grupLawan(coa);
+    if (konfigurasi.mode === 'BEBAN_UTANG')
+      return [
+        {
+          label: 'Beban',
+          akun: coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false),
+        },
+      ];
+    return [];
+  }, [coa, konfigurasi]);
   const namaAkun = useMemo(
     () => new Map(coa.map((a) => [a.kode, `${a.kode} — ${a.nama}`])),
     [coa],
@@ -284,6 +357,28 @@ export function FormTransaksiTerpandu({
           tanggal: nilai.tanggal,
           dari: nilai.akunKas,
           ke: nilai.akunKe,
+          nominal: nilai.nominal,
+          keterangan: nilai.keterangan,
+          daftarAkun: coa,
+          ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
+          ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
+        });
+      }
+      if (konfigurasi.mode === 'BEBAN_UTANG') {
+        return buatJurnalCatatUtangUsaha({
+          tanggal: nilai.tanggal,
+          akunBeban: nilai.akunLawan,
+          nominal: nilai.nominal,
+          keterangan: nilai.keterangan,
+          daftarAkun: coa,
+          ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
+          ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
+        });
+      }
+      if (konfigurasi.mode === 'BAYAR_UTANG') {
+        return buatJurnalBayarUtangUsaha({
+          tanggal: nilai.tanggal,
+          akunKas: nilai.akunKas,
           nominal: nilai.nominal,
           keterangan: nilai.keterangan,
           daftarAkun: coa,
@@ -312,6 +407,10 @@ export function FormTransaksiTerpandu({
     if (pindah) {
       if (!akunKas || !akunKe)
         return { input: null as JurnalInput | null, error: null };
+    } else if (bebanUtang) {
+      if (!akunLawan) return { input: null as JurnalInput | null, error: null };
+    } else if (bayarUtang) {
+      if (!akunKas) return { input: null as JurnalInput | null, error: null };
     } else if (!akunKas || !akunLawan) {
       return { input: null as JurnalInput | null, error: null };
     }
@@ -340,6 +439,8 @@ export function FormTransaksiTerpandu({
     akunKas,
     akunKe,
     akunLawan,
+    bayarUtang,
+    bebanUtang,
     keterangan,
     konfigurasi.keteranganPratinjau,
     nominal,
@@ -353,7 +454,11 @@ export function FormTransaksiTerpandu({
 
   const akunLengkap = pindah
     ? Boolean(akunKas && akunKe && akunKas !== akunKe)
-    : Boolean(akunKas && akunLawan);
+    : bebanUtang
+      ? Boolean(akunLawan)
+      : bayarUtang
+        ? Boolean(akunKas)
+        : Boolean(akunKas && akunLawan);
   const formSah =
     tanggalKalenderValid(tanggal) &&
     akunLengkap &&
@@ -366,6 +471,16 @@ export function FormTransaksiTerpandu({
       const tujuan = `Tujuan (masuk) — ${labelAkun(akunKe)}`;
       const asal = `Asal (keluar) — ${labelAkun(akunKas)}`;
       return i === 0 ? tujuan : asal;
+    }
+    if (konfigurasi.mode === 'BEBAN_UTANG') {
+      const beban = `Beban — ${labelAkun(akunLawan)} (bertambah)`;
+      const utang = 'Utang Usaha (2060) — bertambah';
+      return i === 0 ? beban : utang;
+    }
+    if (konfigurasi.mode === 'BAYAR_UTANG') {
+      const utang = 'Utang Usaha (2060) — berkurang';
+      const kas = `Kas/Bank — ${labelAkun(akunKas)} (berkurang)`;
+      return i === 0 ? utang : kas;
     }
     const kas = `${konfigurasi.labelKasBaris} — ${labelAkun(akunKas)}`;
     const lawan = `${konfigurasi.labelLawanBaris} — ${labelAkun(akunLawan)}`;
@@ -560,6 +675,7 @@ export function FormTransaksiTerpandu({
         <div className="flex flex-wrap gap-2">
           <Badge tone="green">Jurnal otomatis seimbang</Badge>
           {pindah && <Badge tone="amber">Total kas tetap</Badge>}
+          {bebanUtang && <Badge tone="amber">Kas belum keluar</Badge>}
         </div>
       </div>
 
@@ -644,6 +760,52 @@ export function FormTransaksiTerpandu({
               )}
             </Field>
           </>
+        ) : konfigurasi.mode === 'BEBAN_UTANG' ? (
+          <Field label={konfigurasi.labelBeban}>
+            <Select
+              value={akunLawan}
+              disabled={busy || memuat}
+              onChange={(e) => {
+                setAkunLawan(e.target.value);
+                setDirty(true);
+              }}
+            >
+              <option value="">— Pilih akun beban —</option>
+              {grupLawan.map((grup) => (
+                <optgroup key={grup.label} label={grup.label}>
+                  {grup.akun.map((a) => (
+                    <option key={a.kode} value={a.kode}>
+                      {a.kode} — {a.nama}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+            <span className="mt-1 block text-helper text-stone-500">
+              {konfigurasi.hintBeban}
+            </span>
+          </Field>
+        ) : konfigurasi.mode === 'BAYAR_UTANG' ? (
+          <Field label={konfigurasi.labelKas}>
+            <Select
+              value={akunKas}
+              disabled={busy || memuat}
+              onChange={(e) => {
+                setAkunKas(e.target.value);
+                setDirty(true);
+              }}
+            >
+              <option value="">— Pilih kas / bank —</option>
+              {kasList.map((a) => (
+                <option key={a.kode} value={a.kode}>
+                  {a.kode} — {a.nama}
+                </option>
+              ))}
+            </Select>
+            <span className="mt-1 block text-helper text-stone-500">
+              {konfigurasi.hintKas}
+            </span>
+          </Field>
         ) : (
           <>
             <Field label={konfigurasi.labelKas}>
@@ -745,6 +907,18 @@ export function FormTransaksiTerpandu({
         {pindah && (
           <p className="mt-1 text-sm text-stone-600">
             Debit = dompet tujuan, kredit = dompet asal. Total kas tidak berubah.
+          </p>
+        )}
+        {bebanUtang && (
+          <p className="mt-1 text-sm text-stone-600">
+            Debit = akun beban, kredit = Utang Usaha (2060). Kas belum keluar dan
+            modal (3000) tidak berubah.
+          </p>
+        )}
+        {bayarUtang && (
+          <p className="mt-1 text-sm text-stone-600">
+            Debit = Utang Usaha (2060), kredit = kas/bank. Pembayaran ini masuk
+            Arus Kas Operasi.
           </p>
         )}
 

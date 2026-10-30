@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
-  HandCoins,
   LayoutDashboard,
   List,
   ListChecks,
@@ -26,7 +25,6 @@ import { JurnalTab } from './components/JurnalTab.js';
 import { BukuBesarTab } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
-import { PihakTab } from './components/PihakTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
 import { LabaRugiTab } from './components/LabaRugiTab.js';
 import { ArusKasTab } from './components/ArusKasTab.js';
@@ -46,7 +44,7 @@ import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pihak' | 'pembantu' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pembantu' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -56,7 +54,6 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'buku-besar', label: 'Buku Besar', Icon: BookMarked },
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
-  { id: 'pihak', label: 'Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
@@ -80,7 +77,7 @@ const GRUP_MENU: {
     id: 'harian',
     label: 'Harian',
     defaultTerbuka: true,
-    item: ['dashboard', 'transaksi', 'panjar', 'pihak', 'jurnal'],
+    item: ['dashboard', 'transaksi', 'panjar', 'jurnal'],
   },
   {
     id: 'laporan',
@@ -607,7 +604,7 @@ function AppShell() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">{namaEntitas}</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Hutang, Laba Rugi, Neraca, Arus Kas</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Utang Usaha, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab onBukaTab={bukaDariDashboard} />
@@ -630,7 +627,6 @@ function AppShell() {
               />
             )}
             {tab === 'panjar' && <PanjarTab />}
-            {tab === 'pihak' && <PihakTab />}
             {tab === 'pembantu' && <PembantuTab />}
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (

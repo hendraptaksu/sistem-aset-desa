@@ -30,8 +30,10 @@ import {
   validasiJurnal,
   type JurnalInput,
 } from '../src/core/posting.js';
-import { buatJurnalTerimaUang } from '../src/core/forms.js';
-import { klasifikasiAlurPihak } from '../src/core/pihak.js';
+import {
+  buatJurnalCatatUtangUsaha,
+  buatJurnalTerimaUang,
+} from '../src/core/forms.js';
 import { serahkanPanjar } from '../src/db/panjar.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
 
@@ -1292,7 +1294,7 @@ describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
     }
   });
 
-  it('menolak nominal di luar safe integer di posting, form, repository, panjar, dan pihak', () => {
+  it('menolak nominal di luar safe integer di posting, form, repository, panjar, dan utang usaha', () => {
     const { db } = freshDb();
     try {
       // 2^53 adalah integer menurut Number.isInteger, tetapi bukan safe integer.
@@ -1336,14 +1338,13 @@ describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
       expect(panjar.errors.join(' ')).toMatch(/bilangan bulat/);
 
       expect(() =>
-        klasifikasiAlurPihak({
-          header: header({ jenis: 'HUTANG' }),
-          baris: [
-            { akun_kode: '2050', debit: tidakAman, kredit: 0 },
-            { akun_kode: '1001', debit: 0, kredit: tidakAman },
-          ],
+        buatJurnalCatatUtangUsaha({
+          tanggal: '2026-01-02',
+          nominal: tidakAman,
+          keterangan: 'Nominal tidak aman',
+          akunBeban: '5003',
         }),
-      ).toThrow(/satu sisi debit dan satu sisi kredit/i);
+      ).toThrow(/bilangan bulat/);
 
       expect(jumlahJurnal(db)).toBe(0);
     } finally {

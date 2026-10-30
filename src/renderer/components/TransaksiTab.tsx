@@ -5,7 +5,7 @@ import {
   ArrowLeftRight,
   ArrowUpRight,
   HandCoins,
-  Users,
+  Receipt,
   type LucideIcon,
 } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
@@ -16,10 +16,10 @@ import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 /** Tab lain yang bisa dibuka dari pintasan kartu jenis transaksi. */
-type TabTujuanTransaksi = 'panjar' | 'pihak';
+type TabTujuanTransaksi = 'panjar';
 
 type KartuJenis = {
-  id: JenisFormTransaksi | 'PANJAR' | 'HUTANG';
+  id: JenisFormTransaksi | 'PANJAR';
   label: string;
   keterangan: string;
   Icon: LucideIcon;
@@ -27,8 +27,8 @@ type KartuJenis = {
   tujuan?: TabTujuanTransaksi;
 };
 
-// Tiga jenis punya form terpandu; Panjar & Hutang dicatat di menunya sendiri
-// dan kartunya menjadi pintasan ke tab tersebut.
+// Lima jenis punya form terpandu; Panjar dicatat di menunya sendiri dan
+// kartunya menjadi pintasan ke tab tersebut.
 const KARTU_JENIS: KartuJenis[] = [
   {
     id: 'TERIMA',
@@ -49,23 +49,28 @@ const KARTU_JENIS: KartuJenis[] = [
     Icon: ArrowLeftRight,
   },
   {
+    id: 'CATAT_UTANG',
+    label: 'Catat Utang',
+    keterangan: 'Beli/perbaikan dibayar belakangan',
+    Icon: Receipt,
+  },
+  {
+    id: 'BAYAR_UTANG',
+    label: 'Bayar Utang',
+    keterangan: 'Pelunasan utang usaha 2060',
+    Icon: HandCoins,
+  },
+  {
     id: 'PANJAR',
     label: 'Panjar',
     keterangan: 'Uang muka kegiatan',
     Icon: HandCoins,
     tujuan: 'panjar',
   },
-  {
-    id: 'HUTANG',
-    label: 'Hutang',
-    keterangan: 'Pinjaman, utang, pembayaran',
-    Icon: Users,
-    tujuan: 'pihak',
-  },
 ];
 
 const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
-  id === 'TERIMA' || id === 'BAYAR' || id === 'PINDAH';
+  id !== 'PANJAR';
 
 export function TransaksiTab({
   jenisAwal,
@@ -187,16 +192,17 @@ export function TransaksiTab({
       <Card>
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
         <p className="mt-1 text-sm text-stone-600">
-          Pilih <b>Terima Uang</b>, <b>Bayar</b>, atau <b>Pindah Dana</b> untuk mencatat
-          lewat form terpandu. <b>Panjar</b> dan <b>Hutang</b> dibuka dari kartu
-          menunya masing-masing.
+          Pilih <b>Terima Uang</b>, <b>Bayar</b>, <b>Pindah Dana</b>, <b>Catat Utang</b>,
+          atau <b>Bayar Utang</b> untuk mencatat lewat form terpandu. <b>Panjar</b>
+          dibuka dari kartu menunya sendiri. Pinjaman LPD akan memakai modul LPD
+          tersendiri (belum tersedia); saldo 2050 lama tetap terbaca di laporan.
         </p>
         {err && (
           <div className="mt-3">
             <ErrorBox msg={err} />
           </div>
         )}
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {KARTU_JENIS.map(({ id, label, keterangan, Icon, tujuan }) => {
             const aktif = !tujuan && jenis === id;
             const tersedia = !tujuan && bisaDipilih(id);
@@ -244,9 +250,7 @@ export function TransaksiTab({
                       ? 'Sedang dipakai'
                       : tujuan === 'panjar'
                         ? 'Buka Buku Panjar'
-                        : tujuan === 'pihak'
-                          ? 'Buka Hutang'
-                          : 'Siap dipakai'}
+                        : 'Siap dipakai'}
                   </span>
                 </span>
               </button>

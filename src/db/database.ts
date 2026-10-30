@@ -16,9 +16,9 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  * - 4    = metadata panjar v2 (P1-4): `panjar` + `panjar_item` menyimpan
  *          dokumen serah/pertanggungjawaban, bukan saldo/laba. Jurnal tetap
  *          satu-satunya sumber angka.
- * - 5    = master pihak + penghubung jurnal-pihak (P1-5). `jurnal_pihak`
- *          hanya metadata penghubung; saldo per pihak tetap dihitung dari
- *          baris jurnal 1050/2050.
+ * - 5    = master pihak + penghubung jurnal-pihak (P1-5). Sejak DB-23b fitur
+ *          ini dihapus dari UI/API; tabel `pihak`/`jurnal_pihak` sengaja
+ *          dipertahankan sebagai data legacy sampai migrasi DB-33.
  * - 6    = pagu anggaran per tahun (P2-1). Hanya pagu yang disimpan; realisasi
  *          dan sisa SELALU dihitung dari jurnal lewat core/reports.ts.
  * - 7    = rekonsiliasi bank (P2-2). Hanya saldo menurut rekening koran yang
@@ -89,8 +89,9 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 
--- Master pihak (orang/lembaga) untuk hutang/pinjaman (P1-5).
--- TIDAK menyimpan saldo: saldo per pihak selalu dihitung dari jurnal.
+-- Tabel legacy master pihak (P1-5). DB-23b menghapus UI/API-nya; tabel tetap
+-- dibuat agar DB lama/backup tetap terbaca dan tidak kehilangan data. DB-33
+-- yang akan menghapusnya. Tidak ada saldo tersimpan.
 CREATE TABLE IF NOT EXISTS pihak (
   id TEXT PRIMARY KEY,
   nama TEXT NOT NULL,
@@ -100,8 +101,8 @@ CREATE TABLE IF NOT EXISTS pihak (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pihak_nama_unik
   ON pihak(nama COLLATE NOCASE);
 
--- Penghubung jurnal ke pihak. Satu jurnal bisa menyentuh 1050 atau 2050;
--- pasangan (jurnal_id, akun_kode) unik agar tidak ada pemetaan ganda.
+-- Tabel legacy penghubung jurnal ke pihak. Tidak lagi ditulis oleh aplikasi
+-- (termasuk reversal) sejak DB-23b; baris lama dibiarkan apa adanya.
 CREATE TABLE IF NOT EXISTS jurnal_pihak (
   jurnal_id TEXT NOT NULL,
   pihak_id TEXT NOT NULL,

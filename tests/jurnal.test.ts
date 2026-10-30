@@ -21,7 +21,6 @@ import {
 import { postingJurnal } from '../src/db/posting.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
 import { closePanjarV2, serahkanPanjar } from '../src/db/panjar.js';
-import { createPihak, postingPihak } from '../src/db/pihak.js';
 import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
 
@@ -393,7 +392,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     }
   });
 
-  it('semua jalur simpan mendapat nomor: posting, reversal, koreksi isi ulang, panjar, pihak', () => {
+  it('semua jalur simpan mendapat nomor: posting, reversal, koreksi isi ulang, panjar', () => {
     const { db } = freshDb();
     try {
       const posting = postingJurnal(db, {
@@ -507,7 +506,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     }
   });
 
-  it('panjar dan pihak juga otomatis JU (serah, close, pinjaman)', () => {
+  it('panjar dan utang usaha juga otomatis JU (serah, close, catat utang)', () => {
     const { db } = freshDb();
     try {
       insertJurnalTervalidasi(
@@ -539,21 +538,17 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
       expect(tutup.jurnal?.no_bukti).toBe('JU-2026-0003');
 
-      const pihak = createPihak(db, { nama: 'Banjar Uji' });
-      const pinjam = postingPihak(db, {
-        pihakId: pihak.id,
-        input: {
-          header: {
-            id: 'j-pinjam',
-            tanggal: '2026-03-01',
-            keterangan: 'Terima pinjaman',
-            jenis: 'HUTANG',
-          },
-          baris: [D('1001', 500_000), K('2050', 500_000)],
+      const utang = postingJurnal(db, {
+        header: {
+          id: 'j-catat-utang',
+          tanggal: '2026-03-01',
+          keterangan: 'Catat utang usaha ke Toko Bangunan Jaya',
+          jenis: 'HUTANG',
         },
+        baris: [D('5003', 500_000), K('2060', 500_000)],
       });
-      expect(pinjam.tersimpan, pinjam.errors.join(' ')).toBe(true);
-      expect(pinjam.jurnal?.no_bukti).toBe('JU-2026-0004');
+      expect(utang.tersimpan, utang.errors.join(' ')).toBe(true);
+      expect(utang.jurnal?.no_bukti).toBe('JU-2026-0004');
     } finally {
       db.close();
     }

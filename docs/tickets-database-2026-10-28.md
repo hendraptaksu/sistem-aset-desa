@@ -99,7 +99,7 @@
 | DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [ ] |
 | DB-22 | — | — | **DIBATALKAN** — Lampiran: kompresi gambar | — | [x] |
 | DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [x] |
-| DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [ ] |
+| DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [x] |
 | DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [x] |
 | DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [x] |
 | DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [ ] |
@@ -949,7 +949,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** — (keputusan 2026-10-30).
 
-- [ ] **DB-23b — Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD** · P1 · M
+- [x] **DB-23b — Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD** · P1 · M
   - **Konteks:** user memilih “keterangan saja”; client hanya punya satu
     pinjaman LPD. Master pihak + `jurnal_pihak` menambah tabel, layar, dan
     risiko drift. Pinjaman LPD punya modul sendiri; utang usaha bisa memakai
@@ -967,6 +967,18 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     tabel pihak; jurnal 2050/2060 tetap terbaca.
   - **Test:** test form hutang + `tests/reversal.test.ts` (mapping dihapus).
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** `PihakTab`, `core/pihak.ts`, `db/pihak.ts`, tab/menu
+    `pihak`, 8 channel IPC `pihak:*`, API/tipe renderer, validator pihak, seed
+    master pihak, dan `tests/pihak.test.ts` dihapus. `salinMappingPihak` serta
+    referensi `jurnal_pihak` di `hapusAkun`/reversal dihapus; tabel `pihak` +
+    `jurnal_pihak` **tetap ada** dan data legacy dibiarkan untuk DB-33. Form
+    baru **Catat Utang Usaha** (D BEBAN / K 2060) dan **Bayar Utang Usaha**
+    (D 2060 / K kas) memakai jenis HUTANG, nama kreditur di keterangan, serta
+    tersedia di tab Transaksi dan pintasan Dashboard. Reversal jurnal lama tetap
+    berjalan tanpa menyalin pemetaan. Modul LPD (DB-16b+) belum tersedia;
+    pinjaman LPD diarahkan ke modul itu dan saldo 2050 lama tetap terbaca.
+    `npm run typecheck` bersih; `npm test` **684/55 hijau**; `npm run build`
+    berhasil.
   - **Dependency:** DB-16d, DB-23a.
 
 - [x] **DB-24 — Hapus modul Anggaran (UI/API/test)** · P1 · M

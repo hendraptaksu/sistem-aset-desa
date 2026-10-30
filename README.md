@@ -28,7 +28,7 @@ angka turunan yang disimpan mati.
 ## Ringkasan
 
 - Input harian lewat form terpandu: **Terima Uang**, **Bayar**, **Pindah Dana**,
-  **Panjar**, **Hutang**, dan **Saldo Awal**.
+  **Panjar**, **Catat Utang Usaha**, **Bayar Utang Usaha**, dan **Saldo Awal**.
 - **Daftar Akun** untuk menambah, mengubah nama, menonaktifkan, atau menghapus
   akun **Beban/Pendapatan** baru langsung dari aplikasi (tercatat di audit;
   akun langsung dipakai form dan laporan).
@@ -52,7 +52,7 @@ angka turunan yang disimpan mati.
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Renderer (Chromium) — React 19 + Tailwind                           │
-│ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Pihak, Jurnal,     │
+│ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Jurnal,            │
 │ laporan, dan Pengaturan                                             │
 │ Tidak pernah menyentuh SQLite; semua lewat window.api.invoke()      │
 └───────────────────────────────┬─────────────────────────────────────┘
@@ -68,7 +68,7 @@ angka turunan yang disimpan mati.
 ┌───────────────▼──────────────┐  ┌─────────────▼─────────────────────┐
 │ src/core/* — logika murni    │  │ src/db/* — akses SQLite           │
 │ forms, posting, reports,     │  │ database.ts (DDL + migrasi v9),   │
-│ reversal, periode, pin,      │  │ repository, jurnal, panjar, pihak,│
+│ reversal, periode, pin,      │  │ repository, jurnal, panjar,       │
 │ tutup, pengaturan            │  │ lampiran, laporan, seed-dev       │
 └──────────────────────────────┘  └─────────────┬─────────────────────┘
                                                  │

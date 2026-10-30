@@ -73,7 +73,7 @@ describe('P2-8 — panduan pengguna', () => {
       'Bayar',
       'Pindah Dana',
       'Panjar',
-      'Hutang',
+      'Utang Usaha',
       'Jurnal Umum',
       'Tutup buku',
       'ganti laptop',
@@ -163,6 +163,17 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
     expect(PENGGUNA).toContain('1050');
     expect(PENGGUNA).toMatch(/data lama/i);
     expect(PEMERIKSAAN).toMatch(/1050[^\n]*data lama/i);
+  });
+
+  it('DB-23b: dokumen menjelaskan utang usaha tanpa master pihak', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README]) {
+      expect(dokumen).not.toMatch(/master\s+pihak/i);
+    }
+    expect(PENGGUNA).toContain('Catat Utang Usaha');
+    expect(PENGGUNA).toContain('Bayar Utang Usaha');
+    expect(PENGGUNA).toContain('2060');
+    expect(PENGGUNA).toMatch(/nama kreditur|kreditur/i);
+    expect(PEMERIKSAAN).toContain('Catat Utang');
   });
 });
 

@@ -83,36 +83,6 @@ function terhubungPanjar(db: Database.Database, idJurnal: string): boolean {
   );
 }
 
-/**
- * Salin metadata pihak dari jurnal asli ke jurnal baru (balik/pengganti).
- * Hanya akun yang benar-benar ada di jurnal tujuan yang disalin, sehingga
- * koreksi yang mengganti 1050 menjadi akun beban tidak meninggalkan pemetaan
- * yatim. Jurnal tersimpan sendiri tidak pernah diubah.
- */
-function salinMappingPihak(
-  db: Database.Database,
-  dariJurnalId: string,
-  keJurnalId: string,
-): void {
-  const rows = db
-    .prepare(
-      `SELECT jp.pihak_id, jp.akun_kode
-       FROM jurnal_pihak jp
-       WHERE jp.jurnal_id = ?
-         AND EXISTS (
-           SELECT 1 FROM jurnal_baris b
-           WHERE b.jurnal_id = ? AND b.akun_kode = jp.akun_kode
-         )`,
-    )
-    .all(dariJurnalId, keJurnalId) as { pihak_id: string; akun_kode: string }[];
-  if (rows.length === 0) return;
-  const ins = db.prepare(
-    `INSERT OR IGNORE INTO jurnal_pihak (jurnal_id, pihak_id, akun_kode)
-     VALUES (?, ?, ?)`,
-  );
-  for (const r of rows) ins.run(keJurnalId, String(r.pihak_id), String(r.akun_kode));
-}
-
 function rencanaUntuk(
   db: Database.Database,
   idAsli: string,
@@ -175,13 +145,12 @@ export function reverseJurnal(
   );
 
   const simpan = db.transaction(() => {
-    const hasil = postingJurnal(db, rencana.input!, {
+    // DB-23b: metadata subledger pihak tidak lagi disalin. Data legacy
+    // dibiarkan apa adanya; reversal hanya membuat jurnal balik seperti biasa.
+    return postingJurnal(db, rencana.input!, {
       konfirmasiPeringatan: opsi.konfirmasiPeringatan,
       audit: [audit],
     });
-    if (hasil.tersimpan && hasil.jurnal)
-      salinMappingPihak(db, id, hasil.jurnal.id);
-    return hasil;
   });
   const hasil = simpan();
   return { ...hasil, reversal: hasil.jurnal };
@@ -313,10 +282,6 @@ export function koreksiDanIsiUlang(
         reversal = insertJurnalTervalidasi(db, rencana.input!.header, rencana.input!.baris);
         jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris);
       }
-      // Metadata pihak ikut ke jurnal balik & pengganti (bila akunnya masih ada),
-      // supaya saldo per pihak tetap mencerminkan koreksi.
-      salinMappingPihak(db, id, reversal.id);
-      salinMappingPihak(db, id, jurnalBaru.id);
       insertAuditLog(db, auditBalik);
       insertAuditLog(db, auditBaru);
       return { reversal, jurnalBaru };

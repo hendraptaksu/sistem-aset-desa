@@ -20,12 +20,16 @@ import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pe
 export type DashboardTabTujuan =
   | 'transaksi'
   | 'panjar'
-  | 'pihak'
   | 'tutup'
   | 'jurnal';
 
 /** Form terpandu yang langsung dipilih saat membuka tab Transaksi. */
-export type DashboardFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
+export type DashboardFormTransaksi =
+  | 'TERIMA'
+  | 'BAYAR'
+  | 'PINDAH'
+  | 'CATAT_UTANG'
+  | 'BAYAR_UTANG';
 
 /** Banner amber AUD-13: backup lebih tua dari 2 hari. Null = tidak tampil. */
 export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
@@ -247,8 +251,19 @@ export function DashboardTab({
               <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
                 Panjar
               </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
-                Hutang
+              <Button
+                disabled={sibuk}
+                variant="ghost"
+                onClick={() => onBukaTab('transaksi', 'CATAT_UTANG')}
+              >
+                Catat Utang
+              </Button>
+              <Button
+                disabled={sibuk}
+                variant="ghost"
+                onClick={() => onBukaTab('transaksi', 'BAYAR_UTANG')}
+              >
+                Bayar Utang
               </Button>
               <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
                 Tutup Buku
