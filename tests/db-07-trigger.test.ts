@@ -3,7 +3,7 @@
 // Fokus:
 // - DB yang sudah current tetapi berisi trigger lama dengan body berbeda
 //   mendapat body dari kode terbaru setelah `openDb`/`migrasi`.
-// - Semua trigger aplikasi (v9 + v11 + v14) ada tepat satu setelah dibuka berulang.
+// - Semua trigger aplikasi (v9 + v11 + v14 + v15) ada tepat satu setelah dibuka berulang.
 // - Aturan integritas tetap menolak operasi terlarang setelah trigger diganti.
 // - Migrasi yang gagal (duplikat SALDO_AWAL) rollback tanpa kehilangan trigger;
 //   definisi lama tetap utuh.
@@ -27,6 +27,8 @@ const MARKER_LAMA = 'LAMA-DB-07';
 
 /** Semua trigger yang dibuat aplikasi, diurutkan seperti query sqlite_master. */
 const TRIGGER_APP = [
+  'trg_akun_validasi_insert',
+  'trg_akun_validasi_update',
   'trg_audit_log_immutable_delete',
   'trg_audit_log_immutable_update',
   'trg_jurnal_baris_immutable_delete',

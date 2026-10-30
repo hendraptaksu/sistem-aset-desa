@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { JENIS_JURNAL } from '../core/posting.js';
-import { AKUN_HUTANG_USAHA, COA } from './coa.js';
+import { AKUN_HUTANG_USAHA, COA, POSISI_NORMAL } from './coa.js';
 
 /**
  * Versi skema di `PRAGMA user_version`.
@@ -47,8 +47,14 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  *          + trigger `BEFORE INSERT` yang menolak `jenis` tak dikenal dan
  *          tanggal yang tidak berbentuk YYYY-MM-DD. Migrasi berhenti bila DB
  *          lama sudah berisi `reversal_of` duplikat; data tidak diubah.
+ * - 15   = constraint akun di DB (DB-11): unique index `ux_akun_nama_nocase`
+ *          (nama unik tanpa membedakan huruf besar/kecil) + trigger
+ *          `BEFORE INSERT/UPDATE` yang menolak kode bukan 4 digit, nama kosong,
+ *          tipe/posisi_normal tidak valid atau tidak cocok, dan aktif bukan 0/1.
+ *          Migrasi berhenti bila DB lama sudah berisi nama akun duplikat;
+ *          data tidak diubah.
  */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -69,6 +75,8 @@ export const PESAN_DB_VERSI_BARU =
  * bukan di DDL ini, agar DB bermasalah tidak langsung gagal dengan error UNIQUE
  * tanpa pesan migrasi yang jelas. Trigger validasi jurnal v14 juga dibuat di
  * migrasi (DROP + CREATE), bukan di DDL, mengikuti pola DB-07.
+ * Unique index nama akun dan trigger validasi akun v15 juga dibuat di
+ * `terapkanMigrasiV15()` setelah pemeriksaan duplikat NOCASE.
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -452,6 +460,110 @@ function terapkanMigrasiV14(db: Database.Database): void {
   `);
 }
 
+/** DB-11: pesan migrasi saat DB lama berisi nama akun duplikat (NOCASE). */
+export const PESAN_DUPLIKAT_NAMA_AKUN =
+  'Migrasi v15 dibatalkan: ditemukan nama akun duplikat tanpa membedakan huruf besar/kecil. ' +
+  'Nama akun wajib unik. Perbaiki duplikat secara manual; ' +
+  'tidak ada data yang dihapus atau diubah.';
+
+/** DB-11: pesan trigger untuk kode akun yang bukan tepat 4 digit angka. */
+export const PESAN_KODE_AKUN_DB = 'Kode akun harus tepat 4 digit angka.';
+
+/** DB-11: pesan trigger untuk nama akun kosong setelah trim. */
+export const PESAN_NAMA_AKUN_DB =
+  'Nama akun wajib diisi dan tidak boleh kosong atau hanya berisi spasi.';
+
+/** DB-11: pesan trigger untuk tipe akun di luar lima tipe resmi. */
+export const PESAN_TIPE_AKUN_DB =
+  'Tipe akun tidak dikenal. Gunakan AKTIVA, KEWAJIBAN, EKUITAS, PENDAPATAN, atau BEBAN.';
+
+/** DB-11: pesan trigger untuk posisi normal yang tidak cocok dengan tipe. */
+export const PESAN_POSISI_AKUN_DB =
+  'Posisi normal akun tidak cocok dengan tipe akun. ' +
+  'AKTIVA/BEBAN harus DEBIT; KEWAJIBAN/EKUITAS/PENDAPATAN harus KREDIT.';
+
+/** DB-11: pesan trigger untuk status aktif selain 0/1. */
+export const PESAN_AKTIF_AKUN_DB =
+  'Status aktif akun harus 0 (nonaktif) atau 1 (aktif).';
+
+/** Daftar tipe akun resmi, disinkronkan langsung dari kontrak COA. */
+const TIPE_AKUN_SQL = Object.keys(POSISI_NORMAL)
+  .map((tipe) => `'${tipe}'`)
+  .join(', ');
+
+/** Pemetaan tipe → posisi normal untuk trigger, disinkronkan dari COA. */
+const POSISI_NORMAL_SQL = Object.entries(POSISI_NORMAL)
+  .map(([tipe, posisi]) => `WHEN '${tipe}' THEN '${posisi}'`)
+  .join(' ');
+
+/**
+ * DB-11 — constraint akun v15.
+ *
+ * 1. Periksa nama akun duplikat dengan `COLLATE NOCASE` SEBELUM membuat unique
+ *    index. Bila ada, lempar error agar transaksi `migrasi()` rollback penuh:
+ *    `user_version` tidak naik dan tidak ada data yang dihapus/diubah.
+ * 2. Pasang unique index agar nama akun unik tanpa membedakan huruf besar/kecil,
+ *    termasuk INSERT/UPDATE mentah yang melewati repository.
+ * 3. Pasang ulang trigger `BEFORE INSERT` dan `BEFORE UPDATE` dengan pola
+ *    DROP + CREATE (DB-07). Trigger adalah pertahanan terakhir: kode tepat
+ *    4 digit, nama tidak kosong, tipe resmi, posisi normal cocok dengan tipe,
+ *    dan aktif hanya 0/1. Tabel `akun` TIDAK direbuild di sini.
+ *
+ * Idempoten: index memakai `IF NOT EXISTS`, trigger selalu dibuat ulang, dan
+ * pemeriksaan duplikat aman dijalankan berulang.
+ */
+function terapkanMigrasiV15(db: Database.Database): void {
+  const duplikat = db
+    .prepare(
+      `SELECT nama
+       FROM akun
+       GROUP BY nama COLLATE NOCASE
+       HAVING COUNT(*) > 1
+       LIMIT 1`,
+    )
+    .get() as { nama: string } | undefined;
+  if (duplikat) throw new Error(PESAN_DUPLIKAT_NAMA_AKUN);
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
+      ON akun(nama COLLATE NOCASE);
+
+    DROP TRIGGER IF EXISTS trg_akun_validasi_insert;
+    CREATE TRIGGER trg_akun_validasi_insert
+    BEFORE INSERT ON akun
+    BEGIN
+      SELECT RAISE(ABORT, '${PESAN_KODE_AKUN_DB}')
+      WHERE NEW.kode IS NULL OR NEW.kode NOT GLOB '[0-9][0-9][0-9][0-9]';
+      SELECT RAISE(ABORT, '${PESAN_NAMA_AKUN_DB}')
+      WHERE NEW.nama IS NULL OR length(trim(NEW.nama)) = 0;
+      SELECT RAISE(ABORT, '${PESAN_TIPE_AKUN_DB}')
+      WHERE NEW.tipe IS NULL OR NEW.tipe NOT IN (${TIPE_AKUN_SQL});
+      SELECT RAISE(ABORT, '${PESAN_POSISI_AKUN_DB}')
+      WHERE NEW.posisi_normal IS NULL
+         OR NEW.posisi_normal <> CASE NEW.tipe ${POSISI_NORMAL_SQL} END;
+      SELECT RAISE(ABORT, '${PESAN_AKTIF_AKUN_DB}')
+      WHERE NEW.aktif IS NULL OR NEW.aktif NOT IN (0, 1);
+    END;
+
+    DROP TRIGGER IF EXISTS trg_akun_validasi_update;
+    CREATE TRIGGER trg_akun_validasi_update
+    BEFORE UPDATE ON akun
+    BEGIN
+      SELECT RAISE(ABORT, '${PESAN_KODE_AKUN_DB}')
+      WHERE NEW.kode IS NULL OR NEW.kode NOT GLOB '[0-9][0-9][0-9][0-9]';
+      SELECT RAISE(ABORT, '${PESAN_NAMA_AKUN_DB}')
+      WHERE NEW.nama IS NULL OR length(trim(NEW.nama)) = 0;
+      SELECT RAISE(ABORT, '${PESAN_TIPE_AKUN_DB}')
+      WHERE NEW.tipe IS NULL OR NEW.tipe NOT IN (${TIPE_AKUN_SQL});
+      SELECT RAISE(ABORT, '${PESAN_POSISI_AKUN_DB}')
+      WHERE NEW.posisi_normal IS NULL
+         OR NEW.posisi_normal <> CASE NEW.tipe ${POSISI_NORMAL_SQL} END;
+      SELECT RAISE(ABORT, '${PESAN_AKTIF_AKUN_DB}')
+      WHERE NEW.aktif IS NULL OR NEW.aktif NOT IN (0, 1);
+    END;
+  `);
+}
+
 /**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
@@ -474,6 +586,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v12 (drop tabel modul yang sudah dihapus).
  * - Menerapkan migrasi v13 (unique index satu jurnal SALDO_AWAL).
  * - Menerapkan migrasi v14 (unique reversal + trigger validasi jurnal).
+ * - Menerapkan migrasi v15 (unique nama akun + trigger validasi akun).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -494,6 +607,7 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV12(db);
     terapkanMigrasiV13(db);
     terapkanMigrasiV14(db);
+    terapkanMigrasiV15(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

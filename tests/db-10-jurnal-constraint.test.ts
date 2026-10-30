@@ -1,7 +1,7 @@
 // DB-10 — constraint jurnal di tingkat database.
 //
 // Fokus:
-// - DB v13 sehat naik ke v14: partial unique index `ux_jurnal_reversal` dan
+// - DB v13 sehat naik ke versi saat ini: partial unique index `ux_jurnal_reversal` dan
 //   trigger validasi `BEFORE INSERT` terpasang, data lama tetap utuh.
 // - Migrasi idempoten: index/trigger tidak dobel setelah openDb/migrasi berulang.
 // - DB v13 dengan `reversal_of` duplikat menghentikan migrasi v14 dengan pesan
@@ -106,14 +106,14 @@ function buatFixtureV13(
 }
 
 describe('DB-10 — migrasi v14', () => {
-  it('DB v13 sehat naik ke v14, data utuh, index/trigger idempoten', () => {
+  it('DB v13 sehat naik ke versi skema saat ini, data utuh, index/trigger idempoten', () => {
     const path = tmpDb('pura-db10-naik-');
     buatFixtureV13(path, { reversalOfDuplikat: false });
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(14);
-      expect(versi(db)).toBe(14);
+      expect(SCHEMA_VERSION).toBe(15);
+      expect(versi(db)).toBe(15);
 
       const index = indeksReversal(db);
       expect(index?.name).toBe('ux_jurnal_reversal');
@@ -136,8 +136,8 @@ describe('DB-10 — migrasi v14', () => {
       ]);
 
       // Migrasi berulang tidak menggandakan index/trigger.
-      expect(migrasi(db)).toBe(14);
-      expect(migrasi(db)).toBe(14);
+      expect(migrasi(db)).toBe(15);
+      expect(migrasi(db)).toBe(15);
       expect(
         db
           .prepare(
@@ -152,7 +152,7 @@ describe('DB-10 — migrasi v14', () => {
 
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(14);
+      expect(versi(db2)).toBe(15);
       expect(indeksReversal(db2)?.name).toBe('ux_jurnal_reversal');
       expect(triggerValidasi(db2)?.name).toBe('trg_jurnal_validasi_insert');
     } finally {

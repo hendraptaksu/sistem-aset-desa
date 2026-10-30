@@ -97,6 +97,22 @@ describe('Tambah akun COA', () => {
     }
   });
 
+  it('menolak ubah nama yang bentrok tanpa membedakan huruf besar/kecil', () => {
+    const db = freshDb();
+    try {
+      tambahAkun(db, { kode: '5011', nama: 'PENGELUARAN ARTOS', tipe: 'BEBAN' });
+      tambahAkun(db, { kode: '5012', nama: 'AKUN KEDUA', tipe: 'BEBAN' });
+
+      expect(() => ubahNamaAkun(db, '5012', 'pengeluaran artos')).toThrow(/sudah dipakai/i);
+      expect(getAkun(db, '5012')?.nama).toBe('AKUN KEDUA');
+
+      // Rename valid tetap berjalan; constraint DB tidak mengganggu akun sah.
+      expect(ubahNamaAkun(db, '5012', 'AKUN KEDUA BARU').nama).toBe('AKUN KEDUA BARU');
+    } finally {
+      db.close();
+    }
+  });
+
   it('mengubah nama, menonaktifkan, dan mengaktifkan lagi akun tambahan', () => {
     const db = freshDb();
     try {

@@ -79,7 +79,7 @@
 | DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
 | DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [x] |
 | DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [x] |
-| DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [ ] |
+| DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [x] |
 | DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [ ] |
 | DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [ ] |
 | DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [ ] |
@@ -419,7 +419,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     bersih; `npm test` **734 test/61 file hijau** (baseline 728/60);
     `npm run build` berhasil.
 
-- [ ] **DB-11 — Constraint akun: unique nama + validasi tipe/posisi** · P0 · S
+- [x] **DB-11 — Constraint akun: unique nama + validasi tipe/posisi** · P0 · S
   - **Konteks:** `akun.tipe`/`posisi_normal` hanya divalidasi kode; typo bisa
     membuat akun hilang dari laporan. Nama akun juga hanya unik di aplikasi.
   - **Langkah:**
@@ -431,6 +431,27 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** DB menolak akun invalid; pesan error jelas.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** —
+  - **Bukti 2026-10-30:** `SCHEMA_VERSION` 14 → 15. Migrasi v15 memeriksa
+    nama akun duplikat dengan `COLLATE NOCASE` SEBELUM membuat
+    `ux_akun_nama_nocase`; bila duplikat ada, migrasi berhenti dengan pesan
+    Indonesia dan transaksi rollback penuh (`user_version` tetap 14, data,
+    index, dan trigger tidak berubah). Unique index `ux_akun_nama_nocase`
+    aktif untuk DB baru maupun lama. Trigger `trg_akun_validasi_insert` dan
+    `trg_akun_validasi_update` dibuat ulang dengan pola DROP + CREATE (DB-07)
+    dan menolak kode bukan tepat 4 digit, nama kosong setelah trim, `tipe` di
+    luar AKTIVA/KEWAJIBAN/EKUITAS/PENDAPATAN/BEBAN, `posisi_normal` yang tidak
+    cocok dengan tipe, serta `aktif` selain 0/1; pesan menyebut field yang
+    gagal. Daftar tipe/posisi diimpor dari `POSISI_NORMAL` di `coa.ts` agar
+    tidak ada salinan yang melenceng. Seed/upsert COA dan akun tambahan normal
+    tetap lolos; tidak ada rebuild tabel `akun`. Test baru
+    `tests/db-11-akun-constraint.test.ts` (6) mencakup migrasi v14 sehat,
+    idempotensi/ganti body trigger, semua pelanggaran pada INSERT dan UPDATE,
+    unique nama beda kapital, akun bawaan + akun baru, dan fixture v14
+    duplikat yang rollback; `tests/akun.test.ts` menambah kasus ubah nama
+    bentrok NOCASE. Ekspektasi versi di `tests/db-04`, `db-07`, `db-10`,
+    `jurnal`, `migrasi-v9/v10/v11/v12`, serta README diperbarui.
+    `npm run typecheck` bersih; `npm test` **741 test/62 file hijau**
+    (baseline 734/61); `npm run build` berhasil.
 
 - [ ] **DB-12 — Audit integritas DB (perluas AKT-09)** · P0 · M
   - **Konteks:** aplikasi mengandalkan validasi kode; tidak ada pemeriksaan

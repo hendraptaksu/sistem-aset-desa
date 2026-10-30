@@ -3,7 +3,7 @@
 // Fokus:
 // - DB v11 berisi data di semua tabel yang disetujui tetap terbuka, dibuatkan
 //   backup pra-upgrade, tabel legacy dibuang, dan tabel akuntansi utuh.
-// - DB baru langsung v14 tanpa tabel legacy.
+// - DB baru langsung v15 tanpa tabel legacy.
 // - DB versi lebih baru ditolak SEBELUM DDL dan tidak diubah.
 // - Backup v11/v14 tetap bisa direstore; backup v14 diterima.
 // - Migrasi idempoten dan backup dibuat untuk setiap kenaikan versi.
@@ -273,7 +273,7 @@ function buatFixtureV11(path: string): void {
   }
 }
 
-describe('DB-33 — migrasi v11 → v14', () => {
+describe('DB-33 — migrasi v11 → v15', () => {
   it('membuat backup, membuang tabel legacy, dan mempertahankan tabel akuntansi', () => {
     const dir = tmpDir('pura-v12-migrasi-');
     const path = join(dir, 'pura.db');
@@ -300,8 +300,8 @@ describe('DB-33 — migrasi v11 → v14', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(14);
-      expect(versi(db)).toBe(14);
+      expect(SCHEMA_VERSION).toBe(15);
+      expect(versi(db)).toBe(15);
       const tabel = daftarTabel(db);
       for (const wajib of TABEL_INTI) expect(tabel).toContain(wajib);
       for (const lama of TABEL_DIHAPUS_V12) {
@@ -357,12 +357,12 @@ describe('DB-33 — migrasi v11 → v14', () => {
       db.close();
     }
 
-    // Migrasi dijalankan ulang dan DB dibuka ulang: tetap v14, tanpa tabel legacy.
+    // Migrasi dijalankan ulang dan DB dibuka ulang: tetap v15, tanpa tabel legacy.
     const db2 = openDb(path);
     try {
-      expect(migrasi(db2)).toBe(14);
-      expect(migrasi(db2)).toBe(14);
-      expect(versi(db2)).toBe(14);
+      expect(migrasi(db2)).toBe(15);
+      expect(migrasi(db2)).toBe(15);
+      expect(versi(db2)).toBe(15);
       const tabel = daftarTabel(db2);
       for (const lama of TABEL_DIHAPUS_V12) expect(tabel).not.toContain(lama);
       expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v11']);
@@ -374,10 +374,10 @@ describe('DB-33 — migrasi v11 → v14', () => {
     expect(validasiKandidatRestore(backup)).toEqual({ valid: true });
   });
 
-  it('DB baru langsung v14 tanpa tabel legacy dan lolos audit', () => {
+  it('DB baru langsung v15 tanpa tabel legacy dan lolos audit', () => {
     const db = openDb(':memory:');
     try {
-      expect(versi(db)).toBe(14);
+      expect(versi(db)).toBe(15);
       const tabel = daftarTabel(db);
       for (const wajib of TABEL_INTI) expect(tabel).toContain(wajib);
       for (const lama of TABEL_DIHAPUS_V12) {
@@ -429,15 +429,15 @@ describe('DB-33 — migrasi v11 → v14', () => {
 });
 
 describe('DB-33 — restore & backup lintas versi', () => {
-  it('menerima backup v14 dan merestorekannya', () => {
-    const dir = tmpDir('pura-v14-restore-');
+  it('menerima backup versi saat ini dan merestorekannya', () => {
+    const dir = tmpDir('pura-v15-restore-');
     const sumberPath = join(dir, 'sumber.db');
-    const backupPath = join(dir, 'backup-v14.db');
+    const backupPath = join(dir, 'backup-v15.db');
     let sumber = openDb(sumberPath);
     try {
       insertJurnalTervalidasi(
         sumber,
-        { id: 'j-v14', tanggal: '2026-03-01', keterangan: 'Data v14' },
+        { id: 'j-v15', tanggal: '2026-03-01', keterangan: 'Data v15' },
         [
           { akun_kode: '1001', debit: 100_000, kredit: 0 },
           { akun_kode: '4001', debit: 0, kredit: 100_000 },
@@ -451,7 +451,7 @@ describe('DB-33 — restore & backup lintas versi', () => {
     expect(validasiKandidatRestore(backupPath)).toEqual({ valid: true });
     const cek = new Database(backupPath, { readonly: true });
     try {
-      expect(versi(cek)).toBe(14);
+      expect(versi(cek)).toBe(SCHEMA_VERSION);
       for (const lama of TABEL_DIHAPUS_V12) expect(daftarTabel(cek)).not.toContain(lama);
     } finally {
       cek.close();
@@ -464,13 +464,13 @@ describe('DB-33 — restore & backup lintas versi', () => {
         dbPath: aktifPath,
         backupPath,
         dirBackup: join(dir, 'backups'),
-        stamp: 'v14',
+        stamp: 'v15',
       });
       expect(hasil.ok, hasil.ok ? '' : hasil.error).toBe(true);
       if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
-      expect(versi(aktif)).toBe(14);
-      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v14']);
+      expect(versi(aktif)).toBe(SCHEMA_VERSION);
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v15']);
       for (const lama of TABEL_DIHAPUS_V12) expect(daftarTabel(aktif)).not.toContain(lama);
     } finally {
       aktif.close();
@@ -478,9 +478,9 @@ describe('DB-33 — restore & backup lintas versi', () => {
   });
 
   it.each(['panjar_item', 'panjar'] as const)(
-    'menolak backup v14 yang kehilangan %s',
+    'menolak backup versi saat ini yang kehilangan %s',
     (tabelHilang) => {
-      const dir = tmpDir('pura-v14-wajib-');
+      const dir = tmpDir('pura-v15-wajib-');
       const asli = join(dir, 'asli.db');
       const kurang = join(dir, 'kurang.db');
       const db = openDb(asli);
