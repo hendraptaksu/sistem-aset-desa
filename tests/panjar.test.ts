@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
+import { DDL, openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import {
   closePanjarV2,
   getPanjar,
@@ -519,44 +519,56 @@ describe('P1-4 — builder murni buatJurnalPanjarClose', () => {
   });
 });
 
-describe('P1-4 — migrasi skema panjar v4', () => {
-  it('membuang bentuk v1 tetapi mempertahankan metadata v4 saat DB dibuka ulang', () => {
+describe('P1-4/DB-06 — metadata panjar v2 dipertahankan saat DB dibuka ulang', () => {
+  it('tidak membuang panjar dari DB v8 hanya karena versinya lama', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-panjar-'));
     const path = join(dir, 'pura.db');
     try {
-      // DB v3 lama: panjar v1 tanpa jurnal_open_id.
+      // DB v8: skema panjar v2 sudah ada, termasuk metadata jurnal.
       const lama = new Database(path);
-      lama.exec(`
-        CREATE TABLE panjar (
-          id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, penerima TEXT NOT NULL,
-          jumlah INTEGER NOT NULL, akun_kas_sumber TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'OPEN'
-        );
-        CREATE TABLE panjar_item (
-          panjar_id TEXT NOT NULL, kategori_baga TEXT NOT NULL, nominal INTEGER NOT NULL
-        );
-        PRAGMA user_version = 3;
-      `);
+      lama.exec(DDL);
+      const insAkun = lama.prepare(
+        `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
+         VALUES (?, ?, ?, ?, 1)`,
+      );
+      insAkun.run('1001', 'KAS', 'ASET', 'DEBIT');
+      insAkun.run('1040', 'UANG PANJAR', 'ASET', 'DEBIT');
+      insAkun.run('5004', 'BEBAN KONSUMSI', 'BEBAN', 'DEBIT');
       lama
         .prepare(
-          "INSERT INTO panjar (id, tanggal, penerima, jumlah, akun_kas_sumber, status) VALUES ('p-lama', '2025-01-01', 'Lama', 100, '1001', 'OPEN')",
+          `INSERT INTO jurnal
+             (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+           VALUES ('j-p-lama', '2025-01-01', '', 'Panjar lama', 'PANJAR',
+                   'j-p-lama', NULL, '2025-01-01T00:00:00.000Z')`,
         )
         .run();
+      lama
+        .prepare(
+          `INSERT INTO panjar
+             (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+              tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
+           VALUES ('p-lama', '2025-01-01', 'Lama', 100, '1001', 'OPEN',
+                   NULL, 'j-p-lama', NULL, '2025-01-01T00:00:00.000Z')`,
+        )
+        .run();
+      lama
+        .prepare(
+          `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
+           VALUES ('p-lama', '5004', 50, 'j-p-lama')`,
+        )
+        .run();
+      lama.pragma('user_version = 8');
       lama.close();
 
       const db = openDb(path);
       try {
         expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        const kolom = (db.pragma('table_info(panjar)') as { name: string }[]).map((k) => k.name);
-        expect(kolom).toEqual(
-          expect.arrayContaining([
-            'jurnal_open_id',
-            'jurnal_close_id',
-            'tanggal_close',
-            'created_at',
-          ]),
-        );
-        expect(listPanjarV2(db)).toEqual([]); // bentuk v1 dibuang, bukan dimigrasi
+        expect(getPanjar(db, 'p-lama')).toMatchObject({
+          status: 'OPEN',
+          jurnal_open_id: 'j-p-lama',
+        });
+        expect(listPanjarV2(db).map((p) => p.id)).toEqual(['p-lama']);
+        expect(listPanjarItemsV2(db, 'p-lama')).toHaveLength(1);
 
         expect(
           postingJurnal(db, {

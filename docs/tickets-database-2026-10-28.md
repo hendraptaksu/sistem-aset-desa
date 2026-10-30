@@ -74,7 +74,7 @@
 | DB-03 | P0 | M | Pisahkan endpoint posting manual vs form terpandu | — | [x] |
 | DB-04 | P0 | S | Unique saldo awal + status saldo awal | — | [x] |
 | DB-05 | P0 | S | Tolak DB yang dibuat versi aplikasi lebih baru | — | [x] |
-| DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [ ] |
+| DB-06 | P0 | M | Hentikan drop tabel berbasis bentuk; cleanup legacy version-gated | DB-05 | [x] |
 | DB-07 | P0 | S | Trigger migrasi: drop/create, bukan `IF NOT EXISTS` | DB-06 | [ ] |
 | DB-08 | P0 | S | Validasi restore: semua tabel + `foreign_key_check` | — | [x] |
 | DB-09 | P0 | M | Backup lengkap sebagai default / blokir restore `.db` berisiko | DB-02 | [x] |
@@ -258,7 +258,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     dengan pesan tepat. `npm run typecheck` bersih; `npm test`
     **717 test/58 file hijau** (baseline 709/57); `npm run build` berhasil.
 
-- [ ] **DB-06 — Hentikan drop tabel berbasis bentuk** · P0 · M
+- [x] **DB-06 — Hentikan drop tabel berbasis bentuk** · P0 · M
   - **Konteks:** `buangTabelLama()` berjalan setiap `openDb()` dan menghapus
     `panjar`/`tutup_buku` berdasarkan bentuk kolom. Ini bisa menghapus data
     nyata saat skema berubah.
@@ -273,6 +273,29 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** tidak ada drop berdasarkan nama kolom; data v8 aman.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** DB-05.
+  - **Bukti 2026-10-30:** `buangTabelLama()` dihapus. Cleanup single-entry
+    sekarang berupa langkah eksplisit `terapkanMigrasiSingleEntryLama(db,
+    versiAwal)` dengan daftar tetap `TABEL_SINGLE_ENTRY_LAMA = ['transaksi',
+    'coa']`; hanya berjalan bila versi ASLI (`versiAwal`, ditangkap sebelum
+    `user_version` diubah) < 3 dan tabel legacy memang ada, sehingga DB baru
+    dan DB current tidak pernah menjalankan DROP legacy. Tidak ada lagi DROP
+    yang diputuskan dari `kolomTabel`/`table_info`; helper bentuk kolom hanya
+    dipakai untuk `ALTER TABLE audit_log` yang aditif. Tidak ada shape-drop
+    `panjar`, `panjar_item`, atau `tutup_buku`; migrasi v12 (DB-33) tetap
+    membuang daftar tabel yang sudah disetujui. `SCHEMA_VERSION` tetap 13
+    karena ini pembersihan perilaku, bukan perubahan skema. Test baru
+    `tests/db-06-tabel-legacy.test.ts` (5) mencakup fixture v8 dengan data
+    panjar/panjar_item/tutup_buku utuh setelah openDb + reopen berulang,
+    fixture v2 `transaksi`/`coa` hilang dan skema current terbentuk, DB current
+    tidak menjalankan cleanup legacy, panjar/tutup_buku bentuk lama tidak
+    dibuang hanya karena kolom berbeda, serta pemeriksaan sumber tidak ada
+    keputusan DROP berbasis bentuk kolom. Test lama `tests/jurnal.test.ts`
+    (fixture P0-3 kini tanpa panjar/tutup lama) dan `tests/panjar.test.ts`
+    (fixture v8 dengan metadata panjar utuh) disesuaikan. Catatan: DB yang
+    benar-benar masih berbentuk panjar/tutup_buku v1 akan dipertahankan apa
+    adanya dan memerlukan migrasi eksplisit terpisah bila ingin diubah.
+    `npm run typecheck` bersih; `npm test` **722 test/59 file hijau**
+    (baseline 717/58); `npm run build` berhasil.
 
 - [ ] **DB-07 — Trigger migrasi: drop/create, bukan `IF NOT EXISTS`** · P0 · S
   - **Konteks:** `CREATE TRIGGER IF NOT EXISTS` membuat perubahan isi trigger

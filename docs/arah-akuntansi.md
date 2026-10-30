@@ -72,8 +72,10 @@ Inilah yang membuat akuntan percaya: setiap angka di laporan bisa ditelusuri ke 
 | Neraca dihitung ad-hoc | Neraca Saldo, Buku Besar, Laba Rugi, Neraca — semua dari jurnal |
 | Tidak ada koreksi | Jurnal balik + audit |
 
-Karena masih POC, tabel single-entry lama (`transaksi`, `panjar`, `panjar_item`) langsung dibuang saat
-upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev seed baru dibuat di atas jurnal v2.
+Karena masih POC, tabel single-entry lama (`transaksi`, `coa`) dibersihkan hanya saat DB asli v0–v2
+dibuka — **tidak ada migrasi data**. `panjar`, `panjar_item`, dan `tutup_buku` tidak dibuang berdasarkan
+bentuk kolom (DB-06); perubahan bentuk tabel hanya lewat migrasi eksplisit. DB dev lama boleh dihapus;
+dev seed baru dibuat di atas jurnal v2.
 
 ## 5. Yang tetap sama (jangan hilang)
 
@@ -127,7 +129,8 @@ upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev see
 
 ## 10. POC: mulai dari nol (tidak ada migrasi)
 
-- Skema v2 membuat tabel baru; tabel single-entry lama dibuang saat upgrade versi.
+- Skema v2 membuat tabel baru; tabel single-entry lama (`transaksi`/`coa`) dibersihkan dari DB asli
+  v0–v2 oleh migrasi eksplisit. `panjar`/`panjar_item`/`tutup_buku` dipertahankan.
 - DB dev lama (`data/pura-dev.db`) dan file backup dev boleh dihapus kapan saja.
 - `seed-dev` baru menghasilkan contoh jurnal yang seimbang (deterministik) untuk uji laporan.
 - Backup/restore tetap aman karena nanti dipakai untuk data nyata: `VACUUM INTO`, validasi integritas,

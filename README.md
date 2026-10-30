@@ -88,8 +88,10 @@ Prinsip yang dijaga:
 3. **Logika akuntansi murni** ada di `src/core/` supaya mudah diuji tanpa
    Electron. Lapisan `src/db/` mengurus SQL; `src/main/` mengurus IPC/OS.
 4. **Skema v13** (lihat `SCHEMA_VERSION` di `src/db/database.ts`). Tabel
-   single-entry lama dan tabel modul yang sudah dihapus dibuang oleh migrasi
-   idempoten; backup pra-upgrade (`pre-upgrade-*.db`) dibuat untuk setiap
+   single-entry lama (`transaksi`/`coa`) hanya dibersihkan dari DB asli v0–v2;
+   tabel modul yang sudah dihapus dibuang oleh migrasi v12 idempoten.
+   `panjar`, `panjar_item`, dan `tutup_buku` tidak pernah dibuang berdasarkan
+   bentuk kolom. Backup pra-upgrade (`pre-upgrade-*.db`) dibuat untuk setiap
    kenaikan versi sebelum migrasi berjalan. Sejak v13 hanya boleh ada satu
    jurnal `SALDO_AWAL`; migrasi berhenti tanpa mengubah data bila DB lama
    berisi duplikat.

@@ -733,18 +733,6 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
         akun_kas TEXT NOT NULL, kategori TEXT NOT NULL,
         masuk INTEGER NOT NULL DEFAULT 0, keluar INTEGER NOT NULL DEFAULT 0
       );
-      CREATE TABLE panjar (
-        id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, penerima TEXT NOT NULL,
-        jumlah INTEGER NOT NULL, akun_kas_sumber TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'OPEN'
-      );
-      CREATE TABLE panjar_item (
-        panjar_id TEXT NOT NULL, kategori_baga TEXT NOT NULL, nominal INTEGER NOT NULL
-      );
-      CREATE TABLE tutup_buku (
-        tahun INTEGER PRIMARY KEY, laba INTEGER NOT NULL,
-        created_at TEXT NOT NULL, backup_path TEXT NOT NULL DEFAULT ''
-      );
       CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT NOT NULL DEFAULT '');
       PRAGMA user_version = 0;
     `);
@@ -754,7 +742,6 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
         "INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori, masuk, keluar) VALUES ('t-lama', '2025-12-31', 'Data lama', '1001', '4005', 123, 0)",
       )
       .run();
-    lama.prepare("INSERT INTO tutup_buku (tahun, laba, created_at) VALUES (2025, 999, '2025-12-31T00:00:00.000Z')").run();
     lama.close();
 
     const db = openDb(path);
@@ -767,8 +754,7 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
       for (const usang of ['transaksi', 'coa']) {
         expect(tabel, `tabel ${usang} harus dibuang`).not.toContain(usang);
       }
-      // P1-4: panjar v1 dibuang lalu dibuat ulang dalam bentuk v2 (metadata
-      // jurnal_open_id) — data lamanya tetap tidak dimigrasi.
+      // Fixture v1 tidak punya panjar; DDL membuat tabel panjar v2 baru.
       expect(tabel).toEqual(expect.arrayContaining(['panjar', 'panjar_item']));
       const kolomPanjar = (db.pragma('table_info(panjar)') as { name: string }[]).map(
         (k) => k.name,
@@ -781,7 +767,7 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
       // PIN dipertahankan.
       expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'pin_salt'").get()).toEqual({ nilai: 'lama' });
 
-      // tutup_buku lama (punya `laba`) diganti bentuk v2 tanpa angka laba tersimpan.
+      // Fixture v1 tidak punya tutup_buku; DDL membuat bentuk v2 tanpa `laba`.
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
       expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'backup_path', 'catatan']));
       expect(kolom).not.toContain('laba');

@@ -11,7 +11,8 @@ import { AKUN_HUTANG_USAHA, COA } from './coa.js';
  * Versi skema di `PRAGMA user_version`.
  * - 0/v1 = model single-entry lama (transaksi + kategori).
  * - 2    = model double-entry (jurnal + jurnal_baris). Tabel single-entry lama
- *          dibuang saat reset POC (P0-3); tidak ada migrasi data (K6).
+ *          (`transaksi`/`coa`) dibersihkan hanya dari DB asli v0–v2 oleh
+ *          migrasi eksplisit DB-06; tidak ada migrasi data (K6).
  * - 3    = audit log lengkap (P0-9): kolom `data_baru_json` (sebelum/sesudah).
  * - 4    = metadata panjar v2 (P1-4): `panjar` + `panjar_item` menyimpan
  *          dokumen serah/pertanggungjawaban, bukan saldo/laba. Jurnal tetap
@@ -52,8 +53,9 @@ export const PESAN_DB_VERSI_BARU =
  * (pengaturan PIN). Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset,
  * anggaran, rekonsiliasi_bank, lampiran_jurnal) TIDAK dibuat lagi; migrasi v12
  * (DB-33) membuangnya dari DB lama.
- * Tabel single-entry lama TIDAK dibuat lagi; `buangTabelLama()` membersihkannya
- * dari DB lama, sedangkan metadata panjar v2 dipertahankan.
+ * Tabel single-entry lama TIDAK dibuat lagi; `terapkanMigrasiSingleEntryLama()`
+ * membersihkannya HANYA dari DB asli v0–v2. Metadata panjar v2 dan `tutup_buku`
+ * tidak pernah dibuang berdasarkan bentuk kolom (DB-06).
  * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
  * `terapkanAturanV9()` agar DB lama ikut termigrasi dan idempoten.
  * Unique index saldo awal v13 sengaja dibuat `terapkanMigrasiV13()` SETELAH
@@ -170,37 +172,41 @@ function tabelAda(db: Database.Database, nama: string): boolean {
 
 function kolomTabel(db: Database.Database, nama: string): string[] {
   // `nama` selalu konstanta internal, bukan input user.
+  // JANGAN memakai helper ini untuk memutuskan DROP TABLE: bentuk kolom bukan
+  // alasan yang sah untuk menghapus data (DB-06). Saat ini hanya dipakai untuk
+  // ALTER TABLE `audit_log` yang aditif.
   return (db.pragma(`table_info(${nama})`) as { name: string }[]).map((k) => k.name);
 }
 
 /**
- * K6: POC, data single-entry lama dibuang. Hapus `transaksi`/`coa` dan panjar
- * bentuk v1 (tanpa jurnal_open_id). Panjar bentuk v2 (P1-4) dipertahankan agar
- * metadata dokumen tidak hilang saat aplikasi dibuka ulang.
- * `pengaturan` (PIN) dipertahankan. Tabel modul yang sudah dihapus dibuang oleh
- * `terapkanMigrasiV12()` (DB-33), bukan di sini.
+ * DB-06 — daftar eksplisit tabel single-entry lama yang boleh dibersihkan dari
+ * DB asli v0–v2. Jangan menambah `panjar`, `panjar_item`, atau `tutup_buku` ke
+ * daftar ini: tabel tersebut hanya boleh dibuang oleh migrasi eksplisit yang
+ * disetujui di masa depan.
  */
-function buangTabelLama(db: Database.Database): void {
-  db.exec('DROP TABLE IF EXISTS transaksi');
-  db.exec('DROP TABLE IF EXISTS coa');
+export const TABEL_SINGLE_ENTRY_LAMA = ['transaksi', 'coa'] as const;
 
-  // Panjar v1 (single-entry) tidak punya kolom jurnal_open_id / jurnal_id.
-  // Bentuk v2 (P1-4) WAJIB dipertahankan: metadata panjar jangan hilang hanya
-  // karena aplikasi dibuka ulang. Anak dibuang lebih dulu agar aman FK.
-  if (tabelAda(db, 'panjar') && !kolomTabel(db, 'panjar').includes('jurnal_open_id')) {
-    db.exec('DROP TABLE IF EXISTS panjar_item');
-    db.exec('DROP TABLE IF EXISTS panjar');
-  } else if (tabelAda(db, 'panjar_item')) {
-    const kolomItem = kolomTabel(db, 'panjar_item');
-    if (!kolomItem.includes('id') || !kolomItem.includes('jurnal_id')) {
-      db.exec('DROP TABLE IF EXISTS panjar_item');
-    }
-  }
+/** Versi terakhir yang masih memakai model single-entry lama. */
+const VERSI_SINGLE_ENTRY_TERAKHIR = 2;
 
-  // tutup_buku lama menyimpan `laba` (sumber bug Neraca v1). Buang hanya bila
-  // bentuknya masih lama; bentuk v2 (tanpa laba) dipertahankan.
-  if (tabelAda(db, 'tutup_buku') && kolomTabel(db, 'tutup_buku').includes('laba')) {
-    db.exec('DROP TABLE IF EXISTS tutup_buku');
+/**
+ * DB-06 / K6 — pembersihan one-time tabel single-entry lama.
+ *
+ * Hanya berjalan bila versi ASLI DB (sebelum `user_version` dinaikkan) masih
+ * v0–v2 DAN tabel lama benar-benar ada. DB baru (versi 0, belum punya tabel
+ * legacy) maupun DB current (versi ≥3) tidak pernah menjalankan DROP apa pun.
+ * Daftar tabel tetap dan eksplisit; tidak ada keputusan berdasarkan bentuk
+ * kolom. `DROP TABLE IF EXISTS` membuat langkah ini idempoten bila migrasi
+ * diulang setelah rollback.
+ */
+function terapkanMigrasiSingleEntryLama(
+  db: Database.Database,
+  versiAwal: number,
+): void {
+  if (versiAwal > VERSI_SINGLE_ENTRY_TERAKHIR) return;
+  if (!TABEL_SINGLE_ENTRY_LAMA.some((tabel) => tabelAda(db, tabel))) return;
+  for (const tabel of TABEL_SINGLE_ENTRY_LAMA) {
+    db.exec(`DROP TABLE IF EXISTS ${tabel}`);
   }
 }
 
@@ -378,7 +384,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
 /**
  * Migrasi skema berbasis `PRAGMA user_version`, idempoten.
  * - Menolak DB yang dibuat aplikasi versi lebih baru SEBELUM DDL apa pun.
- * - Selalu membersihkan tabel single-entry lama (P0-3).
+ * - Membersihkan tabel single-entry lama hanya bila versi ASLI DB < 3 (DB-06).
  * - Membuat seluruh DDL v2 bila belum ada.
  * - Menerapkan aturan integritas v9 (trigger + unique index per tahun).
  * - Menerapkan kontrak COA v10 (akun 2060 idempoten, tanpa DDL).
@@ -390,7 +396,9 @@ function pastikanVersiDidukung(db: Database.Database): number {
 export function migrasi(db: Database.Database): number {
   const versiAwal = pastikanVersiDidukung(db);
   const siapkan = db.transaction(() => {
-    buangTabelLama(db);
+    // DB-06: `versiAwal` ditangkap SEBELUM `user_version` diubah. Cleanup
+    // legacy tidak boleh berjalan pada DB baru/current.
+    terapkanMigrasiSingleEntryLama(db, versiAwal);
     db.exec(DDL);
     // P0-9: DB v2 belum punya kolom data baru. ALTER TABLE idempoten agar DB
     // yang dibuat sebelum audit lengkap tetap terbuka tanpa kehilangan audit lama.
