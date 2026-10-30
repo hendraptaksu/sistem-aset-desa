@@ -2,10 +2,11 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-30 (setelah DB-13b):** `npm run typecheck` bersih;
-> `npm test` **771 test / 63 file hijau**. `docs/panduan-portable.md` dipulihkan;
-> test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai. Angka
-> **737/58** di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum mulai.
+> **Baseline terakhir 2026-10-31 (setelah DB-15):** `npm run typecheck` bersih;
+> `npm test` **795 test / 64 file hijau**; `npm run build` berhasil.
+> `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
+> arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
+> relevan. Verifikasi ulang sebelum mulai.
 >
 > Prinsip yang tidak boleh dilanggar:
 > - Jurnal + jurnal_baris adalah satu-satunya sumber angka.
@@ -90,7 +91,7 @@
 | DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [x] |
 | DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [x] |
 | DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [x] |
-| DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [ ] |
+| DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [x] |
 | DB-16a | P0 | S | Desain input pinjaman LPD (user input, bukan data awal) | — | [x] |
 | DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [ ] |
 | DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [ ] |
@@ -644,7 +645,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     771/63); `npm run build` berhasil. Tidak menyentuh `data/`, xlsx, atau
     jurnal; tidak commit.
 
-- [ ] **DB-15 — Izinkan nonaktifkan akun bawaan (bukan hapus)** · P1 · S
+- [x] **DB-15 — Izinkan nonaktifkan akun bawaan (bukan hapus)** · P1 · S
   - **Konteks:** 16 akun kas/bank bawaan selalu muncul di form; akun 5010 yang
     mungkin digantikan 5060 juga tidak bisa disembunyikan.
   - **Langkah:**
@@ -657,6 +658,33 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** `tests/akun.test.ts`, `tests/forms-ui.test.ts`.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-14.
+  - **Bukti 2026-10-31:** `setAkunAktif` sekarang menerima akun `BAWAAN`
+    (soft delete) dan tetap menolak rename/hapus lewat guard terpisah. Daftar
+    eksklusi tetap **tepat empat akun** di
+    `AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF` (`coa.ts`): **3000 MODAL** (penyeimbang
+    Saldo Awal), **1040 UANG PANJAR** (jurnal panjar), **1050 PIUTANG** (legacy
+    read laporan), **2050 HUTANG LAIN-LAIN** (utang/pinjaman DB-16). Upaya
+    nonaktif ditolak dengan pesan Indonesia yang menyebut akun sistem; akun
+    sistem yang terlanjur nonaktif tetap bisa diaktifkan kembali. Alasan audit
+    opsional diteruskan repository → IPC → UI; aksi `AKUN-NONAKTIF`/`AKUN-AKTIF`
+    menyimpan alasan + data lama/baru, dan trigger v11 tetap menolak
+    update/delete audit. `AkunTab` menampilkan badge Aktif/Nonaktif,
+    Bawaan/Tambahan, dan **Sistem**; tombol Nonaktifkan muncul untuk akun
+    non-sistem (termasuk bawaan), sedangkan Ubah/Hapus tetap hanya untuk akun
+    tambahan. `SaldoAwalWizard` kini memfilter `aktif !== false` (satu-satunya
+    form yang belum); `TransaksiForm` (Terima/Bayar/Pindah/Catat Utang/Bayar
+    Utang), `PanjarTab`, dan `JurnalUmumEditor` yang sudah memfilter diverifikasi
+    lewat test SSR/sumber. Laporan historis tetap membaca `listAkun(db)` tanpa
+    filter aktif, sehingga 5010 dan saldonya tetap muncul di Buku Besar, Neraca
+    Saldo, Laba Rugi, jurnal, dan `coa:list`. Test baru/penyesuaian:
+    `tests/akun.test.ts` (5010 nonaktif + histori, eksklusi 4 akun, persist
+    setelah reopen + reaktivasi, guard kode tak dikenal), `tests/forms-ui.test.ts`
+    (Bayar/Pindah/Utang/Saldo Awal/Panjar + helper UI), `tests/ipc-main.test.ts`
+    (5010 via IPC + audit + rename/hapus/status invalid), dan
+    `tests/ipc-validation.test.ts` (bentuk kode/status/alasan). Tidak ada
+    perubahan skema/`SCHEMA_VERSION` (tetap 16), `data/`, jurnal, atau xlsx.
+    `npm run typecheck` bersih; `npm test` **795 test/64 file hijau** (baseline
+    781/64); `npm run build` berhasil.
 
 - [x] **DB-16a — Desain input pinjaman LPD (user input, bukan data awal)** · P0 · S
   - **Keputusan 2026-10-30:** angka pinjaman **tidak** dikumpulkan sekarang.

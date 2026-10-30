@@ -322,6 +322,23 @@ export function validasiKodeAkun(nilai: unknown): HasilBentuk<string> {
   return { ok: true, input: kode.nilai };
 }
 
+/**
+ * DB-15: status aktif akun wajib boolean. Aturan akun sistem yang tidak boleh
+ * dinonaktifkan ditegakkan di repository (butuh master akun), bukan di sini.
+ */
+export function validasiStatusAkunAktif(nilai: unknown): HasilBentuk<boolean> {
+  if (typeof nilai !== 'boolean')
+    return { ok: false, error: 'Status aktif akun harus true/false.' };
+  return { ok: true, input: nilai };
+}
+
+/** DB-15: alasan audit opsional untuk aksi aktif/nonaktif akun. */
+export function validasiAlasanAkun(nilai: unknown): HasilBentuk<string> {
+  const alasan = teksOpsional(nilai, 'Alasan', 200);
+  if (!alasan.ok) return alasan;
+  return { ok: true, input: alasan.nilai };
+}
+
 export type HasilBentukJurnalInput =
   | { ok: true; input: JurnalInput }
   | { ok: false; error: string };

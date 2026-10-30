@@ -217,19 +217,32 @@ menggantikan** akun lama:
 Pilih akun yang paling spesifik untuk transaksi baru. Jangan menonaktifkan akun
 lama hanya karena akun baru tersedia; keduanya boleh dipakai sesuai kebutuhan.
 
-Untuk akun tambahan yang sudah ada:
+Untuk akun yang sudah ada:
 
-- **Ubah** — memperbaiki nama akun. Kode dan jenis akun tetap agar histori
-  jurnal tidak berubah. Perubahan nama tercatat di audit.
+- **Ubah** — memperbaiki nama akun **tambahan**. Kode dan jenis akun tetap agar
+  histori jurnal tidak berubah. Perubahan nama tercatat di audit.
 - **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal
-  dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**.
-- **Hapus** — hanya berhasil bila akun belum pernah dipakai di jurnal atau
-  panjar. Bila sudah dipakai, sistem menolak dan menyarankan **Nonaktifkan**
-  agar histori tidak hilang.
+  dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**. Sejak DB-15,
+  akun **bawaan** juga boleh dinonaktifkan (mis. `5010` yang digantikan
+  `5060`), tanpa mengubah namanya.
+- **Hapus** — hanya untuk akun **tambahan** dan hanya berhasil bila akun belum
+  pernah dipakai di jurnal atau panjar. Bila sudah dipakai, sistem menolak dan
+  menyarankan **Nonaktifkan** agar histori tidak hilang.
 
 Contoh: `5011 PENGELUARAN ARTOS` (Beban), `4043 PENDAPATAN WEWEDALAN`
 (Pendapatan), atau `1101 BANK BPD REKENING BARU` (Kas/Bank, kelompok Bank).
-Akun bawaan tidak bisa diubah, dinonaktifkan, atau dihapus dari layar ini.
+
+Akun bawaan **tidak bisa diubah namanya atau dihapus**, tetapi status aktifnya
+boleh diubah. Empat akun sistem tetap tidak bisa dinonaktifkan karena dibutuhkan
+wizard/alur: **3000 MODAL** (penyeimbang Saldo Awal), **1040 UANG PANJAR**
+(jurnal panjar), **1050 PIUTANG** (data lama yang masih dibaca laporan), dan
+**2050 HUTANG LAIN-LAIN** (utang/pinjaman). Akun sistem ini ditandai **Sistem**
+di tabel dan tidak menampilkan tombol Nonaktifkan.
+
+Setiap perubahan status aktif/nonaktif dicatat di **Riwayat Audit** sebagai
+**Nonaktifkan akun** atau **Aktifkan akun** beserta alasannya. Akun nonaktif
+tetap tampil di jurnal, Buku Besar, Neraca Saldo, Laba Rugi, Neraca, dan Arus
+Kas historis beserta saldonya; akun itu hanya hilang dari pilihan input baru.
 
 Setiap akun menyimpan metadata **is_kas** (dompet kas/bank), **kelompok**
 (`KAS`, `BANK`, `LPD`, `PANJAR`, `PIUTANG`, `HUTANG`, `EKUITAS`, `PENDAPATAN`,

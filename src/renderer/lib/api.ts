@@ -228,9 +228,12 @@ export const api = {
   /** Ubah nama akun tambahan; kode & jenis tetap. */
   akunUbah: (input: { kode: string; nama: string }) =>
     call<Coa>('akun:ubah', input),
-  /** Aktif/nonaktifkan akun tambahan (nonaktif = soft delete). */
-  akunSetAktif: (kode: string, aktif: boolean) =>
-    call<Coa>('akun:set-aktif', kode, aktif),
+  /**
+   * Aktif/nonaktifkan akun (DB-15: termasuk akun bawaan; nonaktif = soft
+   * delete). Akun sistem 3000/1040/1050/2050 ditolak oleh backend.
+   */
+  akunSetAktif: (kode: string, aktif: boolean, alasan?: string) =>
+    call<Coa>('akun:set-aktif', kode, aktif, alasan),
   /** Hapus permanen akun tambahan yang belum pernah dipakai. */
   akunHapus: (kode: string) => call<{ kode: string }>('akun:hapus', kode),
   jurnalList: (

@@ -81,9 +81,11 @@ import { tanggalLokal } from '../utils/tanggal.js';
 import {
   validasiBentukJurnalInput,
   validasiBentukKoreksiInput,
+  validasiAlasanAkun,
   validasiBentukAkunBaru,
   validasiBentukAkunUbah,
   validasiKodeAkun,
+  validasiStatusAkunAktif,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
@@ -270,15 +272,24 @@ export function registerIpc(deps: IpcDeps): void {
       return fail(pesanError(e, 'Gagal mengubah nama akun.'));
     }
   });
-  daftarkan('akun:set-aktif', (_e, kode: unknown, aktif: unknown) => {
+  daftarkan('akun:set-aktif', (_e, kode: unknown, aktif: unknown, alasan: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const bentuk = validasiKodeAkun(kode);
-      if (!bentuk.ok) return fail(bentuk.error);
-      if (typeof aktif !== 'boolean')
-        return fail('Status aktif akun harus true/false.');
-      return ok(setAkunAktif(deps.db(), bentuk.input, aktif));
+      const bentukKode = validasiKodeAkun(kode);
+      if (!bentukKode.ok) return fail(bentukKode.error);
+      const bentukAktif = validasiStatusAkunAktif(aktif);
+      if (!bentukAktif.ok) return fail(bentukAktif.error);
+      const bentukAlasan = validasiAlasanAkun(alasan);
+      if (!bentukAlasan.ok) return fail(bentukAlasan.error);
+      return ok(
+        setAkunAktif(
+          deps.db(),
+          bentukKode.input,
+          bentukAktif.input,
+          bentukAlasan.input,
+        ),
+      );
     } catch (e) {
       return fail(pesanError(e, 'Gagal mengubah status akun.'));
     }

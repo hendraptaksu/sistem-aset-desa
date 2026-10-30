@@ -14,6 +14,7 @@ import {
 } from '../src/core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from '../src/core/types.js';
 import {
+  validasiAlasanAkun,
   validasiBentukJurnalInput,
   validasiBentukKoreksiInput,
   validasiBentukPanjarClose,
@@ -25,7 +26,9 @@ import {
   validasiFilterJurnalCari,
   validasiFilterNeraca,
   validasiFilterNeracaSaldo,
+  validasiKodeAkun,
   validasiRentangLaporan,
+  validasiStatusAkunAktif,
   validasiTanggalOpsional,
   validatePanjarItems,
 } from '../src/main/validation.js';
@@ -663,6 +666,34 @@ describe('P1-12 — pesan teknis tidak bocor', () => {
     expect(
       pesanError(new Error('/Users/taksu/app/src/main/index.ts:42:7')),
     ).toBe(PESAN_SIMPAN_GAGAL);
+  });
+});
+
+describe('DB-15 — bentuk IPC status akun', () => {
+  it('menerima kode 4 digit, status boolean, dan alasan opsional', () => {
+    expect(validasiKodeAkun(' 5010 ')).toEqual({ ok: true, input: '5010' });
+    expect(validasiStatusAkunAktif(false)).toEqual({ ok: true, input: false });
+    expect(validasiStatusAkunAktif(true)).toEqual({ ok: true, input: true });
+    expect(validasiAlasanAkun(undefined)).toEqual({ ok: true, input: '' });
+    expect(validasiAlasanAkun('  Digantikan 5060  ')).toEqual({
+      ok: true,
+      input: 'Digantikan 5060',
+    });
+  });
+
+  it('menolak kode/status/alasan dengan bentuk salah', () => {
+    expect(validasiKodeAkun('300')).toMatchObject({ ok: false });
+    expect(validasiKodeAkun('30a0')).toMatchObject({ ok: false });
+    expect(validasiStatusAkunAktif('false')).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/true\/false/i),
+    });
+    expect(validasiStatusAkunAktif(0)).toMatchObject({ ok: false });
+    expect(validasiAlasanAkun(123)).toMatchObject({ ok: false });
+    expect(validasiAlasanAkun('x'.repeat(201))).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/maks\. 200/i),
+    });
   });
 });
 

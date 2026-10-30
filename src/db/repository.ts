@@ -18,6 +18,7 @@ import {
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
 import {
+  AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
   COA,
   KELOMPOK_KAS,
   KODE_KAS_TAMBAHAN_MAX,
@@ -244,8 +245,22 @@ function pastikanAkunTambahan(db: Database.Database, kode: string): AkunDb {
     throw new Error('Kode akun harus 4 digit angka.');
   if (COA.some((a) => a.kode === kodeBersih))
     throw new Error(
-      `Akun ${kodeBersih} adalah akun bawaan dan tidak bisa diubah/dinonaktifkan/dihapus dari layar ini.`,
+      `Akun ${kodeBersih} adalah akun bawaan dan tidak bisa diubah namanya atau dihapus dari layar ini.`,
     );
+  const akun = getAkun(db, kodeBersih);
+  if (!akun) throw new Error(`Akun ${kodeBersih} tidak ditemukan.`);
+  return akun;
+}
+
+/**
+ * DB-15: akun mana pun yang ada di master boleh diaktifkan/nonaktifkan,
+ * termasuk akun BAWAAN. Yang tetap ditolak hanya akun sistem yang dibutuhkan
+ * wizard/alur (lihat `AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF`).
+ */
+function pastikanAkunBolehUbahStatus(db: Database.Database, kode: string): AkunDb {
+  const kodeBersih = String(kode ?? '').trim();
+  if (!/^\d{4}$/.test(kodeBersih))
+    throw new Error('Kode akun harus 4 digit angka.');
   const akun = getAkun(db, kodeBersih);
   if (!akun) throw new Error(`Akun ${kodeBersih} tidak ditemukan.`);
   return akun;
@@ -303,23 +318,41 @@ export function ubahNamaAkun(
 }
 
 /**
- * Aktif/nonaktifkan akun tambahan. Nonaktif = soft delete: akun tidak muncul
- * di form input baru, tetapi histori/laporan lama tetap memakai nama akun ini.
+ * Aktif/nonaktifkan akun. Nonaktif = soft delete: akun tidak muncul di form
+ * input baru, tetapi histori/laporan lama tetap memakai nama akun ini.
+ *
+ * DB-15: akun BAWAAN ikut boleh dinonaktifkan (mis. 5010 yang digantikan
+ * 5060), tetapi akun sistem yang dibutuhkan wizard/alur tetap ditolak. Rename
+ * dan hapus akun BAWAAN tetap ditolak oleh fungsi masing-masing. `alasan`
+ * opsional dipakai untuk audit; bila kosong dipakai alasan standar yang
+ * menyebut sumber akun dan tujuannya.
  */
 export function setAkunAktif(
   db: Database.Database,
   kode: string,
   aktif: boolean,
+  alasan?: string,
 ): AkunDb {
-  const lama = pastikanAkunTambahan(db, kode);
+  const lama = pastikanAkunBolehUbahStatus(db, kode);
+  if (!aktif && AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF.has(lama.kode))
+    throw new Error(
+      `Akun ${lama.kode} ${lama.nama} adalah akun sistem yang dibutuhkan wizard/alur dan tidak bisa dinonaktifkan.`,
+    );
   if (lama.aktif === aktif) return lama;
+
+  const sumber = lama.sumber === 'BAWAAN' ? 'bawaan' : 'tambahan';
+  const alasanAudit =
+    String(alasan ?? '').trim() ||
+    (aktif
+      ? `Aktifkan akun ${sumber} ${lama.kode} untuk form input baru`
+      : `Nonaktifkan akun ${sumber} ${lama.kode} dari form input baru`);
 
   const simpan = db.transaction(() => {
     db.prepare('UPDATE akun SET aktif = ? WHERE kode = ?').run(aktif ? 1 : 0, lama.kode);
     const baru = getAkun(db, lama.kode);
     catatAudit(db, {
       aksi: `AKUN-${aktif ? 'AKTIF' : 'NONAKTIF'} ${lama.kode}`,
-      alasan: aktif ? 'Aktifkan akun' : 'Nonaktifkan akun',
+      alasan: alasanAudit,
       lama,
       baru,
     });

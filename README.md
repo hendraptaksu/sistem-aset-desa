@@ -31,7 +31,9 @@ angka turunan yang disimpan mati.
   **Panjar**, **Catat Utang Usaha**, **Bayar Utang Usaha**, dan **Saldo Awal**.
 - **Daftar Akun** untuk menambah, mengubah nama, menonaktifkan, atau menghapus
   akun **Beban/Pendapatan** baru langsung dari aplikasi (tercatat di audit;
-  akun langsung dipakai form dan laporan).
+  akun langsung dipakai form dan laporan). Akun bawaan boleh dinonaktifkan untuk
+  input baru tanpa menghapus histori; rename/hapus dan empat akun sistem
+  `3000/1040/1050/2050` tetap terkunci.
 - Akuntan pendamping dapat memakai **Jurnal Umum** multi-baris untuk koreksi
   dan jurnal yang tidak cocok dengan form terpandu.
 - Koreksi tidak pernah mengedit/menghapus jurnal lama: selalu **jurnal balik

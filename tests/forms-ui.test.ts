@@ -8,7 +8,13 @@ import { createElement } from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AKUN_MODAL, COA, KAS_KODES, type Coa } from '../src/db/coa.js';
+import {
+  AKUN_MODAL,
+  AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
+  COA,
+  KAS_KODES,
+  type Coa,
+} from '../src/db/coa.js';
 import {
   buatJurnalBayar,
   buatJurnalPindahDana,
@@ -31,6 +37,8 @@ import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
 import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
 import { KonfirmasiModal } from '../src/renderer/components/ui.js';
+import { SaldoAwalWizard } from '../src/renderer/components/SaldoAwalWizard.js';
+import { akunBolehDinonaktifkan } from '../src/renderer/components/AkunTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 const AKUN: AkunPosting[] = COA.map((a) => ({ ...a, aktif: true }));
@@ -821,5 +829,103 @@ describe('DB-14 — akun bank/LPD baru di form kas', () => {
     expect(sumber).toContain('Kelompok akun');
     expect(sumber).toContain('is_kas');
     expect(sumber).toContain('KODE_KAS_TAMBAHAN_MIN');
+  });
+});
+
+describe('DB-15 — akun nonaktif tidak muncul di form input baru', () => {
+  const NONAKTIF = new Set(['5010', '1014', '2060']);
+  const coaDenganNonaktif: Coa[] = COA.map((a) => ({
+    ...a,
+    aktif: !NONAKTIF.has(a.kode),
+  }));
+
+  it('form Bayar menyembunyikan beban 5010 yang dinonaktifkan', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+
+    expect(html).not.toContain('5010 — BAGA SUAR');
+    expect(html).toContain('5060 — PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)');
+    expect(html).toContain('5004 — BAGA UPAKARA');
+    expect(html).toContain('5050 — BIAYA LAIN-LAIN');
+  });
+
+  it('form Pindah Dana menyembunyikan dompet 1014 yang dinonaktifkan', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+
+    expect(html).not.toContain('1014 — LPD 12.005150/DL/2020');
+    expect(html).toContain('1001 — KAS');
+    expect(html).toContain('1010 — LPD 12.05163/DL/2020 KIOS');
+  });
+
+  it('form utang menyembunyikan beban/kas nonaktif', () => {
+    const catat = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'CATAT_UTANG',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+    expect(catat).not.toContain('5010 — BAGA SUAR');
+    expect(catat).toContain('5003 — BAGA WEWANGUNAN');
+
+    const bayar = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR_UTANG',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+    expect(bayar).not.toContain('1014 — LPD 12.005150/DL/2020');
+    expect(bayar).toContain('1001 — KAS');
+  });
+
+  it('Saldo Awal hanya menawarkan akun aktif, bukan dompet/hutang nonaktif', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalWizard, {
+        coa: coaDenganNonaktif,
+        onClose: () => {},
+        onSukses: () => {},
+      }),
+    );
+
+    expect(html).not.toContain('1014 — LPD 12.005150/DL/2020');
+    expect(html).not.toContain('2060 — HUTANG USAHA');
+    expect(html).toContain('1001 — KAS');
+    expect(html).toContain('1010 — LPD 12.05163/DL/2020 KIOS');
+    expect(html).toContain('2050 — HUTANG LAIN-LAIN');
+  });
+
+  it('Buku Panjar hanya memakai dompet dan akun beban aktif di dropdown', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/PanjarTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('isAkunKasData(c) && c.aktif !== false');
+    expect(sumber).toContain("c.tipe === 'BEBAN' && c.aktif !== false");
+  });
+
+  it('hanya akun non-sistem yang mendapat tombol nonaktifkan', () => {
+    expect([...AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF].sort()).toEqual([
+      '1040',
+      '1050',
+      '2050',
+      '3000',
+    ]);
+    expect(akunBolehDinonaktifkan({ kode: '5010' })).toBe(true);
+    expect(akunBolehDinonaktifkan({ kode: '1001' })).toBe(true);
+    for (const kode of ['3000', '1040', '1050', '2050']) {
+      expect(akunBolehDinonaktifkan({ kode }), `akun sistem ${kode}`).toBe(false);
+    }
   });
 });

@@ -117,6 +117,28 @@ export const AKUN_HUTANG_USAHA = '2060';
 export const AKUN_MODAL = '3000';
 
 /**
+ * DB-15: akun sistem yang tetap harus aktif karena alur/wizard memakainya
+ * sebagai akun tetap. Akun ini boleh dibaca di histori, tetapi TIDAK boleh
+ * dinonaktifkan dari layar Daftar Akun:
+ * - 3000 MODAL: baris penyeimbang otomatis Saldo Awal dan sumber setoran modal.
+ * - 1040 UANG PANJAR: akun wajib jurnal serah/close panjar.
+ * - 1050 PIUTANG: akun data lama yang masih dibaca laporan/drill-down
+ *   (legacy read; alur input baru sudah dihapus DB-23a).
+ * - 2050 HUTANG LAIN-LAIN: akun pinjaman/utang yang dipakai alur utang dan
+ *   modul pinjaman LPD (DB-16).
+ *
+ * Akun di luar daftar ini — termasuk akun bawaan lain — boleh dinonaktifkan
+ * untuk form input baru. Reaktivasi tetap diizinkan agar DB lama yang sudah
+ * terlanjur memiliki akun sistem nonaktif bisa dipulihkan.
+ */
+export const AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF: ReadonlySet<string> = new Set([
+  AKUN_MODAL,
+  AKUN_PANJAR,
+  AKUN_PIUTANG,
+  AKUN_HUTANG,
+]);
+
+/**
  * Kode akun yang sengaja berada di luar `KODE AKUN.csv` (ekstensi sistem).
  * Test COA menegakkan `COA = baris CSV + tepat daftar ini`; menambah kode di
  * sini juga wajib menambah akun di `COA` dan dokumentasi `docs/sumber-coa.md`.

@@ -1,10 +1,10 @@
-# Sumber COA — keputusan DB-13a, DB-13, DB-13b, dan DB-14
+# Sumber COA — keputusan DB-13a, DB-13, DB-13b, DB-14, dan DB-15
 
 **Tanggal keputusan:** 2026-10-30 (DB-13a); lima akun baru disetujui dan
 ditambahkan pada DB-13, 2026-10-30; 5063 BEBAN BUNGA PINJAMAN ditambahkan pada
 DB-13b, 2026-10-30; metadata akun + akun bank/LPD baru ditambahkan pada DB-14,
-2026-10-30.
-**Status:** berlaku untuk DB-13, DB-13b, DB-14, dan seterusnya.
+2026-10-30; status aktif akun bawaan ditambahkan pada DB-15, 2026-10-31.
+**Status:** berlaku untuk DB-13, DB-13b, DB-14, DB-15, dan seterusnya.
 
 ## Keputusan
 
@@ -106,7 +106,31 @@ Backfill v16 memakai pemetaan tetap:
 Akun di luar COA dianggap `TAMBAHAN`; `is_kas` yang sudah `1` dipertahankan dan
 `kelompok` hanya diisi dari `tipe` bila masih kosong. Upsert COA saat `openDb`
 hanya memperbarui baris `BAWAAN`, sehingga nama/tipe/aktif/metadata akun
-`TAMBAHAN` tidak berubah saat aplikasi dibuka ulang.
+`TAMBAHAN` tidak berubah saat aplikasi dibuka ulang. Kolom `aktif` juga tidak
+pernah ditimpa upsert, sehingga status nonaktif akun `BAWAAN` bertahan setelah
+reopen (DB-15).
+
+### Status aktif akun (DB-15)
+
+`akun.aktif` adalah soft delete: akun nonaktif tidak muncul di form input baru,
+tetapi baris jurnal dan laporan historis tetap memakainya. DB-15 mengizinkan
+akun `BAWAAN` dinonaktifkan (mis. `5010` digantikan `5060`), tetapi **nama dan
+hapus tetap ditolak**. Empat akun sistem tetap wajib aktif karena dipakai
+wizard/alur:
+
+| Kode | Alasan tidak boleh nonaktif |
+|---|---|
+| `3000 MODAL` | Baris penyeimbang otomatis Saldo Awal dan setoran modal. |
+| `1040 UANG PANJAR` | Akun wajib jurnal serah/close panjar. |
+| `1050 PIUTANG` | Akun data lama yang masih dibaca laporan/drill-down (legacy read). |
+| `2050 HUTANG LAIN-LAIN` | Akun pinjaman/utang yang dipakai alur utang dan modul pinjaman LPD (DB-16). |
+
+Daftar ini sengaja **tepat empat akun** (`AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF`
+di `coa.ts`); akun bawaan lain seperti `2060` atau dompet bank boleh
+dinonaktifkan bila tidak dipakai. Reaktivasi akun sistem tetap diizinkan agar DB
+lama yang sudah terlanjur nonaktif bisa dipulihkan. Setiap perubahan dicatat di
+`audit_log` sebagai `AKUN-NONAKTIF`/`AKUN-AKTIF` beserta alasan; trigger v11
+tetap membuat audit append-only.
 
 ### Akun kas/bank/LPD baru
 
@@ -147,6 +171,11 @@ akun baru langsung muncul di dropdown kas, Panjar, Pindah Dana, serta total kas.
    benar, akun di luar COA menjadi `TAMBAHAN`, dan akun `TAMBAHAN` tetap utuh
    setelah reopen. Akun bank baru `1100`–`1199` muncul di daftar kas dan total
    kas; `is_kas`/`kelompok` yang tidak konsisten ditolak.
+10. **DB-15:** akun bawaan `5010` bisa dinonaktifkan, hilang dari dropdown form
+    baru, statusnya bertahan setelah reopen, dan audit
+    `AKUN-NONAKTIF`/`AKUN-AKTIF` menyimpan alasan serta tidak bisa diubah/
+    dihapus. Empat akun sistem `3000/1040/1050/2050` tetap ditolak; rename/hapus
+    akun bawaan tetap ditolak; laporan historis tetap memuat saldo `5010`.
 
 ## Cara mengubah dengan aman
 

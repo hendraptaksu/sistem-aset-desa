@@ -58,9 +58,13 @@ export function SaldoAwalWizard({
   onClose: () => void;
   onSukses: (pesan: string) => void;
 }) {
+  // DB-15: dropdown hanya menawarkan akun aktif. Akun yang dinonaktifkan tetap
+  // tersedia di histori/laporan, tetapi bukan untuk jurnal saldo awal baru.
+  const akunAktif = useMemo(() => coa.filter((a) => a.aktif !== false), [coa]);
   const akunRelevan = useMemo(
-    () => coa.filter((a) => a.tipe === 'AKTIVA' || a.tipe === 'KEWAJIBAN'),
-    [coa],
+    () =>
+      akunAktif.filter((a) => a.tipe === 'AKTIVA' || a.tipe === 'KEWAJIBAN'),
+    [akunAktif],
   );
   const akunAwal =
     akunRelevan.find((a) => a.kode === '1001')?.kode ??
@@ -124,7 +128,7 @@ export function SaldoAwalWizard({
         data: buatJurnalSaldoAwal({
           tanggal,
           saldo,
-          daftarAkun: coa,
+          daftarAkun: akunAktif,
           ...(keterangan.trim() ? { keterangan: keterangan.trim() } : {}),
           ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
         }),
@@ -136,7 +140,7 @@ export function SaldoAwalWizard({
         error: pesanError(e),
       };
     }
-  }, [tanggal, rows, keterangan, noBukti, coa]);
+  }, [tanggal, rows, keterangan, noBukti, akunAktif]);
 
   const formSah = Boolean(hasil.data);
 

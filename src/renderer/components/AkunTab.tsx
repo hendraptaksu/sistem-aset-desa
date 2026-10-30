@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { COA, KELOMPOK_KAS, KODE_KAS_TAMBAHAN_MAX, KODE_KAS_TAMBAHAN_MIN, type Coa, type CoaTipe, type KelompokAkun } from '../../db/coa.js';
+import {
+  AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
+  COA,
+  KELOMPOK_KAS,
+  KODE_KAS_TAMBAHAN_MAX,
+  KODE_KAS_TAMBAHAN_MIN,
+  type Coa,
+  type CoaTipe,
+  type KelompokAkun,
+} from '../../db/coa.js';
 import { api } from '../lib/api.js';
 import {
   Badge,
@@ -38,6 +47,14 @@ const LABEL_KELOMPOK: Record<KelompokAkun, string> = {
 type StatusFilter = 'aktif' | 'nonaktif' | 'semua';
 type JenisAksi = 'hapus' | 'nonaktif' | 'aktif';
 type AksiTarget = { jenis: JenisAksi; akun: Coa };
+
+/**
+ * DB-15: akun sistem tetap ditampilkan tetapi tombol Nonaktifkan tidak boleh
+ * muncul. Akun sistem yang terlanjur nonaktif tetap boleh diaktifkan kembali.
+ */
+export function akunBolehDinonaktifkan(a: Pick<Coa, 'kode'>): boolean {
+  return !AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF.has(String(a.kode));
+}
 
 export function AkunTab() {
   const [daftar, setDaftar] = useState<Coa[]>([]);
@@ -216,7 +233,13 @@ export function AkunTab() {
         setInfo(`Akun ${akun.kode} — ${akun.nama} dihapus permanen.`);
       } else {
         const aktif = jenis === 'aktif';
-        await api.akunSetAktif(akun.kode, aktif);
+        await api.akunSetAktif(
+          akun.kode,
+          aktif,
+          aktif
+            ? `Aktifkan kembali akun ${akun.kode} untuk form input baru`
+            : `Nonaktifkan akun ${akun.kode} untuk form input baru`,
+        );
         setInfo(
           aktif
             ? `Akun ${akun.kode} — ${akun.nama} diaktifkan kembali.`
@@ -255,6 +278,8 @@ export function AkunTab() {
               Akun bawaan mengikuti <b>KODE AKUN.csv</b>. Tambahkan akun{' '}
               <b>Beban</b>, <b>Pendapatan</b>, atau <b>Kas/Bank/LPD</b> baru di sini;
               akun langsung muncul di form transaksi, Jurnal Umum, dan laporan.
+              Akun bawaan yang tidak dipakai lagi boleh dinonaktifkan, kecuali akun
+              sistem <b>3000/1040/1050/2050</b>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -398,7 +423,9 @@ export function AkunTab() {
             <h2 className="text-lg font-bold">Akun</h2>
             <p className="mt-1 text-sm text-stone-600">
               Akun tambahan bisa diubah namanya, dinonaktifkan, atau dihapus bila
-              belum pernah dipakai. Akun bawaan tidak bisa diubah dari layar ini.
+              belum pernah dipakai. Akun bawaan boleh dinonaktifkan untuk form input
+              baru, tetapi nama dan hapusnya tetap terkunci. Akun sistem{' '}
+              <b>3000/1040/1050/2050</b> tidak bisa dinonaktifkan.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -450,6 +477,7 @@ export function AkunTab() {
               {tampil.map((a) => {
                 const bawaan = a.sumber ? a.sumber === 'BAWAAN' : kodeBawaan.has(a.kode);
                 const nonaktif = a.aktif === false;
+                const sistem = !akunBolehDinonaktifkan(a);
                 return (
                   <tr
                     key={a.kode}
@@ -470,40 +498,48 @@ export function AkunTab() {
                         <Badge tone={bawaan ? 'stone' : 'green'}>
                           {bawaan ? 'Bawaan' : 'Tambahan'}
                         </Badge>
+                        {sistem && <Badge tone="amber">Sistem</Badge>}
                         {a.is_kas && <Badge tone="amber">Kas/Bank</Badge>}
                       </div>
                     </td>
                     <td className="py-2 text-right">
-                      {bawaan ? (
-                        <span className="text-stone-400">—</span>
-                      ) : (
-                        <div className="flex flex-wrap justify-end gap-1">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {!bawaan && (
                           <Button variant="ghost" onClick={() => mulaiUbah(a)}>
                             Ubah
                           </Button>
-                          {nonaktif ? (
-                            <Button
-                              variant="ghost"
-                              onClick={() => setAksiTarget({ jenis: 'aktif', akun: a })}
-                            >
-                              Aktifkan
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              onClick={() => setAksiTarget({ jenis: 'nonaktif', akun: a })}
-                            >
-                              Nonaktifkan
-                            </Button>
-                          )}
+                        )}
+                        {nonaktif ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setAksiTarget({ jenis: 'aktif', akun: a })}
+                          >
+                            Aktifkan
+                          </Button>
+                        ) : sistem ? (
+                          <span
+                            className="px-2 py-1 text-helper text-stone-400"
+                            title="Akun sistem yang dibutuhkan wizard/alur tidak bisa dinonaktifkan."
+                          >
+                            Akun sistem
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setAksiTarget({ jenis: 'nonaktif', akun: a })}
+                          >
+                            Nonaktifkan
+                          </Button>
+                        )}
+                        {!bawaan && (
                           <Button
                             variant="ghost"
                             onClick={() => setAksiTarget({ jenis: 'hapus', akun: a })}
                           >
                             Hapus
                           </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -542,7 +578,8 @@ export function AkunTab() {
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> tidak
                 akan muncul di form input baru. Jurnal dan laporan lama
-                tetap utuh dan bisa dibaca.
+                tetap utuh dan bisa dibaca. Akun bawaan juga tidak bisa diubah
+                namanya atau dihapus; status ini bisa diaktifkan kembali kapan saja.
               </>
             ) : (
               <>

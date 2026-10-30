@@ -385,6 +385,77 @@ describe('Daftar Akun — tambah akun lewat IPC', () => {
   });
 });
 
+describe('DB-15 — nonaktifkan akun bawaan lewat IPC', () => {
+  it('5010 boleh dinonaktifkan/diaktifkan, audit menyimpan alasan, rename/hapus tetap ditolak', async () => {
+    const env = buatEnv();
+
+    const nonaktif = await env.panggil('akun:set-aktif', '5010', false);
+    expect(nonaktif.ok, nonaktif.error).toBe(true);
+    expect(nonaktif.data).toMatchObject({
+      kode: '5010',
+      aktif: false,
+      sumber: 'BAWAAN',
+    });
+
+    const daftar = await env.panggil('coa:list');
+    expect(
+      daftar.data.find((a: { kode: string }) => a.kode === '5010')?.aktif,
+    ).toBe(false);
+
+    const auditNonaktif = await env.panggil('audit:list', {
+      aksi: 'AKUN-NONAKTIF',
+    });
+    expect(auditNonaktif.ok, auditNonaktif.error).toBe(true);
+    const catatan = auditNonaktif.data.rows.find(
+      (a: { aksi: string }) => a.aksi === 'AKUN-NONAKTIF 5010',
+    );
+    expect(catatan?.alasan).toMatch(/5010.*form input baru/i);
+
+    const ubah = await env.panggil('akun:ubah', {
+      kode: '5010',
+      nama: 'UBAH AKUN BAWAAN',
+    });
+    expect(ubah.ok).toBe(false);
+    expect(ubah.error).toMatch(/bawaan/i);
+
+    const hapus = await env.panggil('akun:hapus', '5010');
+    expect(hapus.ok).toBe(false);
+    expect(hapus.error).toMatch(/bawaan/i);
+
+    const aktif = await env.panggil('akun:set-aktif', '5010', true, 'Dipakai lagi');
+    expect(aktif.ok, aktif.error).toBe(true);
+    expect(aktif.data.aktif).toBe(true);
+
+    const auditAktif = await env.panggil('audit:list', { aksi: 'AKUN-AKTIF' });
+    expect(
+      auditAktif.data.rows.some(
+        (a: { aksi: string; alasan: string }) =>
+          a.aksi === 'AKUN-AKTIF 5010' && a.alasan === 'Dipakai lagi',
+      ),
+    ).toBe(true);
+
+    const statusSalah = await env.panggil('akun:set-aktif', '5010', 'false');
+    expect(statusSalah.ok).toBe(false);
+    expect(statusSalah.error).toMatch(/true\/false/i);
+  });
+
+  it('menolak nonaktif akun sistem 3000/1040/1050/2050', async () => {
+    const env = buatEnv();
+    for (const kode of ['3000', '1040', '1050', '2050']) {
+      const hasil = await env.panggil('akun:set-aktif', kode, false);
+      expect(hasil.ok, `akun ${kode}`).toBe(false);
+      expect(hasil.error).toMatch(/akun sistem/i);
+    }
+    const daftar = await env.panggil('coa:list');
+    for (const kode of ['3000', '1040', '1050', '2050']) {
+      expect(
+        daftar.data.find((a: { kode: string }) => a.kode === kode)?.aktif,
+        `akun ${kode} tetap aktif`,
+      ).toBe(true);
+    }
+  });
+});
+
 describe('DB-23a/DB-23b — akun 1050 data lama tetap butuh konfirmasi', () => {
   it('posting 1050 lama minta konfirmasi (bukan error) dan tetap terbaca', async () => {
     const env = buatEnv();
