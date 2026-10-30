@@ -92,8 +92,8 @@ upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev see
 - **Level 2 — Jurnal Umum (untuk akuntan pendamping).** Tabel multi-baris debit/kredit, validasi seimbang
   *real-time*, template jurnal, duplikat jurnal. Istilah, format, dan alurnya standar akuntansi Indonesia
   supaya "lumrah" bagi akuntan.
-- **Level 3 — Laporan.** Buku Besar per akun, Neraca Saldo, Laba Rugi, Neraca, Arus Kas, Realisasi
-  Anggaran, Panjar. Setiap baris laporan bisa diklik → detail jurnal asal (drill-down).
+- **Level 3 — Laporan.** Buku Besar per akun, Neraca Saldo, Laba Rugi, Neraca, Arus Kas, dan
+  Panjar. Setiap baris laporan bisa diklik → detail jurnal asal (drill-down).
 
 ## 7. Definisi "benar" yang akan diuji
 
@@ -139,8 +139,8 @@ upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev see
   Neraca Saldo, Laba Rugi, Neraca, Arus Kas), posting layer, reversal, tutup buku, backup/restore aman, audit.
 - **P1 — Pengalaman pengguna:** form terpandu (operator awam), Jurnal Umum (akuntan pendamping),
   drill-down, export/print semua laporan, template cetak resmi, nomor bukti `JU`, pengaturan, dashboard.
-- **P2 — Lanjutan:** anggaran vs realisasi, lampiran bukti, test integrasi, dokumentasi,
-  import Excel massal. (Rekonsiliasi bank, aset tetap, & multi-user sudah dibatalkan.)
+- **P2 — Lanjutan:** lampiran bukti, test integrasi, dokumentasi, import Excel massal.
+  (Rekonsiliasi bank, aset tetap, & multi-user sudah dibatalkan.)
 
 Detail per ticket (dengan checkbox dan bukti) ada di `docs/tickets-perbaikan.md`.
 

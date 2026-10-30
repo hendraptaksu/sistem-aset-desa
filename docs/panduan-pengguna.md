@@ -234,11 +234,11 @@ Untuk akun tambahan yang sudah ada:
 
 - **Ubah** — memperbaiki nama akun. Kode dan jenis akun tetap agar histori
   jurnal tidak berubah. Perubahan nama tercatat di audit.
-- **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal,
-  anggaran, dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**.
-- **Hapus** — hanya berhasil bila akun belum pernah dipakai di jurnal,
-  anggaran, atau panjar. Bila sudah dipakai, sistem menolak dan menyarankan
-  **Nonaktifkan** agar histori tidak hilang.
+- **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal
+  dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**.
+- **Hapus** — hanya berhasil bila akun belum pernah dipakai di jurnal atau
+  panjar. Bila sudah dipakai, sistem menolak dan menyarankan **Nonaktifkan**
+  agar histori tidak hilang.
 
 Contoh: `5011 PENGELUARAN ARTOS` (Beban) atau
 `4043 PENDAPATAN WEWEDALAN` (Pendapatan). Akun bawaan tidak bisa diubah,
@@ -265,11 +265,10 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
    tahun berjalan, laba tahun sebelumnya diringkas pada baris
    **Laba ditahan sebelum periode** — baris ini bukan akun yang bisa diposting.
 2. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
-3. Periksa **Anggaran** vs realisasi bila pagu tahunan sudah diisi.
-4. Buat **Backup Lengkap** (DB + lampiran) dalam satu folder bertanggal,
+3. Buat **Backup Lengkap** (DB + lampiran) dalam satu folder bertanggal,
    misalnya `backup-2026-10-31`. Bila memakai Backup Export `.db`, salin folder
    `attachments` secara terpisah ke folder yang sama.
-5. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
+4. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
    bulanan. Tidak ada tutup buku bulanan di aplikasi ini.
 
 ---
@@ -415,7 +414,7 @@ hanya menyalin file `.exe`.
 Semua laporan memakai alur yang sama:
 
 1. Buka laporan (mis. **Jurnal Umum**, **Buku Besar**, **Neraca Saldo**,
-   **Laba Rugi**, **Neraca**, **Arus Kas**, **Anggaran**, atau **Buku Panjar**).
+   **Laba Rugi**, **Neraca**, **Arus Kas**, atau **Buku Panjar**).
 2. Atur periode/akun/cut-off.
 3. Tekan **Pratinjau Cetak**. Periksa kop, periode, kolom, dan nomor halaman.
 4. Tekan **Cetak** untuk printer, atau **Simpan PDF** untuk file PDF.

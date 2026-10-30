@@ -439,13 +439,13 @@ export function AkunTab() {
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> akan
                 dihapus permanen. Penghapusan hanya berhasil bila akun belum pernah
-                dipakai di jurnal, anggaran, atau panjar. Bila sudah dipakai,
+                dipakai di jurnal atau panjar. Bila sudah dipakai,
                 gunakan <b>Nonaktifkan</b>.
               </>
             ) : aksiTarget.jenis === 'nonaktif' ? (
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> tidak
-                akan muncul di form input baru. Jurnal, anggaran, dan laporan lama
+                akan muncul di form input baru. Jurnal dan laporan lama
                 tetap utuh dan bisa dibaca.
               </>
             ) : (

@@ -3,7 +3,6 @@ import { clsx } from 'clsx';
 import {
   ArrowLeftRight,
   Banknote,
-  BarChart3,
   BookMarked,
   BookOpen,
   ChevronDown,
@@ -30,7 +29,6 @@ import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
 import { PihakTab } from './components/PihakTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
-import { RealisasiTab } from './components/RealisasiTab.js';
 import { ImportExcelTab } from './components/ImportExcelTab.js';
 import { LabaRugiTab } from './components/LabaRugiTab.js';
 import { ArusKasTab } from './components/ArusKasTab.js';
@@ -50,7 +48,7 @@ import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pihak' | 'pembantu' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -62,7 +60,6 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pihak', label: 'Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
-  { id: 'realisasi', label: 'Anggaran', Icon: BarChart3 },
   { id: 'import', label: 'Import Excel', Icon: FileSpreadsheet },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
@@ -98,7 +95,6 @@ const GRUP_MENU: {
       'laba-rugi',
       'neraca',
       'arus-kas',
-      'realisasi',
       'pembantu',
     ],
   },
@@ -639,7 +635,6 @@ function AppShell() {
             {tab === 'panjar' && <PanjarTab />}
             {tab === 'pihak' && <PihakTab />}
             {tab === 'pembantu' && <PembantuTab />}
-            {tab === 'realisasi' && <RealisasiTab />}
             {tab === 'import' && <ImportExcelTab />}
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (

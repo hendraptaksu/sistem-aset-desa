@@ -12,8 +12,10 @@ const baca = (path: string): string => readFileSync(join(ROOT, path), 'utf8');
 
 const APP = baca('src/renderer/App.tsx');
 const API = baca('src/renderer/lib/api.ts');
+const IPC = baca('src/main/ipc.ts');
 const VALIDATION = baca('src/main/validation.ts');
 const WORKBOOKS = baca('src/features/export/workbooks.ts');
+const PRINT_ADAPTERS = baca('src/features/export/printAdapters.ts');
 const AUDIT_DETAIL = baca('src/utils/auditDetail.ts');
 
 describe('DB-31 — Rekonsiliasi Bank dihapus dari menu/UI', () => {
@@ -26,7 +28,6 @@ describe('DB-31 — Rekonsiliasi Bank dihapus dari menu/UI', () => {
       'Transaksi',
       'Buku Besar',
       'Neraca Saldo',
-      'Anggaran',
       'Tutup Buku',
       'Pengaturan',
     ]) {
@@ -108,5 +109,48 @@ describe('DB-32 — Inventaris Aset dihapus dari menu/UI', () => {
     expect(AUDIT_DETAIL).toContain("a.startsWith('ASET-CREATE')");
     expect(AUDIT_DETAIL).toContain("a.startsWith('ASET-UPDATE')");
     expect(AUDIT_DETAIL).toContain("a.startsWith('ASET-DELETE')");
+  });
+});
+
+describe('DB-24 — Anggaran dihapus dari menu/UI', () => {
+  it('tidak lagi punya tab, menu, render, atau komponen Anggaran', () => {
+    expect(APP).not.toContain('Anggaran');
+    expect(APP).not.toContain('RealisasiTab');
+    expect(APP).not.toContain("'realisasi'");
+    for (const label of [
+      'Dashboard',
+      'Transaksi',
+      'Buku Besar',
+      'Neraca Saldo',
+      'Laba Rugi',
+      'Neraca',
+      'Arus Kas',
+      'Pengaturan',
+    ]) {
+      expect(APP, `menu "${label}" tetap ada`).toContain(label);
+    }
+  });
+
+  it('tidak mengekspos tipe/API renderer, validator, IPC, atau export anggaran', () => {
+    expect(API).not.toMatch(/anggaran/i);
+    expect(VALIDATION).not.toMatch(/anggaran/i);
+    expect(IPC).not.toMatch(/anggaran/i);
+    expect(WORKBOOKS).not.toMatch(/anggaran/i);
+    expect(PRINT_ADAPTERS).not.toMatch(/anggaran/i);
+  });
+
+  it('file modul dan test anggaran sudah dihapus', () => {
+    for (const path of [
+      'src/renderer/components/RealisasiTab.tsx',
+      'src/core/anggaran.ts',
+      'src/db/anggaran.ts',
+      'tests/anggaran.test.ts',
+    ]) {
+      expect(existsSync(join(ROOT, path)), `${path} tidak ada`).toBe(false);
+    }
+  });
+
+  it('label audit lama ANGGARAN tetap tersedia', () => {
+    expect(AUDIT_DETAIL).toContain("a.startsWith('ANGGARAN')");
   });
 });

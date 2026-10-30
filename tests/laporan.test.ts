@@ -27,7 +27,6 @@ import {
   totalKas,
   type BarisJurnalSumber,
 } from '../src/core/reports.js';
-import { hitungRealisasiAnggaran } from '../src/core/anggaran.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -968,28 +967,6 @@ describe('P0-5 — adapter DB (baris jurnal → laporan)', () => {
     } finally {
       db.close();
     }
-  });
-});
-
-// P2-1: layar anggaran memakai mesin laporan yang sama; totalnya tidak boleh
-// berbeda dari labaRugi() untuk dataset jurnal yang sama.
-describe('P2-1 — realisasi anggaran konsisten dengan labaRugi', () => {
-  it('total pendapatan/beban sama dengan labaRugi periode', () => {
-    const rentang = { mulai: '2026-01-01', sampai: '2026-12-31' };
-    const lr = labaRugi(BARIS, rentang);
-    const hasil = hitungRealisasiAnggaran(
-      [
-        { tahun: 2026, akun_kode: '4005', nominal: RP(1_000_000) },
-        { tahun: 2026, akun_kode: '5010', nominal: RP(100_000) },
-      ],
-      BARIS,
-      rentang,
-    );
-
-    expect(hasil.totalPendapatan.realisasi).toBe(lr.totalPendapatan);
-    expect(hasil.totalBeban.realisasi).toBe(lr.totalBeban);
-    expect(hasil.pendapatan.find((b) => b.kode === '4005')?.realisasi).toBe(RP(700_000));
-    expect(hasil.beban.find((b) => b.kode === '5010')?.realisasi).toBe(RP(200_000));
   });
 });
 

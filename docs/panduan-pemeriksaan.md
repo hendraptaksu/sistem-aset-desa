@@ -25,8 +25,7 @@ lama, melainkan membuat jurnal balik.
 4. **Laba Rugi** — pendapatan dan beban periode.
 5. **Neraca** — aset = kewajiban + ekuitas; cek laba berjalan & laba ditahan.
 6. **Arus Kas** — mutasi kas/bank metode langsung.
-7. **Anggaran** — bandingkan realisasi dengan pagu.
-8. **Riwayat Audit** — periksa koreksi, tutup buku, backup/restore, perubahan
+7. **Riwayat Audit** — periksa koreksi, tutup buku, backup/restore, perubahan
    pengaturan.
 
 Semua layar laporan bisa **drill-down**: klik baris/akun → daftar jurnal → detail
@@ -106,7 +105,7 @@ Akun yang paling sering diperiksa:
   normal.
 
 Bila saldo tidak wajar, klik baris jurnal untuk melihat detail, lalu koreksi
-lewat mekanisme di bagian 9.
+lewat mekanisme di bagian 8.
 
 ---
 
@@ -200,21 +199,7 @@ laporan menampilkannya sebagai mutasi internal sesuai tampilan aplikasi.
 
 ---
 
-## 8. Anggaran & Realisasi
-
-Buka **Anggaran**.
-
-- **Pagu** diisi per tahun dan per akun PENDAPATAN/BEBAN. Pagu adalah satu-satunya
-  angka yang disimpan.
-- **Realisasi** dihitung dari jurnal pada rentang tahun buku.
-- Kolom **Sisa** = pagu − realisasi; **%** = realisasi / pagu.
-- Periksa akun yang realisasinya melebihi pagu, lalu cari jurnalnya lewat
-  drill-down/Buku Besar.
-- Pagu boleh diubah dengan alasan; perubahan tercatat di audit.
-
----
-
-## 9. Koreksi: reversal + isi ulang
+## 8. Koreksi: reversal + isi ulang
 
 **Jangan pernah mengedit atau menghapus jurnal yang sudah tersimpan.** Semua
 koreksi harus dapat diaudit.
@@ -256,7 +241,7 @@ wajib minimal 5 karakter.
 
 ---
 
-## 10. Tutup buku
+## 9. Tutup buku
 
 1. Pastikan **Neraca Saldo seimbang** dan laporan tahun tersebut sudah diperiksa.
 2. Buka **Tutup Buku**.
@@ -280,7 +265,7 @@ yang ditutup, bukan dari jurnal buatan operator.
 
 ---
 
-## 11. Audit
+## 10. Audit
 
 Buka **Pengaturan → Riwayat Audit**.
 
@@ -301,7 +286,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 
 ---
 
-## 12. Glosarium
+## 11. Glosarium
 
 | Istilah | Arti sederhana |
 |---|---|
@@ -321,7 +306,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 
 ---
 
-## 13. Checklist singkat sebelum menandatangani laporan
+## 12. Checklist singkat sebelum menandatangani laporan
 
 - [ ] Jurnal Umum: semua transaksi punya tanggal, keterangan, nomor bukti, dan
       lawan akun yang wajar.
@@ -332,7 +317,6 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 - [ ] Laba Rugi cocok dengan Buku Besar pendapatan/beban.
 - [ ] Neraca: aset = kewajiban + ekuitas.
 - [ ] Arus Kas cocok dengan mutasi kas/bank.
-- [ ] Anggaran: realisasi dan sisa sudah diperiksa.
 - [ ] Audit: koreksi dan tutup buku punya alasan.
 - [ ] Backup Lengkap (DB + lampiran) sudah dibuat, atau backup `.db` **dan**
       folder `attachments` disalin terpisah.

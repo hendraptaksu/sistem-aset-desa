@@ -3,7 +3,6 @@ import type { JurnalInput } from '../../core/posting.js';
 import type { PengaturanPembukuan } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
 import type { AlurPihak, RekonsiliasiPihak, SaldoPihak } from '../../core/pihak.js';
-import type { RealisasiAnggaranHasil } from '../../core/anggaran.js';
 import type {
   AuditLog,
   Jurnal,
@@ -41,7 +40,6 @@ export type {
   ModeNeracaSaldo,
   NeracaHasil,
   NeracaSaldoModeHasil,
-  RealisasiAnggaranHasil,
 };
 export type { LokasiData };
 
@@ -104,43 +102,6 @@ export type UploadLampiranApi = {
 
 /** Filter periode layar Laba Rugi & Arus Kas (P1-9). */
 export type FilterPeriodeApi = {
-  mulai?: string;
-  sampai?: string;
-};
-
-/** Pagu tersimpan satu akun per tahun (P2-1). */
-export type AnggaranTersimpan = {
-  tahun: number;
-  akun_kode: string;
-  nominal: number;
-  created_at: string;
-  updated_at: string;
-};
-
-/** Akun COA + flag aktif untuk layar input pagu. */
-export type AnggaranAkunApi = Coa & { aktif: boolean };
-
-/** Data `anggaran:list`: pagu tersimpan + seluruh akun PENDAPATAN/BEBAN. */
-export type AnggaranListData = {
-  tahun: number;
-  baris: AnggaranTersimpan[];
-  total: number;
-  akun: AnggaranAkunApi[];
-};
-
-export type SimpanAnggaranApi = {
-  tahun: number;
-  baris: { akun_kode: string; nominal: number }[];
-};
-
-export type HasilSimpanAnggaranApi = {
-  tahun: number;
-  baris: AnggaranTersimpan[];
-  total: number;
-};
-
-export type FilterLaporanAnggaranApi = {
-  tahun: number;
   mulai?: string;
   sampai?: string;
 };
@@ -324,15 +285,6 @@ export const api = {
   /** Arus Kas metode langsung per periode (P1-9). */
   laporanArusKas: (f: FilterPeriodeApi = {}) =>
     call<ArusKasHasil>('laporan:arus-kas', f),
-  /** Pagu + akun PENDAPATAN/BEBAN untuk input tahun terpilih (P2-1). */
-  anggaranList: (tahun: number) =>
-    call<AnggaranListData>('anggaran:list', { tahun }),
-  /** Simpan pagu (upsert; nominal 0 menghapus pagu akun tersebut). */
-  anggaranSimpan: (f: SimpanAnggaranApi, opsi: { alasan?: string } = {}) =>
-    call<HasilSimpanAnggaranApi>('anggaran:simpan', f, opsi),
-  /** Realisasi vs pagu; realisasi dihitung dari jurnal (bukan angka tersimpan). */
-  laporanAnggaran: (f: FilterLaporanAnggaranApi) =>
-    call<RealisasiAnggaranHasil>('laporan:anggaran', f),
   /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
   jurnalPosting: (
     input: JurnalInput,

@@ -86,7 +86,6 @@ type KonfigurasiKasLawan = KonfigurasiDasar & {
   buat: (form: FormTransaksi) => JurnalInput;
   grupLawan: (coa: Coa[]) => GrupAkun[];
   akunLawanAwal: (coa: Coa[]) => string;
-  infoTambahan?: string;
 };
 
 type KonfigurasiPindah = KonfigurasiDasar & {
@@ -157,7 +156,6 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
       return beban.length > 0 ? [{ label: 'Beban', akun: beban }] : [];
     },
     akunLawanAwal: akunLawanAwalBayar,
-    infoTambahan: 'Pagu anggaran diatur di menu Anggaran.',
   },
   PINDAH: {
     mode: 'PINDAH',
@@ -689,11 +687,6 @@ export function FormTransaksiTerpandu({
               <span className="mt-1 block text-helper text-stone-500">
                 {konfigurasi.hintLawan}
               </span>
-              {konfigurasi.infoTambahan && (
-                <span className="mt-1 block text-helper text-stone-500">
-                  {konfigurasi.infoTambahan}
-                </span>
-              )}
             </Field>
           </>
         )}

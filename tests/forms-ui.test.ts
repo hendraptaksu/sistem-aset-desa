@@ -440,7 +440,7 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).toContain('Keterangan');
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
     expect(html).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
-    expect(html).toContain('Pagu anggaran diatur di menu Anggaran');
+    expect(html).not.toContain('Anggaran');
     expect(html).not.toContain('menyusul');
     expect(html).toContain('Untuk panjar gunakan menu Buku Panjar');
     expect(html).toContain('untuk pinjaman/utang gunakan menu Hutang');

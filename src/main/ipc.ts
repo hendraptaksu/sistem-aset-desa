@@ -56,11 +56,6 @@ import {
 import { peringatanPihakTanpaMapping } from '../core/pihak.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import {
-  getAnggaranTahun,
-  laporanRealisasiAnggaran,
-  simpanAnggaran,
-} from '../db/anggaran.js';
-import {
   getLampiran,
   hapusLampiran,
   listLampiran,
@@ -110,7 +105,6 @@ import {
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
-import { rentangTahunBuku } from '../core/pengaturan.js';
 import {
   PESAN_SIMPAN_GAGAL,
   PESAN_TANGGAL_TIDAK_VALID,
@@ -124,8 +118,6 @@ import {
   validasiBentukAkunBaru,
   validasiBentukAkunUbah,
   validasiKodeAkun,
-  validasiBentukAnggaranList,
-  validasiBentukAnggaranSimpan,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
@@ -133,7 +125,6 @@ import {
   validasiBentukPostingPihak,
   validasiBentukSaldoAwal,
   validasiCutoffLaporan,
-  validasiFilterAnggaran,
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
   validasiFilterNeraca,
@@ -279,8 +270,6 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat menyimpan data pihak. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_PANJAR =
     'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_ANGGARAN =
-    'Terjadi kesalahan saat menyimpan pagu anggaran. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_LAMPIRAN =
     'Terjadi kesalahan saat memproses lampiran. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_TUTUP =
@@ -658,72 +647,6 @@ export function registerIpc(deps: IpcDeps): void {
       const bentuk = validasiRentangLaporan(f);
       if (!bentuk.ok) return fail(bentuk.error);
       return ok(laporanArusKas(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  // ---- Pagu anggaran & realisasi (P2-1) ----
-  // Hanya pagu yang disimpan. Realisasi dihitung ulang dari baris jurnal oleh
-  // core/anggaran.ts → labaRugi(); tidak ada angka realisasi tersimpan.
-  daftarkan('anggaran:list', (_e, f: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukAnggaranList(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const ringkas = getAnggaranTahun(deps.db(), bentuk.input.tahun);
-      const akun = listAkun(deps.db()).filter(
-        (a) => a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN',
-      );
-      return ok({ ...ringkas, akun });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('anggaran:simpan', (_e, f: unknown = {}, opsi: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukAnggaranSimpan(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const alasan =
-        typeof opsi === 'object' && opsi !== null && !Array.isArray(opsi)
-          ? String((opsi as { alasan?: unknown }).alasan ?? '').trim().slice(0, 500)
-          : '';
-      const baris = simpanAnggaran(deps.db(), bentuk.input.tahun, bentuk.input.baris, {
-        alasan,
-      });
-      return ok({
-        tahun: bentuk.input.tahun,
-        baris,
-        total: baris.reduce((s, b) => s + b.nominal, 0),
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_ANGGARAN));
-    }
-  });
-
-  // Default periode mengikuti awal tahun buku (P1-13). Dengan pengaturan
-  // bawaan Januari hasilnya tetap 1 Jan–31 Des seperti tiket; bila awal tahun
-  // buku diubah (mis. Juli), laporan memakai tahun buku yang sama dengan
-  // dashboard agar pagu & realisasi tidak terpotong di tengah periode.
-  daftarkan('laporan:anggaran', (_e, f: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiFilterAnggaran(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const { awalTahunBuku } = getPengaturanPembukuan(deps.db());
-      const bawaan = rentangTahunBuku(bentuk.input.tahun, awalTahunBuku);
-      return ok(
-        laporanRealisasiAnggaran(deps.db(), {
-          tahun: bentuk.input.tahun,
-          mulai: bentuk.input.mulai ?? bawaan.mulai,
-          sampai: bentuk.input.sampai ?? bawaan.sampai,
-        }),
-      );
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }

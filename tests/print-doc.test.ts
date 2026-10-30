@@ -588,6 +588,11 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     const dasar: Panjar = p;
     expect(dasar.id).toBe('p-1');
   });
+
+  it('DB-24: adapter cetak anggaran sudah dihapus', async () => {
+    const mod = await import('../src/features/export/printAdapters.js');
+    expect('anggaranPrintDoc' in mod).toBe(false);
+  });
 });
 
 describe('P1-16 — pratinjau & PDF memakai HTML yang sama', () => {

@@ -14,11 +14,6 @@ import type {
   NeracaHasil,
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
-import type {
-  RealisasiAnggaranBaris,
-  RealisasiAnggaranHasil,
-  TotalRealisasiAnggaran,
-} from '../../core/anggaran.js';
 import type { Panjar, PanjarItem } from '../../core/types.js';
 import type { PembantuHasil } from '../reports/types.js';
 
@@ -591,85 +586,6 @@ export async function labaRugiToWorkbook(
   ws.getColumn(2).width = 44;
   ws.getColumn(3).width = 20;
   ws.getColumn(4).width = 12;
-  return wb;
-}
-
-const statusAnggaran = (lebih: boolean): string => (lebih ? 'Lebih' : 'Sesuai');
-
-/**
- * Anggaran & realisasi per akun → workbook (P2-1).
- * Kolom: Kode | Uraian | Pagu | Realisasi | Sisa | % | Status.
- * Semua nominal = NUMBER Rupiah (SEN/100) + numFmt Rp; persen = NUMBER fraksi
- * 0..1 + numFmt persen. Baris total memakai angka dari core/anggaran.ts.
- */
-export async function anggaranToWorkbook(
-  hasil: RealisasiAnggaranHasil,
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Anggaran');
-  const barisKopXlsx = tulisKopXlsx(
-    ws,
-    'ANGGARAN & REALISASI',
-    kopPeriodeEfektif(hasil.mulai, hasil.sampai),
-    7,
-    kop,
-  );
-  ws.views = [{ state: 'frozen', ySplit: barisKopXlsx + 1 }];
-
-  const header = ws.addRow([
-    'Kode',
-    'Uraian',
-    'Pagu',
-    'Realisasi',
-    'Sisa',
-    '%',
-    'Status',
-  ]);
-  styleHeader(header);
-
-  const tulisBagian = (
-    judul: string,
-    rows: readonly RealisasiAnggaranBaris[],
-    total: TotalRealisasiAnggaran,
-  ): void => {
-    ws.addRow(['', judul, null, null, null, null, '']);
-    for (const b of rows.filter((r) => r.anggaran !== 0 || r.realisasi !== 0)) {
-      const row = ws.addRow([b.kode, b.nama, null, null, null, null, statusAnggaran(b.lebih)]);
-      selRp(row, 3, b.anggaran);
-      selRp(row, 4, b.realisasi);
-      selRp(row, 5, b.sisa);
-      selPersen(row, 6, b.persen / 100);
-    }
-    const totalRow = ws.addRow([
-      '',
-      `Total ${judul === 'PENDAPATAN' ? 'Pendapatan' : judul === 'BEBAN' ? 'Beban' : judul}`,
-      null,
-      null,
-      null,
-      null,
-      statusAnggaran(total.lebih),
-    ]);
-    selRp(totalRow, 3, total.anggaran);
-    selRp(totalRow, 4, total.realisasi);
-    selRp(totalRow, 5, total.sisa);
-    selPersen(totalRow, 6, total.persen / 100);
-    styleHeader(totalRow);
-  };
-
-  tulisBagian('PENDAPATAN', hasil.pendapatan, hasil.totalPendapatan);
-  tulisBagian('BEBAN', hasil.beban, hasil.totalBeban);
-
-  // Tidak ada baris "TOTAL ANGGARAN & REALISASI": pagu/sisa pendapatan dan
-  // beban tidak sejenis, sehingga total gabungan menyesatkan. Total yang sah
-  // adalah total per bagian di atas.
-
-  ws.getColumn(1).width = 12;
-  ws.getColumn(2).width = 44;
-  ws.getColumn(3).width = 18;
-  ws.getColumn(4).width = 18;
-  ws.getColumn(5).width = 18;
-  ws.getColumn(6).width = 12;
-  ws.getColumn(7).width = 12;
   return wb;
 }
 

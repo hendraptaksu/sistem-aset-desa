@@ -116,7 +116,6 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
       'Laba Rugi',
       'Neraca',
       'Arus Kas',
-      'Anggaran',
       'reversal',
       'tutup buku',
       'audit',
@@ -138,6 +137,12 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
   it('DB-31: dokumen tidak lagi menawarkan Rekonsiliasi Bank', () => {
     for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, baca('lampiran-bukti.md')]) {
       expect(dokumen).not.toContain('Rekonsiliasi Bank');
+    }
+  });
+
+  it('DB-24: dokumen tidak lagi menawarkan modul Anggaran', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, ARAH]) {
+      expect(dokumen).not.toMatch(/anggaran/i);
     }
   });
 

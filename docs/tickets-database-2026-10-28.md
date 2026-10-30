@@ -100,7 +100,7 @@
 | DB-22 | — | — | **DIBATALKAN** — Lampiran: kompresi gambar | — | [x] |
 | DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [x] |
 | DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [ ] |
-| DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [ ] |
+| DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [x] |
 | DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [ ] |
 | DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [ ] |
 | DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [ ] |
@@ -969,7 +969,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-16d, DB-23a.
 
-- [ ] **DB-24 — Hapus modul Anggaran (UI/API/test)** · P1 · M
+- [x] **DB-24 — Hapus modul Anggaran (UI/API/test)** · P1 · M
   - **Konteks:** anggaran hanya pagu; realisasi dihitung dari `labaRugi()`.
     Tidak memengaruhi Neraca/Laba Rugi. User tidak meminta fitur ini.
   - **Langkah:**
@@ -983,6 +983,15 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
   - **Test:** test menu + `tests/export-laporan.test.ts`/`tests/print-doc.test.ts`
     bagian anggaran disesuaikan.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-10-30:** tab/menu/render `RealisasiTab`, `core/anggaran.ts`,
+    `db/anggaran.ts`, 3 channel IPC (`anggaran:list`, `anggaran:simpan`,
+    `laporan:anggaran`), validator, API renderer, export XLSX/HTML, adapter
+    cetak, dan `tests/anggaran.test.ts` dihapus; referensi `anggaran` di
+    `hapusAkun` dihapus. Tabel `anggaran` dan DDL-nya sengaja dipertahankan
+    (menunggu DB-33); label audit lama `ANGGARAN` tetap agar riwayat terbaca.
+    Regression test menu/API/IPC/export/print/dokumen ditambahkan.
+    `npm run typecheck` bersih; `npm test` **716/56 hijau**; `npm run build`
+    berhasil.
   - **Dependency:** — (keputusan 2026-10-30).
 
 - [ ] **DB-25 — Hapus modul Import Excel (UI/API/parser/test)** · P1 · M

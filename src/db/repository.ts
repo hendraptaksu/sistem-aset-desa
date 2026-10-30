@@ -228,7 +228,7 @@ export function setAkunAktif(
 
 /**
  * Hapus permanen akun tambahan hanya bila belum pernah dipakai. Akun yang
- * sudah punya jurnal/anggaran/panjar harus dinonaktifkan agar histori utuh.
+ * sudah punya jurnal/panjar harus dinonaktifkan agar histori utuh.
  */
 export function hapusAkun(
   db: Database.Database,
@@ -237,7 +237,6 @@ export function hapusAkun(
   const lama = pastikanAkunTambahan(db, kode);
   const referensi: { label: string; sql: string }[] = [
     { label: 'jurnal', sql: 'SELECT 1 FROM jurnal_baris WHERE akun_kode = ? LIMIT 1' },
-    { label: 'anggaran', sql: 'SELECT 1 FROM anggaran WHERE akun_kode = ? LIMIT 1' },
     { label: 'panjar', sql: 'SELECT 1 FROM panjar_item WHERE kategori_baga = ? LIMIT 1' },
     { label: 'jurnal pihak', sql: 'SELECT 1 FROM jurnal_pihak WHERE akun_kode = ? LIMIT 1' },
   ];
