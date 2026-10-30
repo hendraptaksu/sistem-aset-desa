@@ -6,7 +6,13 @@
 // Path backup terakhir sengaja TIDAK dicari di sini; main menempelkannya lewat
 // `denganBackupTerakhir` karena hanya main yang tahu folder backup.
 
-import { COA, LPD_KODES, type Coa } from '../../db/coa.js';
+import {
+  COA,
+  LPD_KODES,
+  kodeKasDariDaftarAkun,
+  kodeLpdDariDaftarAkun,
+  type Coa,
+} from '../../db/coa.js';
 import { rentangTahunBuku } from '../../core/pengaturan.js';
 import { formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
@@ -259,10 +265,14 @@ export function buildDashboardJurnal(
   opsi: DashboardOpsi = {},
 ): DashboardHasil {
   const coa = opsi.daftarAkun ?? COA;
+  // DB-14: daftar dompet/LPD mengikuti metadata master akun; COA statis tetap
+  // menjadi fallback lewat helper saat objek lama tidak punya `is_kas`.
+  const kasKodes = kodeKasDariDaftarAkun(coa);
+  const lpdKodes = kodeLpdDariDaftarAkun(coa);
   const kasTunai = saldoAkun(baris, '1001', cutoff, coa);
-  const lpd = saldoSemuaKas(baris, LPD_KODES, cutoff, coa);
+  const lpd = saldoSemuaKas(baris, lpdKodes, cutoff, coa);
   const totalLpd = Object.values(lpd).reduce((s, v) => s + v, 0);
-  const totalKasBank = totalKas(baris, undefined, cutoff, coa);
+  const totalKasBank = totalKas(baris, kasKodes, cutoff, coa);
   const rincian = rincianKas(baris, cutoff, coa);
   const kasBank: DashboardKasBank = {
     total: totalKasBank,

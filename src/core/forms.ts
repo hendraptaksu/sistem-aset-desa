@@ -15,8 +15,7 @@ import {
   AKUN_PANJAR,
   AKUN_PIUTANG,
   COA,
-  akun as cariAkunCoa,
-  isAkunKas,
+  isAkunKasData,
   type Coa,
 } from '../db/coa.js';
 import { tanggalKalenderValid, type JurnalInput } from './posting.js';
@@ -118,7 +117,8 @@ function akunKas(kode: string, label: string, daftarAkun: readonly Coa[] = COA):
   const nilai = wajibAkun(kode, label);
   const data = daftarAkun.find((a) => a.kode === nilai);
   if (!data) throw new Error(`${label} ${nilai} bukan akun kas/bank.`);
-  if (!isAkunKas(nilai)) throw new Error(`${label} ${nilai} bukan akun kas/bank.`);
+  // DB-14: pakai penanda is_kas dari master DB; objek lama jatuh ke daftar statis.
+  if (!isAkunKasData(data)) throw new Error(`${label} ${nilai} bukan akun kas/bank.`);
   return nilai;
 }
 
@@ -187,7 +187,7 @@ export function buatJurnalBayar(form: FormBayar): JurnalInput {
   const nominal = wajibNominal(form.nominal);
   const kas = akunKas(form.akunKas, 'Akun kas sumber', form.daftarAkun);
   const lawanData = akunCoa(form.akunLawan, 'Akun lawan', form.daftarAkun);
-  if (isAkunKas(lawanData.kode))
+  if (isAkunKasData(lawanData))
     throw new Error(
       'Akun lawan Bayar bukan akun kas/bank. Untuk memindahkan uang antar kas, gunakan Pindah Dana.',
     );
@@ -262,7 +262,7 @@ export type FormBayarUtangUsaha = DasarFormJurnal & {
 export function buatJurnalCatatUtangUsaha(form: FormCatatUtangUsaha): JurnalInput {
   const nominal = wajibNominal(form.nominal);
   const beban = akunCoa(form.akunBeban, 'Akun beban', form.daftarAkun);
-  if (isAkunKas(beban.kode) || beban.kode === AKUN_PANJAR)
+  if (isAkunKasData(beban) || beban.kode === AKUN_PANJAR)
     throw new Error(
       `Akun ${beban.kode} bukan akun BEBAN. Pilih akun beban, mis. 5003 BAGA WEWANGUNAN.`,
     );
@@ -324,6 +324,8 @@ export type FormSaldoAwal = {
   noBukti?: string;
   id?: string;
   alasan?: string;
+  /** Daftar akun master DB; default COA statis agar pemanggil lama aman. */
+  daftarAkun?: readonly Coa[];
 };
 
 export type HasilSaldoAwal = {
@@ -350,6 +352,7 @@ export type HasilSaldoAwal = {
  */
 export function buatJurnalSaldoAwal(form: FormSaldoAwal): HasilSaldoAwal {
   const tanggal = wajibTanggal(form.tanggal);
+  const daftarAkun = form.daftarAkun ?? COA;
   if (!Array.isArray(form.saldo) || form.saldo.length === 0)
     throw new Error('Saldo awal masih kosong. Isi minimal satu akun dengan nominal lebih dari 0.');
 
@@ -366,7 +369,7 @@ export function buatJurnalSaldoAwal(form: FormSaldoAwal): HasilSaldoAwal {
       throw new Error(
         'Akun 3000 MODAL diisi otomatis sebagai penyeimbang. Jangan memasukkan 3000 di daftar saldo.',
       );
-    const data = cariAkunCoa(kode);
+    const data = daftarAkun.find((a) => a.kode === kode);
     if (!data)
       throw new Error(`Akun saldo awal baris ${no} (${kode}) tidak dikenal di daftar akun.`);
     if (data.tipe !== 'AKTIVA' && data.tipe !== 'KEWAJIBAN')
@@ -390,7 +393,7 @@ export function buatJurnalSaldoAwal(form: FormSaldoAwal): HasilSaldoAwal {
   let totalKewajiban = 0;
   const baris: JurnalBarisInput[] = [];
   for (const [kode, nominal] of perAkun) {
-    const data = cariAkunCoa(kode);
+    const data = daftarAkun.find((a) => a.kode === kode);
     if (!data) continue; // sudah diperiksa di atas; jaring pengaman tipe
     if (data.tipe === 'AKTIVA') {
       baris.push(debit(kode, nominal));
@@ -489,7 +492,7 @@ export function buatJurnalPanjarClose(form: FormPanjarClose): HasilPanjarClose {
     if (!it || typeof it !== 'object')
       throw new Error(`Rincian realisasi baris ${no} tidak valid.`);
     const data = akunCoa(String(it.akun ?? ''), `Akun realisasi baris ${no}`, form.daftarAkun);
-    if (isAkunKas(data.kode))
+    if (isAkunKasData(data))
       throw new Error(
         `Akun realisasi baris ${no} (${data.kode}) adalah kas/bank. Realisasi panjar harus memakai akun BEBAN.`,
       );

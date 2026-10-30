@@ -1,9 +1,10 @@
-# Sumber COA — keputusan DB-13a, DB-13, dan DB-13b
+# Sumber COA — keputusan DB-13a, DB-13, DB-13b, dan DB-14
 
 **Tanggal keputusan:** 2026-10-30 (DB-13a); lima akun baru disetujui dan
 ditambahkan pada DB-13, 2026-10-30; 5063 BEBAN BUNGA PINJAMAN ditambahkan pada
-DB-13b, 2026-10-30.
-**Status:** berlaku untuk DB-13, DB-13b, dan seterusnya.
+DB-13b, 2026-10-30; metadata akun + akun bank/LPD baru ditambahkan pada DB-14,
+2026-10-30.
+**Status:** berlaku untuk DB-13, DB-13b, DB-14, dan seterusnya.
 
 ## Keputusan
 
@@ -78,6 +79,50 @@ identik.
 | 4060 | PENDAPATAN WEWEDALAN (UPACARA) | PENDAPATAN | KREDIT | 4008 PUNIA / 4041 SESARI tetap ada |
 | 4006 | PENDAPATAN PARKIR BPD (KHUSUS) | PENDAPATAN | KREDIT | 4005 PENDAPATAN PARKIR tetap ada |
 
+## Metadata akun DB-14 (`is_kas`, `kelompok`, `sumber`)
+
+Sejak skema **v16**, tabel `akun` menyimpan tiga metadata tambahan:
+
+| Kolom | Isi | Catatan |
+|---|---|---|
+| `is_kas` | `0`/`1` | `1` = dompet kas/bank yang boleh dipakai di Pindah Dana, Panjar, dan pembayaran. |
+| `kelompok` | `KAS`, `BANK`, `LPD`, `PANJAR`, `PIUTANG`, `HUTANG`, `EKUITAS`, `PENDAPATAN`, `BEBAN`, atau kosong | Hanya untuk pengelompokan/tampilan; bukan pengganti `tipe`. |
+| `sumber` | `BAWAAN` atau `TAMBAHAN` | `BAWAAN` = kode dari CSV/ekstensi sistem; `TAMBAHAN` = dibuat operator dari layar Daftar Akun. |
+
+Backfill v16 memakai pemetaan tetap:
+
+| Akun | `is_kas` | `kelompok` |
+|---|---|---|
+| `1001 KAS` | 1 | `KAS` |
+| Akun LPD (`1010`, `1014`–`1021`, `1030`–`1032`, `1036`) | 1 | `LPD` |
+| Dompet lain (`1028`, `1029`) | 1 | `BANK` |
+| `1040 UANG PANJAR` | 0 | `PANJAR` |
+| `1050 PIUTANG` | 0 | `PIUTANG` |
+| `2050`, `2060` | 0 | `HUTANG` |
+| `3000`–`3002` | 0 | `EKUITAS` |
+| Akun `4xxx` | 0 | `PENDAPATAN` |
+| Akun `5xxx` | 0 | `BEBAN` |
+
+Akun di luar COA dianggap `TAMBAHAN`; `is_kas` yang sudah `1` dipertahankan dan
+`kelompok` hanya diisi dari `tipe` bila masih kosong. Upsert COA saat `openDb`
+hanya memperbarui baris `BAWAAN`, sehingga nama/tipe/aktif/metadata akun
+`TAMBAHAN` tidak berubah saat aplikasi dibuka ulang.
+
+### Akun kas/bank/LPD baru
+
+Operator dapat menambah akun kas/bank/LPD dari **Daftar Akun** dengan syarat:
+
+- kode 4 digit di rentang khusus **`1100`–`1199`** (tidak dipakai COA client);
+- tipe `AKTIVA`, posisi normal `DEBIT`;
+- `is_kas = 1`;
+- `kelompok` salah satu dari `KAS`, `BANK`, atau `LPD`;
+- `sumber = TAMBAHAN`.
+
+Rentang ini sengaja dicadangkan agar akun baru tidak bentrok dengan CSV. Akun
+`BEBAN` (`5xxx`) dan `PENDAPATAN` (`4xxx`) tetap dapat ditambah seperti sebelumnya.
+Validasi `is_kas`/`kelompok` yang tidak konsisten ditolak di repository, dan
+akun baru langsung muncul di dropdown kas, Panjar, Pindah Dana, serta total kas.
+
 ## Penjaga regresi
 
 `tests/coa.test.ts` menegakkan:
@@ -98,12 +143,19 @@ identik.
 8. Dokumen ini tetap ada dan mencatat keputusan, angka 48/54/56, kode 1040,
    2060, 5060, 5061, 5062, 5063 BEBAN BUNGA PINJAMAN, 4060, 4006, serta hash
    arsip.
+9. **DB-14:** migrasi v16 menambah kolom metadata tanpa rebuild; backfill COA
+   benar, akun di luar COA menjadi `TAMBAHAN`, dan akun `TAMBAHAN` tetap utuh
+   setelah reopen. Akun bank baru `1100`–`1199` muncul di daftar kas dan total
+   kas; `is_kas`/`kelompok` yang tidak konsisten ditolak.
 
 ## Cara mengubah dengan aman
 
 - **Menambah akun client:** tambahkan baris baru di belakang `KODE AKUN.csv`,
   lalu tambahkan akun yang sama (kode, nama, tipe, posisi normal) ke COA.
   Jangan mengubah xlsx. Test akan memastikan jumlah dan isinya konsisten.
+- **Menambah akun kas/bank/LPD operator:** jangan menambah ke CSV/COA. Buat dari
+  layar **Daftar Akun** dengan kode `1100`–`1199`; akun tersimpan di DB sebagai
+  `TAMBAHAN` dan tidak akan ditimpa upsert COA.
 - **Mengubah nama akun baseline:** perlu persetujuan client karena berarti
   mengubah sumber mesin; xlsx lama tetap arsip dan test subset akan menolak
   perbedaan nama. Jangan mengedit xlsx diam-diam.

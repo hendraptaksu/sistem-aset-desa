@@ -217,9 +217,14 @@ export const api = {
       jenis,
     ),
   coa: () => call<Coa[]>('coa:list'),
-  /** Tambah akun Beban/Pendapatan baru ke master COA (P2). */
-  akunTambah: (input: { kode: string; nama: string; tipe: CoaTipe }) =>
-    call<Coa>('akun:tambah', input),
+  /** Tambah akun Beban/Pendapatan/Kas-Bank baru ke master COA (DB-14). */
+  akunTambah: (input: {
+    kode: string;
+    nama: string;
+    tipe: CoaTipe;
+    is_kas?: boolean;
+    kelompok?: string;
+  }) => call<Coa>('akun:tambah', input),
   /** Ubah nama akun tambahan; kode & jenis tetap. */
   akunUbah: (input: { kode: string; nama: string }) =>
     call<Coa>('akun:ubah', input),

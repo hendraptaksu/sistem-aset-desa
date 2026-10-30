@@ -17,7 +17,20 @@ import {
 } from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
-import { COA, PESAN_AKUN_LEGACY, POSISI_NORMAL, akunBolehDiposting, type CoaTipe, type PosisiNormal } from './coa.js';
+import {
+  COA,
+  KELOMPOK_KAS,
+  KODE_KAS_TAMBAHAN_MAX,
+  KODE_KAS_TAMBAHAN_MIN,
+  PESAN_AKUN_LEGACY,
+  POSISI_NORMAL,
+  akunBolehDiposting,
+  kodeKasDariDaftarAkun,
+  type CoaTipe,
+  type KelompokAkun,
+  type PosisiNormal,
+  type SumberAkun,
+} from './coa.js';
 import type {
   AuditLog,
   Jurnal,
@@ -33,6 +46,12 @@ export type AkunDb = {
   tipe: CoaTipe;
   posisi_normal: PosisiNormal;
   aktif: boolean;
+  /** DB-14: dompet kas/bank (master DB). */
+  is_kas: boolean;
+  /** DB-14: kelompok akun (lihat `KelompokAkun`); '' bila belum ditentukan. */
+  kelompok: KelompokAkun | '';
+  /** DB-14: BAWAAN (COA statis/CSV) atau TAMBAHAN (dibuat operator). */
+  sumber: SumberAkun;
 };
 
 const rowToAkun = (r: Record<string, unknown>): AkunDb => ({
@@ -41,6 +60,9 @@ const rowToAkun = (r: Record<string, unknown>): AkunDb => ({
   tipe: String(r.tipe) as CoaTipe,
   posisi_normal: String(r.posisi_normal) as PosisiNormal,
   aktif: Number(r.aktif) === 1,
+  is_kas: Number(r.is_kas) === 1,
+  kelompok: String(r.kelompok ?? '') as KelompokAkun | '',
+  sumber: String(r.sumber ?? 'BAWAAN') === 'TAMBAHAN' ? 'TAMBAHAN' : 'BAWAAN',
 });
 
 /** Daftar akun dari master DB (hasil upsert COA saat openDb). */
@@ -61,26 +83,91 @@ export function getAkun(db: Database.Database, kode: string): AkunDb | null {
   return r ? rowToAkun(r) : null;
 }
 
+/**
+ * DB-14: kode dompet dari master `akun` (bukan daftar statis). Default semua
+ * akun `is_kas = 1` agar laporan historis tetap lengkap walau akun kelak
+ * dinonaktifkan; `aktifSaja` dipakai form input baru.
+ */
+export function kodeKasDariDb(
+  db: Database.Database,
+  opsi: { aktifSaja?: boolean } = {},
+): string[] {
+  return kodeKasDariDaftarAkun(
+    listAkun(db, opsi.aktifSaja ? { aktif: true } : {}),
+  );
+}
+
+/** Kode dompet aktif untuk dropdown form (is_kas = 1 dan aktif = 1). */
+export function kodeKasAktifDb(db: Database.Database): string[] {
+  return kodeKasDariDb(db, { aktifSaja: true });
+}
+
 /** Tipe akun yang boleh ditambah operator dari layar Daftar Akun. */
-export const TIPE_AKUN_TAMBAHAN: readonly CoaTipe[] = ['BEBAN', 'PENDAPATAN'];
+export const TIPE_AKUN_TAMBAHAN: readonly CoaTipe[] = ['BEBAN', 'PENDAPATAN', 'AKTIVA'];
 
 export type AkunBaruInput = {
   kode: string;
   nama: string;
   tipe: CoaTipe;
+  /** DB-14: wajib true untuk AKTIVA kas/bank baru. */
+  is_kas?: boolean;
+  /** DB-14: KAS/BANK/LPD untuk AKTIVA; BEBAN/PENDAPATAN untuk tipe lain. */
+  kelompok?: string;
 };
 
-function validasiAkunBaru(input: AkunBaruInput): AkunBaruInput {
+type AkunBaruBersih = {
+  kode: string;
+  nama: string;
+  tipe: CoaTipe;
+  is_kas: boolean;
+  kelompok: KelompokAkun;
+};
+
+function validasiAkunBaru(input: AkunBaruInput): AkunBaruBersih {
   const kode = String(input?.kode ?? '').trim();
   const nama = String(input?.nama ?? '').trim();
   const tipe = String(input?.tipe ?? '').trim() as CoaTipe;
+  const kelompokInput = String(input?.kelompok ?? '').trim().toUpperCase();
 
   if (!/^\d{4}$/.test(kode))
-    throw new Error('Kode akun harus 4 digit angka, mis. 5011 atau 4043.');
+    throw new Error('Kode akun harus 4 digit angka, mis. 5011, 4043, atau 1101.');
   if (!nama) throw new Error('Nama akun wajib diisi.');
   if (nama.length > 100) throw new Error('Nama akun maks. 100 karakter.');
   if (!TIPE_AKUN_TAMBAHAN.includes(tipe))
-    throw new Error('Jenis akun tambahan harus BEBAN atau PENDAPATAN.');
+    throw new Error(
+      'Jenis akun tambahan harus BEBAN, PENDAPATAN, atau AKTIVA kas/bank.',
+    );
+
+  if (tipe === 'AKTIVA') {
+    const nomor = Number(kode);
+    if (
+      !Number.isInteger(nomor) ||
+      nomor < KODE_KAS_TAMBAHAN_MIN ||
+      nomor > KODE_KAS_TAMBAHAN_MAX
+    )
+      throw new Error(
+        `Akun kas/bank baru harus memakai kode ${KODE_KAS_TAMBAHAN_MIN}–${KODE_KAS_TAMBAHAN_MAX} (rentang kustom).`,
+      );
+    if (input?.is_kas !== true)
+      throw new Error('Akun kas/bank baru wajib ditandai is_kas = 1.');
+    if (!(KELOMPOK_KAS as readonly string[]).includes(kelompokInput))
+      throw new Error('Kelompok akun kas/bank harus KAS, BANK, atau LPD.');
+    return {
+      kode,
+      nama,
+      tipe,
+      is_kas: true,
+      kelompok: kelompokInput as KelompokAkun,
+    };
+  }
+
+  // BEBAN/PENDAPATAN tetap seperti sebelumnya. is_kas harus konsisten dengan
+  // tipe dan kelompok tidak boleh bertentangan.
+  const kelompokWajib: KelompokAkun = tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN';
+  if (input?.is_kas === true)
+    throw new Error(`Akun ${tipe} tidak boleh ditandai is_kas = 1.`);
+  if (kelompokInput && kelompokInput !== kelompokWajib)
+    throw new Error(`Kelompok akun ${tipe} harus ${kelompokWajib}.`);
 
   // Jaga struktur COA: beban 5xxx, pendapatan 4xxx.
   if (tipe === 'BEBAN' && !kode.startsWith('5'))
@@ -88,15 +175,26 @@ function validasiAkunBaru(input: AkunBaruInput): AkunBaruInput {
   if (tipe === 'PENDAPATAN' && !kode.startsWith('4'))
     throw new Error('Akun PENDAPATAN harus memakai kode 4xxx, mis. 4043.');
 
-  return { kode, nama, tipe };
+  return {
+    kode,
+    nama,
+    tipe,
+    is_kas: false,
+    kelompok: kelompokWajib,
+  };
 }
 
 /**
- * Tambah akun COA baru (BEBAN/PENDAPATAN) ke master `akun`.
+ * Tambah akun COA baru ke master `akun`.
+ *
+ * - BEBAN/PENDAPATAN: perilaku lama (kode 5xxx/4xxx).
+ * - DB-14 AKTIVA kas/bank/LPD: kode kustom 1100–1199, wajib `is_kas = true`,
+ *   kelompok KAS/BANK/LPD, posisi normal DEBIT, sumber TAMBAHAN.
  *
  * Akun tambahan disimpan di database, bukan di kode statis. `coa:list` dan
  * seluruh laporan membaca master DB, sehingga akun langsung tersedia setelah
- * disimpan. Upsert COA statis saat `openDb` tidak menghapus baris tambahan.
+ * disimpan. Upsert COA statis saat `openDb` tidak menghapus/menimpa baris
+ * tambahan.
  */
 export function tambahAkun(db: Database.Database, input: AkunBaruInput): AkunDb {
   const bersih = validasiAkunBaru(input);
@@ -114,9 +212,16 @@ export function tambahAkun(db: Database.Database, input: AkunBaruInput): AkunDb 
       );
 
     db.prepare(
-      `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
-       VALUES (?, ?, ?, ?, 1)`,
-    ).run(bersih.kode, bersih.nama, bersih.tipe, posisi_normal);
+      `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif, is_kas, kelompok, sumber)
+       VALUES (?, ?, ?, ?, 1, ?, ?, 'TAMBAHAN')`,
+    ).run(
+      bersih.kode,
+      bersih.nama,
+      bersih.tipe,
+      posisi_normal,
+      bersih.is_kas ? 1 : 0,
+      bersih.kelompok,
+    );
 
     const baru = getAkun(db, bersih.kode);
     catatAudit(db, {

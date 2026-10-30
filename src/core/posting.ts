@@ -13,6 +13,7 @@ import {
   POSISI_NORMAL,
   akunBolehDiposting,
   isAkunKas,
+  isAkunKasData,
   type CoaTipe,
   type PosisiNormal,
 } from '../db/coa.js';
@@ -42,6 +43,10 @@ export type AkunPosting = {
   tipe: CoaTipe;
   posisi_normal?: PosisiNormal;
   aktif: boolean;
+  /** DB-14: metadata opsional dari master akun. */
+  is_kas?: boolean;
+  kelompok?: string;
+  sumber?: string;
 };
 
 /** Konteks DB yang dibutuhkan posting layer, sudah diambil pemanggil. */
@@ -200,6 +205,12 @@ export function validasiJurnal(
 
   const daftarAkun = Array.isArray(konteks.akun) ? konteks.akun : [];
   const petaAkun = new Map(daftarAkun.map((a) => [a.kode, a]));
+  // DB-14: dompet ditentukan oleh `is_kas` dari master DB; objek lama tanpa
+  // penanda itu tetap memakai daftar statis (fallback aman).
+  const kasDi = (kode: string): boolean => {
+    const data = petaAkun.get(kode);
+    return data ? isAkunKasData(data) : isAkunKas(kode);
+  };
 
   const deltaKas = new Map<string, number>();
   let totalDebit = 0;
@@ -256,7 +267,7 @@ export function validasiJurnal(
 
     totalDebit += debit;
     totalKredit += kredit;
-    if (akunBaris && isAkunKas(kode))
+    if (akunBaris && kasDi(kode))
       deltaKas.set(kode, (deltaKas.get(kode) ?? 0) + debit - kredit);
   });
 
@@ -269,10 +280,10 @@ export function validasiJurnal(
       .filter((kode) => petaAkun.has(kode));
 
     if (jenis === 'TRANSFER') {
-      const bukanKas = kodeSah.filter((kode) => !isAkunKas(kode));
+      const bukanKas = kodeSah.filter((kode) => !kasDi(kode));
       if (bukanKas.length > 0)
         errors.push('Jurnal Pindah Dana hanya boleh memakai akun kas/bank.');
-      const kasUnik = new Set(kodeSah.filter((kode) => isAkunKas(kode)));
+      const kasUnik = new Set(kodeSah.filter((kode) => kasDi(kode)));
       if (kasUnik.size < 2)
         errors.push('Pindah Dana harus memakai dua akun kas/bank yang berbeda.');
     }
@@ -293,7 +304,7 @@ export function validasiJurnal(
     const kodeSah = baris
       .map((b) => String(b?.akun_kode ?? '').trim())
       .filter((kode) => petaAkun.has(kode));
-    const adaKas = kodeSah.some((kode) => isAkunKas(kode));
+    const adaKas = kodeSah.some((kode) => kasDi(kode));
     if (
       adaKas &&
       kodeSah.includes(AKUN_HUTANG) &&

@@ -346,6 +346,43 @@ describe('Daftar Akun — tambah akun lewat IPC', () => {
     expect(ubahBawaan.ok).toBe(false);
     expect(ubahBawaan.error).toMatch(/bawaan/i);
   });
+
+  it('menambah akun bank 1100–1199 dan mengembalikan metadata di coa:list', async () => {
+    const env = buatEnv();
+
+    const tambah = await env.panggil('akun:tambah', {
+      kode: '1101',
+      nama: 'BANK BPD REKENING BARU',
+      tipe: 'AKTIVA',
+      is_kas: true,
+      kelompok: 'BANK',
+    });
+    expect(tambah.ok, tambah.error).toBe(true);
+    expect(tambah.data).toMatchObject({
+      kode: '1101',
+      tipe: 'AKTIVA',
+      posisi_normal: 'DEBIT',
+      is_kas: true,
+      kelompok: 'BANK',
+      sumber: 'TAMBAHAN',
+    });
+
+    const daftar = await env.panggil('coa:list');
+    expect(daftar.ok, daftar.error).toBe(true);
+    expect(
+      daftar.data.find((a: { kode: string }) => a.kode === '1101'),
+    ).toMatchObject({ is_kas: true, kelompok: 'BANK', sumber: 'TAMBAHAN' });
+
+    const salah = await env.panggil('akun:tambah', {
+      kode: '1102',
+      nama: 'BANK TANPA PENANDA',
+      tipe: 'AKTIVA',
+      is_kas: false,
+      kelompok: 'BANK',
+    });
+    expect(salah.ok).toBe(false);
+    expect(salah.error).toMatch(/is_kas = 1/i);
+  });
 });
 
 describe('DB-23a/DB-23b — akun 1050 data lama tetap butuh konfirmasi', () => {

@@ -5,8 +5,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AKUN_MODAL, COA, KAS_KODES } from '../src/db/coa.js';
+import { AKUN_MODAL, COA, KAS_KODES, type Coa } from '../src/db/coa.js';
 import {
   buatJurnalBayar,
   buatJurnalPindahDana,
@@ -757,5 +759,67 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
     expect(html).not.toContain('3000 — MODAL');
     // Label UI memakai istilah Indonesia, bukan "Transfer".
     expect(html).not.toContain('Transfer');
+  });
+});
+
+describe('DB-14 — akun bank/LPD baru di form kas', () => {
+  const bankBaru: Coa = {
+    kode: '1101',
+    nama: 'BANK BPD REKENING BARU',
+    tipe: 'AKTIVA',
+    posisi_normal: 'DEBIT',
+    aktif: true,
+    is_kas: true,
+    kelompok: 'BANK',
+    sumber: 'TAMBAHAN',
+  };
+
+  it('builder Pindah Dana memakai is_kas dari master, bukan daftar statis', () => {
+    const input = buatJurnalPindahDana({
+      tanggal: '2026-10-22',
+      dari: '1001',
+      ke: '1101',
+      nominal: RP(250_000),
+      keterangan: 'Pindah ke rekening bank baru',
+      daftarAkun: [...COA, bankBaru],
+    });
+    expect(input.baris).toEqual([
+      { akun_kode: '1101', debit: RP(250_000), kredit: 0 },
+      { akun_kode: '1001', debit: 0, kredit: RP(250_000) },
+    ]);
+  });
+
+  it('form Pindah Dana menampilkan rekening bank tambahan sebagai pilihan kas', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: [...COA, bankBaru],
+        memuat: false,
+      }),
+    );
+    expect(html).toContain('1101 — BANK BPD REKENING BARU');
+  });
+
+  it('fallback objek Coa lama tanpa is_kas tetap mengenali 1001 sebagai kas', () => {
+    const lama = COA.filter((a) => !Object.hasOwn(a, 'is_kas'));
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: lama,
+        memuat: false,
+      }),
+    );
+    expect(html).toContain('1001 — KAS');
+  });
+
+  it('form Daftar Akun menyediakan jenis AKTIVA, kelompok, dan penanda is_kas', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/AkunTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain("'AKTIVA'");
+    expect(sumber).toContain('Kelompok akun');
+    expect(sumber).toContain('is_kas');
+    expect(sumber).toContain('KODE_KAS_TAMBAHAN_MIN');
   });
 });

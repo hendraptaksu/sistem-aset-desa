@@ -14,6 +14,7 @@ import {
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
   hapusAkun,
+  kodeKasDariDb,
   listAkun,
   listAuditLogPage,
   listJurnalLengkap,
@@ -42,7 +43,7 @@ import {
 } from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import { auditIntegritas } from '../db/integritas.js';
-import { AKUN_PIUTANG, KAS_KODES } from '../db/coa.js';
+import { AKUN_PIUTANG } from '../db/coa.js';
 import {
   labaTahun as labaTahunJurnal,
   saldoSemuaKas as saldoSemuaKasJurnal,
@@ -1051,8 +1052,9 @@ export function registerIpc(deps: IpcDeps): void {
     if (!tanggal.ok) return fail(tanggal.error);
     const perKas = saldoSemuaKasJurnal(
       listBarisJurnal(deps.db()),
-      KAS_KODES,
+      kodeKasDariDb(deps.db()),
       tanggal.input || undefined,
+      listAkun(deps.db()),
     );
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
   });

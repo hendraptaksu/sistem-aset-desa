@@ -438,7 +438,13 @@ describe('COA P0-1', () => {
         expect(listAkun(db, { aktif: true })).toHaveLength(COA_JUMLAH);
 
         for (const diharapkan of [...AKUN_DB13_COA, AKUN_DB13B_COA]) {
-          expect(getAkun(db, diharapkan.kode)).toEqual({ ...diharapkan, aktif: true });
+          expect(getAkun(db, diharapkan.kode)).toEqual({
+            ...diharapkan,
+            aktif: true,
+            is_kas: false,
+            kelompok: diharapkan.tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN',
+            sumber: 'BAWAAN',
+          });
         }
 
         // listAkun mengurutkan kode; posisi akun baru mengikuti kode di COA.

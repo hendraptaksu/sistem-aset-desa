@@ -89,7 +89,7 @@
 | DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [x] |
 | DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [x] |
 | DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [x] |
-| DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [ ] |
+| DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [x] |
 | DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [ ] |
 | DB-16a | P0 | S | Desain input pinjaman LPD (user input, bukan data awal) | — | [x] |
 | DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [ ] |
@@ -607,7 +607,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     bersih; `npm test` **771 test/63 file hijau** (baseline 770/63);
     `npm run build` berhasil.
 
-- [ ] **DB-14 — `akun.is_kas`/`kelompok`/`sumber` + akun bank baru** · P1 · M
+- [x] **DB-14 — `akun.is_kas`/`kelompok`/`sumber` + akun bank baru** · P1 · M
   - **Konteks:** `KODE_KAS` dan `LPD_KODES` masih hardcoded; bank/LPD baru tidak
     bisa ditambah dari UI. Ini juga menghalangi “Parkir BPD” jika butuh rekening
     baru.
@@ -628,6 +628,21 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `tests/forms-ui.test.ts`.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-13a.
+  - **Bukti 2026-10-30:** Skema v16 menambah kolom `is_kas`/`kelompok`/`sumber`
+    secara aditif (tanpa rebuild) + backfill idempoten; nilai `kelompok` resmi
+    KAS/BANK/LPD/PANJAR/PIUTANG/HUTANG/EKUITAS/PENDAPATAN/BEBAN. COA 56 akun
+    tetap utuh; akun di luar COA menjadi TAMBAHAN dan tidak ditimpa upsert.
+    `AkunDb`/`rowToAkun`/`coa:list` membawa metadata; form Transaksi, Panjar,
+    Saldo Awal, dan laporan memakai `is_kas` DB dengan fallback statis.
+    `tambahAkun` menerima AKTIVA kas/bank/LPD kode 1100–1199 (is_kas=1,
+    kelompok KAS/BANK/LPD, normal DEBIT, TAMBAHAN) dan menolak kombinasi tidak
+    konsisten; BEBAN/PENDAPATAN tetap. `AkunTab` punya pilihan AKTIVA,
+    kelompok, dan is_kas. Test baru: migrasi v15→v16, backfill, reopen akun
+    TAMBAHAN, akun bank di daftar kas/total kas/Arus Kas, validasi, IPC, dan
+    form. `docs/sumber-coa.md` + `docs/panduan-pengguna.md` diperbarui.
+    `npm run typecheck` bersih; `npm test` **781 test/64 file hijau** (baseline
+    771/63); `npm run build` berhasil. Tidak menyentuh `data/`, xlsx, atau
+    jurnal; tidak commit.
 
 - [ ] **DB-15 — Izinkan nonaktifkan akun bawaan (bukan hapus)** · P1 · S
   - **Konteks:** 16 akun kas/bank bawaan selalu muncul di form; akun 5010 yang

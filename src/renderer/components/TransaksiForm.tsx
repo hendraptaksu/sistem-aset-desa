@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
+import { AKUN_MODAL, isAkunKasData, type Coa } from '../../db/coa.js';
 import {
   buatJurnalBayar,
   buatJurnalBayarUtangUsaha,
@@ -237,7 +237,7 @@ export function FormTransaksiTerpandu({
   const pindah = konfigurasi.mode === 'PINDAH';
   const bebanUtang = konfigurasi.mode === 'BEBAN_UTANG';
   const bayarUtang = konfigurasi.mode === 'BAYAR_UTANG';
-  const kasAwal = coa.find((a) => isAkunKas(a.kode) && a.aktif !== false)?.kode ?? '';
+  const kasAwal = coa.find((a) => isAkunKasData(a) && a.aktif !== false)?.kode ?? '';
   const { setDirty } = useTabGuard();
 
   // UI-07: isian yang ditinggalkan hanya boleh menandai tab ini kotor. Saat
@@ -253,7 +253,7 @@ export function FormTransaksiTerpandu({
   });
   const [akunKe, setAkunKe] = useState(
     () =>
-      coa.find((a) => isAkunKas(a.kode) && a.aktif !== false && a.kode !== kasAwal)?.kode ?? '',
+      coa.find((a) => isAkunKasData(a) && a.aktif !== false && a.kode !== kasAwal)?.kode ?? '',
   );
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
@@ -303,7 +303,7 @@ export function FormTransaksiTerpandu({
   // COA dimuat async oleh TransaksiTab. Isi pilihan awal saat datanya tiba,
   // tanpa menimpa pilihan yang sudah dibuat operator.
   useEffect(() => {
-    const kasAktif = coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false);
+    const kasAktif = coa.filter((a) => isAkunKasData(a) && a.aktif !== false);
     const kasPertama = kasAktif[0]?.kode ?? '';
     setAkunKas((sebelum) =>
       kasAktif.some((a) => a.kode === sebelum) ? sebelum : kasPertama,
@@ -330,7 +330,7 @@ export function FormTransaksiTerpandu({
   }, [coa, konfigurasi]);
 
   const kasList = useMemo(
-    () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
+    () => coa.filter((a) => isAkunKasData(a) && a.aktif !== false),
     [coa],
   );
   const grupLawan = useMemo(() => {

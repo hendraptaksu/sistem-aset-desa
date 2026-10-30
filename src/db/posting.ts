@@ -3,7 +3,7 @@
 // supaya aturan bisnis tidak tersebar di UI/IPC (P0-4).
 
 import type Database from 'better-sqlite3';
-import { KAS_KODES, isAkunKas } from './coa.js';
+import { kodeKasDariDaftarAkun } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
 import {
   getPengaturanPembukuan,
@@ -109,8 +109,13 @@ export function buatKonteksPosting(
   // AUD-10: saldo kas harus mencerminkan posisi pada tanggal jurnal, bukan
   // seluruh riwayat. Jurnal bertanggal setelah header tidak boleh "menutupi"
   // kas minus yang terjadi lebih dulu (mis. pengeluaran backdate).
+  // DB-14: daftar dompet berasal dari master `akun` (is_kas=1), sehingga akun
+  // bank/LPD baru ikut diperiksa peringatan kas minus.
+  const daftarAkun = listAkun(db);
+  const kasKodes = kodeKasDariDaftarAkun(daftarAkun);
+  const setKas = new Set(kasKodes);
   const saldoKas: Record<string, number> = {};
-  for (const kode of KAS_KODES) saldoKas[kode] = 0;
+  for (const kode of kasKodes) saldoKas[kode] = 0;
   const saldoRows = db
     .prepare(
       `SELECT b.akun_kode, COALESCE(SUM(b.debit - b.kredit), 0) AS saldo
@@ -120,7 +125,7 @@ export function buatKonteksPosting(
     )
     .all(tanggal) as { akun_kode: string; saldo: number }[];
   for (const r of saldoRows) {
-    if (isAkunKas(r.akun_kode)) saldoKas[String(r.akun_kode)] = Number(r.saldo);
+    if (setKas.has(String(r.akun_kode))) saldoKas[String(r.akun_kode)] = Number(r.saldo);
   }
 
   // AKT-04: backdate tidak boleh lolos hanya karena saldo pada tanggal jurnal
@@ -130,7 +135,7 @@ export function buatKonteksPosting(
   // jurnal (bukan per baris) agar debit/kredit dalam satu jurnal tidak sempat
   // menghasilkan minus semu; urutan tanggal + id menjaga determinisme.
   const kasMinimumSetelah: Record<string, number> = {};
-  for (const kode of KAS_KODES) kasMinimumSetelah[kode] = 0;
+  for (const kode of kasKodes) kasMinimumSetelah[kode] = 0;
   const setelahRows = db
     .prepare(
       `SELECT b.akun_kode, COALESCE(SUM(b.debit - b.kredit), 0) AS delta
@@ -143,19 +148,22 @@ export function buatKonteksPosting(
   const kumulatifSetelah = new Map<string, number>();
   for (const r of setelahRows) {
     const kode = String(r.akun_kode);
-    if (!isAkunKas(kode)) continue;
+    if (!setKas.has(kode)) continue;
     const kumulatif = (kumulatifSetelah.get(kode) ?? 0) + Number(r.delta);
     kumulatifSetelah.set(kode, kumulatif);
     kasMinimumSetelah[kode] = Math.min(kasMinimumSetelah[kode] ?? 0, kumulatif);
   }
 
   return {
-    akun: listAkun(db).map((a) => ({
+    akun: daftarAkun.map((a) => ({
       kode: a.kode,
       nama: a.nama,
       tipe: a.tipe,
       posisi_normal: a.posisi_normal,
       aktif: a.aktif,
+      is_kas: a.is_kas,
+      kelompok: a.kelompok,
+      sumber: a.sumber,
     })),
     tutupBuku: listTutupBuku(db).map((t) => ({ tahun: Number(t.tahun) })),
     noBuktiTerpakai,

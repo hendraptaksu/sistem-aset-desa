@@ -23,8 +23,8 @@ import {
 } from '../core/posting.js';
 import type { Jurnal, Panjar, PanjarItem } from '../core/types.js';
 import { formatRp } from '../utils/format.js';
-import { isAkunKas } from './coa.js';
-import { listAkun } from './repository.js';
+import { isAkunKasData } from './coa.js';
+import { getAkun, listAkun } from './repository.js';
 import { postingJurnal } from './posting.js';
 
 export type SerahPanjarInput = {
@@ -150,7 +150,7 @@ export function serahkanPanjar(
   const akunKasSumber = String(
     input?.akunKasSumber ?? input?.akun_kas_sumber ?? input?.akunKas ?? '',
   ).trim();
-  if (!isAkunKas(akunKasSumber))
+  if (!isAkunKasData(getAkun(db, akunKasSumber)))
     return gagal('Akun kas sumber panjar wajib akun kas/bank yang dikenal.');
 
   const id = String(input.id ?? '').trim() || uid('p');

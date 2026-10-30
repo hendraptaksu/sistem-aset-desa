@@ -6,7 +6,15 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { JENIS_JURNAL } from '../core/posting.js';
-import { AKUN_HUTANG_USAHA, COA, POSISI_NORMAL } from './coa.js';
+import {
+  AKUN_HUTANG_USAHA,
+  COA,
+  KELOMPOK_AKUN,
+  POSISI_NORMAL,
+  kelompokDariTipe,
+  metadataAkunBawaan,
+  type CoaTipe,
+} from './coa.js';
 
 /**
  * Versi skema di `PRAGMA user_version`.
@@ -53,8 +61,12 @@ import { AKUN_HUTANG_USAHA, COA, POSISI_NORMAL } from './coa.js';
  *          tipe/posisi_normal tidak valid atau tidak cocok, dan aktif bukan 0/1.
  *          Migrasi berhenti bila DB lama sudah berisi nama akun duplikat;
  *          data tidak diubah.
+ * - 16   = metadata akun (DB-14): kolom `akun.is_kas`, `akun.kelompok`, dan
+ *          `akun.sumber` (BAWAAN/TAMBAHAN). Migrasi aditif + backfill idempoten
+ *          dari COA statis; akun di luar COA menjadi TAMBAHAN. Tabel tidak
+ *          direbuild. Upsert COA saat `openDb` hanya memperbarui baris BAWAAN.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -84,7 +96,10 @@ CREATE TABLE IF NOT EXISTS akun (
   nama TEXT NOT NULL,
   tipe TEXT NOT NULL,
   posisi_normal TEXT NOT NULL,
-  aktif INTEGER NOT NULL DEFAULT 1
+  aktif INTEGER NOT NULL DEFAULT 1,
+  is_kas INTEGER NOT NULL DEFAULT 0,
+  kelompok TEXT NOT NULL DEFAULT '',
+  sumber TEXT NOT NULL DEFAULT 'BAWAAN'
 );
 
 -- Model double-entry: jurnal = satu transaksi/bukti, jurnal_baris = debit/kredit.
@@ -565,6 +580,70 @@ function terapkanMigrasiV15(db: Database.Database): void {
 }
 
 /**
+ * DB-14 — metadata akun v16 (aditif, tanpa rebuild tabel).
+ *
+ * 1. Tambah kolom `is_kas`, `kelompok`, `sumber` bila belum ada. Kolom baru
+ *    otomatis berisi default 0/''/'BAWAAN', sehingga DB lama tetap terbuka.
+ * 2. Backfill akun bawaan (kode yang ada di `COA`) dari pemetaan statis:
+ *    1001 KAS, akun LPD = LPD, dompet lain = BANK, 1040 PANJAR, 1050 PIUTANG,
+ *    2050/2060 HUTANG, ekuitas/pendapatan/beban mengikuti tipe.
+ * 3. Akun di luar COA adalah buatan operator: `sumber = TAMBAHAN`, `is_kas`
+ *    dipertahankan bila sudah 1, dan `kelompok` hanya diisi dari tipe bila
+ *    masih kosong. Nilai TAMBAHAN tidak pernah ditimpa pada migrasi ulang.
+ *
+ * Idempoten: kolom diperiksa dari `table_info`, UPDATE memakai kode sebagai
+ * kunci, dan tidak ada DROP/REBUILD. Dijalankan di dalam transaksi `migrasi()`.
+ */
+function terapkanMigrasiV16(db: Database.Database): void {
+  const kolom = new Set(kolomTabel(db, 'akun'));
+  if (!kolom.has('is_kas'))
+    db.exec('ALTER TABLE akun ADD COLUMN is_kas INTEGER NOT NULL DEFAULT 0');
+  if (!kolom.has('kelompok'))
+    db.exec("ALTER TABLE akun ADD COLUMN kelompok TEXT NOT NULL DEFAULT ''");
+  if (!kolom.has('sumber'))
+    db.exec("ALTER TABLE akun ADD COLUMN sumber TEXT NOT NULL DEFAULT 'BAWAAN'");
+
+  // Trigger v15 ikut memvalidasi baris LAMA saat UPDATE. DB sebelum v15 mungkin
+  // masih berisi tipe legacy yang tidak baku; backfill metadata tidak boleh
+  // gagal karenanya. Trigger update dilepas sementara lalu dipasang ulang oleh
+  // `terapkanMigrasiV15` di akhir fungsi ini (dalam transaksi yang sama).
+  db.exec('DROP TRIGGER IF EXISTS trg_akun_validasi_update');
+
+  const kodeBawaan = new Set(COA.map((a) => a.kode));
+  const updateBawaan = db.prepare(
+    'UPDATE akun SET is_kas = ?, kelompok = ?, sumber = ? WHERE kode = ?',
+  );
+  for (const c of COA) {
+    const meta = metadataAkunBawaan(c);
+    updateBawaan.run(meta.is_kas ? 1 : 0, meta.kelompok, meta.sumber, c.kode);
+  }
+
+  const rows = db
+    .prepare('SELECT kode, tipe, is_kas, kelompok FROM akun')
+    .all() as { kode: string; tipe: string; is_kas: number; kelompok: string }[];
+  const updateTambahan = db.prepare(
+    'UPDATE akun SET is_kas = ?, kelompok = ?, sumber = ? WHERE kode = ?',
+  );
+  for (const r of rows) {
+    const kode = String(r.kode);
+    if (kodeBawaan.has(kode)) continue;
+    const isKas = Number(r.is_kas) === 1 ? 1 : 0;
+    const kelompokLama = String(r.kelompok ?? '').trim();
+    const tipe = String(r.tipe) as keyof typeof POSISI_NORMAL;
+    const kelompok =
+      kelompokLama ||
+      (tipe in POSISI_NORMAL
+        ? kelompokDariTipe(tipe as Parameters<typeof kelompokDariTipe>[0])
+        : '');
+    const valid = (KELOMPOK_AKUN as readonly string[]).includes(kelompok) ? kelompok : kelompokLama;
+    updateTambahan.run(isKas, valid, 'TAMBAHAN', kode);
+  }
+
+  // Pasang kembali trigger validasi akun v15 yang sempat dilepas.
+  terapkanMigrasiV15(db);
+}
+
+/**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
  * `user_version` lebih besar tidak boleh disentuh sama sekali.
@@ -587,6 +666,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v13 (unique index satu jurnal SALDO_AWAL).
  * - Menerapkan migrasi v14 (unique reversal + trigger validasi jurnal).
  * - Menerapkan migrasi v15 (unique nama akun + trigger validasi akun).
+ * - Menerapkan migrasi v16 (metadata is_kas/kelompok/sumber + backfill).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -608,6 +688,7 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV13(db);
     terapkanMigrasiV14(db);
     terapkanMigrasiV15(db);
+    terapkanMigrasiV16(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }
@@ -637,17 +718,31 @@ export function openDb(path = process.env.PURA_DB ?? './data/pura.db'): Database
     migrasi(db);
 
     // Upsert daftar akun resmi saat DB dibuka. `akun` adalah master COA untuk
-    // model double-entry.
+    // model double-entry. DB-14: metadata (`is_kas`/`kelompok`/`sumber`) ikut
+    // di-seed, tetapi baris TAMBAHAN tidak pernah ditimpa — name/tipe/posisi/
+    // metadata operator dipertahankan; hanya baris BAWAAN yang di-refresh.
     const seedTx = db.transaction(() => {
       const upsertAkun = db.prepare(
-        `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
-         VALUES (?, ?, ?, ?, 1)
+        `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif, is_kas, kelompok, sumber)
+         VALUES (?, ?, ?, ?, 1, ?, ?, 'BAWAAN')
          ON CONFLICT(kode) DO UPDATE SET
-           nama = excluded.nama,
-           tipe = excluded.tipe,
-           posisi_normal = excluded.posisi_normal`,
+           nama = CASE WHEN akun.sumber = 'BAWAAN' THEN excluded.nama ELSE akun.nama END,
+           tipe = CASE WHEN akun.sumber = 'BAWAAN' THEN excluded.tipe ELSE akun.tipe END,
+           posisi_normal = CASE WHEN akun.sumber = 'BAWAAN' THEN excluded.posisi_normal ELSE akun.posisi_normal END,
+           is_kas = CASE WHEN akun.sumber = 'BAWAAN' THEN excluded.is_kas ELSE akun.is_kas END,
+           kelompok = CASE WHEN akun.sumber = 'BAWAAN' THEN excluded.kelompok ELSE akun.kelompok END`,
       );
-      for (const c of COA) upsertAkun.run(c.kode, c.nama, c.tipe, c.posisi_normal);
+      for (const c of COA) {
+        const meta = metadataAkunBawaan(c);
+        upsertAkun.run(
+          c.kode,
+          c.nama,
+          c.tipe,
+          c.posisi_normal,
+          meta.is_kas ? 1 : 0,
+          meta.kelompok,
+        );
+      }
     });
     seedTx();
     return db;

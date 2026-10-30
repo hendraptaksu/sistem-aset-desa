@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
+import { AKUN_MODAL, isAkunKasData, type Coa } from '../../db/coa.js';
 import { buatJurnalSaldoAwal, type FormSaldoAwal } from '../../core/forms.js';
 import { tanggalKalenderValid } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
@@ -64,7 +64,7 @@ export function SaldoAwalWizard({
   );
   const akunAwal =
     akunRelevan.find((a) => a.kode === '1001')?.kode ??
-    akunRelevan.find((a) => isAkunKas(a.kode))?.kode ??
+    akunRelevan.find((a) => isAkunKasData(a))?.kode ??
     akunRelevan[0]?.kode ??
     '';
 
@@ -94,9 +94,9 @@ export function SaldoAwalWizard({
   }, [akunAwal]);
 
   const grupAkun = useMemo<GrupAkun[]>(() => {
-    const kas = akunRelevan.filter((a) => isAkunKas(a.kode));
+    const kas = akunRelevan.filter((a) => isAkunKasData(a));
     const asetLain = akunRelevan.filter(
-      (a) => a.tipe === 'AKTIVA' && !isAkunKas(a.kode),
+      (a) => a.tipe === 'AKTIVA' && !isAkunKasData(a),
     );
     const kewajiban = akunRelevan.filter((a) => a.tipe === 'KEWAJIBAN');
     const grup: GrupAkun[] = [];
@@ -124,6 +124,7 @@ export function SaldoAwalWizard({
         data: buatJurnalSaldoAwal({
           tanggal,
           saldo,
+          daftarAkun: coa,
           ...(keterangan.trim() ? { keterangan: keterangan.trim() } : {}),
           ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
         }),
@@ -135,7 +136,7 @@ export function SaldoAwalWizard({
         error: pesanError(e),
       };
     }
-  }, [tanggal, rows, keterangan, noBukti]);
+  }, [tanggal, rows, keterangan, noBukti, coa]);
 
   const formSah = Boolean(hasil.data);
 

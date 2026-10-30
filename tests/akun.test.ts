@@ -11,6 +11,8 @@ import {
   getAkun,
   hapusAkun,
   insertJurnalTervalidasi,
+  kodeKasAktifDb,
+  kodeKasDariDb,
   listAkun,
   listAuditLog,
   setAkunAktif,
@@ -18,8 +20,9 @@ import {
   ubahNamaAkun,
 } from '../src/db/repository.js';
 import { postingJurnal, validasiJurnalDb } from '../src/db/posting.js';
-import { laporanLabaRugi, laporanNeraca, laporanNeracaSaldo } from '../src/db/laporan.js';
+import { laporanArusKas, laporanLabaRugi, laporanNeraca, laporanNeracaSaldo, listBarisJurnal } from '../src/db/laporan.js';
 import { akunBolehDiposting, COA } from '../src/db/coa.js';
+import { totalKas } from '../src/core/reports.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -90,8 +93,8 @@ describe('Tambah akun COA', () => {
         tambahAkun(db, { kode: '4043', nama: 'SALAH PREFIX', tipe: 'BEBAN' }),
       ).toThrow(/5xxx/i);
       expect(() =>
-        tambahAkun(db, { kode: '5012', nama: 'BUKAN TIPE', tipe: 'AKTIVA' as never }),
-      ).toThrow(/BEBAN atau PENDAPATAN/i);
+        tambahAkun(db, { kode: '5012', nama: 'BUKAN TIPE', tipe: 'EKUITAS' as never }),
+      ).toThrow(/BEBAN, PENDAPATAN, atau AKTIVA/i);
     } finally {
       db.close();
     }
@@ -260,6 +263,134 @@ describe('Tambah akun COA', () => {
       expect(n.selisih).toBe(0);
     } finally {
       db.close();
+    }
+  });
+});
+
+describe('DB-14 — akun kas/bank baru dan metadata sumber', () => {
+  it('menambah bank 1100–1199, muncul di daftar kas, dan masuk total kas', () => {
+    const db = freshDb();
+    try {
+      const jumlahAwal = listAkun(db).length;
+      const bank = tambahAkun(db, {
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        is_kas: true,
+        kelompok: 'BANK',
+      });
+      expect(bank).toMatchObject({
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        posisi_normal: 'DEBIT',
+        aktif: true,
+        is_kas: true,
+        kelompok: 'BANK',
+        sumber: 'TAMBAHAN',
+      });
+      expect(listAkun(db)).toHaveLength(jumlahAwal + 1);
+      expect(kodeKasAktifDb(db)).toContain('1101');
+      expect(kodeKasDariDb(db)).toContain('1101');
+      expect(listAuditLog(db).some((a) => a.aksi === 'AKUN-TAMBAH 1101')).toBe(true);
+
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-bank', tanggal: '2026-01-01', keterangan: 'Saldo awal bank baru' },
+        [
+          { akun_kode: '1101', debit: RP(5_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(5_000_000) },
+        ],
+      );
+
+      const baris = listBarisJurnal(db);
+      expect(totalKas(baris, kodeKasDariDb(db), undefined, listAkun(db))).toBe(
+        RP(5_000_000),
+      );
+      expect(laporanArusKas(db).saldoAkhir).toBe(RP(5_000_000));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak kode di luar 1100–1199 dan metadata is_kas/kelompok yang tidak konsisten', () => {
+    const db = freshDb();
+    try {
+      const dasar = {
+        nama: 'BANK BARU',
+        tipe: 'AKTIVA' as const,
+        is_kas: true,
+        kelompok: 'BANK',
+      };
+      expect(() => tambahAkun(db, { ...dasar, kode: '1099' })).toThrow(/1100–1199/);
+      expect(() => tambahAkun(db, { ...dasar, kode: '1200' })).toThrow(/1100–1199/);
+      expect(() =>
+        tambahAkun(db, { ...dasar, kode: '1102', is_kas: false }),
+      ).toThrow(/is_kas = 1/i);
+      expect(() =>
+        tambahAkun(db, { ...dasar, kode: '1103', kelompok: 'PANJAR' }),
+      ).toThrow(/KAS, BANK, atau LPD/i);
+      expect(() =>
+        tambahAkun(db, {
+          kode: '5012',
+          nama: 'BEBAN TIDAK BOLEH KAS',
+          tipe: 'BEBAN',
+          is_kas: true,
+        }),
+      ).toThrow(/tidak boleh ditandai is_kas/i);
+      expect(() =>
+        tambahAkun(db, {
+          kode: '5013',
+          nama: 'KELOMPOK SALAH',
+          tipe: 'BEBAN',
+          kelompok: 'PENDAPATAN',
+        }),
+      ).toThrow(/Kelompok akun BEBAN/i);
+
+      // Tidak ada baris yang setengah jadi saat validasi gagal.
+      expect(getAkun(db, '1102')).toBeNull();
+      expect(getAkun(db, '1103')).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('akun bank tambahan tetap utuh setelah reopen (nama, tipe, aktif, metadata)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-akun-bank-'));
+    try {
+      const path = join(dir, 'pura.db');
+      let db = openDb(path);
+      tambahAkun(db, {
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        is_kas: true,
+        kelompok: 'LPD',
+      });
+      ubahNamaAkun(db, '1101', 'BANK BPD REKENING BARU (UBAH)');
+      setAkunAktif(db, '1101', false);
+      db.close();
+
+      db = openDb(path);
+      try {
+        expect(getAkun(db, '1101')).toMatchObject({
+          kode: '1101',
+          nama: 'BANK BPD REKENING BARU (UBAH)',
+          tipe: 'AKTIVA',
+          posisi_normal: 'DEBIT',
+          aktif: false,
+          is_kas: true,
+          kelompok: 'LPD',
+          sumber: 'TAMBAHAN',
+        });
+        expect(kodeKasAktifDb(db)).not.toContain('1101');
+        // Laporan historis tetap memakai akun nonaktif agar saldo lama utuh.
+        expect(kodeKasDariDb(db)).toContain('1101');
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

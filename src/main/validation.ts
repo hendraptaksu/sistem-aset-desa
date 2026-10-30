@@ -227,10 +227,13 @@ export type BentukAkunBaru = {
   kode: string;
   nama: string;
   tipe: CoaTipe;
+  /** DB-14: metadata akun kas/bank baru. */
+  is_kas?: boolean;
+  kelompok?: string;
 };
 
 /**
- * Bentuk input tambah akun dari renderer. Kode/prefix/keunikan tetap
+ * Bentuk input tambah akun dari renderer. Kode/prefix/keunikan/kelompok tetap
  * divalidasi ulang di lapisan DB; di sini hanya bentuk yang aman.
  */
 export function validasiBentukAkunBaru(
@@ -241,7 +244,7 @@ export function validasiBentukAkunBaru(
   const kode = teksOpsional(nilai.kode, 'Kode akun', 4);
   if (!kode.ok) return kode;
   if (!/^\d{4}$/.test(kode.nilai))
-    return { ok: false, error: 'Kode akun harus 4 digit angka, mis. 5011 atau 4043.' };
+    return { ok: false, error: 'Kode akun harus 4 digit angka, mis. 5011, 4043, atau 1101.' };
 
   const nama = teksOpsional(nilai.nama, 'Nama akun', 100);
   if (!nama.ok) return nama;
@@ -249,12 +252,41 @@ export function validasiBentukAkunBaru(
 
   const tipe = teksOpsional(nilai.tipe, 'Jenis akun', 20);
   if (!tipe.ok) return tipe;
-  if (tipe.nilai !== 'BEBAN' && tipe.nilai !== 'PENDAPATAN')
-    return { ok: false, error: 'Jenis akun tambahan harus BEBAN atau PENDAPATAN.' };
+  if (tipe.nilai !== 'BEBAN' && tipe.nilai !== 'PENDAPATAN' && tipe.nilai !== 'AKTIVA')
+    return {
+      ok: false,
+      error: 'Jenis akun tambahan harus BEBAN, PENDAPATAN, atau AKTIVA kas/bank.',
+    };
+
+  if (nilai.is_kas !== undefined && typeof nilai.is_kas !== 'boolean')
+    return { ok: false, error: 'Penanda is_kas akun harus true/false.' };
+  const is_kas = nilai.is_kas === true;
+
+  const kelompok = teksOpsional(nilai.kelompok, 'Kelompok akun', 20);
+  if (!kelompok.ok) return kelompok;
+  const kelompokBersih = kelompok.nilai.toUpperCase();
+
+  if (tipe.nilai === 'AKTIVA') {
+    if (!is_kas)
+      return { ok: false, error: 'Akun kas/bank baru wajib ditandai is_kas = 1.' };
+    if (!['KAS', 'BANK', 'LPD'].includes(kelompokBersih))
+      return { ok: false, error: 'Kelompok akun kas/bank harus KAS, BANK, atau LPD.' };
+  } else {
+    if (is_kas)
+      return { ok: false, error: `Akun ${tipe.nilai} tidak boleh ditandai is_kas = 1.` };
+    if (kelompokBersih && kelompokBersih !== tipe.nilai)
+      return { ok: false, error: `Kelompok akun ${tipe.nilai} harus ${tipe.nilai}.` };
+  }
 
   return {
     ok: true,
-    input: { kode: kode.nilai, nama: nama.nilai, tipe: tipe.nilai },
+    input: {
+      kode: kode.nilai,
+      nama: nama.nilai,
+      tipe: tipe.nilai,
+      ...(nilai.is_kas !== undefined ? { is_kas } : {}),
+      ...(kelompokBersih ? { kelompok: kelompokBersih } : {}),
+    },
   };
 }
 

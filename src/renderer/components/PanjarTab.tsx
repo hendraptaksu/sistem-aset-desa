@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { isAkunKas } from '../../db/coa.js';
+import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import {
   buatJurnalPanjarClose,
@@ -161,7 +161,7 @@ export function PanjarTab() {
   useEffect(() => () => setDirty(false), [setDirty]);
 
   const kasList = useMemo(
-    () => coa.filter((c) => isAkunKas(c.kode) && c.aktif !== false),
+    () => coa.filter((c) => isAkunKasData(c) && c.aktif !== false),
     [coa],
   );
   const bagaList = useMemo(
@@ -188,7 +188,7 @@ export function PanjarTab() {
   useEffect(() => {
     if (coa.length === 0) return;
     const pertama = coa.find(
-      (c) => isAkunKas(c.kode) && c.aktif !== false,
+      (c) => isAkunKasData(c) && c.aktif !== false,
     )?.kode;
     if (pertama)
       setSumber((sebelum) =>

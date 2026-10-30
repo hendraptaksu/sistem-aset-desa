@@ -34,6 +34,51 @@
 export type CoaTipe = 'AKTIVA' | 'KEWAJIBAN' | 'EKUITAS' | 'PENDAPATAN' | 'BEBAN';
 export type PosisiNormal = 'DEBIT' | 'KREDIT';
 
+/**
+ * Kelompok akun (DB-14). Nilai ini disimpan di `akun.kelompok` dan hanya
+ * dipakai untuk tampilan/pengelompokan dompet — bukan pengganti `tipe`.
+ *
+ * Nilai resmi: `KAS`, `BANK`, `LPD`, `PANJAR`, `PIUTANG`, `HUTANG`, `EKUITAS`,
+ * `PENDAPATAN`, `BEBAN`. String kosong dipakai untuk akun tambahan AKTIVA yang
+ * bukan dompet (mis. aset lain buatan operator).
+ */
+export type KelompokAkun =
+  | 'KAS'
+  | 'BANK'
+  | 'LPD'
+  | 'PANJAR'
+  | 'PIUTANG'
+  | 'HUTANG'
+  | 'EKUITAS'
+  | 'PENDAPATAN'
+  | 'BEBAN';
+
+/** Daftar nilai `kelompok` yang diizinkan di DB-14. */
+export const KELOMPOK_AKUN: readonly KelompokAkun[] = [
+  'KAS',
+  'BANK',
+  'LPD',
+  'PANJAR',
+  'PIUTANG',
+  'HUTANG',
+  'EKUITAS',
+  'PENDAPATAN',
+  'BEBAN',
+];
+
+/** Kelompok yang menandakan akun dompet kas/bank (wajib `is_kas = 1`). */
+export const KELOMPOK_KAS: readonly KelompokAkun[] = ['KAS', 'BANK', 'LPD'];
+
+/**
+ * DB-14: rentang kode khusus akun kas/bank/LPD buatan operator. Rentang ini
+ * sengaja tidak dipakai COA statis/CSV agar tidak bentrok dengan akun client.
+ */
+export const KODE_KAS_TAMBAHAN_MIN = 1100;
+export const KODE_KAS_TAMBAHAN_MAX = 1199;
+
+/** Asal akun (DB-14): `BAWAAN` = COA statis/CSV, `TAMBAHAN` = dibuat operator. */
+export type SumberAkun = 'BAWAAN' | 'TAMBAHAN';
+
 export type Coa = {
   kode: string;
   nama: string;
@@ -41,6 +86,15 @@ export type Coa = {
   posisi_normal: PosisiNormal;
   /** Status dari master DB; akun statis tidak membawa field ini. */
   aktif?: boolean;
+  /**
+   * DB-14: dompet kas/bank dari master DB. Akun statis tidak membawa field ini;
+   * pemakai harus memakai `isAkunKasData()` agar fallback ke daftar statis.
+   */
+  is_kas?: boolean;
+  /** DB-14: kelompok akun dari master DB (lihat `KelompokAkun`). */
+  kelompok?: KelompokAkun | '';
+  /** DB-14: asal akun dari master DB. */
+  sumber?: SumberAkun;
 };
 
 /** AKTIVA & BEBAN bersaldo normal DEBIT; KEWAJIBAN, EKUITAS & PENDAPATAN KREDIT. */
@@ -87,6 +141,50 @@ const KODE_KAS = new Set([
   '1010', '1014', '1015', '1016', '1017', '1018', '1019', '1020', '1021',
   '1028', '1029', '1030', '1031', '1032', '1036',
 ]);
+
+/** Kelompok default menurut tipe untuk akun di luar COA (DB-14). */
+export function kelompokDariTipe(tipe: CoaTipe): KelompokAkun | '' {
+  switch (tipe) {
+    case 'KEWAJIBAN':
+      return 'HUTANG';
+    case 'EKUITAS':
+      return 'EKUITAS';
+    case 'PENDAPATAN':
+      return 'PENDAPATAN';
+    case 'BEBAN':
+      return 'BEBAN';
+    default:
+      // AKTIVA di luar COA belum tentu dompet; kelompok dibiarkan kosong.
+      return '';
+  }
+}
+
+/**
+ * Metadata DB-14 untuk akun bawaan (COA statis). Mengikuti pemetaan yang
+ * disepakati: 1001 = KAS; akun LPD = LPD; dompet lain = BANK; 1040 PANJAR;
+ * 1050 PIUTANG; 2050/2060 HUTANG; ekuitas = EKUITAS; 4xxx PENDAPATAN; 5xxx BEBAN.
+ */
+export function metadataAkunBawaan(
+  akunCoa: Pick<Coa, 'kode' | 'nama' | 'tipe'>,
+): { is_kas: boolean; kelompok: KelompokAkun | ''; sumber: SumberAkun } {
+  const kode = String(akunCoa.kode);
+  if (KODE_KAS.has(kode)) {
+    return {
+      is_kas: true,
+      kelompok: kode === '1001' ? 'KAS' : akunCoa.nama.includes('LPD') ? 'LPD' : 'BANK',
+      sumber: 'BAWAAN',
+    };
+  }
+  if (kode === AKUN_PANJAR) return { is_kas: false, kelompok: 'PANJAR', sumber: 'BAWAAN' };
+  if (kode === AKUN_PIUTANG) return { is_kas: false, kelompok: 'PIUTANG', sumber: 'BAWAAN' };
+  if (kode === AKUN_HUTANG || kode === AKUN_HUTANG_USAHA)
+    return { is_kas: false, kelompok: 'HUTANG', sumber: 'BAWAAN' };
+  return {
+    is_kas: false,
+    kelompok: kelompokDariTipe(akunCoa.tipe),
+    sumber: 'BAWAAN',
+  };
+}
 
 const akunBaru = (kode: string, nama: string, tipe: CoaTipe): Coa => ({
   kode,
@@ -205,6 +303,51 @@ export function akunBolehDiposting(
 }
 
 export const isAkunKas = (kode: string): boolean => KAS_KODES.includes(kode);
+
+/**
+ * DB-14: apakah objek akun adalah dompet kas/bank. Memakai `is_kas` dari master
+ * DB bila tersedia; objek lama tanpa field itu jatuh ke daftar statis
+ * `isAkunKas()` agar test/pemanggil lama tetap aman.
+ */
+export function isAkunKasData(
+  data: { kode: string; is_kas?: boolean } | null | undefined,
+): boolean {
+  if (!data) return false;
+  return typeof data.is_kas === 'boolean' ? data.is_kas : isAkunKas(String(data.kode));
+}
+
+/**
+ * Kode dompet dari daftar akun master. `aktifSaja` dipakai form input baru;
+ * laporan historis memakai default `false` agar akun yang dinonaktifkan tetap
+ * masuk total kas lama.
+ */
+export function kodeKasDariDaftarAkun(
+  daftar: readonly { kode: string; is_kas?: boolean; aktif?: boolean }[],
+  opsi: { aktifSaja?: boolean } = {},
+): string[] {
+  return daftar
+    .filter((a) => isAkunKasData(a) && (!opsi.aktifSaja || a.aktif !== false))
+    .map((a) => String(a.kode));
+}
+
+/** Kode rekening LPD dari daftar akun master (kelompok LPD). */
+export function kodeLpdDariDaftarAkun(
+  daftar: readonly {
+    kode: string;
+    is_kas?: boolean;
+    nama?: string;
+    kelompok?: KelompokAkun | '';
+  }[],
+): string[] {
+  return daftar
+    .filter((a) => {
+      if (!isAkunKasData(a)) return false;
+      if (a.kelompok) return a.kelompok === 'LPD';
+      return String(a.nama ?? '').includes('LPD');
+    })
+    .map((a) => String(a.kode));
+}
+
 export const isPendapatan = (kode: string): boolean => akun(kode)?.tipe === 'PENDAPATAN';
 export const isBeban = (kode: string): boolean => akun(kode)?.tipe === 'BEBAN';
 export const isAktiva = (kode: string): boolean => akun(kode)?.tipe === 'AKTIVA';

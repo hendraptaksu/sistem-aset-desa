@@ -11,6 +11,7 @@ import {
   type JurnalLengkap,
 } from './repository.js';
 import type { JurnalJenis } from '../core/types.js';
+import { kodeKasDariDaftarAkun } from './coa.js';
 import {
   arusKas,
   bukuBesar,
@@ -283,9 +284,10 @@ export function laporanArusKas(
   db: Database.Database,
   filter: FilterPeriodeLaporanDb = {},
 ): ArusKasHasil {
+  const daftarAkun = listAkun(db);
   return arusKas(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
-    filter,
-    listAkun(db),
+    { ...filter, kasKodes: kodeKasDariDaftarAkun(daftarAkun) },
+    daftarAkun,
   );
 }

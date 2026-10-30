@@ -15,7 +15,7 @@ import {
   AKUN_PIUTANG,
   COA,
   KAS_KODES,
-  isAkunKas,
+  kodeKasDariDaftarAkun,
   type Coa,
   type PosisiNormal,
 } from '../db/coa.js';
@@ -1030,5 +1030,7 @@ export function rincianKas(
   cutoff?: string,
   daftarAkun: readonly Coa[] = COA,
 ): Record<string, number> {
-  return saldoSemuaKas(baris, KAS_KODES.filter((k) => isAkunKas(k)), cutoff, daftarAkun);
+  // DB-14: daftar dompet dari master akun (is_kas=1); COA statis menjadi
+  // fallback lewat `isAkunKasData` sehingga pemanggil lama tetap sama.
+  return saldoSemuaKas(baris, kodeKasDariDaftarAkun(daftarAkun), cutoff, daftarAkun);
 }

@@ -176,15 +176,25 @@ tanggal pengganti jatuh di tahun berbeda. Baca peringatan itu sebelum melanjutka
 ### 2.7 Daftar Akun (tambah/ubah/nonaktifkan akun)
 
 Menu **Daftar Akun** menampilkan seluruh COA yang dipakai aplikasi. Di sini
-operator dapat mengelola akun **Beban** atau **Pendapatan** baru tanpa menunggu
-update aplikasi:
+operator dapat mengelola akun **Beban**, **Pendapatan**, atau **Kas/Bank/LPD**
+baru tanpa menunggu update aplikasi:
 
 1. Buka **Daftar Akun**.
-2. Isi **Kode akun** 4 digit yang belum dipakai (Beban `5xxx`, Pendapatan
-   `4xxx`), **Nama akun**, dan **Jenis akun**.
-3. Tekan **Tambah Akun**. Akun langsung muncul di form **Transaksi**,
-   **Jurnal Umum**, dan laporan.
-4. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
+2. Isi **Kode akun** 4 digit yang belum dipakai:
+   - Beban `5xxx`, mis. `5011`;
+   - Pendapatan `4xxx`, mis. `4043`;
+   - Kas/Bank/LPD baru wajib di rentang khusus **`1100`–`1199`**, mis. `1101`.
+3. Pilih **Jenis akun**. Untuk **Aktiva** (kas/bank/LPD), pilih **Kelompok
+   akun** (`Kas`, `Bank`, atau `LPD`) dan pastikan **Dompet kas/bank (is_kas)**
+   tercentang. Akun kas/bank baru otomatis bersaldo normal **Debit**.
+4. Isi **Nama akun**, lalu tekan **Tambah Akun**. Akun langsung muncul di form
+   **Transaksi**, **Pindah Dana**, **Buku Panjar**, pembayaran, **Jurnal Umum**,
+   dan laporan.
+5. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
+
+Akun kas/bank/LPD baru langsung ikut dihitung di **total kas** dan muncul di
+pilihan dompet. Kode `1100`–`1199` dicadangkan agar tidak bentrok dengan akun
+client di `KODE AKUN.csv`. Jangan memakai kode itu untuk beban/pendapatan.
 
 Enam akun hasil persetujuan 2026-10-30 sudah tersedia otomatis dan **tidak
 menggantikan** akun lama:
@@ -217,10 +227,15 @@ Untuk akun tambahan yang sudah ada:
   panjar. Bila sudah dipakai, sistem menolak dan menyarankan **Nonaktifkan**
   agar histori tidak hilang.
 
-Contoh: `5011 PENGELUARAN ARTOS` (Beban) atau
-`4043 PENDAPATAN WEWEDALAN` (Pendapatan). Akun bawaan tidak bisa diubah,
-dinonaktifkan, atau dihapus dari layar ini; akun kas/bank baru juga belum bisa
-ditambahkan lewat layar ini karena perlu penanda kas khusus.
+Contoh: `5011 PENGELUARAN ARTOS` (Beban), `4043 PENDAPATAN WEWEDALAN`
+(Pendapatan), atau `1101 BANK BPD REKENING BARU` (Kas/Bank, kelompok Bank).
+Akun bawaan tidak bisa diubah, dinonaktifkan, atau dihapus dari layar ini.
+
+Setiap akun menyimpan metadata **is_kas** (dompet kas/bank), **kelompok**
+(`KAS`, `BANK`, `LPD`, `PANJAR`, `PIUTANG`, `HUTANG`, `EKUITAS`, `PENDAPATAN`,
+`BEBAN`), dan **sumber** (`BAWAAN` dari CSV/COA atau `TAMBAHAN` buatan
+operator). Akun `TAMBAHAN` tidak pernah ditimpa saat aplikasi membuka database
+atau memperbarui COA bawaan.
 
 ---
 

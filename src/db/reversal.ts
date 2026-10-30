@@ -9,7 +9,7 @@
 
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import { isAkunKas } from './coa.js';
+import { kodeKasDariDaftarAkun } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
 import { PESAN_REVERSAL, rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
@@ -222,19 +222,23 @@ export function koreksiDanIsiUlang(
   const tambahDeltaKas = (
     saldo: Record<string, number>,
     baris: JurnalInput['baris'],
+    kasKodes: ReadonlySet<string>,
   ): void => {
     for (const b of baris) {
-      if (isAkunKas(b.akun_kode))
+      if (kasKodes.has(b.akun_kode))
         saldo[b.akun_kode] = (saldo[b.akun_kode] ?? 0) + b.debit - b.kredit;
     }
   };
+  // DB-14: dompet mengikuti master akun pada konteks masing-masing tanggal.
+  const kasBalik = new Set(kodeKasDariDaftarAkun(ctxBalik.akun ?? []));
+  const kasBaru = new Set(kodeKasDariDaftarAkun(ctxBaru.akun ?? []));
 
   const saldoBalik: Record<string, number> = { ...(ctxBalik.saldoKas ?? {}) };
-  if (tanggalBaru <= tanggalBalik) tambahDeltaKas(saldoBalik, baru.baris);
+  if (tanggalBaru <= tanggalBalik) tambahDeltaKas(saldoBalik, baru.baris, kasBaru);
   const validasiBalik = validasiJurnal(rencana.input, { ...ctxBalik, saldoKas: saldoBalik });
 
   const saldoBaru: Record<string, number> = { ...(ctxBaru.saldoKas ?? {}) };
-  if (tanggalBalik <= tanggalBaru) tambahDeltaKas(saldoBaru, rencana.input.baris);
+  if (tanggalBalik <= tanggalBaru) tambahDeltaKas(saldoBaru, rencana.input.baris, kasBalik);
   const validasiBaru = validasiJurnal(baru, { ...ctxBaru, saldoKas: saldoBaru });
 
   const errors = [
