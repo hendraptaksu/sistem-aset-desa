@@ -1,11 +1,13 @@
-// Adapter DB master pihak + posting Piutang/Hutang (P1-5).
+// Adapter DB master pihak + posting Hutang (P1-5 / DB-23a).
 //
 // Prinsip:
 // - `pihak` hanya master nama; `jurnal_pihak` hanya metadata penghubung.
-// - Saldo per pihak TIDAK disimpan — dihitung dari baris jurnal 1050/2050/2060.
+// - Saldo per pihak TIDAK disimpan — dihitung dari baris jurnal 2050/2060.
+//   Field `piutang` tetap dibaca untuk data 1050 lama, tetapi alur input
+//   piutang sudah dihapus (DB-23a).
 // - Jurnal baru + pemetaan pihak + audit ditulis atomik lewat satu transaksi.
-// - Pelunasan/pembayaran melebihi saldo pihak hanya PERINGATAN (bisa
-//   dikonfirmasi dengan alasan ≥5 karakter), bukan blokir.
+// - Pembayaran melebihi saldo pihak hanya PERINGATAN (bisa dikonfirmasi dengan
+//   alasan ≥5 karakter), bukan blokir.
 // - AKT-20: overbalance dibandingkan dengan saldo akun yang dipakai alur
 //   (2050 pinjaman vs 2060 utang usaha), bukan total hutang.
 
@@ -43,11 +45,11 @@ export type PostingPihakInput = {
   input: JurnalInput;
   /** Operator sudah melihat peringatan kas minus. */
   konfirmasiPeringatan?: boolean;
-  /** Operator sudah melihat peringatan pelunasan/pembayaran melebihi saldo. */
+  /** Operator sudah melihat peringatan pembayaran melebihi saldo. */
   konfirmasiSaldo?: boolean;
   /** Alias ringkas untuk `konfirmasiSaldo` (dipakai sebagian test/pemanggil). */
   konfirmasi?: boolean;
-  /** AKT-08: alasan operator saat pelunasan/pembayaran melebihi saldo pihak. */
+  /** AKT-08: alasan operator saat pembayaran melebihi saldo pihak. */
   alasanSaldo?: string;
   /** AKT-08: alasan operator saat peringatan posting (mis. kas minus) dikonfirmasi. */
   alasanPeringatan?: string;
@@ -68,8 +70,6 @@ export type HasilPostingPihak = HasilValidasiJurnal & {
 };
 
 const AKSI_AUDIT: Record<AlurPihak, string> = {
-  BERI_PINJAMAN: 'PIUTANG-BERI-PINJAMAN',
-  TERIMA_PELUNASAN: 'PIUTANG-PELUNASAN',
   TERIMA_PINJAMAN: 'HUTANG-TERIMA-PINJAMAN',
   BAYAR_HUTANG: 'HUTANG-BAYAR',
   BELI_KREDIT: 'HUTANG-BELI-KREDIT',
@@ -217,7 +217,7 @@ export function updatePihak(
 
 /**
  * Hapus pihak yang BELUM dipakai jurnal. Pihak yang sudah punya riwayat
- * piutang/hutang tidak boleh dihapus agar jejak audit & laporan tidak yatim.
+ * hutang/pinjaman tidak boleh dihapus agar jejak audit & laporan tidak yatim.
  */
 export function deletePihak(db: Database.Database, id: string): Pihak {
   const lama = getPihak(db, id);
@@ -227,7 +227,7 @@ export function deletePihak(db: Database.Database, id: string): Pihak {
     .get(lama.id);
   if (dipakai)
     throw new Error(
-      `Pihak "${lama.nama}" sudah dipakai jurnal piutang/hutang dan tidak boleh dihapus. ` +
+      `Pihak "${lama.nama}" sudah dipakai jurnal hutang/pinjaman dan tidak boleh dihapus. ` +
         'Ubah namanya bila perlu, atau biarkan riwayatnya tetap ada.',
     );
   const simpan = db.transaction(() => {
@@ -241,7 +241,7 @@ export function deletePihak(db: Database.Database, id: string): Pihak {
   return lama;
 }
 
-/** Saldo piutang/hutang semua pihak, dihitung dari jurnal. */
+/** Saldo hutang semua pihak, dihitung dari jurnal (piutang hanya data lama). */
 export function saldoPerPihak(db: Database.Database): PihakSaldo[] {
   return ringkasanSaldoPihak(listBarisJurnal(db), bacaMapping(db), listPihak(db));
 }
@@ -308,13 +308,14 @@ function gagal(
 }
 
 /**
- * Simpan jurnal dari form Piutang/Hutang + pemetaan pihak + audit, atomik.
+ * Simpan jurnal dari form Hutang + pemetaan pihak + audit, atomik.
  *
  * Alur:
  * 1. Pihak wajib ada.
- * 2. Jurnal harus tepat salah satu dari enam alur baku (klasifikasi ketat).
+ * 2. Jurnal harus tepat salah satu dari empat alur hutang baku (klasifikasi
+ *    ketat); jurnal 1050 lama ditolak.
  * 3. Validasi posting layer (tanggal, keseimbangan, kas minus, kunci periode).
- * 4. Pelunasan/pembayaran melebihi saldo pihak → `perluKonfirmasi` (tidak blokir).
+ * 4. Pembayaran melebihi saldo pihak → `perluKonfirmasi` (tidak blokir).
  * 5. Tulis jurnal + `jurnal_pihak` + audit dalam satu transaksi.
  */
 export function postingPihak(
@@ -322,12 +323,12 @@ export function postingPihak(
   input: PostingPihakInput,
 ): HasilPostingPihak {
   const pihakId = String(input?.pihakId ?? '').trim();
-  if (!pihakId) return gagal('Pihak wajib dipilih untuk transaksi piutang/hutang.');
+  if (!pihakId) return gagal('Pihak wajib dipilih untuk transaksi hutang/pinjaman.');
   const pihak = getPihak(db, pihakId);
   if (!pihak) return gagal('Pihak yang dipilih tidak ditemukan. Muat ulang daftar pihak.');
 
   if (!input.input || !input.input.header || !Array.isArray(input.input.baris))
-    return gagal('Data jurnal piutang/hutang tidak lengkap.');
+    return gagal('Data jurnal hutang/pinjaman tidak lengkap.');
 
   let klasifikasi: ReturnType<typeof klasifikasiAlurPihak>;
   try {
@@ -349,29 +350,21 @@ export function postingPihak(
   const alasanSaldo = String(input.alasanSaldo ?? '').trim();
   const alasanPeringatan = String(input.alasanPeringatan ?? '').trim();
   const alurButuhSaldo =
-    klasifikasi.alur === 'TERIMA_PELUNASAN' ||
     klasifikasi.alur === 'BAYAR_HUTANG' ||
     klasifikasi.alur === 'BAYAR_UTANG_USAHA';
   const labelSaldo =
-    klasifikasi.alur === 'TERIMA_PELUNASAN'
-      ? 'piutang'
-      : klasifikasi.alur === 'BAYAR_UTANG_USAHA'
-        ? 'utang usaha'
-        : 'pinjaman';
+    klasifikasi.alur === 'BAYAR_UTANG_USAHA' ? 'utang usaha' : 'pinjaman';
   const saldoRelevan =
-    klasifikasi.alur === 'TERIMA_PELUNASAN'
-      ? saldoSebelum.piutang
-      : klasifikasi.alur === 'BAYAR_UTANG_USAHA'
-        ? saldoSebelum.hutangUsaha
-        : saldoSebelum.pinjaman;
+    klasifikasi.alur === 'BAYAR_UTANG_USAHA'
+      ? saldoSebelum.hutangUsaha
+      : saldoSebelum.pinjaman;
   let melebihiSaldo = false;
   let nominalLebih = 0;
   if (alurButuhSaldo && klasifikasi.nominal > saldoRelevan) {
     melebihiSaldo = true;
     nominalLebih = klasifikasi.nominal - saldoRelevan;
     peringatan.push(
-      `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
-        `melebihi saldo ${labelSaldo} ${pihak.nama} sebesar ${formatRp(nominalLebih)}. ` +
+      `Pembayaran melebihi saldo ${labelSaldo} ${pihak.nama} sebesar ${formatRp(nominalLebih)}. ` +
         `Saldo saat ini ${formatRp(saldoRelevan)}; setelah transaksi menjadi minus. ` +
         'Periksa kembali — boleh lanjut dengan konfirmasi.',
     );
@@ -399,8 +392,7 @@ export function postingPihak(
     return {
       ...validasi,
       errors: [
-        `${klasifikasi.alur === 'TERIMA_PELUNASAN' ? 'Pelunasan' : 'Pembayaran'} ` +
-          `melebihi saldo ${labelSaldo} sebesar ${formatRp(nominalLebih)}. ` +
+        `Pembayaran melebihi saldo ${labelSaldo} sebesar ${formatRp(nominalLebih)}. ` +
           'Konfirmasi overbalance wajib disertai alasan minimal 5 karakter.',
       ],
       peringatan,
@@ -484,7 +476,7 @@ export function postingPihak(
     return simpan();
   } catch (e) {
     return gagal(
-      `Transaksi piutang/hutang gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
+      `Transaksi hutang/pinjaman gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
       {
         peringatan,
         pihak,

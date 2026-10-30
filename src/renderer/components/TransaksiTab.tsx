@@ -19,7 +19,7 @@ import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 type TabTujuanTransaksi = 'panjar' | 'pihak';
 
 type KartuJenis = {
-  id: JenisFormTransaksi | 'PANJAR' | 'PIUTANG';
+  id: JenisFormTransaksi | 'PANJAR' | 'HUTANG';
   label: string;
   keterangan: string;
   Icon: LucideIcon;
@@ -27,8 +27,8 @@ type KartuJenis = {
   tujuan?: TabTujuanTransaksi;
 };
 
-// Tiga jenis punya form terpandu; Panjar & Piutang/Hutang dicatat di menunya
-// sendiri dan kartunya menjadi pintasan ke tab tersebut.
+// Tiga jenis punya form terpandu; Panjar & Hutang dicatat di menunya sendiri
+// dan kartunya menjadi pintasan ke tab tersebut.
 const KARTU_JENIS: KartuJenis[] = [
   {
     id: 'TERIMA',
@@ -56,9 +56,9 @@ const KARTU_JENIS: KartuJenis[] = [
     tujuan: 'panjar',
   },
   {
-    id: 'PIUTANG',
-    label: 'Piutang/Hutang',
-    keterangan: 'Pinjam, utang, pelunasan',
+    id: 'HUTANG',
+    label: 'Hutang',
+    keterangan: 'Pinjaman, utang, pembayaran',
     Icon: Users,
     tujuan: 'pihak',
   },
@@ -134,9 +134,9 @@ export function TransaksiTab({
           <div>
             <h2 className="text-lg font-bold">Saldo Awal Pembukuan</h2>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, piutang,
-              hutang, dan aset lain per tanggal mulai; selisih otomatis menjadi modal
-              sehingga terbentuk satu jurnal yang seimbang.
+              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang,
+              dan aset lain per tanggal mulai; selisih otomatis menjadi modal sehingga
+              terbentuk satu jurnal yang seimbang.
             </p>
             {statusSaldoErr && (
               <p className="mt-2 text-sm text-red-700">{statusSaldoErr}</p>
@@ -188,8 +188,8 @@ export function TransaksiTab({
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
         <p className="mt-1 text-sm text-stone-600">
           Pilih <b>Terima Uang</b>, <b>Bayar</b>, atau <b>Pindah Dana</b> untuk mencatat
-          lewat form terpandu. <b>Panjar</b> dan <b>Piutang/Hutang</b> dibuka dari
-          kartu menunya masing-masing.
+          lewat form terpandu. <b>Panjar</b> dan <b>Hutang</b> dibuka dari kartu
+          menunya masing-masing.
         </p>
         {err && (
           <div className="mt-3">
@@ -245,7 +245,7 @@ export function TransaksiTab({
                       : tujuan === 'panjar'
                         ? 'Buka Buku Panjar'
                         : tujuan === 'pihak'
-                          ? 'Buka Piutang & Hutang'
+                          ? 'Buka Hutang'
                           : 'Siap dipakai'}
                   </span>
                 </span>

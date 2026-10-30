@@ -341,7 +341,7 @@ export function ImportExcelTab() {
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
               <div className="font-semibold">
                 {grupPeringatan.length} grup membutuhkan konfirmasi (mis. kas/bank
-                minus atau piutang/hutang tanpa pihak)
+                minus atau hutang tanpa pihak)
               </div>
               <ul className="mt-1 list-disc space-y-1 pl-5">
                 {grupPeringatan.slice(0, 5).map((g) => (
@@ -431,7 +431,7 @@ export function ImportExcelTab() {
           {hasilImpor.grup.some((g) => g.perluKonfirmasi) && (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
               Sebagian grup gagal karena membutuhkan konfirmasi (kas/bank minus atau
-              piutang/hutang tanpa pihak). Periksa saldo dan file, lalu pratinjau ulang
+              hutang tanpa pihak). Periksa saldo dan file, lalu pratinjau ulang
               sebelum mencoba lagi.
             </div>
           )}
@@ -490,7 +490,7 @@ export function ImportExcelTab() {
                   />
                   <span>
                     Saya sudah memeriksa {grupPeringatan.length} grup yang memberi
-                    peringatan (kas/bank minus atau piutang/hutang belum teralokasi)
+                    peringatan (kas/bank minus atau hutang belum teralokasi)
                     dan mengizinkannya bila memang benar.
                   </span>
                 </label>

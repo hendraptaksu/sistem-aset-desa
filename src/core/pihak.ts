@@ -1,15 +1,17 @@
-// Logika murni Piutang & Hutang per pihak (P1-5) — tanpa DB/Electron.
+// Logika murni hutang per pihak (P1-5) — tanpa DB/Electron.
 //
 // Dua kelompok fungsi:
 // 1. `klasifikasiAlurPihak` memvalidasi bahwa sebuah jurnal memang salah satu
-//    dari enam alur baku (bukan jurnal bebas yang kebetulan menyentuh
-//    1050/2050/2060).
+//    dari empat alur hutang baku (bukan jurnal bebas yang kebetulan menyentuh
+//    2050/2060). Alur piutang 1050 sudah dihapus (DB-23a); akun 1050 tetap
+//    dibaca untuk data lama.
 // 2. `saldoPihak` / `ringkasanSaldoPihak` menghitung saldo per pihak HANYA dari
 //    baris jurnal + metadata `jurnal_pihak`. Tidak ada saldo tersimpan.
 //
 // AKT-20: 2050 = pinjaman/legacy, 2060 = utang usaha. Total hutang pihak adalah
 // 2050 + 2060; rincian per akun tetap tersedia agar overbalance diperiksa pada
-// akun yang benar.
+// akun yang benar. Field `piutang` dipertahankan hanya untuk membaca data 1050
+// lama.
 
 import {
   AKUN_HUTANG,
@@ -23,10 +25,8 @@ import {
 import type { JurnalInput } from './posting.js';
 import type { JurnalPihak, JurnalJenis, Pihak, PihakSaldo } from './types.js';
 
-/** Enam alur baku form Piutang & Hutang. */
+/** Empat alur baku form Hutang (alur piutang 1050 sudah dihapus). */
 export type AlurPihak =
-  | 'BERI_PINJAMAN'
-  | 'TERIMA_PELUNASAN'
   | 'TERIMA_PINJAMAN'
   | 'BAYAR_HUTANG'
   | 'BELI_KREDIT'
@@ -34,20 +34,21 @@ export type AlurPihak =
 
 export type KlasifikasiAlurPihak = {
   alur: AlurPihak;
-  /** Akun pihak yang dipetakan: 1050 (piutang), 2050 (pinjaman), atau 2060 (utang usaha). */
-  akunPihak: typeof AKUN_PIUTANG | typeof AKUN_HUTANG | typeof AKUN_HUTANG_USAHA;
+  /** Akun pihak yang dipetakan: 2050 (pinjaman) atau 2060 (utang usaha). */
+  akunPihak: typeof AKUN_HUTANG | typeof AKUN_HUTANG_USAHA;
   /** Akun lawan: kas/bank, atau akun BEBAN untuk beli kredit. */
   akunLawan: string;
   nominal: number;
 };
 
 /**
- * Validasi ketat enam alur (dipakai adapter DB/IPC agar renderer tidak bisa
- * menyelipkan jurnal piutang/hutang di luar alur yang disediakan form).
+ * Validasi ketat empat alur hutang (dipakai adapter DB/IPC agar renderer tidak
+ * bisa menyelipkan jurnal hutang di luar alur yang disediakan form).
  *
  * Aturan:
  * - tepat 2 baris: satu debit dan satu kredit, nominal sama > 0;
- * - 1050 hanya untuk jenis PIUTANG, 2050/2060 hanya untuk jenis HUTANG;
+ * - hanya 2050/2060 dan jenis HUTANG; jurnal 1050 lama ditolak karena alur
+ *   piutang sudah dihapus;
  * - sisi kas harus akun kas/bank; beli kredit memakai akun BEBAN.
  * - D beban / K 2050 tetap diterima sebagai BELI_KREDIT legacy agar jurnal lama
  *   tidak rusak; form baru selalu memakai 2060.
@@ -59,39 +60,40 @@ export function klasifikasiAlurPihak(
   const baris = Array.isArray(input?.baris) ? input.baris : [];
   if (baris.length !== 2)
     throw new Error(
-      'Jurnal Piutang/Hutang wajib tepat 2 baris: satu debit dan satu kredit.',
+      'Jurnal Hutang wajib tepat 2 baris: satu debit dan satu kredit.',
     );
 
   const debit = baris.filter((b) => Number.isSafeInteger(b.debit) && b.debit > 0);
   const kredit = baris.filter((b) => Number.isSafeInteger(b.kredit) && b.kredit > 0);
   if (debit.length !== 1 || kredit.length !== 1)
-    throw new Error('Jurnal Piutang/Hutang harus berisi satu sisi debit dan satu sisi kredit.');
+    throw new Error('Jurnal Hutang harus berisi satu sisi debit dan satu sisi kredit.');
 
   const d = debit[0]!;
   const k = kredit[0]!;
   if (d.debit !== k.kredit)
-    throw new Error('Jurnal Piutang/Hutang tidak seimbang: nominal debit dan kredit harus sama.');
+    throw new Error('Jurnal Hutang tidak seimbang: nominal debit dan kredit harus sama.');
   const nominal = d.debit;
-  if (nominal <= 0) throw new Error('Nominal Piutang/Hutang harus lebih dari 0.');
+  if (nominal <= 0) throw new Error('Nominal Hutang harus lebih dari 0.');
 
   const akunDebit = String(d.akun_kode ?? '').trim();
   const akunKredit = String(k.akun_kode ?? '').trim();
+  if (akunDebit === AKUN_PIUTANG || akunKredit === AKUN_PIUTANG)
+    throw new Error(
+      'Alur piutang (1050) sudah dihapus. Akun 1050 hanya dipertahankan untuk data lama; ' +
+        'gunakan menu Hutang untuk pinjaman/utang, atau Jurnal Umum hanya untuk koreksi data lama.',
+    );
+
   const bebanDebit =
     isBeban(akunDebit) || daftarAkun.find((a) => a.kode === akunDebit)?.tipe === 'BEBAN';
   const jenis = String(input.header?.jenis ?? 'UMUM') as JurnalJenis;
-  const hasil = (alur: AlurPihak, akunPihak: KlasifikasiAlurPihak['akunPihak'], akunLawan: string) => {
-    const jenisWajib: JurnalJenis = akunPihak === AKUN_PIUTANG ? 'PIUTANG' : 'HUTANG';
-    if (jenis !== jenisWajib)
-      throw new Error(
-        `Jenis jurnal ${jenis} tidak sesuai alur piutang/hutang. Gunakan jenis ${jenisWajib}.`,
+  if (jenis !== 'HUTANG')
+    throw new Error(
+      `Jenis jurnal ${jenis} tidak sesuai alur hutang. Gunakan jenis HUTANG.`,
     );
+  const hasil = (alur: AlurPihak, akunPihak: KlasifikasiAlurPihak['akunPihak'], akunLawan: string) => {
     return { alur, akunPihak, akunLawan, nominal };
   };
 
-  if (akunDebit === AKUN_PIUTANG && isAkunKas(akunKredit))
-    return hasil('BERI_PINJAMAN', AKUN_PIUTANG, akunKredit);
-  if (isAkunKas(akunDebit) && akunKredit === AKUN_PIUTANG)
-    return hasil('TERIMA_PELUNASAN', AKUN_PIUTANG, akunDebit);
   if (isAkunKas(akunDebit) && akunKredit === AKUN_HUTANG)
     return hasil('TERIMA_PINJAMAN', AKUN_HUTANG, akunDebit);
   if (akunDebit === AKUN_HUTANG && isAkunKas(akunKredit))
@@ -104,9 +106,8 @@ export function klasifikasiAlurPihak(
     return hasil('BELI_KREDIT', AKUN_HUTANG, akunDebit);
 
   throw new Error(
-    'Alur Piutang/Hutang tidak dikenal. Pilih salah satu: beri pinjaman, pelunasan piutang, ' +
-      'terima pinjaman, bayar pinjaman, bayar utang usaha, atau beli/perbaikan kredit ' +
-      '(D beban / K 2060).',
+    'Alur Hutang tidak dikenal. Pilih salah satu: terima pinjaman, bayar pinjaman, ' +
+      'bayar utang usaha, atau beli/perbaikan kredit (D beban / K 2060).',
   );
 }
 
@@ -224,7 +225,7 @@ export function saldoPihak(
   };
 }
 
-/** Ringkasan piutang/hutang semua pihak (termasuk yang saldonya nol). */
+/** Ringkasan hutang semua pihak (termasuk yang saldonya nol; piutang data lama). */
 export function ringkasanSaldoPihak(
   baris: readonly BarisSaldoPihak[],
   mapping: readonly JurnalPihak[],
@@ -428,28 +429,44 @@ export type RekonsiliasiPihak = {
   jurnalBelum: JurnalBelumTeralokasi[];
 };
 
-/** Pesan inti saat jurnal menyentuh 1050/2050/2060 tanpa pemetaan pihak. */
+/** Pesan inti saat jurnal menyentuh 2050/2060 tanpa pemetaan pihak. */
 export const PESAN_PIHAK_BELUM_TERALOKASI =
-  'Jurnal ini akan tampil sebagai belum teralokasi di Piutang & Hutang.';
+  'Jurnal ini akan tampil sebagai belum teralokasi di menu Hutang.';
 
 /**
  * Peringatan (bukan error) untuk jalur Jurnal Umum/Import: jurnal yang memakai
- * 1050/2050/2060 tanpa metadata pihak akan menambah selisih rekonsiliasi.
+ * 2050/2060 tanpa metadata pihak akan menambah selisih rekonsiliasi. Akun 1050
+ * hanya dibaca untuk data lama dan tidak lagi punya alur input piutang.
  */
 export function peringatanPihakTanpaMapping(
   input: Pick<JurnalInput, 'baris'> | null | undefined,
 ): string[] {
   const baris = Array.isArray(input?.baris) ? input.baris : [];
   const akun = new Set<string>();
+  let adaPiutangLama = false;
+  let adaHutang = false;
   for (const b of baris) {
     const kode = String(b?.akun_kode ?? '').trim();
-    if (kode === AKUN_PIUTANG) akun.add('1050 Piutang');
-    else if (kode === AKUN_HUTANG) akun.add('2050 Hutang');
-    else if (kode === AKUN_HUTANG_USAHA) akun.add('2060 Utang Usaha');
+    if (kode === AKUN_PIUTANG) {
+      adaPiutangLama = true;
+      akun.add('1050 Aset lain lama');
+    } else if (kode === AKUN_HUTANG) {
+      adaHutang = true;
+      akun.add('2050 Hutang');
+    } else if (kode === AKUN_HUTANG_USAHA) {
+      adaHutang = true;
+      akun.add('2060 Utang Usaha');
+    }
   }
   if (akun.size === 0) return [];
-  return [
-    `Jurnal ini memakai akun ${[...akun].join(' dan ')} tanpa pihak. ` +
-      `${PESAN_PIHAK_BELUM_TERALOKASI} Gunakan menu Piutang & Hutang agar saldo punya pihak.`,
-  ];
+  const pesan = [`Jurnal ini memakai akun ${[...akun].join(' dan ')} tanpa pihak.`];
+  if (adaHutang)
+    pesan.push(
+      `${PESAN_PIHAK_BELUM_TERALOKASI} Gunakan menu Hutang agar saldo punya pihak.`,
+    );
+  if (adaPiutangLama)
+    pesan.push(
+      'Akun 1050 hanya dipertahankan untuk data lama; alur piutang sudah dihapus.',
+    );
+  return [pesan.join(' ')];
 }

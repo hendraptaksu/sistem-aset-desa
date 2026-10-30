@@ -73,7 +73,7 @@ describe('P2-8 — panduan pengguna', () => {
       'Bayar',
       'Pindah Dana',
       'Panjar',
-      'Piutang & Hutang',
+      'Hutang',
       'Jurnal Umum',
       'Tutup buku',
       'ganti laptop',
@@ -139,6 +139,17 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
     for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, baca('lampiran-bukti.md')]) {
       expect(dokumen).not.toContain('Rekonsiliasi Bank');
     }
+  });
+
+  it('DB-23a: dokumen tidak lagi menawarkan alur input piutang', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, README, ARAH]) {
+      expect(dokumen).not.toContain('Piutang & Hutang');
+      expect(dokumen).not.toMatch(/Piutang\/Hutang|piutang\/hutang/i);
+    }
+    // 1050 tetap dijelaskan sebagai akun data lama, bukan form input.
+    expect(PENGGUNA).toContain('1050');
+    expect(PENGGUNA).toMatch(/data lama/i);
+    expect(PEMERIKSAAN).toMatch(/1050[^\n]*data lama/i);
   });
 });
 

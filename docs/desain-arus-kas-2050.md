@@ -331,7 +331,7 @@ disengaja agar akuntan bisa melihat komposisi utang usaha vs pinjaman. Jika
 diinginkan, UI dapat memberi subjudul “Utang Usaha” dan “Pinjaman”, tetapi
 angkanya tetap dari akun masing-masing.
 
-### 6.3 Piutang & Hutang per pihak
+### 6.3 Hutang per pihak
 
 - `saldoPihak()` harus menjumlahkan 2050 **dan** 2060 sebagai total hutang
   pihak. Tambahkan field rincian (mis. `hutangUsaha` dan `pinjaman`) agar UI
@@ -339,8 +339,8 @@ angkanya tetap dari akun masing-masing.
 - `mutasiPerJurnal()` dan `saldoMap()` di `src/core/pihak.ts` harus mengenali
   `2060` selain `2050`. Saat ini keduanya memfilter persis `AKUN_HUTANG`.
 - `rekonsiliasiPihak()` perlu baris untuk 2060, atau generalisasi daftar akun
-  hutang. Kartu “Rekonsiliasi 1050/2050” di `PihakTab` berubah menjadi
-  “Rekonsiliasi 1050/2050/2060” dengan tiga baris.
+  hutang. Kartu rekonsiliasi di `PihakTab` menampilkan 2050/2060; baris 1050
+  hanya dipertahankan sebagai “Aset lain lama” untuk data lama (DB-23a).
 - Peringatan overbalance di `postingPihak` harus membandingkan nominal dengan
   saldo **akun yang dipakai alur**, bukan total hutang. Contoh: pihak punya
   pinjaman 2050 Rp100.000 dan utang usaha 2060 Rp100.000; membayar utang usaha
@@ -354,20 +354,18 @@ angkanya tetap dari akun masing-masing.
 
 ### 6.4 Form dan UI Pihak
 
-Alur menjadi enam:
+Alur hutang menjadi empat (alur piutang 1050 sudah dihapus di DB-23a):
 
 | Alur | Jurnal | Kelompok arus kas |
 |---|---|---|
-| Beri Pinjaman | D 1050 / K kas | INVESTASI |
-| Terima Pelunasan Piutang | D kas / K 1050 | INVESTASI |
 | Terima Pinjaman | D kas / K 2050 | PENDANAAN |
 | Bayar Pinjaman (sebelumnya “Bayar Hutang”) | D 2050 / K kas | PENDANAAN |
 | Beli / Perbaikan Kredit | D beban / K **2060** | tidak ada kas |
 | **Bayar Utang Usaha** (baru) | D **2060** / K kas | **OPERASI** |
 
 Perubahan UI minimal:
-- `ALUR_INFO` dan `URUTAN_ALUR` di `PihakTab.tsx` mendapat entri baru; grid
-  `xl:grid-cols-5` menjadi 3×2 atau 6 kolom.
+- `ALUR_INFO` dan `URUTAN_ALUR` di `PihakTab.tsx` hanya memuat empat alur
+  hutang; tidak ada lagi entri piutang.
 - Label “Bayar Hutang” diganti “Bayar Pinjaman” agar tidak ambigu; deskripsi
   menyebut 2050 dan 2060.
 - Tabel saldo per pihak menampilkan kolom/ekspansi “Pinjaman (2050)” dan

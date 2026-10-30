@@ -102,7 +102,7 @@ export function SaldoAwalWizard({
     const grup: GrupAkun[] = [];
     if (kas.length > 0) grup.push({ label: 'Kas / Bank', akun: kas });
     if (asetLain.length > 0)
-      grup.push({ label: 'Piutang & aset lain', akun: asetLain });
+      grup.push({ label: 'Aset lain', akun: asetLain });
     if (kewajiban.length > 0) grup.push({ label: 'Hutang', akun: kewajiban });
     return grup;
   }, [akunRelevan]);
@@ -254,7 +254,7 @@ export function SaldoAwalWizard({
   return (
     <Modal
       judul="Wizard Saldo Awal"
-      deskripsi="Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, piutang, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit."
+      deskripsi="Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit."
       onTutup={onClose}
       sibuk={busy}
       lebar="3xl"
@@ -298,8 +298,8 @@ export function SaldoAwalWizard({
             <div>
               <h3 className="font-bold">Saldo per akun</h3>
               <p className="text-sm text-stone-600">
-                Hanya kas/bank, piutang, hutang, dan aset lain. Pendapatan, beban, dan
-                modal tidak diisi di sini.
+                Hanya kas/bank, hutang, dan aset lain. Pendapatan, beban, dan modal
+                tidak diisi di sini.
               </p>
             </div>
             <Button

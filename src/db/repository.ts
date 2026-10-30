@@ -240,7 +240,7 @@ export function hapusAkun(
     { label: 'jurnal', sql: 'SELECT 1 FROM jurnal_baris WHERE akun_kode = ? LIMIT 1' },
     { label: 'anggaran', sql: 'SELECT 1 FROM anggaran WHERE akun_kode = ? LIMIT 1' },
     { label: 'panjar', sql: 'SELECT 1 FROM panjar_item WHERE kategori_baga = ? LIMIT 1' },
-    { label: 'piutang/hutang', sql: 'SELECT 1 FROM jurnal_pihak WHERE akun_kode = ? LIMIT 1' },
+    { label: 'jurnal pihak', sql: 'SELECT 1 FROM jurnal_pihak WHERE akun_kode = ? LIMIT 1' },
   ];
   for (const r of referensi) {
     const ada = db.prepare(r.sql).get(lama.kode);

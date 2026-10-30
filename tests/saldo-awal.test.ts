@@ -70,7 +70,7 @@ function total(input: { baris: JurnalBarisInput[] }): { debit: number; kredit: n
   );
 }
 
-/** Form lengkap: kas, bank, piutang, panjar (aset lain), dan hutang. */
+/** Form lengkap: kas, bank, aset lain lama 1050, panjar, dan hutang. */
 function formLengkap(): FormSaldoAwal {
   return {
     tanggal: '2026-01-01',
@@ -117,7 +117,7 @@ describe('P1-6 — builder saldo awal murni', () => {
   });
 
   it('selisih negatif menjadi debit 3000 MODAL dan tanpa modal bila sudah sama', () => {
-    // Kas + piutang + aset lain (panjar) + hutang, dengan kewajiban lebih besar.
+    // Kas + aset lain lama 1050 + panjar + hutang, dengan kewajiban lebih besar.
     const negatif = buatJurnalSaldoAwal({
       tanggal: '2026-01-01',
       saldo: [
@@ -586,12 +586,13 @@ describe('P1-6 — validasi bentuk input IPC & UI', () => {
     expect(html).toContain('Tanggal mulai pembukuan');
     expect(html).toContain('Saldo per akun');
     expect(html).toContain('Kas / Bank');
-    expect(html).toContain('Piutang &amp; aset lain');
+    expect(html).toContain('Aset lain');
+    expect(html).not.toContain('Piutang &amp; aset lain');
     expect(html).toContain('Hutang');
     expect(html).toContain('Saldo (Rp)');
     expect(html).toContain('Pratinjau Jurnal');
     expect(html).toContain('Simpan Saldo Awal');
-    // Hanya akun relevan yang muncul (kas, panjar/piutang, hutang).
+    // Hanya akun relevan yang muncul (kas, panjar/aset lain lama, hutang).
     expect(html).toContain('1001 — KAS');
     expect(html).toContain('1040 — UANG PANJAR');
     expect(html).toContain('1050 — PIUTANG LAIN LAIN');

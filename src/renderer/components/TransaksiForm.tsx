@@ -144,7 +144,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     labelKas: 'Uang keluar dari',
     labelLawan: 'Untuk pembayaran',
     hintLawan:
-      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk piutang/hutang gunakan menu Piutang & Hutang.',
+      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk pinjaman/utang gunakan menu Hutang.',
     placeholderKeterangan: 'cth: Bayar listrik bulan Oktober',
     keteranganPratinjau: 'Transaksi harian',
     labelTombol: 'Simpan Transaksi',

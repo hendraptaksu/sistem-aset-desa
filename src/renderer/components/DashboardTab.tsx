@@ -248,7 +248,7 @@ export function DashboardTab({
                 Panjar
               </Button>
               <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
-                Piutang &amp; Hutang
+                Hutang
               </Button>
               <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
                 Tutup Buku

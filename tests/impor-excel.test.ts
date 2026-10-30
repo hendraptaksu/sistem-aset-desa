@@ -657,14 +657,14 @@ describe('P2-9 — impor ke DB lewat posting layer', () => {
     const preview = validasiImporDariExcel(db, hasil);
     expect(preview.grup[0]!.status).toBe('OK');
     expect(preview.grup[0]!.peringatan?.join(' ')).toMatch(
-      /belum teralokasi di Piutang & Hutang/i,
+      /1050.*data lama|alur piutang sudah dihapus/i,
     );
     expect(preview.grup[0]!.perluKonfirmasi).toBe(true);
 
     const tanpa = imporJurnalDariExcel(db, preview, { namaFile: 'pihak.xlsx' });
     expect(tanpa.ringkasan.jurnalDibuat).toBe(0);
     expect(tanpa.grup[0]!.perluKonfirmasi).toBe(true);
-    expect(tanpa.grup[0]!.alasan).toMatch(/belum teralokasi/i);
+    expect(tanpa.grup[0]!.alasan).toMatch(/data lama|alur piutang sudah dihapus/i);
     expect(listJurnal(db)).toHaveLength(0);
 
     const dengan = imporJurnalDariExcel(db, preview, {
@@ -674,7 +674,7 @@ describe('P2-9 — impor ke DB lewat posting layer', () => {
     expect(dengan.ringkasan.jurnalDibuat).toBe(1);
     expect(dengan.grup[0]!.status).toBe('OK');
     expect(dengan.grup[0]!.peringatan?.join(' ')).toMatch(
-      /belum teralokasi di Piutang & Hutang/i,
+      /1050.*data lama|alur piutang sudah dihapus/i,
     );
     expect(listJurnal(db)).toHaveLength(1);
   });

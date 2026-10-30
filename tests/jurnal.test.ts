@@ -507,7 +507,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     }
   });
 
-  it('panjar dan pihak juga otomatis JU (serah, close, piutang)', () => {
+  it('panjar dan pihak juga otomatis JU (serah, close, pinjaman)', () => {
     const { db } = freshDb();
     try {
       insertJurnalTervalidasi(
@@ -546,10 +546,10 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
           header: {
             id: 'j-pinjam',
             tanggal: '2026-03-01',
-            keterangan: 'Beri pinjaman',
-            jenis: 'PIUTANG',
+            keterangan: 'Terima pinjaman',
+            jenis: 'HUTANG',
           },
-          baris: [D('1050', 500_000), K('1001', 500_000)],
+          baris: [D('1001', 500_000), K('2050', 500_000)],
         },
       });
       expect(pinjam.tersimpan, pinjam.errors.join(' ')).toBe(true);

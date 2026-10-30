@@ -63,7 +63,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
   { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
-  { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
+  { id: 'pihak', label: 'Hutang', Icon: HandCoins },
   { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
   { id: 'realisasi', label: 'Anggaran', Icon: BarChart3 },
   { id: 'import', label: 'Import Excel', Icon: FileSpreadsheet },
@@ -618,7 +618,7 @@ function AppShell() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">{namaEntitas}</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab onBukaTab={bukaDariDashboard} />

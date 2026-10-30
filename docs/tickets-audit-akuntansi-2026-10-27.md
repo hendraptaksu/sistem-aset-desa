@@ -399,8 +399,9 @@ AKT-00..AKT-29 selesai dan checklist per tiket dipenuhi.
     1. Hapus `AKUN_PIUTANG` dari kondisi OPERASI.
     2. Masukkan `AKUN_PIUTANG` ke kelompok INVESTASI (AKTIVA non-kas).
     3. Pertahankan `1040` (panjar) sebagai OPERASI.
-  - **DoD:** Beri pinjaman → INVESTASI keluar; terima pelunasan → INVESTASI
-    masuk; panjar tetap OPERASI.
+  - **DoD:** Data lama 1050: beri pinjaman → INVESTASI keluar; terima pelunasan
+    → INVESTASI masuk; panjar tetap OPERASI. (Alur input piutang sudah dihapus
+    di DB-23a; akun 1050 hanya untuk data lama.)
   - **Test:** `tests/laporan.test.ts` atau `tests/arus-kas.test.ts`.
   - **Verifikasi:** `npm run typecheck && npm test`.
   - **Dependency:** —

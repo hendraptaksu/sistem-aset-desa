@@ -235,10 +235,12 @@ describe('P1-1 — layar Transaksi', () => {
     expect(html).not.toContain('Segera hadir');
     expect(html).not.toContain('Jenis lain menyusul');
     expect(html).toContain('Buka Buku Panjar');
-    expect(html).toContain('Buka Piutang &amp; Hutang');
-    for (const label of ['Bayar', 'Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
+    expect(html).toContain('Buka Hutang');
+    for (const label of ['Bayar', 'Pindah Dana', 'Panjar', 'Hutang']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Piutang/Hutang');
+    expect(html).not.toContain('Buka Piutang');
   });
 });
 
@@ -283,17 +285,24 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
     expect(validasi.boleh).toBe(true);
   });
 
-  it('menolak lawan panjar 1040, piutang 1050, hutang 2050, dan utang usaha 2060 di form Bayar', () => {
+  it('menolak lawan panjar 1040, aset lain 1050, hutang 2050, dan utang usaha 2060 di form Bayar', () => {
     // Akun-akun ini punya alur/dokumen sendiri; form Bayar terpandu tidak boleh
     // membuat jurnal tanpa dokumen panjar atau tanpa pihak.
-    for (const akun of ['1040', '1050', '2050', '2060']) {
+    for (const akun of ['1040', '2050', '2060']) {
       expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
         /tidak bisa dipakai di form Bayar terpandu/,
       );
       expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
-        /Buku Panjar.*Piutang & Hutang/,
+        /Buku Panjar.*Hutang/,
       );
     }
+    // 1050 hanya aset lain lama; alur piutang sudah dihapus.
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '1050' }))).toThrow(
+      /aset lain lama/i,
+    );
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '1050' }))).toThrow(
+      /alur piutang sudah dihapus/i,
+    );
   });
 
   it('tetap menerima akun beban lain, mis. 5000 BIAYA KESEKRETARIATAN', () => {
@@ -379,7 +388,7 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
 });
 
 describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
-  it('menampilkan kartu Bayar siap dipakai dan pintasan Panjar/Piutang', () => {
+  it('menampilkan kartu Bayar siap dipakai dan pintasan Panjar/Hutang', () => {
     // Smoke SSR: default tetap Terima Uang, tetapi kartu Bayar sudah aktif.
     const html = renderToStaticMarkup(
       createElement(TransaksiTab, { onBukaTab: () => {} }),
@@ -394,10 +403,10 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(kartuBayar).not.toContain('disabled');
     expect(kartuBayar).toContain('Siap dipakai');
     expect(html).toContain('Sedang dipakai');
-    // Panjar & Piutang/Hutang kini menjadi pintasan tab, bukan slot disabled.
+    // Panjar & Hutang kini menjadi pintasan tab, bukan slot disabled.
     for (const [label, tujuan] of [
       ['Panjar', 'Buka Buku Panjar'],
-      ['Piutang/Hutang', 'Buka Piutang &amp; Hutang'],
+      ['Hutang', 'Buka Hutang'],
     ] as const) {
       const kartu = html
         .split('<button')
@@ -408,9 +417,10 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
       expect(kartu).toContain(tujuan);
     }
     expect(html).not.toContain('Segera hadir');
-    for (const label of ['Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
+    for (const label of ['Pindah Dana', 'Panjar', 'Hutang']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Piutang/Hutang');
   });
 
   it('merender form Bayar dengan label ramah dan pilihan akun non-kas', () => {
@@ -433,8 +443,8 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).toContain('Pagu anggaran diatur di menu Anggaran');
     expect(html).not.toContain('menyusul');
     expect(html).toContain('Untuk panjar gunakan menu Buku Panjar');
-    expect(html).toContain('untuk piutang/hutang gunakan menu Piutang &amp; Hutang');
-    // Hanya akun BEBAN yang menjadi lawan; panjar/piutang/hutang punya menu sendiri.
+    expect(html).toContain('untuk pinjaman/utang gunakan menu Hutang');
+    // Hanya akun BEBAN yang menjadi lawan; panjar/hutang punya menu sendiri.
     expect(html).toContain('<optgroup label="Beban">');
     expect(html).not.toContain('<optgroup label="Hutang">');
     expect(html).not.toContain('Aset lain (panjar/piutang)');
@@ -496,7 +506,7 @@ describe('P1-3 — builder Pindah Dana untuk form terpandu', () => {
     expect(() => buatJurnalPindahDana(dasarPindah({ ke: '1014' }))).toThrow(
       /berbeda/,
     );
-    // Kedua sisi wajib dompet kas/bank: 1040 panjar & 1050 piutang bukan dompet.
+    // Kedua sisi wajib dompet kas/bank: 1040 panjar & 1050 aset lain bukan dompet.
     expect(() => buatJurnalPindahDana(dasarPindah({ dari: '4005' }))).toThrow(
       /kas\/bank/,
     );
@@ -624,7 +634,7 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
 });
 
 describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
-  it('mengaktifkan kartu Pindah Dana dan menyediakan pintasan Panjar/Piutang', () => {
+  it('mengaktifkan kartu Pindah Dana dan menyediakan pintasan Panjar/Hutang', () => {
     const html = renderToStaticMarkup(
       createElement(TransaksiTab, { onBukaTab: () => {} }),
     );
@@ -637,9 +647,10 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
     expect(kartuPindah).not.toContain('disabled');
     expect(kartuPindah).toContain('Siap dipakai');
     expect(html).not.toContain('Segera hadir');
-    for (const label of ['Panjar', 'Piutang/Hutang']) {
+    for (const label of ['Panjar', 'Hutang']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Piutang/Hutang');
   });
 
   it('merender form Pindah Dana dengan label Dari/Ke dan penjelasan total kas', () => {

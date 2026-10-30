@@ -98,9 +98,10 @@ export type LampiranJurnal = {
   created_at: string; // ISO datetime
 };
 
-// ---- Pihak & piutang/hutang (P1-5) ----
+// ---- Pihak & hutang (P1-5 / DB-23a) ----
 // `pihak` hanya master nama; `jurnal_pihak` hanya metadata penghubung.
-// Saldo TIDAK disimpan — selalu dihitung dari baris jurnal 1050/2050/2060.
+// Saldo TIDAK disimpan — selalu dihitung dari baris jurnal 2050/2060.
+// Field 1050/piutang dipertahankan untuk membaca data lama.
 
 export type Pihak = {
   id: string;
@@ -112,13 +113,13 @@ export type Pihak = {
 export type JurnalPihak = {
   jurnal_id: string;
   pihak_id: string;
-  /** 1050 PIUTANG, 2050 HUTANG LAIN-LAIN (pinjaman), atau 2060 HUTANG USAHA. */
+  /** 2050 HUTANG LAIN-LAIN (pinjaman), 2060 HUTANG USAHA, atau 1050 lama. */
   akun_kode: string;
 };
 
 /** Saldo per pihak, turunan jurnal (bukan kolom tersimpan). */
 export type PihakSaldo = Pihak & {
-  /** 1050: debit − kredit (positif = masih menjadi piutang). */
+  /** 1050 lama: debit − kredit (positif = masih menjadi piutang). */
   piutang: number;
   /** Total hutang: pinjaman 2050 + utang usaha 2060. */
   hutang: number;
@@ -133,7 +134,7 @@ export type PihakSaldo = Pihak & {
 /** Riwayat jurnal satu pihak untuk layar drill-down. */
 export type JurnalPihakTampil = Jurnal & {
   pihak_id: string;
-  /** Akun pihak pada jurnal ini (1050/2050/2060). */
+  /** Akun pihak pada jurnal ini (2050/2060, atau 1050 lama). */
   akun_pihak: string;
   /** Mutasi pada akun pihak tersebut. */
   debit: number;

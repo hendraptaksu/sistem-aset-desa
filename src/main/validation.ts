@@ -643,7 +643,7 @@ export function validasiBentukSaldoAwal(
 }
 
 // ---------------------------------------------------------------------------
-// Bentuk input pihak & posting piutang/hutang (P1-5)
+// Bentuk input pihak & posting hutang (P1-5 / DB-23a)
 // ---------------------------------------------------------------------------
 
 export type BentukPihak = {
@@ -680,7 +680,8 @@ export function validasiBentukPihak(nilai: unknown): HasilBentuk<BentukPihak> {
 /**
  * Bentuk request posting pihak: `{ pihakId, input }`. Jurnal memakai
  * validator bentuk jurnal yang sama dengan form terpandu lain; alur ketat
- * 1050/2050/2060 diperiksa lagi oleh adapter DB (klasifikasiAlurPihak).
+ * 2050/2060 diperiksa lagi oleh adapter DB (klasifikasiAlurPihak). Jenis
+ * PIUTANG ditolak karena alur piutang 1050 sudah dihapus (DB-23a).
  */
 export function validasiBentukPostingPihak(
   nilai: unknown,
@@ -688,7 +689,7 @@ export function validasiBentukPostingPihak(
   if (!objek(nilai)) return { ok: false, error: 'Data transaksi pihak tidak lengkap.' };
 
   if (typeof nilai.pihakId !== 'string' || !nilai.pihakId.trim())
-    return { ok: false, error: 'Pihak wajib dipilih untuk transaksi piutang/hutang.' };
+    return { ok: false, error: 'Pihak wajib dipilih untuk transaksi hutang/pinjaman.' };
   const pihakId = nilai.pihakId.trim();
   if (pihakId.length > 200) return { ok: false, error: 'ID pihak terlalu panjang.' };
 
@@ -696,10 +697,12 @@ export function validasiBentukPostingPihak(
   if (!jurnal.ok) return jurnal;
 
   const jenis = jurnal.input.header.jenis;
-  if (jenis !== 'PIUTANG' && jenis !== 'HUTANG')
+  if (jenis !== 'HUTANG')
     return {
       ok: false,
-      error: 'Jenis jurnal form piutang/hutang harus PIUTANG atau HUTANG.',
+      error:
+        'Jenis jurnal form hutang harus HUTANG. Alur piutang 1050 sudah dihapus; ' +
+        'akun 1050 hanya untuk data lama.',
     };
 
   return { ok: true, input: { pihakId, input: jurnal.input } };

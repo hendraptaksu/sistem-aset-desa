@@ -1337,9 +1337,9 @@ describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
 
       expect(() =>
         klasifikasiAlurPihak({
-          header: header({ jenis: 'PIUTANG' }),
+          header: header({ jenis: 'HUTANG' }),
           baris: [
-            { akun_kode: '1050', debit: tidakAman, kredit: 0 },
+            { akun_kode: '2050', debit: tidakAman, kredit: 0 },
             { akun_kode: '1001', debit: 0, kredit: tidakAman },
           ],
         }),

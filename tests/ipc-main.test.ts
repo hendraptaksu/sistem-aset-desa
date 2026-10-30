@@ -297,14 +297,14 @@ describe('Daftar Akun — tambah akun lewat IPC', () => {
   });
 });
 
-describe('AUD-09 — peringatan jurnal 1050/2050 tanpa pihak', () => {
-  it('posting 1050 tanpa pihak minta konfirmasi (bukan error), lalu bisa disimpan', async () => {
+describe('AUD-09 — peringatan jurnal 1050 lama/2050 tanpa pihak', () => {
+  it('posting 1050 lama minta konfirmasi (bukan error), lalu tetap terbaca di rekon', async () => {
     const env = buatEnv();
     const input = {
       header: {
         id: 'j-piutang-tanpa-pihak',
         tanggal: '2026-02-01',
-        keterangan: 'Piutang tanpa pihak',
+        keterangan: 'Piutang lama tanpa pihak',
       },
       baris: [D('1050', 100_000), K('3000', 100_000)],
     };
@@ -313,7 +313,7 @@ describe('AUD-09 — peringatan jurnal 1050/2050 tanpa pihak', () => {
       konfirmasiTanpaSaldoAwal: true,
     });
     expect(belum.ok).toBe(false);
-    expect(belum.error).toMatch(/belum teralokasi di Piutang & Hutang/i);
+    expect(belum.error).toMatch(/1050.*data lama|alur piutang sudah dihapus/i);
     expect(belum.perluKonfirmasi).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toEqual([]);
 
@@ -1143,10 +1143,10 @@ describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
         header: {
           id: 'j-akt08-pinjam',
           tanggal: '2026-01-02',
-          keterangan: 'Beri pinjaman AKT-08',
-          jenis: 'PIUTANG',
+          keterangan: 'Terima pinjaman AKT-08',
+          jenis: 'HUTANG',
         },
-        baris: [D('1050', 400_000), K('1001', 400_000)],
+        baris: [D('1001', 400_000), K('2050', 400_000)],
       },
     });
     expect(pinjam.ok, pinjam.error).toBe(true);
@@ -1157,10 +1157,10 @@ describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
         header: {
           id: 'j-akt08-lunas',
           tanggal: '2026-01-03',
-          keterangan: 'Pelunasan melebihi saldo AKT-08',
-          jenis: 'PIUTANG',
+          keterangan: 'Pembayaran melebihi saldo AKT-08',
+          jenis: 'HUTANG',
         },
-        baris: [D('1001', 600_000), K('1050', 600_000)],
+        baris: [D('2050', 600_000), K('1001', 600_000)],
       },
     };
 
@@ -1168,7 +1168,7 @@ describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
       konfirmasiSaldo: true,
     });
     expect(tanpa.ok).toBe(false);
-    expect(tanpa.error).toMatch(/melebihi saldo piutang/i);
+    expect(tanpa.error).toMatch(/melebihi saldo pinjaman/i);
     expect(tanpa.error).toMatch(/alasan minimal 5 karakter/i);
     expect(tanpa.perluKonfirmasi).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
@@ -1181,7 +1181,7 @@ describe('AKT-08 — IPC meneruskan alasan override overbalance pihak', () => {
     expect(lanjut.ok, lanjut.error).toBe(true);
     expect((await env.panggil('jurnal:list', {})).data).toHaveLength(3);
 
-    const audit = await env.panggil('audit:list', { aksi: 'PIUTANG-PELUNASAN' });
+    const audit = await env.panggil('audit:list', { aksi: 'HUTANG-BAYAR' });
     expect(audit.ok, audit.error).toBe(true);
     expect(audit.data.total).toBe(1);
     const data = JSON.parse(audit.data.rows[0].data_baru_json) as {

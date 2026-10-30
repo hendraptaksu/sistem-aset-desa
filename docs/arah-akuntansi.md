@@ -34,7 +34,6 @@ Pakai istilah akuntansi: sisi kiri = **debit**, sisi kanan = **kredit**.
 | Terima uang parkir Rp 100.000 | Kas +100.000 | Pendapatan Parkir +100.000 |
 | Bayar listrik Rp 50.000 | Beban Listrik +50.000 | Kas −50.000 (berkurang) |
 | Pindah uang kas → bank Rp 1.000.000 | Bank +1.000.000 | Kas −1.000.000 (berkurang) |
-| Beri pinjaman Rp 2.000.000 | Piutang +2.000.000 | Kas −2.000.000 (berkurang) |
 | Terima pinjaman dari pihak lain | Kas +5.000.000 | Hutang +5.000.000 |
 
 Aturan mutlak: **total debit = total kredit**. Kalau tidak sama, sistem menolak menyimpan.
@@ -87,7 +86,7 @@ upgrade skema — **tidak ada migrasi data**. DB dev lama boleh dihapus; dev see
 ## 6. Bagaimana aplikasi tetap mudah
 
 - **Level 1 — Terpandu (default untuk operator awam).** Tombol besar: `Terima Uang`, `Bayar`, `Transfer`,
-  `Panjar`, `Piutang/Hutang`, `Saldo Awal`. User mengisi 3–4 kolom (tanggal, akun, jumlah, keterangan).
+  `Panjar`, `Hutang`, `Saldo Awal`. User mengisi 3–4 kolom (tanggal, akun, jumlah, keterangan).
   Sistem menampilkan **pratinjau jurnal** (debit/kredit) sebelum simpan — jadi operator awam perlahan
   belajar, dan akuntan pendamping bisa memeriksa hasilnya.
 - **Level 2 — Jurnal Umum (untuk akuntan pendamping).** Tabel multi-baris debit/kredit, validasi seimbang

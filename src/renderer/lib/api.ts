@@ -394,7 +394,7 @@ export const api = {
   /** Hapus metadata + file (best-effort); audit LAMPIRAN-HAPUS. */
   lampiranDelete: (id: string) =>
     call<{ deleted: boolean; id: string }>('lampiran:delete', id),
-  // ---- Piutang & Hutang + master pihak (P1-5) ----
+  // ---- Hutang + master pihak (P1-5 / DB-23a) ----
   pihakList: () => call<Pihak[]>('pihak:list'),
   pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),
   /** Rekonsiliasi saldo akun 1050/2050/2060 vs jurnal yang sudah dipetakan ke pihak. */

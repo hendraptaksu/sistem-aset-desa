@@ -98,7 +98,7 @@
 | DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [ ] |
 | DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [ ] |
 | DB-22 | — | — | **DIBATALKAN** — Lampiran: kompresi gambar | — | [x] |
-| DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [ ] |
+| DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [x] |
 | DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [ ] |
 | DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [ ] |
 | DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [ ] |
@@ -917,10 +917,17 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** — (keputusan 2026-10-30).
 
-- [ ] **DB-23a — Hapus alur piutang 1050 (UI/API/builder/test)** · P1 · M
+- [x] **DB-23a — Hapus alur piutang 1050 (UI/API/builder/test)** · P1 · M
   - **Konteks:** client tidak minta pencatatan piutang. Alur piutang menambah
     pilihan di `PihakTab`, builder, subledger, dan laporan. Akun 1050 tetap
     dipertahankan di COA untuk data lama.
+  - **Bukti 2026-10-30:** `BERI_PINJAMAN`/`TERIMA_PELUNASAN` dihapus dari
+    builder, `PihakTab`, menu, dan IPC; `klasifikasiAlurPihak` hanya menerima
+    empat alur hutang dan menolak jurnal 1050. `AKUN_PIUTANG` tetap di COA dan
+    tetap terbaca di laporan, Arus Kas (INVESTASI), serta rekonsiliasi sebagai
+    “Aset lain lama (1050)”. Seed dev tidak lagi membuat PIUTANG baru.
+    `npm run typecheck` bersih; `npm test` **731/58 hijau**; `npm run build`
+    berhasil.
   - **Langkah:**
     1. Hapus alur `BERI_PINJAMAN`/`TERIMA_PELUNASAN` dari `PihakTab` dan
        `core/forms.ts`; hapus tipe `PIUTANG` dari form baru.

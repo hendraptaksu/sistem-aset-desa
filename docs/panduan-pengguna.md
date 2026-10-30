@@ -42,10 +42,9 @@ perlu menghitung debit/kredit; sistem menyusun jurnalnya dan menampilkan
 pratinjau sebelum menyimpan.
 
 > **Peringatan wajib alasan.** Di form Transaksi, Jurnal Umum, Saldo Awal,
-> Piutang & Hutang, dan Panjar, peringatan (mis. kas/bank akan minus, saldo pihak
-> akan minus, atau realisasi panjar melebihi panjar) hanya bisa dilanjutkan
-> setelah menulis **alasan minimal 5 karakter**. Alasan tercatat di Riwayat
-> Audit.
+> Hutang, dan Panjar, peringatan (mis. kas/bank akan minus, saldo pihak akan
+> minus, atau realisasi panjar melebihi panjar) hanya bisa dilanjutkan setelah
+> menulis **alasan minimal 5 karakter**. Alasan tercatat di Riwayat Audit.
 
 ### 2.1 Terima Uang
 
@@ -72,10 +71,12 @@ hanya menawarkan **akun beban** sebagai akun lawan.
 3. Periksa pratinjau: beban di debit, kas di kredit.
 4. Simpan.
 
-**Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`, `1050 PIUTANG`,
+**Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`,
 `2050 HUTANG LAIN-LAIN`, maupun `2060 HUTANG USAHA`. Untuk panjar gunakan menu
-**Buku Panjar**; untuk piutang/hutang gunakan menu **Piutang & Hutang**. Jurnal
-Umum tetap boleh memakai akun tersebut untuk koreksi oleh akuntan pendamping.
+**Buku Panjar**; untuk pinjaman/utang gunakan menu **Hutang**. Akun
+`1050 PIUTANG LAIN LAIN` hanya dipertahankan untuk data lama dan tidak lagi
+punya form input piutang. Jurnal Umum tetap boleh memakai akun tersebut untuk
+koreksi oleh akuntan pendamping.
 
 ### 2.3 Pindah Dana
 
@@ -108,16 +109,14 @@ tidak basi (mis. panjar tetap CLOSED padahal `1040` sudah bersaldo lagi).
 Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
 **Batalkan panjar** masih backlog dan belum tersedia di aplikasi.
 
-### 2.5 Piutang & Hutang
+### 2.5 Hutang
 
-Buka menu **Piutang & Hutang**. Form Bayar terpandu sengaja tidak menawarkan
-akun `1050`/`2050`/`2060` agar setiap transaksi piutang/hutang memiliki pihak
-yang jelas. Gunakan menu ini untuk semua alur berikut:
+Buka menu **Hutang**. Form Bayar terpandu sengaja tidak menawarkan akun
+`2050`/`2060` agar setiap transaksi pinjaman/utang memiliki pihak yang jelas.
+Gunakan menu ini untuk semua alur berikut:
 
 | Kejadian | Jurnal yang dibuat sistem |
 |---|---|
-| Memberi pinjaman | Debit `1050 PIUTANG` / Kredit kas |
-| Menerima pelunasan piutang | Debit kas / Kredit `1050 PIUTANG` |
 | Menerima pinjaman | Debit kas / Kredit `2050 HUTANG LAIN-LAIN` |
 | Membayar pinjaman | Debit `2050 HUTANG LAIN-LAIN` / Kredit kas |
 | Beli/perbaikan barang secara kredit | Debit akun beban / Kredit `2060 HUTANG USAHA` |
@@ -130,10 +129,16 @@ lama yang masih berada di `2050` tetap terbaca sebagai Pendanaan sampai
 akuntan memindahkannya lewat jurnal reklasifikasi; aplikasi tidak pernah
 memindahkan saldo lama secara otomatis.
 
-Pihak (nama orang/lembaga) wajib dipilih untuk piutang dan hutang. Saldo per
-pihak dihitung dari jurnal, bukan diketik manual. Bila pelunasan atau pembayaran
-melebihi saldo pihak, sistem memberi peringatan yang wajib dikonfirmasi dengan
-alasan minimal 5 karakter.
+Pihak (nama orang/lembaga) wajib dipilih untuk pinjaman dan utang. Saldo per
+pihak dihitung dari jurnal, bukan diketik manual. Bila pembayaran melebihi saldo
+pihak, sistem memberi peringatan yang wajib dikonfirmasi dengan alasan minimal
+5 karakter.
+
+**Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
+tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada
+di COA dan tetap terbaca di Buku Besar/Neraca/Arus Kas untuk data lama; jangan
+membuat jurnal piutang baru. Jika ada saldo 1050 lama, koreksi hanya lewat
+Jurnal Umum oleh akuntan pendamping.
 
 **Penting:** perbaikan gedung yang dibayar belakangan **tidak menambah modal**.
 Yang naik adalah beban (Laba Rugi) dan Utang Usaha `2060` (Neraca). Modal hanya

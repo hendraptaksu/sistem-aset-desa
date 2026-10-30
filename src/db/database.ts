@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 
--- Master pihak (orang/lembaga) untuk piutang & hutang (P1-5).
+-- Master pihak (orang/lembaga) untuk hutang/pinjaman (P1-5).
 -- TIDAK menyimpan saldo: saldo per pihak selalu dihitung dari jurnal.
 CREATE TABLE IF NOT EXISTS pihak (
   id TEXT PRIMARY KEY,

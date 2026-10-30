@@ -28,7 +28,7 @@ angka turunan yang disimpan mati.
 ## Ringkasan
 
 - Input harian lewat form terpandu: **Terima Uang**, **Bayar**, **Pindah Dana**,
-  **Panjar**, **Piutang & Hutang**, dan **Saldo Awal**.
+  **Panjar**, **Hutang**, dan **Saldo Awal**.
 - **Daftar Akun** untuk menambah, mengubah nama, menonaktifkan, atau menghapus
   akun **Beban/Pendapatan** baru langsung dari aplikasi (tercatat di audit;
   akun langsung dipakai form dan laporan).

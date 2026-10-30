@@ -758,8 +758,8 @@ export function registerIpc(deps: IpcDeps): void {
       const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
       // AUD-09/AKT-20: Jurnal Umum tidak punya metadata pihak. Beri peringatan
-      // (bukan error) agar akuntan sadar jurnal 1050/2050/2060 akan tampil belum
-      // teralokasi.
+      // (bukan error) agar akuntan sadar jurnal 2050/2060 (atau 1050 lama) akan
+      // tampil belum teralokasi.
       // Hanya dicek saat belum dikonfirmasi dan tidak ada error lain, sehingga
       // pesan validasi asli tetap diutamakan.
       const peringatanPihak = peringatanPihakTanpaMapping(bentuk.input);
@@ -1079,9 +1079,10 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // ---- Piutang & Hutang + master pihak (P1-5) ----
+  // ---- Hutang + master pihak (P1-5 / DB-23a) ----
   // Renderer tidak dipercaya: bentuk input dinormalisasi dulu, lalu adapter DB
-  // memvalidasi lima alur baku + menyimpan jurnal/pemetaan pihak/audit atomik.
+  // memvalidasi empat alur hutang baku + menyimpan jurnal/pemetaan pihak/audit
+  // atomik. Alur piutang 1050 sudah dihapus.
   daftarkan('pihak:list', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(listPihak(deps.db()));
@@ -1176,7 +1177,7 @@ export function registerIpc(deps: IpcDeps): void {
         // adapter; adapter yang mewajibkan minimal 5 karakter.
         alasanSaldo: bacaTeksOpsi(opsi, 'alasanSaldo'),
         alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
-        // AKT-02: pintu Piutang/Hutang ikut mewajibkan saldo awal pertama.
+        // AKT-02: pintu Hutang ikut mewajibkan saldo awal pertama.
         wajibSaldoAwal: true,
         konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
       });
@@ -1185,7 +1186,7 @@ export function registerIpc(deps: IpcDeps): void {
         const pesan =
           pesanValidasi(hasil.errors) ||
           pesanValidasi(hasil.peringatan) ||
-          'Transaksi piutang/hutang gagal disimpan.';
+          'Transaksi hutang/pinjaman gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) =>
           m.includes('Periode sudah ditutup'),
         );
