@@ -2,10 +2,11 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-30 (setelah DB-35):** `npm run typecheck` bersih;
-> `npm test` **736 test / 58 file hijau**. `docs/panduan-portable.md` dipulihkan;
-> test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai. Angka **737/58**
-> di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum mulai.
+> **Baseline terakhir 2026-10-30 (setelah DB-12 + DB-13a):** `npm run typecheck`
+> bersih; `npm test` **767 test / 63 file hijau**. `docs/panduan-portable.md`
+> dipulihkan; test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai.
+> Angka **737/58** di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum
+> mulai.
 >
 > Prinsip yang tidak boleh dilanggar:
 > - Jurnal + jurnal_baris adalah satu-satunya sumber angka.
@@ -51,16 +52,19 @@
 ### Kondisi working tree 2026-10-30
 
 - `KODE AKUN.csv` **ada kembali** (48 akun) dan `docs/KODE AKUN.xlsx` isinya
-  identik. Tidak ada lagi masalah “CSV terhapus”; **DB-13a** tinggal memilih
-  satu sumber mesin dan menjaga agar CSV/xlsx/`coa.ts` tidak berbeda.
+  identik. **DB-13a selesai:** CSV ditetapkan sebagai sumber mesin, xlsx tetap
+  arsip client yang tidak diubah, dan `coa.ts` dijaga = CSV + 2 ekstensi sistem
+  lewat `docs/sumber-coa.md` + `tests/coa.test.ts`.
 - `docs/KODE AKUN.xlsx` **belum** memuat 5 akun baru (5060, 5061, 5062, 4060,
   4006). Kelimanya **disetujui 2026-10-30** sebagai tambahan di atas baseline;
   kerjakan DB-13 dan beri nama pembeda agar tidak salah pilih (Lampiran C).
 - `docs/panduan-portable.md` sudah dipulihkan dari git; `docs/erd-v1-arsip.md`
   sengaja tidak dipulihkan dan test arsipnya dihapus. Baseline sudah hijau
   (DB-35).
-- Belum ada perubahan kode produksi untuk fitur; perubahan 2026-10-30 baru
-  sebatas dokumen + test dokumentasi (DB-35).
+- Belum ada perubahan kode produksi untuk fitur; DB-13a hanya menambah
+  konstanta dokumentasi `KODE_EKSTENSI_SISTEM` + penjaga test, belum menambah
+  akun baru. Perubahan 2026-10-30 lainnya sebatas dokumen + test dokumentasi
+  (DB-35).
 
 ---
 
@@ -81,7 +85,7 @@
 | DB-10 | P0 | S | Constraint jurnal: unique reversal + validasi insert | — | [x] |
 | DB-11 | P0 | S | Constraint akun: unique nama + validasi tipe/posisi | — | [x] |
 | DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [x] |
-| DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [ ] |
+| DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [x] |
 | DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [ ] |
 | DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [ ] |
 | DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [ ] |
@@ -504,7 +508,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
 
 ## Fase 2 — Permintaan client 2026-10-28
 
-- [ ] **DB-13a — Selaraskan sumber COA: xlsx vs CSV vs `coa.ts`** · P0 · S
+- [x] **DB-13a — Selaraskan sumber COA: xlsx vs CSV vs `coa.ts`** · P0 · S
   - **Konteks:** `KODE AKUN.csv` (48 akun) dan `docs/KODE AKUN.xlsx` (48 akun)
     isinya identik. Tidak ada lagi masalah CSV terhapus. File xlsx **belum**
     memuat 5 akun baru yang disetujui 2026-10-30.
@@ -521,6 +525,21 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** `npm test` hijau; satu sumber jelas; tidak ada file CSV/Excel yatim.
   - **Test:** `tests/coa.test.ts`.
   - **Verifikasi:** typecheck + test.
+  - **Bukti 2026-10-30:** Ditetapkan **`KODE AKUN.csv` sebagai sumber mesin
+    tunggal** (48 baris dinormalisasi dari kolom `NO`/`NAMA AKUN`/`KODE AKUN`);
+    `docs/KODE AKUN.xlsx` tetap **arsip client 48 akun yang tidak diubah** (hash
+    SHA-256 `c9a3f9f6…ae6b6` dijaga test), dan `src/db/coa.ts` adalah turunan
+    CSV + tepat dua ekstensi sistem `KODE_EKSTENSI_SISTEM` (1040, 2060).
+    Keputusan, peran file, aturan perubahan, dan rencana penambahan 5060/5061/
+    5062/4060/4006 (DB-13) + 5063 (DB-13b) ke CSV/COA — bukan xlsx — dicatat
+    di `docs/sumber-coa.md` dan header `coa.ts`. `tests/coa.test.ts` diperkuat
+    menjadi 11 test: CSV ada dan setiap kode+nama cocok persis COA; xlsx ada,
+    dibaca via `exceljs`, tetap 48 akun, sama dengan 48 baris pertama CSV,
+    subset identik COA, dan hash byte tidak berubah; COA tepat CSV + 1040/2060;
+    tidak ada kode/nama duplikat di COA maupun CSV; dokumen sumber ikut dijaga.
+    Lima akun baru **belum** ditambahkan, xlsx tidak disentuh, tidak ada
+    perubahan skema. `npm run typecheck` bersih; `npm test` **767 test/63 file
+    hijau** (baseline 763/63); `npm run build` berhasil.
   - **Dependency:** —
 
 - [ ] **DB-13 — Tambah 5 akun COA baru** · P1 · S

@@ -1,14 +1,26 @@
-// SUMBER KEBENARAN: KODE AKUN.csv (dokumen resmi client, 2026-09-04),
-// ditambah 1040 UANG PANJAR (KAS DI MUKA) sesuai arah double-entry 2026-10-04
-// dan 2060 HUTANG USAHA (AKT-20) untuk memisahkan utang usaha dari pinjaman.
+// SUMBER MESIN TUNGGAL COA (DB-13a): `KODE AKUN.csv`.
+// Baris CSV (kolom NO, NAMA AKUN, KODE AKUN) dinormalisasi oleh test menjadi
+// daftar kode+nama resmi client. File ini adalah turunan mesin dari CSV:
+//
+//   COA = seluruh baris `KODE AKUN.csv` + tepat `KODE_EKSTENSI_SISTEM`.
+//
+// Ekstensi sistem saat ini hanya 1040 UANG PANJAR (KAS DI MUKA) sesuai arah
+// double-entry 2026-10-04 dan 2060 HUTANG USAHA (AKT-20) untuk memisahkan utang
+// usaha dari pinjaman. `docs/KODE AKUN.xlsx` adalah **arsip client 48 akun** yang
+// tidak boleh diubah tanpa persetujuan; xlsx bukan sumber mesin dan tidak ikut
+// menerima akun baru. Akun baru (termasuk 5060/5061/5062/4060/4006 pada DB-13)
+// ditambahkan ke CSV lalu ke COA, sehingga persamaan tetap CSV + 2 ekstensi.
+// Rincian keputusan ada di `docs/sumber-coa.md`.
+//
 // Catatan:
 // - Tidak ada kode 1000. Kas tunai = 1001 KAS.
-// - Kode tidak berurutan rapat (cth. tidak ada 4006). JANGAN asumsikan rentang —
+// - Kode tidak berurutan rapat (ada lompatan nomor). JANGAN asumsikan rentang —
 //   semua logika memakai `tipe` + `posisi_normal`, bukan rentang kode.
 // - 1040 UANG PANJAR = aktiva non-kas (kas di muka), BUKAN dompet.
 // - 1050 PIUTANG = aktiva non-kas. BUKAN dompet (isAkunKas('1050') = false).
 // - 2050 HUTANG LAIN-LAIN = pinjaman/legacy; 2060 HUTANG USAHA = pembelian kredit.
-// - 2060 adalah ekstensi sistem di luar CSV, seperti 1040. CSV resmi tetap 48 akun.
+// - 2060 adalah ekstensi sistem di luar CSV, seperti 1040. Baseline CSV resmi
+//   48 akun; akun tambahan yang disetujui ditambahkan ke CSV di belakang baseline.
 // - 3001 berlaku "MULAI 10 MARET 2018" (jangkar awal pembukuan).
 // - Nama disalin persis dari CSV termasuk singkatan (SHUTLE, PEDAPATAN).
 
@@ -42,6 +54,13 @@ export const AKUN_HUTANG = '2050';
  */
 export const AKUN_HUTANG_USAHA = '2060';
 export const AKUN_MODAL = '3000';
+
+/**
+ * Kode akun yang sengaja berada di luar `KODE AKUN.csv` (ekstensi sistem).
+ * Test COA menegakkan `COA = baris CSV + tepat daftar ini`; menambah kode di
+ * sini juga wajib menambah akun di `COA` dan dokumentasi `docs/sumber-coa.md`.
+ */
+export const KODE_EKSTENSI_SISTEM: readonly string[] = [AKUN_PANJAR, AKUN_HUTANG_USAHA];
 
 /**
  * Akun ekuitas legacy yang tetap ada di COA untuk membaca saldo/laporan lama,

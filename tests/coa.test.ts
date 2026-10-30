@@ -1,10 +1,13 @@
 // P0-1: COA ber-tipe + akun 1040 Uang Panjar.
-// Sumber kode/nama: KODE AKUN.csv (dibaca langsung agar tidak ada kode yang hilang).
+// DB-13a: `KODE AKUN.csv` adalah sumber mesin tunggal; `docs/KODE AKUN.xlsx`
+// adalah arsip client 48 akun. Test ini menjaga CSV, xlsx, dan COA tidak drift.
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import {
   AKUN_HUTANG,
@@ -15,6 +18,7 @@ import {
   AKUN_PIUTANG,
   COA,
   KAS_KODES,
+  KODE_EKSTENSI_SISTEM,
   LPD_KODES,
   PESAN_AKUN_LEGACY,
   POSISI_NORMAL,
@@ -32,6 +36,18 @@ import { openDb } from '../src/db/database.js';
 import { getAkun, listAkun } from '../src/db/repository.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const CSV_PATH = join(ROOT, 'KODE AKUN.csv');
+const XLSX_PATH = join(ROOT, 'docs', 'KODE AKUN.xlsx');
+const DOKUMEN_SUMBER_COA = join(ROOT, 'docs', 'sumber-coa.md');
+
+/**
+ * Arsip xlsx client adalah baseline 48 akun. Hash byte menjaga file biner ini
+ * tidak berubah diam-diam; perubahan hanya boleh lewat persetujuan client dan
+ * harus memperbarui dokumen + test ini secara sadar.
+ */
+const XLSX_BASELINE_JUMLAH = 48;
+const XLSX_BASELINE_SHA256 =
+  'c9a3f9f674f57ead20c1747bac25a16939f64acad6ea6aa6a9286fae4faae6b6';
 
 /** Parser CSV sederhana (cukup untuk KODE AKUN.csv; mendukung tanda kutip). */
 function parseCsvLine(line: string): string[] {
@@ -59,7 +75,8 @@ function parseCsvLine(line: string): string[] {
 }
 
 function bacaCsv(): { kode: string; nama: string }[] {
-  const isi = readFileSync(join(ROOT, 'KODE AKUN.csv'), 'utf8');
+  expect(existsSync(CSV_PATH), 'KODE AKUN.csv (sumber mesin COA) harus ada').toBe(true);
+  const isi = readFileSync(CSV_PATH, 'utf8');
   return isi
     .split(/\r?\n/)
     .filter((line) => /^\d+,/.test(line))
@@ -69,17 +86,111 @@ function bacaCsv(): { kode: string; nama: string }[] {
     });
 }
 
+/** Baca baris akun dari arsip xlsx client (kolom B nama, kolom C kode). */
+async function bacaXlsx(): Promise<{ kode: string; nama: string }[]> {
+  expect(existsSync(XLSX_PATH), 'docs/KODE AKUN.xlsx (arsip client) harus ada').toBe(true);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(XLSX_PATH);
+  const ws = wb.worksheets[0];
+  expect(ws, 'xlsx harus punya satu worksheet').toBeDefined();
+  const rows: { kode: string; nama: string }[] = [];
+  ws!.eachRow((row, nomor) => {
+    if (nomor < 4) return; // 3 baris judul/header client
+    const nama = row.getCell(2).value;
+    const kode = row.getCell(3).value;
+    if (typeof nama !== 'string' || typeof kode !== 'number') return;
+    const kodeTeks = String(kode);
+    if (!/^\d{4}$/.test(kodeTeks)) return;
+    rows.push({ kode: kodeTeks, nama: nama.trim() });
+  });
+  return rows;
+}
+
 describe('COA P0-1', () => {
-  it('memuat semua kode & nama dari KODE AKUN.csv', () => {
+  it('memuat semua kode & nama dari KODE AKUN.csv secara persis', () => {
     const csv = bacaCsv();
     expect(csv).toHaveLength(48);
     for (const { kode, nama } of csv) {
-      expect(akun(kode), `akun ${kode} hilang`).toMatchObject({ kode, nama });
+      expect(kode, `kode CSV tidak 4 digit: ${kode}`).toMatch(/^\d{4}$/);
+      expect(akun(kode), `akun ${kode} hilang dari COA`).toMatchObject({ kode, nama });
     }
-    // CSV + 1040 UANG PANJAR + 2060 HUTANG USAHA (ekstensi sistem AKT-20).
-    expect(COA).toHaveLength(csv.length + 2);
-    expect(COA.map((c) => c.kode)).toContain(AKUN_PANJAR);
-    expect(COA.map((c) => c.kode)).toContain(AKUN_HUTANG_USAHA);
+  });
+
+  it('docs/KODE AKUN.xlsx tetap arsip baseline 48 akun dan tidak diubah', async () => {
+    expect(existsSync(XLSX_PATH), 'arsip xlsx client harus ada').toBe(true);
+    const hash = createHash('sha256').update(readFileSync(XLSX_PATH)).digest('hex');
+    expect(hash, 'file xlsx client berubah tanpa persetujuan').toBe(XLSX_BASELINE_SHA256);
+
+    const xlsx = await bacaXlsx();
+    expect(xlsx).toHaveLength(XLSX_BASELINE_JUMLAH);
+    const csv = bacaCsv();
+    // Baseline xlsx harus sama dengan 48 baris pertama CSV; akun baru selalu
+    // ditambahkan di belakang CSV sehingga arsip lama tetap utuh.
+    expect(xlsx).toEqual(csv.slice(0, XLSX_BASELINE_JUMLAH));
+
+    // Baseline subset: setiap akun arsip wajib ada identik di COA.
+    for (const { kode, nama } of xlsx) {
+      expect(akun(kode), `akun arsip ${kode} hilang dari COA`).toMatchObject({ kode, nama });
+    }
+  });
+
+  it('COA = baris CSV + tepat ekstensi sistem 1040/2060', () => {
+    const csv = bacaCsv();
+    expect([...KODE_EKSTENSI_SISTEM]).toEqual([AKUN_PANJAR, AKUN_HUTANG_USAHA]);
+    expect([...KODE_EKSTENSI_SISTEM]).toEqual(['1040', '2060']);
+
+    const ekstensi = [
+      { kode: '1040', nama: 'UANG PANJAR (KAS DI MUKA)' },
+      { kode: '2060', nama: 'HUTANG USAHA' },
+    ];
+    const diharapkan = new Map(
+      [...csv, ...ekstensi].map(({ kode, nama }) => [kode, { kode, nama }]),
+    );
+    expect(diharapkan.size).toBe(csv.length + ekstensi.length);
+    expect(COA).toHaveLength(diharapkan.size);
+
+    for (const c of COA) {
+      expect(diharapkan.get(c.kode), `${c.kode} bukan CSV/ekstensi terdokumentasi`).toEqual({
+        kode: c.kode,
+        nama: c.nama,
+      });
+    }
+    for (const { kode } of ekstensi) {
+      expect(csv.some((row) => row.kode === kode), `${kode} tidak boleh ada di CSV`).toBe(false);
+    }
+
+    // Baris CSV tidak boleh hilang hanya karena COA memakai nama lain.
+    for (const { kode, nama } of csv) {
+      expect(akun(kode), `akun CSV ${kode} hilang`).toMatchObject({ kode, nama });
+    }
+  });
+
+  it('tidak ada kode atau nama duplikat di COA maupun CSV', () => {
+    for (const [label, rows] of [
+      ['COA', COA],
+      ['CSV', bacaCsv()],
+    ] as const) {
+      const kode = rows.map((row) => row.kode);
+      const nama = rows.map((row) => row.nama.trim().toUpperCase());
+      expect(new Set(kode).size, `${label} punya kode duplikat`).toBe(kode.length);
+      expect(new Set(nama).size, `${label} punya nama duplikat`).toBe(nama.length);
+    }
+  });
+
+  it('dokumentasi sumber COA mencatat keputusan DB-13a', () => {
+    expect(existsSync(DOKUMEN_SUMBER_COA), 'docs/sumber-coa.md harus ada').toBe(true);
+    const dokumen = readFileSync(DOKUMEN_SUMBER_COA, 'utf8');
+    for (const istilah of [
+      'KODE AKUN.csv',
+      'KODE AKUN.xlsx',
+      'sumber mesin',
+      '48',
+      '1040',
+      '2060',
+      XLSX_BASELINE_SHA256,
+    ]) {
+      expect(dokumen, `docs/sumber-coa.md harus menyebut "${istilah}"`).toContain(istilah);
+    }
   });
 
   it('memakai tipe akuntansi baku + posisi normal yang benar', () => {
