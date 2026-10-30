@@ -186,7 +186,7 @@ update aplikasi:
    **Jurnal Umum**, dan laporan.
 4. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
 
-Lima akun hasil persetujuan 2026-10-30 sudah tersedia otomatis dan **tidak
+Enam akun hasil persetujuan 2026-10-30 sudah tersedia otomatis dan **tidak
 menggantikan** akun lama:
 
 - **5060 PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)** — Beban. Akun lama
@@ -195,6 +195,10 @@ menggantikan** akun lama:
   LAIN-LAIN** tetap aktif.
 - **5062 PENGELUARAN BANTEN RUTIN (HARIAN)** — Beban. Akun lama **5004 BAGA
   UPAKARA** tetap aktif.
+- **5063 BEBAN BUNGA PINJAMAN** — Beban. Akun lama **5050 BIAYA LAIN-LAIN**
+  tetap aktif. 5063 adalah akun bunga pinjaman LPD dan akan menjadi pilihan
+  default akun bunga saat form pinjaman LPD tersedia; 5050 tetap untuk biaya
+  lain-lain dan denda.
 - **4060 PENDAPATAN WEWEDALAN (UPACARA)** — Pendapatan. Akun lama **4008
   PENDAPATAN PUNIA** dan **4041 PENDAPATAN SESARI** tetap aktif.
 - **4006 PENDAPATAN PARKIR BPD (KHUSUS)** — Pendapatan. Akun lama **4005

@@ -49,10 +49,10 @@ const XLSX_BASELINE_JUMLAH = 48;
 const XLSX_BASELINE_SHA256 =
   'c9a3f9f674f57ead20c1747bac25a16939f64acad6ea6aa6a9286fae4faae6b6';
 
-/** DB-13: CSV baseline 48 + 5 akun baru = 53 baris; COA = 53 + 2 ekstensi = 55. */
+/** DB-13/DB-13b: CSV baseline 48 + 6 akun baru = 54 baris; COA = 54 + 2 ekstensi = 56. */
 const CSV_BASELINE_JUMLAH = 48;
-const CSV_JUMLAH = 53;
-const COA_JUMLAH = 55;
+const CSV_JUMLAH = 54;
+const COA_JUMLAH = 56;
 
 /** Lima akun baru, dalam urutan baris CSV 49–53 (urutan persetujuan client). */
 const AKUN_DB13_CSV = [
@@ -96,6 +96,16 @@ const AKUN_DB13_COA = [
     posisi_normal: 'DEBIT',
   },
 ] as const;
+
+/** DB-13b: akun bunga pinjaman, baris CSV 54, setelah lima akun DB-13. */
+const AKUN_DB13B_CSV = { kode: '5063', nama: 'BEBAN BUNGA PINJAMAN' } as const;
+
+const AKUN_DB13B_COA = {
+  kode: '5063',
+  nama: 'BEBAN BUNGA PINJAMAN',
+  tipe: 'BEBAN',
+  posisi_normal: 'DEBIT',
+} as const;
 
 /** Akun lama yang mirip tetap ada dan tidak diganti/dinonaktifkan oleh DB-13. */
 const AKUN_LAMA_TETAP = [
@@ -195,7 +205,9 @@ describe('COA P0-1', () => {
 
   it('menambahkan lima akun DB-13 di baris CSV 49–53 tanpa mengganti akun lama', () => {
     const csv = bacaCsv();
-    expect(csv.slice(CSV_BASELINE_JUMLAH)).toEqual([...AKUN_DB13_CSV]);
+    expect(
+      csv.slice(CSV_BASELINE_JUMLAH, CSV_BASELINE_JUMLAH + AKUN_DB13_CSV.length),
+    ).toEqual([...AKUN_DB13_CSV]);
 
     // Bentuk COA: tipe + posisi normal benar, dan nama pembeda persis.
     for (const diharapkan of AKUN_DB13_COA) {
@@ -221,6 +233,32 @@ describe('COA P0-1', () => {
     for (const baru of AKUN_DB13_CSV) {
       expect(namaLama.has(baru.nama.toUpperCase())).toBe(false);
     }
+  });
+
+  it('menambahkan 5063 BEBAN BUNGA PINJAMAN di baris CSV 54, 5050 tetap utuh', () => {
+    const csv = bacaCsv();
+    expect(csv).toHaveLength(CSV_JUMLAH);
+    expect(csv[CSV_JUMLAH - 1]).toEqual(AKUN_DB13B_CSV);
+
+    // Bentuk COA persis: BEBAN, normal DEBIT.
+    expect(akun('5063')).toEqual(AKUN_DB13B_COA);
+    expect(isBeban('5063')).toBe(true);
+    expect(akunBolehDiposting('5063')).toBe(true);
+
+    // 5063 adalah tambahan: 5050 BIAYA LAIN-LAIN tidak diganti/dinonaktifkan.
+    expect(akun('5050')).toEqual({
+      kode: '5050',
+      nama: 'BIAYA LAIN-LAIN',
+      tipe: 'BEBAN',
+      posisi_normal: 'DEBIT',
+    });
+    expect(akunBolehDiposting('5050')).toBe(true);
+
+    // Urutan COA: 5063 tepat setelah 5062, dan tidak ada duplikat.
+    const kodeCoa = COA.map((c) => c.kode);
+    expect(kodeCoa.indexOf('5063')).toBe(kodeCoa.indexOf('5062') + 1);
+    expect(COA.filter((c) => c.kode === '5063')).toHaveLength(1);
+    expect(csv.filter((row) => row.kode === '5063')).toHaveLength(1);
   });
 
   it('COA = baris CSV + tepat ekstensi sistem 1040/2060', () => {
@@ -275,13 +313,15 @@ describe('COA P0-1', () => {
       'KODE AKUN.xlsx',
       'sumber mesin',
       '48',
-      '53',
-      '55',
+      '54',
+      '56',
       '1040',
       '2060',
       '5060',
       '5061',
       '5062',
+      '5063',
+      'BEBAN BUNGA PINJAMAN',
       '4060',
       '4006',
       'tambahan',
@@ -388,7 +428,7 @@ describe('COA P0-1', () => {
     expect(akunBolehDiposting('4005', false)).toBe(false);
   });
 
-  it('lima akun DB-13 muncul di listAkun setelah seed DB, akun lama tetap aktif', () => {
+  it('enam akun baru DB-13/DB-13b muncul di listAkun setelah seed DB, akun lama tetap aktif', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-coa-db13-'));
     try {
       const db = openDb(join(dir, 'pura.db'));
@@ -397,7 +437,7 @@ describe('COA P0-1', () => {
         expect(rows).toHaveLength(COA_JUMLAH);
         expect(listAkun(db, { aktif: true })).toHaveLength(COA_JUMLAH);
 
-        for (const diharapkan of AKUN_DB13_COA) {
+        for (const diharapkan of [...AKUN_DB13_COA, AKUN_DB13B_COA]) {
           expect(getAkun(db, diharapkan.kode)).toEqual({ ...diharapkan, aktif: true });
         }
 
@@ -408,6 +448,7 @@ describe('COA P0-1', () => {
         expect(posisi('5060')).toBe(posisi('5050') + 1);
         expect(posisi('5061')).toBe(posisi('5060') + 1);
         expect(posisi('5062')).toBe(posisi('5061') + 1);
+        expect(posisi('5063')).toBe(posisi('5062') + 1);
 
         for (const lama of AKUN_LAMA_TETAP) {
           expect(getAkun(db, lama.kode), `${lama.kode} harus tetap ada`).toMatchObject({

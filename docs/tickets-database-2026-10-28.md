@@ -2,8 +2,8 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-30 (setelah DB-13):** `npm run typecheck` bersih;
-> `npm test` **770 test / 63 file hijau**. `docs/panduan-portable.md` dipulihkan;
+> **Baseline terakhir 2026-10-30 (setelah DB-13b):** `npm run typecheck` bersih;
+> `npm test` **771 test / 63 file hijau**. `docs/panduan-portable.md` dipulihkan;
 > test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai. Angka
 > **737/58** di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum mulai.
 >
@@ -50,15 +50,18 @@
 
 ### Kondisi working tree 2026-10-30
 
-- `KODE AKUN.csv` berisi **53 akun** (48 baseline client + 5 tambahan DB-13) dan
-  `docs/KODE AKUN.xlsx` tetap arsip **48 akun** yang tidak diubah. **DB-13a
-  selesai:** CSV ditetapkan sebagai sumber mesin, xlsx tetap arsip client, dan
-  `coa.ts` dijaga = CSV + 2 ekstensi sistem lewat `docs/sumber-coa.md` +
-  `tests/coa.test.ts`.
+- `KODE AKUN.csv` berisi **54 akun** (48 baseline client + 6 tambahan DB-13/
+  DB-13b) dan `docs/KODE AKUN.xlsx` tetap arsip **48 akun** yang tidak diubah.
+  **DB-13a selesai:** CSV ditetapkan sebagai sumber mesin, xlsx tetap arsip
+  client, dan `coa.ts` dijaga = CSV + 2 ekstensi sistem lewat
+  `docs/sumber-coa.md` + `tests/coa.test.ts`.
 - **DB-13 selesai:** lima akun baru (5060, 5061, 5062, 4060, 4006) sudah ada di
   CSV baris 49–53 dan COA dengan nama pembeda (Lampiran C). Akun lama
   5010/5050/5004/4008/4041/4005 tidak di-rename atau dinonaktifkan.
-- `docs/KODE AKUN.xlsx` tetap **tidak** memuat lima akun tambahan tersebut;
+- **DB-13b selesai:** 5063 BEBAN BUNGA PINJAMAN ada di CSV baris 54 dan COA
+  (BEBAN/DEBIT), disiapkan sebagai akun bunga default modul pinjaman LPD
+  (DB-16). 5050 BIAYA LAIN-LAIN tetap ada dan tetap aktif.
+- `docs/KODE AKUN.xlsx` tetap **tidak** memuat enam akun tambahan tersebut;
   akun baru tidak ditambahkan ke xlsx.
 - `docs/panduan-portable.md` sudah dipulihkan dari git; `docs/erd-v1-arsip.md`
   sengaja tidak dipulihkan dan test arsipnya dihapus. Baseline sudah hijau
@@ -85,7 +88,7 @@
 | DB-12 | P0 | M | Audit integritas DB (perluas AKT-09) | — | [x] |
 | DB-13a | P0 | S | Selaraskan sumber COA: xlsx vs CSV vs `coa.ts` | — | [x] |
 | DB-13 | P1 | S | Tambah 5 akun COA baru | DB-13a | [x] |
-| DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [ ] |
+| DB-13b | P1 | S | Tambah 5063 BEBAN BUNGA PINJAMAN | DB-13a | [x] |
 | DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [ ] |
 | DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [ ] |
 | DB-16a | P0 | S | Desain input pinjaman LPD (user input, bukan data awal) | — | [x] |
@@ -575,7 +578,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     Terima/Bayar. `npm run typecheck` bersih; `npm test` **770 test/63 file
     hijau** (baseline 767/63); `npm run build` berhasil.
 
-- [ ] **DB-13b — Tambah 5063 BEBAN BUNGA PINJAMAN** · P1 · S
+- [x] **DB-13b — Tambah 5063 BEBAN BUNGA PINJAMAN** · P1 · S
   - **Konteks:** CSV client tidak punya akun bunga. `5050` adalah BIAYA
     LAIN-LAIN, bukan akun bunga. Bunga pinjaman perlu terlihat terpisah di
     Laba Rugi.
@@ -588,6 +591,21 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** `tests/coa.test.ts`.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-13a.
+  - **Bukti 2026-10-30:** `5063 BEBAN BUNGA PINJAMAN` ditambahkan ke
+    `KODE AKUN.csv` sebagai baris 54 (CRLF dan quoting client dipertahankan)
+    dan ke `src/db/coa.ts` dengan tipe BEBAN/posisi DEBIT. COA sekarang 54 baris
+    CSV + 2 ekstensi = 56 akun; xlsx tetap arsip 48 akun dan tidak disentuh.
+    `5050 BIAYA LAIN-LAIN` tidak di-rename/dinonaktifkan dan tetap boleh
+    diposting. `tests/coa.test.ts` menambah penjaga CSV 54/COA 56, bentuk/nama/
+    tipe/posisi 5063, urutan setelah 5062, tidak ada duplikat, 5050 utuh, serta
+    ketersediaan 5063 di `listAkun`/`getAkun` setelah seed DB;
+    `tests/forms-ui.test.ts` menambah regresi 5063 tampil di form Bayar.
+    `docs/sumber-coa.md`, `docs/panduan-pengguna.md`, dan catatan COA di
+    `docs/desain-arus-kas-2050.md` diperbarui, termasuk catatan bahwa 5063
+    adalah akun bunga default untuk pinjaman LPD (DB-16). Tidak ada perubahan
+    skema/`SCHEMA_VERSION`, `data/`, jurnal, atau xlsx. `npm run typecheck`
+    bersih; `npm test` **771 test/63 file hijau** (baseline 770/63);
+    `npm run build` berhasil.
 
 - [ ] **DB-14 — `akun.is_kas`/`kelompok`/`sumber` + akun bank baru** · P1 · M
   - **Konteks:** `KODE_KAS` dan `LPD_KODES` masih hardcoded; bank/LPD baru tidak

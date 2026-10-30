@@ -1,7 +1,8 @@
-# Sumber COA — keputusan DB-13a dan DB-13
+# Sumber COA — keputusan DB-13a, DB-13, dan DB-13b
 
 **Tanggal keputusan:** 2026-10-30 (DB-13a); lima akun baru disetujui dan
-ditambahkan pada DB-13, 2026-10-30.
+ditambahkan pada DB-13, 2026-10-30; 5063 BEBAN BUNGA PINJAMAN ditambahkan pada
+DB-13b, 2026-10-30.
 **Status:** berlaku untuk DB-13, DB-13b, dan seterusnya.
 
 ## Keputusan
@@ -27,12 +28,12 @@ Ekstensi sistem saat ini **hanya dua**:
 Jadi untuk kondisi sekarang:
 
 ```text
-48 akun baseline client + 5 akun tambahan DB-13 + 2 ekstensi sistem = 55 akun COA
+48 akun baseline client + 6 akun tambahan (DB-13/DB-13b) + 2 ekstensi sistem = 56 akun COA
 ```
 
-`KODE AKUN.csv` berisi **53 baris data**: 48 baris baseline client + lima akun
-DB-13. `docs/KODE AKUN.xlsx` tetap **48 akun baseline** dan tidak menerima akun
-baru.
+`KODE AKUN.csv` berisi **54 baris data**: 48 baris baseline client + lima akun
+DB-13 + 5063 DB-13b. `docs/KODE AKUN.xlsx` tetap **48 akun baseline** dan tidak
+menerima akun baru.
 
 ## Peran setiap file
 
@@ -48,17 +49,23 @@ pemeriksaan manusia dan pembanding test. CSV juga tidak dibaca runtime — COA
 statis di `src/db/coa.ts` yang dipakai aplikasi, dan test memastikan keduanya
 identik.
 
-## Baseline 48 akun dan lima akun tambahan
+## Baseline 48 akun dan enam akun tambahan
 
 - `docs/KODE AKUN.xlsx` memuat **48 akun baseline** dan **tidak boleh diubah**.
   Isinya identik dengan 48 baris pertama `KODE AKUN.csv`.
 - Lima akun yang disetujui 2026-10-30 — **5060, 5061, 5062, 4060, 4006** —
   ditambahkan pada DB-13 ke `KODE AKUN.csv` (baris 49–53) dan `src/db/coa.ts`,
   **bukan** ke xlsx.
-- Lima akun ini adalah **tambahan, bukan pengganti** akun lama. Akun lama
+- DB-13b menambahkan **5063 BEBAN BUNGA PINJAMAN** ke `KODE AKUN.csv` (baris
+  54) dan `src/db/coa.ts`, juga **bukan** ke xlsx. Akun ini adalah akun bunga
+  pinjaman LPD dan menjadi **default akun bunga untuk modul pinjaman LPD**
+  (DB-16) saat form pinjaman dibuat.
+- Enam akun di atas adalah **tambahan, bukan pengganti** akun lama. Akun lama
   `5010`, `5050`, `5004`, `4008`, `4041`, dan `4005` **tetap ada dan tetap
   aktif**. Namanya sengaja diberi pembeda agar operator tidak salah pilih.
-- DB-13b nanti menambahkan **5063** dengan cara yang sama.
+- **5050 BIAYA LAIN-LAIN tidak diganti dan tidak dinonaktifkan** oleh 5063.
+  5050 tetap dipakai untuk biaya lain-lain dan denda; 5063 khusus bunga
+  pinjaman agar terlihat terpisah di Laba Rugi.
 - Karena akun baru selalu ditambahkan di belakang CSV, xlsx tetap arsip 48 akun
   dan persamaan `COA = CSV + 2 ekstensi` tetap berlaku.
 
@@ -67,6 +74,7 @@ identik.
 | 5060 | PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL) | BEBAN | DEBIT | 5010 BAGA SUAR (TELPON, LISTRIK, PDAM) tetap ada |
 | 5061 | PENGELUARAN ARTOS (UPACARA) | BEBAN | DEBIT | 5050 BIAYA LAIN-LAIN tetap ada |
 | 5062 | PENGELUARAN BANTEN RUTIN (HARIAN) | BEBAN | DEBIT | 5004 BAGA UPAKARA tetap ada |
+| 5063 | BEBAN BUNGA PINJAMAN | BEBAN | DEBIT | 5050 BIAYA LAIN-LAIN tetap ada; default bunga pinjaman LPD (DB-16) |
 | 4060 | PENDAPATAN WEWEDALAN (UPACARA) | PENDAPATAN | KREDIT | 4008 PUNIA / 4041 SESARI tetap ada |
 | 4006 | PENDAPATAN PARKIR BPD (KHUSUS) | PENDAPATAN | KREDIT | 4005 PENDAPATAN PARKIR tetap ada |
 
@@ -74,21 +82,22 @@ identik.
 
 `tests/coa.test.ts` menegakkan:
 
-1. `KODE AKUN.csv` ada, berisi 53 baris, dan setiap kode+nama cocok persis
+1. `KODE AKUN.csv` ada, berisi 54 baris, dan setiap kode+nama cocok persis
    dengan COA.
 2. `docs/KODE AKUN.xlsx` ada, bisa dibaca dengan `exceljs`, berisi tepat 48
    akun, sama dengan 48 baris pertama CSV, dan setiap akunnya ada identik di COA.
 3. File xlsx tidak berubah: SHA-256 harus
    `c9a3f9f674f57ead20c1747bac25a16939f64acad6ea6aa6a9286fae4faae6b6`.
-4. COA tepat sama dengan 53 baris CSV + ekstensi sistem 1040/2060 = 55 akun;
+4. COA tepat sama dengan 54 baris CSV + ekstensi sistem 1040/2060 = 56 akun;
    tidak ada akun liar, dan ekstensi tidak boleh muncul di CSV.
 5. Tidak ada kode atau nama duplikat di COA maupun CSV.
-6. Lima akun DB-13 punya kode, nama, tipe, dan posisi normal yang benar; akun
-   lama yang mirip tidak di-rename atau dinonaktifkan.
-7. Setelah `openDb`/seed, kelima akun muncul di `listAkun` dan akun lama tetap
-   aktif.
-8. Dokumen ini tetap ada dan mencatat keputusan, angka 48/53/55, kode 1040,
-   2060, 5060, 5061, 5062, 4060, 4006, serta hash arsip.
+6. Lima akun DB-13 dan 5063 DB-13b punya kode, nama, tipe, dan posisi normal
+   yang benar; akun lama yang mirip tidak di-rename atau dinonaktifkan.
+7. Setelah `openDb`/seed, keenam akun muncul di `listAkun` dan akun lama tetap
+   aktif; 5063 juga tampil di form Bayar.
+8. Dokumen ini tetap ada dan mencatat keputusan, angka 48/54/56, kode 1040,
+   2060, 5060, 5061, 5062, 5063 BEBAN BUNGA PINJAMAN, 4060, 4006, serta hash
+   arsip.
 
 ## Cara mengubah dengan aman
 

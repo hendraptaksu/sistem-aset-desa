@@ -439,9 +439,9 @@ Ketentuan:
 3. `2050` tetap bernama “HUTANG LAIN-LAIN” karena nama resmi CSV tidak diubah
    pada tiket ini. Panduan pengguna harus menjelaskan bahwa 2050 dipakai untuk
    pinjaman/legacy dan 2060 untuk utang usaha.
-4. Tambahan akun 2060 adalah ekstensi sistem seperti 1040. Setelah DB-13,
-   `KODE AKUN.csv` berisi 53 baris (48 baseline + lima akun tambahan client),
-   sehingga COA = 53 + 2 ekstensi = 55 akun. Jika CSV diperbarui lagi, test COA
+4. Tambahan akun 2060 adalah ekstensi sistem seperti 1040. Setelah DB-13/DB-13b,
+   `KODE AKUN.csv` berisi 54 baris (48 baseline + enam akun tambahan client),
+   sehingga COA = 54 + 2 ekstensi = 56 akun. Jika CSV diperbarui lagi, test COA
    harus disesuaikan.
 
 ---

@@ -494,7 +494,7 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).not.toContain('3000 — MODAL');
   });
 
-  it('menampilkan lima akun baru DB-13 di form Terima/Bayar, akun lama tetap ada', () => {
+  it('menampilkan lima akun DB-13 dan 5063 DB-13b di form Terima/Bayar, akun lama tetap ada', () => {
     const terima = renderToStaticMarkup(
       createElement(FormTransaksiTerpandu, {
         jenis: 'TERIMA',
@@ -523,6 +523,7 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
       '5060 — PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)',
       '5061 — PENGELUARAN ARTOS (UPACARA)',
       '5062 — PENGELUARAN BANTEN RUTIN (HARIAN)',
+      '5063 — BEBAN BUNGA PINJAMAN',
     ]) {
       expect(bayar).toContain(label);
     }
