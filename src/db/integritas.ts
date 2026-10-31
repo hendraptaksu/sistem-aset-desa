@@ -14,10 +14,16 @@
 // - pasangan reversal (ganda, reversal atas reversal, grup beda, asli hilang);
 // - link panjar OPEN/CLOSED (jurnal open/close, tanggal close, item);
 // - validitas tipe/posisi_normal/aktif pada master akun.
+// DB-34 menambahkan:
+// - jenis jurnal wajib salah satu JENIS_JURNAL;
+// - baris reversal wajib cermin persis jurnal asli (akun, nominal, sisi tukar);
+// - kode akun 4 digit dan nama tidak kosong (legacy di luar trigger v15);
+// - baris jurnal tidak boleh negatif, dua sisi, atau tanpa sisi positif.
 // Pemeriksaan lampiran dan anggaran sengaja tidak ada karena tabel/modulnya
 // sudah dihapus (DB-33/DB-37/DB-24).
 
 import type Database from 'better-sqlite3';
+import { JENIS_JURNAL } from '../core/posting.js';
 import { AKUN_PANJAR, POSISI_NORMAL, type CoaTipe } from './coa.js';
 import { formatRp } from '../utils/format.js';
 import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
@@ -26,15 +32,22 @@ export type KodeTemuan =
   | 'JURNAL_TANPA_BARIS'
   | 'JURNAL_TIDAK_SEIMBANG'
   | 'JURNAL_KURANG_DUA_BARIS'
+  | 'JURNAL_JENIS_TIDAK_DIKENAL'
   | 'REVERSAL_GANDA'
   | 'REVERSAL_ATAS_REVERSAL'
   | 'REVERSAL_TANPA_ASLI'
   | 'REVERSAL_GRUP_BERBEDA'
+  | 'REVERSAL_BARIS_TIDAK_CERMIN'
   | 'AKUN_TIDAK_DIKENAL'
+  | 'AKUN_KODE_TIDAK_VALID'
+  | 'AKUN_NAMA_KOSONG'
   | 'AKUN_TIPE_TIDAK_VALID'
   | 'AKUN_POSISI_NORMAL_TIDAK_VALID'
   | 'AKUN_POSISI_NORMAL_TIDAK_COCOK'
   | 'AKUN_AKTIF_TIDAK_VALID'
+  | 'BARIS_DUA_SISI'
+  | 'BARIS_NILAI_NEGATIF'
+  | 'BARIS_TANPA_SISI'
   | 'BARIS_ORPHAN'
   | 'FOREIGN_KEY'
   | 'NOMOR_BUKTI_DUPLIKAT'
@@ -129,6 +142,40 @@ type ReversalGrupBerbeda = {
   grup_asal: string;
 };
 
+type JurnalJenisTidakDikenal = {
+  id: string;
+  tanggal: string;
+  no_bukti: string;
+  jenis: string;
+};
+
+type NilaiSisi = { debit: number; kredit: number };
+
+type ReversalBarisTidakCermin = {
+  reversal_id: string;
+  reversal_of: string;
+  akun_hilang: string[];
+  akun_ekstra: string[];
+  akun_nilai_beda: {
+    akun: string;
+    asli_debit: number;
+    asli_kredit: number;
+    balik_debit: number;
+    balik_kredit: number;
+  }[];
+  total_debit: number;
+  total_kredit: number;
+  alasan: string[];
+};
+
+type BarisJurnalTidakValid = {
+  baris_id: number;
+  jurnal_id: string;
+  akun_kode: string;
+  debit: number;
+  kredit: number;
+};
+
 type PanjarTidakKonsisten = {
   id: string;
   status: string;
@@ -214,6 +261,54 @@ const TIPE_DIKENAL = new Set<string>(DAFTAR_TIPE);
 /** Pesan daftar tipe valid agar operator/pendamping tahu nilai yang benar. */
 const TIPE_VALID_TEKS = DAFTAR_TIPE.join(', ');
 
+const JENIS_DIKENAL = new Set<string>(JENIS_JURNAL);
+
+/** Nama jenis resmi untuk pesan temuan. */
+const JENIS_VALID_TEKS = JENIS_JURNAL.join(', ');
+
+/**
+ * Pemeriksaan tabel opsional. Backup lama (v2/v3) belum tentu punya tabel
+ * panjar; bentuk panjar pra-v4 juga tidak punya kolom link jurnal. Audit tidak
+ * boleh gagal hanya karena tabel/kolom itu belum ada.
+ */
+function tabelAda(db: Database.Database, nama: string): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(nama),
+  );
+}
+
+function kolomTabel(db: Database.Database, nama: string): Set<string> {
+  return new Set(
+    (db.pragma(`table_info(${nama})`) as { name: string }[]).map((k) => k.name),
+  );
+}
+
+function punyaSemuaKolom(kolom: Set<string>, wajib: readonly string[]): boolean {
+  return wajib.every((k) => kolom.has(k));
+}
+
+/** Agregat debit/kredit per akun; baris ganda dijumlahkan agar tidak false positive. */
+function petaSisiJurnal(
+  db: Database.Database,
+  jurnalId: string,
+): Map<string, NilaiSisi> {
+  const rows = db
+    .prepare(
+      `SELECT akun_kode, SUM(debit) AS debit, SUM(kredit) AS kredit
+         FROM jurnal_baris
+        WHERE jurnal_id = ?
+        GROUP BY akun_kode
+        ORDER BY akun_kode`,
+    )
+    .all(jurnalId) as { akun_kode: string; debit: number; kredit: number }[];
+  return new Map(
+    rows.map((r) => [
+      r.akun_kode,
+      { debit: Number(r.debit), kredit: Number(r.kredit) },
+    ]),
+  );
+}
+
 /**
  * Audit integritas akuntansi tingkat DB.
  *
@@ -226,7 +321,8 @@ const TIPE_VALID_TEKS = DAFTAR_TIPE.join(', ');
  * 6. semua foreign key lolos `PRAGMA foreign_key_check`;
  * 7. nomor bukti unik per tahun (kosong diabaikan);
  * 8. pasangan reversal valid: satu reversal per jurnal asli, asli ada dan
- *    bukan reversal, `grup_id` sama;
+ *    bukan reversal, `grup_id` sama, dan baris cermin persis (akun/nominal
+ *    sama dengan debit/kredit tertukar, total seimbang, tidak kosong);
  * 9. status panjar konsisten dengan jurnal/tanggal close dan item-nya (OPEN
  *    tanpa close/item, CLOSED punya jurnal close/tanggal/item);
  * 10. DB-20: header `panjar` (tanggal, jumlah, akun_kas_sumber) sama dengan
@@ -236,7 +332,14 @@ const TIPE_VALID_TEKS = DAFTAR_TIPE.join(', ');
  * 12. DB-21: panjar yang dibatalkan punya jurnal balik REVERSAL yang valid,
  *     tanggal/alasan, tetap tersimpan OPEN, tanpa close/item; link batal
  *     yatim/duplikat dilaporkan;
- * 13. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
+ * 13. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1;
+ * 14. DB-34: `jurnal.jenis` wajib salah satu `JENIS_JURNAL`;
+ * 15. DB-34: baris `jurnal_baris` tidak negatif, tidak mengisi dua sisi, dan
+ *     punya tepat satu sisi positif;
+ * 16. DB-34: kode akun tepat 4 digit dan nama tidak kosong (legacy).
+ *
+ * Pemeriksaan tabel panjar dilewati dengan aman bila tabel/kolom belum ada
+ * (backup v2/v3 atau panjar bentuk pra-v4).
  *
  * Hasil selalu deterministik dan tidak mengubah database.
  */
@@ -304,6 +407,27 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     });
   }
 
+  // DB-34: trigger v14 menolak jenis di luar JENIS_JURNAL lewat aplikasi. Audit
+  // tetap memeriksa DB legacy/korupsi SQL langsung, termasuk saat trigger hilang.
+  const jenisTidakDikenal = (
+    db
+      .prepare(
+        `SELECT id, tanggal, no_bukti, jenis
+           FROM jurnal
+          ORDER BY tanggal, id`,
+      )
+      .all() as JurnalJenisTidakDikenal[]
+  ).filter((r) => !JENIS_DIKENAL.has(String(r.jenis)));
+  for (const r of jenisTidakDikenal) {
+    temuan.push({
+      kode: 'JURNAL_JENIS_TIDAK_DIKENAL',
+      pesan:
+        `Jurnal ${r.id} tanggal ${r.tanggal} memakai jenis "${String(r.jenis)}" ` +
+        `yang tidak dikenal; jenis harus salah satu ${JENIS_VALID_TEKS}.`,
+      detail: r,
+    });
+  }
+
   const akunAsing = db
     .prepare(
       `SELECT b.id AS baris_id, b.jurnal_id, b.akun_kode
@@ -340,6 +464,41 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         `yang tidak ada (baris yatim).`,
       detail: r,
     });
+  }
+
+  // DB-34: CHECK/trigger v9 mencegah nilai negatif dan dua sisi positif lewat
+  // aplikasi. Audit memeriksa legacy/korupsi SQL langsung. Setiap baris hanya
+  // menghasilkan satu kode agar diagnosis tidak berulang: negatif lebih dulu,
+  // lalu dua sisi, lalu tidak punya sisi positif.
+  const barisTidakValid = db
+    .prepare(
+      `SELECT id AS baris_id, jurnal_id, akun_kode, debit, kredit
+         FROM jurnal_baris
+        WHERE debit < 0 OR kredit < 0
+           OR (debit > 0 AND kredit > 0)
+           OR NOT (debit > 0 OR kredit > 0)
+        ORDER BY id`,
+    )
+    .all() as BarisJurnalTidakValid[];
+  for (const r of barisTidakValid) {
+    const debit = Number(r.debit);
+    const kredit = Number(r.kredit);
+    const negatif = debit < 0 || kredit < 0;
+    const duaSisi = debit > 0 && kredit > 0;
+    const kode = negatif
+      ? 'BARIS_NILAI_NEGATIF'
+      : duaSisi
+        ? 'BARIS_DUA_SISI'
+        : 'BARIS_TANPA_SISI';
+    const pesan = negatif
+      ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} punya nilai negatif ` +
+        `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); debit dan kredit wajib >= 0.`
+      : duaSisi
+        ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} mengisi debit dan kredit ` +
+          `sekaligus (${formatRp(debit)} dan ${formatRp(kredit)}); isi salah satu sisi saja.`
+        : `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} tidak punya sisi positif ` +
+          `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); isi tepat satu sisi.`;
+    temuan.push({ kode, pesan, detail: r });
   }
 
   const pelanggaranFk = db.pragma('foreign_key_check') as PelanggaranFk[];
@@ -457,18 +616,131 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     });
   }
 
+  // DB-34: reversal adalah satu-satunya jalur koreksi, jadi barisnya wajib
+  // cermin persis jurnal asli. Debit/kredit dipertukarkan, akun dan nominal
+  // sama, urutan bebas, dan baris ganda per akun dijumlahkan lebih dulu.
+  // Jurnal asli yang hilang sudah dilaporkan REVERSAL_TANPA_ASLI, jadi di sini
+  // hanya pasangan yang benar-benar ada yang dibandingkan.
+  const pasanganReversal = db
+    .prepare(
+      `SELECT r.id AS reversal_id, r.reversal_of AS reversal_of
+         FROM jurnal r
+         JOIN jurnal a ON a.id = r.reversal_of
+        WHERE r.reversal_of IS NOT NULL AND r.reversal_of <> ''
+        ORDER BY r.id`,
+    )
+    .all() as { reversal_id: string; reversal_of: string }[];
+  for (const pasangan of pasanganReversal) {
+    const asli = petaSisiJurnal(db, pasangan.reversal_of);
+    const balik = petaSisiJurnal(db, pasangan.reversal_id);
+    const alasan: string[] = [];
+    if (asli.size === 0) alasan.push('jurnal asli tidak punya baris');
+    if (balik.size === 0) alasan.push('jurnal balik tidak punya baris');
+
+    const akunHilang = [...asli.keys()].filter((akun) => !balik.has(akun)).sort();
+    const akunEkstra = [...balik.keys()].filter((akun) => !asli.has(akun)).sort();
+    if (akunHilang.length > 0)
+      alasan.push(`akun tidak ada di jurnal balik: ${akunHilang.join(', ')}`);
+    if (akunEkstra.length > 0)
+      alasan.push(`akun ekstra di jurnal balik: ${akunEkstra.join(', ')}`);
+
+    const akunNilaiBeda: ReversalBarisTidakCermin['akun_nilai_beda'] = [];
+    for (const akun of [...asli.keys()].filter((k) => balik.has(k)).sort()) {
+      const a = asli.get(akun)!;
+      const b = balik.get(akun)!;
+      if (b.debit !== a.kredit || b.kredit !== a.debit) {
+        akunNilaiBeda.push({
+          akun,
+          asli_debit: a.debit,
+          asli_kredit: a.kredit,
+          balik_debit: b.debit,
+          balik_kredit: b.kredit,
+        });
+      }
+    }
+    for (const beda of akunNilaiBeda) {
+      alasan.push(
+        `akun ${beda.akun}: asli D ${formatRp(beda.asli_debit)} / K ` +
+          `${formatRp(beda.asli_kredit)} vs balik D ${formatRp(beda.balik_debit)} / K ` +
+          `${formatRp(beda.balik_kredit)}`,
+      );
+    }
+
+    let totalDebit = 0;
+    let totalKredit = 0;
+    for (const nilai of balik.values()) {
+      totalDebit += nilai.debit;
+      totalKredit += nilai.kredit;
+    }
+    if (totalDebit !== totalKredit) {
+      alasan.push(
+        `total debit ${formatRp(totalDebit)} tidak sama dengan total kredit ` +
+          `${formatRp(totalKredit)}`,
+      );
+    }
+    if (alasan.length === 0) continue;
+
+    const detail: ReversalBarisTidakCermin = {
+      reversal_id: pasangan.reversal_id,
+      reversal_of: pasangan.reversal_of,
+      akun_hilang: akunHilang,
+      akun_ekstra: akunEkstra,
+      akun_nilai_beda: akunNilaiBeda,
+      total_debit: totalDebit,
+      total_kredit: totalKredit,
+      alasan,
+    };
+    temuan.push({
+      kode: 'REVERSAL_BARIS_TIDAK_CERMIN',
+      pesan:
+        `Jurnal balik ${pasangan.reversal_id} tidak mencerminkan jurnal asli ` +
+        `${pasangan.reversal_of}: ${alasan.join('; ')}.`,
+      detail,
+    });
+  }
+
   // DB-12: panjar masih dipakai (DB-18/19/20). Status OPEN wajib punya jurnal
   // serah dan belum punya penutup; CLOSED wajib punya jurnal close, tanggal,
   // dan minimal satu item pertanggungjawaban.
-  const panjarOpenTanpaJurnal = db
-    .prepare(
-      `SELECT id, status, jurnal_open_id, jurnal_close_id, tanggal_close
-         FROM panjar
-        WHERE status = 'OPEN'
-          AND (jurnal_open_id IS NULL OR jurnal_open_id = '')
-        ORDER BY id`,
-    )
-    .all() as PanjarTidakKonsisten[];
+  //
+  // DB-34: backup lama v2/v3 belum punya tabel panjar, dan panjar bentuk
+  // pra-v4 tidak punya kolom link jurnal. Pemeriksaan panjar dilewati bila
+  // tabel/kolom belum lengkap; tabel legacy tetap utuh dan tidak dianggap rusak.
+  const adaTabelPanjar = tabelAda(db, 'panjar');
+  const kolomPanjar = adaTabelPanjar ? kolomTabel(db, 'panjar') : new Set<string>();
+  const panjarV2 =
+    adaTabelPanjar &&
+    punyaSemuaKolom(kolomPanjar, [
+      'id',
+      'status',
+      'tanggal',
+      'jumlah',
+      'akun_kas_sumber',
+      'jurnal_open_id',
+      'jurnal_close_id',
+      'tanggal_close',
+    ]);
+  const panjarItemV2 =
+    tabelAda(db, 'panjar_item') &&
+    punyaSemuaKolom(kolomTabel(db, 'panjar_item'), [
+      'panjar_id',
+      'kategori_baga',
+      'nominal',
+      'jurnal_id',
+    ]);
+  const panjarLengkap = panjarV2 && panjarItemV2;
+
+  const panjarOpenTanpaJurnal = panjarV2
+    ? (db
+        .prepare(
+          `SELECT id, status, jurnal_open_id, jurnal_close_id, tanggal_close
+             FROM panjar
+            WHERE status = 'OPEN'
+              AND (jurnal_open_id IS NULL OR jurnal_open_id = '')
+            ORDER BY id`,
+        )
+        .all() as PanjarTidakKonsisten[])
+    : [];
   for (const r of panjarOpenTanpaJurnal) {
     temuan.push({
       kode: 'PANJAR_OPEN_TIDAK_LENGKAP',
@@ -477,20 +749,22 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     });
   }
 
-  const panjarClosed = db
-    .prepare(
-      `SELECT p.id, p.status, p.jurnal_close_id, p.tanggal_close,
-              COUNT(i.id) AS jumlah_item
-         FROM panjar p
-         LEFT JOIN panjar_item i ON i.panjar_id = p.id
-        WHERE p.status = 'CLOSED'
-        GROUP BY p.id
-       HAVING (p.jurnal_close_id IS NULL OR p.jurnal_close_id = '')
-           OR (p.tanggal_close IS NULL OR p.tanggal_close = '')
-           OR COUNT(i.id) = 0
-        ORDER BY p.id`,
-    )
-    .all() as PanjarClosedTidakLengkap[];
+  const panjarClosed = panjarLengkap
+    ? (db
+        .prepare(
+          `SELECT p.id, p.status, p.jurnal_close_id, p.tanggal_close,
+                  COUNT(i.id) AS jumlah_item
+             FROM panjar p
+             LEFT JOIN panjar_item i ON i.panjar_id = p.id
+            WHERE p.status = 'CLOSED'
+            GROUP BY p.id
+           HAVING (p.jurnal_close_id IS NULL OR p.jurnal_close_id = '')
+               OR (p.tanggal_close IS NULL OR p.tanggal_close = '')
+               OR COUNT(i.id) = 0
+            ORDER BY p.id`,
+        )
+        .all() as PanjarClosedTidakLengkap[])
+    : [];
   for (const r of panjarClosed) {
     const kosong: string[] = [];
     if (!r.jurnal_close_id) kosong.push('jurnal_close_id');
@@ -510,18 +784,20 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     });
   }
 
-  const panjarOpenDenganClose = db
-    .prepare(
-      `SELECT id, status, jurnal_open_id, jurnal_close_id, tanggal_close
-         FROM panjar
-        WHERE status = 'OPEN'
-          AND (
-            (jurnal_close_id IS NOT NULL AND jurnal_close_id <> '')
-            OR (tanggal_close IS NOT NULL AND tanggal_close <> '')
-          )
-        ORDER BY id`,
-    )
-    .all() as PanjarTidakKonsisten[];
+  const panjarOpenDenganClose = panjarV2
+    ? (db
+        .prepare(
+          `SELECT id, status, jurnal_open_id, jurnal_close_id, tanggal_close
+             FROM panjar
+            WHERE status = 'OPEN'
+              AND (
+                (jurnal_close_id IS NOT NULL AND jurnal_close_id <> '')
+                OR (tanggal_close IS NOT NULL AND tanggal_close <> '')
+              )
+            ORDER BY id`,
+        )
+        .all() as PanjarTidakKonsisten[])
+    : [];
   for (const r of panjarOpenDenganClose) {
     const bagian: string[] = [];
     if (r.jurnal_close_id) bagian.push(`jurnal close ${r.jurnal_close_id}`);
@@ -535,17 +811,19 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
 
   // DB-19: panjar OPEN belum boleh punya item pertanggungjawaban. Item hanya
   // ditulis saat close, jadi adanya item berarti drift/duplikasi data.
-  const panjarOpenDenganItem = db
-    .prepare(
-      `SELECT p.id, p.status, COUNT(i.id) AS jumlah_item
-         FROM panjar p
-         JOIN panjar_item i ON i.panjar_id = p.id
-        WHERE p.status = 'OPEN'
-        GROUP BY p.id
-       HAVING COUNT(i.id) > 0
-        ORDER BY p.id`,
-    )
-    .all() as PanjarOpenDenganItem[];
+  const panjarOpenDenganItem = panjarLengkap
+    ? (db
+        .prepare(
+          `SELECT p.id, p.status, COUNT(i.id) AS jumlah_item
+             FROM panjar p
+             JOIN panjar_item i ON i.panjar_id = p.id
+            WHERE p.status = 'OPEN'
+            GROUP BY p.id
+           HAVING COUNT(i.id) > 0
+            ORDER BY p.id`,
+        )
+        .all() as PanjarOpenDenganItem[])
+    : [];
   for (const r of panjarOpenDenganItem) {
     temuan.push({
       kode: 'PANJAR_OPEN_PUNYA_ITEM',
@@ -565,14 +843,11 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   // kolom v19 belum tentu ada di sana, bagian batal dilewati bila kolomnya
   // belum lengkap (bukan error); backup lama tetap bisa dipulihkan dan
   // migrasi v19 akan menambah kolom setelah restore.
-  const kolomPanjar = new Set(
-    (db.pragma('table_info(panjar)') as { name: string }[]).map((k) => k.name),
-  );
-  const adaKolomBatal = [
-    'jurnal_batal_id',
-    'tanggal_batal',
-    'alasan_batal',
-  ].every((k) => kolomPanjar.has(k));
+  const adaKolomBatal =
+    panjarLengkap &&
+    ['jurnal_batal_id', 'tanggal_batal', 'alasan_batal'].every((k) =>
+      kolomPanjar.has(k),
+    );
   const panjarBatal = adaKolomBatal
     ? (db
         .prepare(
@@ -661,8 +936,9 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   // Tanggal/jumlah/akun kas harus sama dengan jurnal open. Jurnal yang hilang
   // sudah dilaporkan lewat FK/PANJAR_OPEN_TIDAK_LENGKAP, jadi query ini hanya
   // memeriksa panjar yang tautan jurnal serahnya benar-benar ada.
-  const panjarHeader = db
-    .prepare(
+  const panjarHeader = panjarV2
+    ? (db
+        .prepare(
       `SELECT p.id, p.tanggal, p.jumlah, p.akun_kas_sumber, p.jurnal_open_id,
               j.tanggal AS tanggal_jurnal,
               COALESCE((
@@ -698,7 +974,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     debit_panjar: number;
     kredit_kas: number;
     akun_kredit: string | null;
-  }[];
+  }[])
+    : [];
   for (const r of panjarHeader) {
     const jumlah = Number(r.jumlah);
     const debitPanjar = Number(r.debit_panjar);
@@ -743,18 +1020,20 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   // debit BEBAN jurnal close. Memakai helper yang sama dengan closePanjarV2.
   // Kasus item kosong/jurnal kosong sudah dilaporkan oleh pemeriksaan di atas,
   // jadi di sini hanya panjar yang lengkap (menghindari temuan ganda).
-  const panjarClosedLengkap = db
-    .prepare(
-      `SELECT p.id, p.jurnal_close_id, COUNT(i.id) AS jumlah_item
-         FROM panjar p
-         JOIN panjar_item i ON i.panjar_id = p.id
-        WHERE p.status = 'CLOSED'
-          AND p.jurnal_close_id IS NOT NULL AND p.jurnal_close_id <> ''
-        GROUP BY p.id
-       HAVING COUNT(i.id) > 0
-        ORDER BY p.id`,
-    )
-    .all() as { id: string; jurnal_close_id: string; jumlah_item: number }[];
+  const panjarClosedLengkap = panjarLengkap
+    ? (db
+        .prepare(
+          `SELECT p.id, p.jurnal_close_id, COUNT(i.id) AS jumlah_item
+             FROM panjar p
+             JOIN panjar_item i ON i.panjar_id = p.id
+            WHERE p.status = 'CLOSED'
+              AND p.jurnal_close_id IS NOT NULL AND p.jurnal_close_id <> ''
+            GROUP BY p.id
+           HAVING COUNT(i.id) > 0
+            ORDER BY p.id`,
+        )
+        .all() as { id: string; jurnal_close_id: string; jumlah_item: number }[])
+    : [];
   for (const r of panjarClosedLengkap) {
     const hasil = rekonsiliasiPanjarTersimpan(db, r.id);
     if (!hasil || hasil.ok) continue;
@@ -793,6 +1072,24 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     )
     .all() as AkunTidakValid[];
   for (const a of daftarAkun) {
+    if (typeof a.kode !== 'string' || !/^[0-9]{4}$/.test(a.kode)) {
+      temuan.push({
+        kode: 'AKUN_KODE_TIDAK_VALID',
+        pesan:
+          `Akun "${String(a.kode)}" memiliki kode yang tidak valid; ` +
+          `kode akun harus tepat 4 digit angka.`,
+        detail: a,
+      });
+    }
+
+    if (typeof a.nama !== 'string' || a.nama.trim().length === 0) {
+      temuan.push({
+        kode: 'AKUN_NAMA_KOSONG',
+        pesan: `Akun ${String(a.kode)} memiliki nama kosong; nama akun wajib diisi.`,
+        detail: a,
+      });
+    }
+
     if (!TIPE_DIKENAL.has(a.tipe)) {
       temuan.push({
         kode: 'AKUN_TIPE_TIDAK_VALID',

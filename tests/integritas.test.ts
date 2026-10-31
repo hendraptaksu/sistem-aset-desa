@@ -465,11 +465,19 @@ describe('DB-12 — perluasan audit integritas', () => {
         jenis: 'REVERSAL',
         grupId: 'g-1',
         reversalOf: 'j-asli',
+        baris: [
+          ['4001', 1_000, 0],
+          ['1001', 0, 1_000],
+        ],
       });
       buatJurnalLengkap(db, 'j-balik-2', {
         jenis: 'REVERSAL',
         grupId: 'g-1',
         reversalOf: 'j-balik-1',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
       });
 
       const hasil = auditIntegritas(db);
@@ -491,6 +499,10 @@ describe('DB-12 — perluasan audit integritas', () => {
         jenis: 'REVERSAL',
         grupId: 'g-lain',
         reversalOf: 'j-asli',
+        baris: [
+          ['4001', 1_000, 0],
+          ['1001', 0, 1_000],
+        ],
       });
 
       const hasil = auditIntegritas(db);
@@ -1034,5 +1046,524 @@ describe('DB-21 — audit integritas pembatalan panjar', () => {
       expect(detail?.id).toBeTruthy();
       expect(detail?.alasan.join(' ')).toMatch(/status tersimpan|bukan REVERSAL/);
     });
+  });
+});
+
+describe('DB-34 — audit reversal, jenis jurnal, akun, dan baris', () => {
+
+  it('reversal yang benar dan baris terpecah/urutan berbeda lolos audit', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', {
+        grupId: 'g-asli',
+        baris: [
+          ['1001', 400, 0],
+          ['1001', 600, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [
+          ['1001', 0, 400],
+          ['4001', 1_000, 0],
+          ['1001', 0, 600],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(true);
+      expect(hasil.temuan).toEqual([]);
+    });
+  });
+
+  it('mendeteksi reversal dengan akun yang salah', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', {
+        grupId: 'g-asli',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [
+          ['4002', 1_000, 0],
+          ['1001', 0, 1_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_BARIS_TIDAK_CERMIN',
+        detail: {
+          reversal_id: 'j-balik',
+          reversal_of: 'j-asli',
+          akun_hilang: ['4001'],
+          akun_ekstra: ['4002'],
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/tidak mencerminkan jurnal asli/i);
+      expect(auditIntegritasDb(db)[0]).toMatch(/^REVERSAL_BARIS_TIDAK_CERMIN: /);
+    });
+  });
+
+  it('mendeteksi reversal dengan nominal yang salah', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', {
+        grupId: 'g-asli',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [
+          ['4001', 900, 0],
+          ['1001', 0, 900],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_BARIS_TIDAK_CERMIN',
+        detail: {
+          reversal_id: 'j-balik',
+          akun_hilang: [],
+          akun_ekstra: [],
+          akun_nilai_beda: [
+            {
+              akun: '1001',
+              asli_debit: 1_000,
+              asli_kredit: 0,
+              balik_debit: 0,
+              balik_kredit: 900,
+            },
+            {
+              akun: '4001',
+              asli_debit: 0,
+              asli_kredit: 1_000,
+              balik_debit: 900,
+              balik_kredit: 0,
+            },
+          ],
+          total_debit: 900,
+          total_kredit: 900,
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/akun 4001/i);
+    });
+  });
+
+  it('mendeteksi reversal dengan arah debit/kredit sama', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', {
+        grupId: 'g-asli',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_BARIS_TIDAK_CERMIN',
+        detail: { reversal_id: 'j-balik' },
+      });
+      expect(
+        (hasil.temuan[0]?.detail as { akun_nilai_beda: unknown[] }).akun_nilai_beda,
+      ).toHaveLength(2);
+    });
+  });
+
+  it('mendeteksi reversal yang kehilangan satu baris', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', {
+        grupId: 'g-asli',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [['4001', 1_000, 0]],
+      });
+
+      const hasil = auditIntegritas(db);
+      const kode = hasil.temuan.map((t) => t.kode);
+      const mirror = hasil.temuan.find((t) => t.kode === 'REVERSAL_BARIS_TIDAK_CERMIN');
+
+      expect(kode).toContain('REVERSAL_BARIS_TIDAK_CERMIN');
+      expect(mirror).toMatchObject({
+        detail: { akun_hilang: ['1001'], akun_ekstra: [] },
+      });
+      // Satu baris juga memicu pemeriksaan lama; kode mirror tetap spesifik.
+      expect(kode).toContain('JURNAL_KURANG_DUA_BARIS');
+      expect(kode).toContain('JURNAL_TIDAK_SEIMBANG');
+    });
+  });
+
+  it('mendeteksi reversal dengan baris akun ekstra', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', {
+        grupId: 'g-asli',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [
+          ['4001', 1_000, 0],
+          ['1001', 0, 1_000],
+          ['5001', 100, 0],
+          ['5002', 0, 100],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_BARIS_TIDAK_CERMIN',
+        detail: { akun_hilang: [], akun_ekstra: ['5001', '5002'] },
+      });
+    });
+  });
+
+  it('mendeteksi reversal tanpa baris sama sekali', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', { grupId: 'g-asli' });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [],
+      });
+
+      const hasil = auditIntegritas(db);
+      const kode = hasil.temuan.map((t) => t.kode);
+      const mirror = hasil.temuan.find((t) => t.kode === 'REVERSAL_BARIS_TIDAK_CERMIN');
+
+      expect(kode).toContain('REVERSAL_BARIS_TIDAK_CERMIN');
+      expect(kode).toContain('JURNAL_TANPA_BARIS');
+      expect(mirror).toMatchObject({
+        detail: { total_debit: 0, total_kredit: 0 },
+      });
+      expect(
+        (mirror?.detail as { alasan: string[] }).alasan.join(' '),
+      ).toMatch(/jurnal balik tidak punya baris/i);
+    });
+  });
+});
+
+describe('DB-34 — pasangan reversal dan jenis jurnal', () => {
+  /** Jurnal asli D 1001 / K 4001 dan reversal yang benar (D/K tertukar). */
+  function pasanganReversalBersih(db: Database.Database): void {
+    buatJurnalLengkap(db, 'j-asli', {
+      grupId: 'g-asli',
+      baris: [
+        ['1001', 1_000, 0],
+        ['4001', 0, 1_000],
+      ],
+    });
+    buatJurnalLengkap(db, 'j-balik', {
+      jenis: 'REVERSAL',
+      grupId: 'g-asli',
+      reversalOf: 'j-asli',
+      baris: [
+        ['4001', 1_000, 0],
+        ['1001', 0, 1_000],
+      ],
+    });
+  }
+
+  it('menerima pasangan reversal normal tanpa temuan', () => {
+    denganDb((db) => {
+      pasanganReversalBersih(db);
+      expect(auditIntegritas(db).temuan).toEqual([]);
+      expect(auditIntegritas(db).ok).toBe(true);
+    });
+  });
+
+  it('mendeteksi jurnal asli yang ternyata reversal', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', { grupId: 'g-1' });
+      buatJurnalLengkap(db, 'j-balik-1', {
+        jenis: 'REVERSAL',
+        grupId: 'g-1',
+        reversalOf: 'j-asli',
+        baris: [
+          ['4001', 1_000, 0],
+          ['1001', 0, 1_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-balik-2', {
+        jenis: 'REVERSAL',
+        grupId: 'g-1',
+        reversalOf: 'j-balik-1',
+        baris: [
+          ['1001', 1_000, 0],
+          ['4001', 0, 1_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_ATAS_REVERSAL',
+        detail: { reversal_id: 'j-balik-2', reversal_of: 'j-balik-1' },
+      });
+    });
+  });
+
+  it('mendeteksi dua reversal untuk jurnal asli yang sama', () => {
+    denganDb((db) => {
+      db.exec('DROP INDEX IF EXISTS ux_jurnal_reversal');
+      pasanganReversalBersih(db);
+      buatJurnalLengkap(db, 'j-balik-2', {
+        jenis: 'REVERSAL',
+        grupId: 'g-asli',
+        reversalOf: 'j-asli',
+        baris: [
+          ['4001', 1_000, 0],
+          ['1001', 0, 1_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_GANDA',
+        detail: { reversal_of: 'j-asli', jumlah: 2 },
+      });
+    });
+  });
+
+  it('mendeteksi grup reversal yang berbeda dari jurnal asli', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-asli', { grupId: 'g-asli' });
+      buatJurnalLengkap(db, 'j-balik', {
+        jenis: 'REVERSAL',
+        grupId: 'g-lain',
+        reversalOf: 'j-asli',
+        baris: [
+          ['4001', 1_000, 0],
+          ['1001', 0, 1_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'REVERSAL_GRUP_BERBEDA',
+        detail: { grup_reversal: 'g-lain', grup_asal: 'g-asli' },
+      });
+    });
+  });
+
+  it('mendeteksi jenis jurnal di luar JENIS_JURNAL saat trigger hilang', () => {
+    denganDb((db) => {
+      db.exec('DROP TRIGGER IF EXISTS trg_jurnal_validasi_insert');
+      buatJurnalLengkap(db, 'j-jenis-liar', { jenis: 'LUAR_DAFTAR' });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'JURNAL_JENIS_TIDAK_DIKENAL',
+        detail: { id: 'j-jenis-liar', jenis: 'LUAR_DAFTAR' },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/jenis.*tidak dikenal/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/UMUM/);
+    });
+  });
+});
+
+describe('DB-34 — akun legacy, baris rusak, dan tabel opsional', () => {
+  /** Drop trigger + CHECK sementara untuk mensimulasikan baris legacy/korup. */
+  function tanpaCheckBaris(db: Database.Database, fn: () => void): void {
+    db.exec(`
+      DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
+      DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
+    `);
+    db.pragma('ignore_check_constraints = ON');
+    try {
+      fn();
+    } finally {
+      db.pragma('ignore_check_constraints = OFF');
+    }
+  }
+
+  it('mendeteksi kode akun bukan 4 digit dan nama kosong pada data legacy', () => {
+    denganDb((db) => {
+      db.exec(`
+        DROP TRIGGER IF EXISTS trg_akun_validasi_insert;
+        DROP TRIGGER IF EXISTS trg_akun_validasi_update;
+      `);
+      db.prepare(
+        `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
+         VALUES ('12', 'Akun Kode Pendek', 'AKTIVA', 'DEBIT', 1)`,
+      ).run();
+      db.prepare("UPDATE akun SET nama = '   ' WHERE kode = '4004'").run();
+
+      const hasil = auditIntegritas(db);
+      const kode = hasil.temuan.map((t) => t.kode);
+
+      expect(hasil.ok).toBe(false);
+      expect(kode).toContain('AKUN_KODE_TIDAK_VALID');
+      expect(kode).toContain('AKUN_NAMA_KOSONG');
+      expect(
+        hasil.temuan.find((t) => t.kode === 'AKUN_KODE_TIDAK_VALID')?.pesan,
+      ).toMatch(/tepat 4 digit/i);
+      expect(hasil.temuan.find((t) => t.kode === 'AKUN_NAMA_KOSONG')?.pesan).toMatch(
+        /nama kosong/i,
+      );
+    });
+  });
+
+  it('mendeteksi baris jurnal yang mengisi debit dan kredit sekaligus', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-dua-sisi');
+      tanpaCheckBaris(db, () => buatBaris(db, 'j-dua-sisi', '5001', 100, 100));
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'BARIS_DUA_SISI',
+        detail: { jurnal_id: 'j-dua-sisi', akun_kode: '5001' },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/debit dan kredit sekaligus/i);
+    });
+  });
+
+  it('mendeteksi baris jurnal dengan nilai negatif', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-negatif');
+      tanpaCheckBaris(db, () => buatBaris(db, 'j-negatif', '5001', -100, -100));
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'BARIS_NILAI_NEGATIF',
+        detail: { jurnal_id: 'j-negatif', akun_kode: '5001', debit: -100, kredit: -100 },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/nilai negatif/i);
+    });
+  });
+
+  it('mendeteksi baris jurnal yang tidak punya sisi positif', () => {
+    denganDb((db) => {
+      buatJurnalLengkap(db, 'j-tanpa-sisi');
+      tanpaCheckBaris(db, () => buatBaris(db, 'j-tanpa-sisi', '5001', 0, 0));
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'BARIS_TANPA_SISI',
+        detail: { jurnal_id: 'j-tanpa-sisi', akun_kode: '5001', debit: 0, kredit: 0 },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/tidak punya sisi positif/i);
+    });
+  });
+
+  it('tidak crash bila tabel panjar belum ada (backup v2/v3)', () => {
+    denganDb((db) => {
+      db.exec(`
+        DROP TABLE panjar_item;
+        DROP TABLE panjar;
+      `);
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(true);
+      expect(hasil.temuan).toEqual([]);
+    });
+  });
+
+  it('tidak crash pada bentuk panjar pra-v4 tanpa kolom link jurnal', () => {
+    denganDb((db) => {
+      db.exec(`
+        DROP TABLE panjar_item;
+        DROP TABLE panjar;
+        CREATE TABLE panjar (
+          id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, penerima TEXT NOT NULL,
+          jumlah INTEGER NOT NULL, akun_kas_sumber TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'OPEN'
+        );
+        CREATE TABLE panjar_item (
+          panjar_id TEXT NOT NULL, kategori_baga TEXT NOT NULL, nominal INTEGER NOT NULL
+        );
+        INSERT INTO panjar
+          (id, tanggal, penerima, jumlah, akun_kas_sumber, status)
+        VALUES ('p-lama', '2025-01-01', 'Lama', 100, '1001', 'OPEN');
+        INSERT INTO panjar_item (panjar_id, kategori_baga, nominal)
+        VALUES ('p-lama', '5004', 50);
+      `);
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(true);
+      expect(hasil.temuan).toEqual([]);
+    });
+  });
+
+  it('tidak lagi mereferensikan tabel modul yang dihapus DB-33', () => {
+    const sumber = baca('src/db/integritas.ts');
+    const tabelDihapus = [
+      'pihak',
+      'jurnal_pihak',
+      'aset',
+      'anggaran',
+      'rekonsiliasi_bank',
+      'lampiran_jurnal',
+    ].join('|');
+    expect(sumber).not.toMatch(new RegExp(`\\b(?:FROM|JOIN)\\s+(?:${tabelDihapus})\\b`, 'i'));
   });
 });

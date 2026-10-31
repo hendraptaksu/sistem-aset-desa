@@ -2,9 +2,9 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-31 (setelah DB-21):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **850 test / 69 file hijau**; `npm run build`
-> berhasil. Baseline DB-20 adalah 832/67. Baseline DB-19 adalah 822/66.
+> **Baseline terakhir 2026-11-01 (setelah DB-34):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **869 test / 69 file hijau**; `npm run build`
+> berhasil. Baseline DB-21 adalah 850/69. Baseline DB-20 adalah 832/67.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
 > relevan. Verifikasi ulang sebelum mulai.
@@ -117,7 +117,7 @@
 | DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
 | DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [x] |
 | DB-33 | P0 | M | Migrasi v12: drop tabel yang disetujui + guard/backup | DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37 | [x] |
-| DB-34 | P1 | S | Audit integritas: reversal, tipe akun, tabel opsional | DB-33 | [ ] |
+| DB-34 | P1 | S | Audit integritas: reversal, tipe akun, tabel opsional | DB-33 | [x] |
 | DB-35 | P0 | S | Baseline dokumen/test hijau | — | [x] |
 | DB-36 | P1 | S | LPD: pembayaran link-only, tanpa duplikasi nominal | DB-16b | [x] |
 | DB-37 | P1 | M | Hapus modul Lampiran (UI/API/backup/test) | DB-02 | [x] |
@@ -1450,7 +1450,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     `npm test` **683 test/55 file hijau**, dan `npm run build` berhasil.
   - **Dependency:** DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37.
 
-- [ ] **DB-34 — Audit integritas: reversal, tipe akun, tabel opsional** · P1 · S
+- [x] **DB-34 — Audit integritas: reversal, tipe akun, tabel opsional** · P1 · S
   - **Konteks:** `auditIntegritas()` belum memeriksa pasangan reversal dan
     validitas tipe/posisi akun. Reversal adalah satu-satunya jalur koreksi.
   - **Langkah:**
@@ -1468,6 +1468,24 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
   - **Test:** `tests/integritas.test.ts`.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** DB-33.
+  - **Bukti 2026-11-01:** `auditIntegritas()` diperluas tanpa modul audit
+    kedua dan tanpa perubahan skema/versi. Setiap `reversal_of` non-kosong
+    kini diperiksa cermin barisnya: akun sama, debit/kredit tertukar, nominal
+    sama, baris ganda dijumlahkan per akun/sisi, total debit = kredit, dan
+    tidak kosong → `REVERSAL_BARIS_TIDAK_CERMIN` (pemeriksaan lama
+    `REVERSAL_GANDA`/`ATAS_REVERSAL`/`TANPA_ASLI`/`GRUP_BERBEDA` tetap).
+    `jurnal.jenis` di luar `JENIS_JURNAL` → `JURNAL_JENIS_TIDAK_DIKENAL`;
+    kode akun bukan tepat 4 digit → `AKUN_KODE_TIDAK_VALID`; nama kosong →
+    `AKUN_NAMA_KOSONG`; baris jurnal negatif/dua sisi/tanpa sisi positif →
+    `BARIS_NILAI_NEGATIF`/`BARIS_DUA_SISI`/`BARIS_TANPA_SISI` (satu kode per
+    baris). Pemeriksaan panjar dilewati aman bila tabel belum ada (backup
+    v2/v3) atau bentuk panjar pra-v4 tidak punya kolom link jurnal; guard
+    kolom batal v19 dipertahankan. Tidak ada referensi ke tabel yang dihapus
+    DB-33. `tests/integritas.test.ts` menambah 19 test (korupsi reversal,
+    jenis, akun legacy, baris, tabel opsional, wrapper string) dan
+    menyesuaikan fixture DB-12 agar reversal memakai baris cermin.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads`
+    **869 test/69 file hijau**; `npm run build` berhasil.
 
 - [x] **DB-36 — LPD: pembayaran link-only, tanpa duplikasi nominal** · P1 · S
   - **Digabung ke DB-16b (2026-10-30):** desain `pinjaman_bayar` sekarang
