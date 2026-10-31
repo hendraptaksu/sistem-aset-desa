@@ -18,6 +18,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DDL, openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import {
+  batalPanjarV2,
   closePanjarV2,
   getPanjar,
   listPanjarItemsV2,
@@ -1016,5 +1017,212 @@ describe('DB-19 — rekonsiliasi item panjar vs jurnal close', () => {
         selisih: RP(50_000),
       },
     ]);
+  });
+});
+
+describe('DB-21 — pembatalan panjar OPEN', () => {
+  it('menampilkan filter Dibatalkan dan penjelasan tombol Batalkan', () => {
+    const html = renderToStaticMarkup(createElement(PanjarTab));
+    expect(html).toContain('Dibatalkan');
+    expect(html).toContain('DIBATALKAN');
+    expect(html).toContain('Batalkan');
+    expect(html).toContain('alasan minimal 5 karakter');
+    expect(html).toContain('jurnal serah asli tidak dihapus');
+  });
+
+  it('membatalkan OPEN: reversal D kas/K 1040, saldo pulih, jurnal asli utuh', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const barisSebelum = listBarisJurnal(db);
+      expect(saldoAkun(barisSebelum, '1040')).toBe(RP(1_000_000));
+      expect(totalKas(barisSebelum, KAS_KODES)).toBe(RP(9_000_000));
+      const jurnalAsli = getJurnal(db, 'j-p1');
+      const detailAsli = listJurnalBaris(db, 'j-p1');
+      const jumlahJurnalSebelum = listJurnal(db).length;
+      const auditOpen = listAuditLog(db, { aksi: 'PANJAR-OPEN' }).length;
+
+      const hasil = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Salah serah ke panitia lain',
+        jurnalId: 'j-batal-p1',
+        tanggalBatal: '2026-02-02',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.panjar).toMatchObject({
+        id: 'p1',
+        status: 'DIBATALKAN',
+        jurnal_open_id: 'j-p1',
+        jurnal_close_id: null,
+        jurnal_batal_id: 'j-batal-p1',
+        tanggal_batal: '2026-02-02',
+        alasan_batal: 'Salah serah ke panitia lain',
+      });
+      expect(hasil.jurnal).toMatchObject({
+        id: 'j-batal-p1',
+        jenis: 'REVERSAL',
+        grup_id: 'j-p1',
+        reversal_of: 'j-p1',
+        tanggal: '2026-02-02',
+      });
+      expect(hasil.jurnal?.keterangan).toMatch(/^KOREKSI: /);
+
+      // Reversal menukar debit/kredit jurnal serah: D kas sumber / K 1040.
+      expect(ringkasBaris('j-batal-p1', db)).toEqual([
+        { akun: '1040', debit: 0, kredit: RP(1_000_000) },
+        { akun: '1001', debit: RP(1_000_000), kredit: 0 },
+      ]);
+
+      const baris = listBarisJurnal(db);
+      expect(saldoAkun(baris, '1040')).toBe(0);
+      expect(saldoAkun(baris, '1001')).toBe(RP(10_000_000));
+      expect(totalKas(baris, KAS_KODES)).toBe(RP(10_000_000));
+      expect(neracaSaldo(baris).selisih).toBe(0);
+
+      // Jurnal asli tidak diubah/dihapus.
+      expect(getJurnal(db, 'j-p1')).toEqual(jurnalAsli);
+      expect(listJurnalBaris(db, 'j-p1')).toEqual(detailAsli);
+      expect(listJurnal(db)).toHaveLength(jumlahJurnalSebelum + 1);
+      expect(listJurnal(db).map((j) => j.id)).toContain('j-p1');
+
+      // Status publik: hilang dari OPEN/CLOSED, muncul di filter DIBATALKAN.
+      expect(listPanjarV2(db, 'OPEN')).toEqual([]);
+      expect(listPanjarV2(db, 'CLOSED')).toEqual([]);
+      expect(listPanjarV2(db, 'DIBATALKAN')).toHaveLength(1);
+      expect(listPanjarV2(db)[0]).toMatchObject({
+        status: 'DIBATALKAN',
+        jurnal_batal_id: 'j-batal-p1',
+      });
+
+      // Audit tetap punya jejak open, ditambah satu baris PANJAR-BATAL.
+      const auditBatal = listAuditLog(db, { aksi: 'PANJAR-BATAL' });
+      expect(auditBatal).toHaveLength(1);
+      expect(auditBatal[0]).toMatchObject({
+        aksi: 'PANJAR-BATAL p1',
+        alasan: 'Salah serah ke panitia lain',
+      });
+      expect(auditBatal[0]?.data_baru_json).toContain('jurnal_batal_id');
+      expect(listAuditLog(db, { aksi: 'PANJAR-OPEN' })).toHaveLength(auditOpen);
+      expect(listAuditLog(db, { aksi: 'PANJAR-CLOSE' })).toHaveLength(0);
+      expect(auditIntegritas(db).temuan).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak close, close ganda, dan pembatalan ganda setelah dibatalkan', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      expect(
+        batalPanjarV2(db, {
+          id: 'p1',
+          alasan: 'Salah serah ke panitia lain',
+          jurnalId: 'j-batal-p1',
+        }).tersimpan,
+      ).toBe(true);
+      const jumlahJurnal = listJurnal(db).length;
+
+      const close = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-03-01',
+        items: [{ kategori_baga: '5004', nominal: RP(100_000) }],
+      });
+      expect(close.tersimpan).toBe(false);
+      expect(close.errors.join(' ')).toMatch(/sudah dibatalkan/i);
+
+      const batalLagi = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Coba batalkan dua kali',
+        jurnalId: 'j-batal-p1-lagi',
+      });
+      expect(batalLagi.tersimpan).toBe(false);
+      expect(batalLagi.errors.join(' ')).toMatch(/sudah dibatalkan/i);
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(listPanjarItemsV2(db, 'p1')).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak panjar CLOSED dan tidak menulis jurnal/audit', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      expect(
+        closePanjarV2(db, {
+          id: 'p1',
+          tanggalClose: '2026-03-01',
+          items: [{ kategori_baga: '5004', nominal: RP(1_000_000) }],
+        }).tersimpan,
+      ).toBe(true);
+      const jumlahJurnal = listJurnal(db).length;
+      const auditSebelum = listAuditLog(db).length;
+
+      const hasil = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Salah serah setelah ditutup',
+        jurnalId: 'j-batal-p1',
+      });
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/CLOSED|sudah dipertanggungjawabkan/i);
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+      expect(getPanjar(db, 'p1')?.status).toBe('CLOSED');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mewajibkan alasan >= 5 karakter dan menolak id kosong/tidak ada', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const jumlahJurnal = listJurnal(db).length;
+
+      for (const alasan of ['', '   ', 'sala']) {
+        const hasil = batalPanjarV2(db, {
+          id: 'p1',
+          alasan,
+          jurnalId: 'j-batal-p1',
+        });
+        expect(hasil.tersimpan, alasan).toBe(false);
+        expect(hasil.errors.join(' ')).toMatch(/alasan.*minimal 5/i);
+      }
+      expect(batalPanjarV2(db, { id: '', alasan: 'Salah serah' }).tersimpan).toBe(
+        false,
+      );
+      expect(
+        batalPanjarV2(db, { id: 'tidak-ada', alasan: 'Salah serah' }).errors.join(' '),
+      ).toMatch(/tidak ditemukan/i);
+
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
+      expect(listAuditLog(db, { aksi: 'PANJAR-BATAL' })).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('migrasi/link batal lama tetap dibaca sebagai DIBATALKAN', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      expect(
+        batalPanjarV2(db, {
+          id: 'p1',
+          alasan: 'Salah serah ke panitia lain',
+          jurnalId: 'j-batal-p1',
+        }).tersimpan,
+      ).toBe(true);
+      // Simulasi DB lama: link sudah ada, kolom status tetap OPEN.
+      db.prepare("UPDATE panjar SET status = 'OPEN' WHERE id = 'p1'").run();
+      expect(getPanjar(db, 'p1')).toMatchObject({
+        status: 'DIBATALKAN',
+        jurnal_batal_id: 'j-batal-p1',
+      });
+    } finally {
+      db.close();
+    }
   });
 });

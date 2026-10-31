@@ -73,8 +73,8 @@ describe('DB-18 — migrasi v17 detail nota panjar', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(18);
-      expect(versi(db)).toBe(18);
+      expect(SCHEMA_VERSION).toBe(19);
+      expect(versi(db)).toBe(19);
       expect(kolomPanjarItem(db)).toEqual(
         expect.arrayContaining([
           'nota_nomor',
@@ -119,7 +119,7 @@ describe('DB-18 — migrasi v17 detail nota panjar', () => {
 
     db = openDb(path);
     try {
-      expect(versi(db)).toBe(18);
+      expect(versi(db)).toBe(19);
       const items = listPanjarItemsV2(db, 'p-lama');
       expect(items).toHaveLength(2);
       expect(items[0]).toMatchObject({
@@ -142,7 +142,7 @@ describe('DB-18 — migrasi v17 detail nota panjar', () => {
     // DB baru langsung memakai DDL current: default kolom tetap string kosong.
     const baru = openDb(':memory:');
     try {
-      expect(versi(baru)).toBe(18);
+      expect(versi(baru)).toBe(19);
       const info = baru.pragma('table_info(panjar_item)') as {
         name: string;
         dflt_value: string | null;

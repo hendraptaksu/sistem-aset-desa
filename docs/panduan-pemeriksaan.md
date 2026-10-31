@@ -92,7 +92,8 @@ Yang diperiksa:
 Akun yang paling sering diperiksa:
 
 - `1001 KAS`, akun LPD (1010–1036), dan `1029 BANK BPD UBUD`.
-- `1040 UANG PANJAR` — harus nol bila semua panjar sudah ditutup.
+- `1040 UANG PANJAR` — harus nol bila semua panjar sudah ditutup **atau
+  dibatalkan**.
 - `2050 HUTANG LAIN-LAIN` (pinjaman/legacy) dan `2060 HUTANG USAHA` — cocokkan
   dengan Buku Besar dan Neraca. Nama kreditur ada di keterangan jurnal, bukan di
   daftar pihak. Pembayaran `2060` masuk Arus Kas Operasi; `2050` tetap
@@ -231,9 +232,14 @@ Aturan penting:
 - Reversal ganda atas jurnal yang sama ditolak.
 - Reversal atas jurnal reversal ditolak.
 - Jurnal yang terhubung ke dokumen panjar (`jurnal_open_id`/`jurnal_close_id`)
-  tidak boleh direversal dari Jurnal Umum. Koreksi panjar belum lewat Jurnal
-  Umum; gunakan modul **Panjar** agar status dokumen tidak basi. Alur
-  **Batalkan panjar** masih backlog (belum tersedia).
+  tidak boleh direversal dari Jurnal Umum. Gunakan modul **Panjar**: tombol
+  **Batalkan** untuk panjar OPEN yang salah serah (membuat jurnal balik
+  `D kas / K 1040`, wajib alasan, status menjadi DIBATALKAN), atau alur
+  pertanggungjawaban untuk panjar yang benar. Panjar CLOSED belum bisa
+  dibatalkan lewat DB-21.
+- Panjar yang dibatalkan tetap menyimpan jurnal serah asli dan jurnal balik;
+  tidak ada jurnal yang dihapus. Audit `PANJAR-BATAL` mencatat alasan dan link
+  `jurnal_batal_id`.
 - Koreksi di periode yang sudah ditutup wajib alasan dan tercatat di audit.
 - Koreksi setelah tutup buku tidak boleh membuat Neraca selisih.
 
@@ -276,8 +282,8 @@ Buka **Pengaturan → Riwayat Audit**.
 - Filter berdasarkan aksi, tanggal, dan jumlah baris per halaman.
 - Klik **Lihat** untuk melihat data sebelum/sesudah.
 - Aksi penting yang harus muncul: pembuatan jurnal, `REVERSAL`,
-  `KOREKSI-ISI-ULANG`, `TUTUP`/`TUTUP-ULANG`, `SALDO-AWAL`, `PANJAR`,
-  `BACKUP`/`RESTORE`, dan perubahan `PENGATURAN`.
+  `KOREKSI-ISI-ULANG`, `TUTUP`/`TUTUP-ULANG`, `SALDO-AWAL`, `PANJAR`/
+  `PANJAR-BATAL`, `BACKUP`/`RESTORE`, dan perubahan `PENGATURAN`.
 - Audit tidak pernah menyimpan PIN, salt, atau hash PIN.
 
 Gunakan audit untuk menjawab: siapa/apa yang berubah, kapan, dan dengan alasan

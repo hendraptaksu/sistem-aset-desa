@@ -797,11 +797,19 @@ export async function panjarToWorkbook(
       p.penerima,
       namaPanjar(coa, p.akun_kas_sumber),
       null,
-      p.status === 'OPEN' ? 'Belum' : 'Sudah',
+      p.status === 'OPEN'
+        ? 'Belum'
+        : p.status === 'CLOSED'
+          ? 'Sudah'
+          : 'DIBATALKAN',
       null,
       null,
       null,
-      p.status === 'CLOSED' ? `Ditutup ${p.tanggal_close ? formatTanggal(p.tanggal_close) : ''}`.trim() : 'Masih terbuka',
+      p.status === 'CLOSED'
+        ? `Ditutup ${p.tanggal_close ? formatTanggal(p.tanggal_close) : ''}`.trim()
+        : p.status === 'DIBATALKAN'
+          ? `Dibatalkan ${p.tanggal_batal ? formatTanggal(p.tanggal_batal) : ''}`.trim()
+          : 'Masih terbuka',
     ]);
     selRp(row, 4, p.jumlah);
     selRp(row, 6, realisasi);
@@ -1203,7 +1211,9 @@ export function panjarToHtml(
         p.total_realisasi ?? (p.items ?? []).reduce((s, it) => s + it.nominal, 0);
       const sisa = p.sisa ?? Math.max(0, p.jumlah - realisasi);
       const kurang = p.kurang ?? Math.max(0, realisasi - p.jumlah);
-      return `<tr><td>${formatTanggal(p.tanggal)}</td><td>${esc(p.penerima)}</td><td>${esc(namaPanjar(coa, p.akun_kas_sumber))}</td><td style="text-align:right">${formatRp(p.jumlah)}</td><td>${p.status === 'OPEN' ? 'Belum' : 'Sudah'}</td><td style="text-align:right">${formatRp(realisasi)}</td><td style="text-align:right">${formatRp(sisa)}</td><td style="text-align:right">${formatRp(kurang)}</td></tr>`;
+      const status =
+        p.status === 'OPEN' ? 'Belum' : p.status === 'CLOSED' ? 'Sudah' : 'DIBATALKAN';
+      return `<tr><td>${formatTanggal(p.tanggal)}</td><td>${esc(p.penerima)}</td><td>${esc(namaPanjar(coa, p.akun_kas_sumber))}</td><td style="text-align:right">${formatRp(p.jumlah)}</td><td>${status}</td><td style="text-align:right">${formatRp(realisasi)}</td><td style="text-align:right">${formatRp(sisa)}</td><td style="text-align:right">${formatRp(kurang)}</td></tr>`;
     })
     .join('');
   const totalJumlah = daftar.reduce((s, p) => s + p.jumlah, 0);

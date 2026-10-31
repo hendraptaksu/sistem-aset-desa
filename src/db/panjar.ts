@@ -33,10 +33,11 @@ import {
   type HasilValidasiJurnal,
   type JurnalInput,
 } from '../core/posting.js';
+import { rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, Panjar, PanjarItem } from '../core/types.js';
 import { formatRp } from '../utils/format.js';
 import { isAkunKasData } from './coa.js';
-import { getAkun, listAkun } from './repository.js';
+import { getAkun, getJurnalDetail, listAkun, listJurnal } from './repository.js';
 import { postingJurnal } from './posting.js';
 import { rekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
 import type { HasilRekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
@@ -98,6 +99,20 @@ export type ClosePanjarInput = {
   jurnalId?: string;
 };
 
+export type BatalPanjarInput = {
+  id: string;
+  /** Wajib >= 5 karakter; disimpan di `alasan_batal` dan audit. */
+  alasan: string;
+  /** Tanggal jurnal balik; default tanggal jurnal serah agar satu periode. */
+  tanggalBatal?: string;
+  /** ID jurnal balik; opsional (dibuat otomatis, berguna untuk test). */
+  jurnalId?: string;
+  /** Operator sudah menyetujui peringatan posting (mis. kas minus). */
+  konfirmasiPeringatan?: boolean;
+};
+
+export type StatusPanjar = 'OPEN' | 'CLOSED' | 'DIBATALKAN';
+
 export type HasilPanjar = HasilValidasiJurnal & {
   tersimpan: boolean;
   panjar?: Panjar;
@@ -144,7 +159,19 @@ type RowPanjar = Record<string, unknown>;
 
 function rowToPanjar(r: RowPanjar, totalRealisasi: number): Panjar {
   const jumlah = Number(r.jumlah);
-  const status = String(r.status) === 'CLOSED' ? 'CLOSED' : 'OPEN';
+  const jurnalBatalId =
+    r.jurnal_batal_id === null || r.jurnal_batal_id === undefined
+      ? null
+      : String(r.jurnal_batal_id);
+  // Status publik diturunkan: kolom `status` sengaja tetap OPEN/CLOSED agar
+  // CHECK lama tidak perlu rebuild tabel. Baris yang punya jurnal batal
+  // ditampilkan DIBATALKAN.
+  const status: Panjar['status'] =
+    jurnalBatalId !== null && jurnalBatalId !== ''
+      ? 'DIBATALKAN'
+      : String(r.status) === 'CLOSED'
+        ? 'CLOSED'
+        : 'OPEN';
   const p: Panjar = {
     id: String(r.id),
     tanggal: String(r.tanggal),
@@ -159,6 +186,11 @@ function rowToPanjar(r: RowPanjar, totalRealisasi: number): Panjar {
     jurnal_close_id: r.jurnal_close_id === null || r.jurnal_close_id === undefined
       ? null
       : String(r.jurnal_close_id),
+    jurnal_batal_id: jurnalBatalId,
+    tanggal_batal: r.tanggal_batal === null || r.tanggal_batal === undefined
+      ? null
+      : String(r.tanggal_batal),
+    alasan_batal: String(r.alasan_batal ?? ''),
     created_at: String(r.created_at ?? ''),
     total_realisasi: totalRealisasi,
   };
@@ -273,8 +305,15 @@ export function closePanjarV2(
 
   const panjar = getPanjar(db, id);
   if (!panjar) return gagal(`Panjar ${id} tidak ditemukan.`);
+  if (panjar.jurnal_batal_id)
+    return gagal(
+      'Panjar ini sudah dibatalkan dan tidak bisa dipertanggungjawabkan. ' +
+        'Panjar yang dibatalkan bersifat final; buat panjar baru bila uang diserahkan lagi.',
+    );
   if (panjar.status === 'CLOSED')
     return gagal('Panjar ini sudah ditutup dan tidak bisa ditutup dua kali.');
+  if (panjar.status !== 'OPEN')
+    return gagal('Hanya panjar berstatus OPEN yang bisa dipertanggungjawabkan.');
 
   const tanggalClose = String(input.tanggalClose ?? '').trim();
   if (!tanggalKalenderValid(tanggalClose))
@@ -501,22 +540,157 @@ export function closePanjarV2(
   }
 }
 
+/**
+ * DB-21 — batalkan panjar yang masih OPEN.
+ *
+ * Alur atomik:
+ * 1. validasi status OPEN, belum pernah dibatalkan, alasan >= 5 karakter;
+ * 2. susun reversal jurnal serah (tukar debit/kredit sehingga D kas / K 1040)
+ *    lewat `rencanaReversal` — bukan `reverseJurnal`, supaya guard Jurnal Umum
+ *    `PESAN_REVERSAL_PANJAR` tidak dilonggarkan untuk pengguna umum;
+ * 3. posting reversal berjenis REVERSAL dengan grup & `reversal_of` jurnal
+ *    serah, lalu tautkan `jurnal_batal_id`/`tanggal_batal`/`alasan_batal` dan
+ *    tulis audit `PANJAR-BATAL`. Jurnal asli tidak pernah diubah/dihapus.
+ *
+ * Status kolom tetap OPEN (CHECK lama); status publik DIBATALKAN diturunkan
+ * dari `jurnal_batal_id`.
+ */
+export function batalPanjarV2(
+  db: Database.Database,
+  input: BatalPanjarInput,
+): HasilPanjar {
+  const id = String(input?.id ?? '').trim();
+  if (!id) return gagal('Panjar yang akan dibatalkan belum dipilih.');
+
+  const panjar = getPanjar(db, id);
+  if (!panjar) return gagal(`Panjar ${id} tidak ditemukan.`);
+  if (panjar.jurnal_batal_id)
+    return gagal(
+      `Panjar ${id} sudah dibatalkan` +
+        (panjar.tanggal_batal ? ` pada ${panjar.tanggal_batal}` : '') +
+        `. Pembatalan tidak bisa diulang.`,
+    );
+  if (panjar.status === 'CLOSED')
+    return gagal(
+      'Panjar ini sudah dipertanggungjawabkan (CLOSED) dan tidak bisa dibatalkan. ' +
+        'DB-21 hanya menangani panjar OPEN; koreksi panjar CLOSED perlu alur terpisah.',
+    );
+  if (panjar.status !== 'OPEN')
+    return gagal('Hanya panjar berstatus OPEN yang bisa dibatalkan.');
+
+  const alasan = String(input?.alasan ?? '').trim();
+  if (alasan.length < 5)
+    return gagal('Alasan pembatalan panjar wajib diisi minimal 5 karakter.');
+
+  const jurnalOpenId = String(panjar.jurnal_open_id ?? '').trim();
+  if (!jurnalOpenId)
+    return gagal(
+      `Panjar ${id} tidak punya jurnal serah (jurnal_open_id kosong), sehingga ` +
+        'tidak ada jurnal yang bisa dibalik. Perbaiki data panjar lebih dulu.',
+    );
+
+  const detail = getJurnalDetail(db, jurnalOpenId);
+  if (!detail)
+    return gagal(
+      `Jurnal serah ${jurnalOpenId} untuk panjar ${id} tidak ditemukan. ` +
+        'Pembatalan dibatalkan agar tidak ada jurnal balik tanpa asli.',
+    );
+
+  const tanggalBatal =
+    String(input?.tanggalBatal ?? '').trim() || String(panjar.tanggal);
+  const jurnalBatalId = String(input?.jurnalId ?? '').trim() || uid('jb');
+  const rencana = rencanaReversal({
+    jurnal: detail.jurnal,
+    baris: detail.baris,
+    reversalAda: listJurnal(db, { reversal_of: jurnalOpenId }),
+    id: jurnalBatalId,
+    tanggal: tanggalBatal,
+    alasan,
+  });
+  if (!rencana.boleh || !rencana.input)
+    return gagal(
+      rencana.errors.join(' ') ||
+        'Jurnal balik pembatalan panjar gagal disusun.',
+    );
+
+  const dibatalkan: Panjar = {
+    ...panjar,
+    status: 'DIBATALKAN',
+    jurnal_batal_id: jurnalBatalId,
+    tanggal_batal: tanggalBatal,
+    alasan_batal: alasan,
+  };
+  const audit = buatAuditLog(
+    `PANJAR-BATAL ${id}`,
+    alasan,
+    panjar,
+    {
+      panjar: dibatalkan,
+      jurnal: rencana.input.header,
+      baris: rencana.input.baris,
+      jurnal_batal_id: jurnalBatalId,
+      reversal_of: jurnalOpenId,
+    },
+  );
+
+  try {
+    const simpan = db.transaction(() => {
+      const hasil = postingJurnal(db, rencana.input!, {
+        konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        audit: [audit],
+      });
+      if (!hasil.tersimpan || !hasil.jurnal) return hasil;
+
+      // Guard status + link batal di WHERE agar dua proses tidak bisa
+      // membatalkan/menutup panjar yang sama secara bersamaan.
+      const update = db
+        .prepare(
+          `UPDATE panjar
+              SET jurnal_batal_id = ?, tanggal_batal = ?, alasan_batal = ?
+            WHERE id = ?
+              AND status = 'OPEN'
+              AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')`,
+        )
+        .run(jurnalBatalId, tanggalBatal, alasan, id);
+      if (Number(update.changes) !== 1)
+        throw new Error(
+          'Panjar sudah dibatalkan atau ditutup oleh proses lain. Muat ulang daftar panjar.',
+        );
+
+      return { ...hasil, panjar: dibatalkan };
+    });
+    return simpan();
+  } catch (e) {
+    return gagal(
+      `Pembatalan panjar gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
 /** Daftar panjar + ringkasan realisasi (dihitung dari item, bukan kolom). */
 export function listPanjarV2(
   db: Database.Database,
-  status?: 'OPEN' | 'CLOSED',
+  status?: StatusPanjar,
 ): Panjar[] {
+  let where = '';
+  if (status === 'OPEN')
+    where =
+      "WHERE p.status = 'OPEN' AND (p.jurnal_batal_id IS NULL OR p.jurnal_batal_id = '')";
+  else if (status === 'CLOSED')
+    where =
+      "WHERE p.status = 'CLOSED' AND (p.jurnal_batal_id IS NULL OR p.jurnal_batal_id = '')";
+  else if (status === 'DIBATALKAN')
+    where = "WHERE p.jurnal_batal_id IS NOT NULL AND p.jurnal_batal_id <> ''";
+
   const sql = `
     SELECT p.*, COALESCE(SUM(i.nominal), 0) AS total_realisasi
     FROM panjar p
     LEFT JOIN panjar_item i ON i.panjar_id = p.id
-    ${status ? 'WHERE p.status = ?' : ''}
+    ${where}
     GROUP BY p.id
     ORDER BY p.tanggal, p.id
   `;
-  const rows = (status
-    ? db.prepare(sql).all(status)
-    : db.prepare(sql).all()) as RowPanjar[];
+  const rows = db.prepare(sql).all() as RowPanjar[];
   return rows.map((r) => rowToPanjar(r, Number(r.total_realisasi ?? 0)));
 }
 

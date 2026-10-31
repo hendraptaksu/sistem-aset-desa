@@ -156,6 +156,27 @@ Satu jurnal serah/close hanya boleh dipakai satu dokumen panjar. Unique index
 `PANJAR_HEADER_TIDAK_COCOK` melaporkan drift header terhadap jurnal serah yang
 di-seed lewat SQL langsung.
 
+### Pembatalan panjar OPEN (DB-21)
+
+Migrasi v19 menambah kolom aditif `jurnal_batal_id`, `tanggal_batal`, dan
+`alasan_batal`, plus partial unique index `ux_panjar_jurnal_batal` (satu jurnal
+batal untuk satu dokumen). Tabel **tidak** direbuild dan CHECK lama
+`status IN ('OPEN','CLOSED')` tidak diubah.
+
+- Saat panjar OPEN dibatalkan, status tersimpan tetap `OPEN`; status publik
+  `DIBATALKAN` diturunkan dari `jurnal_batal_id` yang tidak NULL.
+- Jurnal balik dibuat dari jurnal serah: `D kas sumber / K 1040`, berjenis
+  `REVERSAL`, `grup_id` sama, `reversal_of` = jurnal serah, keterangan
+  `KOREKSI: ...`. Jurnal serah asli tidak diubah/dihapus.
+- Pembatalan wajib alasan >= 5 karakter dan menulis audit `PANJAR-BATAL` dalam
+  transaksi yang sama. Panjar CLOSED tidak ditangani DB-21.
+- Panjar DIBATALKAN tidak muncul di daftar/filter OPEN maupun CLOSED, tidak bisa
+  ditutup/dibatalkan ulang, dan tidak boleh punya jurnal close/item. Audit
+  integritas melaporkan link batal yatim, duplikat, atau status tidak konsisten.
+- Guard Jurnal Umum (`PESAN_REVERSAL_PANJAR`) tidak dilonggarkan: jalur
+  pembatalan internal memakai `rencanaReversal` + posting layer, bukan endpoint
+  reversal umum.
+
 ## 11. Roadmap ringkas
 
 - **P0 — Pondasi:** COA ber-tipe, skema jurnal, reset DB POC + seed baru, laporan inti (Buku Besar,

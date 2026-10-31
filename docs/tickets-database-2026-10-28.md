@@ -2,11 +2,12 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-31 (setelah DB-20):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **832 test / 67 file hijau**; `npm run build`
-> berhasil. Baseline DB-19 adalah 822/66. `docs/panduan-portable.md` dipulihkan;
-> test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai. Angka **737/58**
-> di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum mulai.
+> **Baseline terakhir 2026-10-31 (setelah DB-21):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **850 test / 69 file hijau**; `npm run build`
+> berhasil. Baseline DB-20 adalah 832/67. Baseline DB-19 adalah 822/66.
+> `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
+> arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
+> relevan. Verifikasi ulang sebelum mulai.
 >
 > Prinsip yang tidak boleh dilanggar:
 > - Jurnal + jurnal_baris adalah satu-satunya sumber angka.
@@ -102,7 +103,7 @@
 | DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [x] |
 | DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [x] |
 | DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [x] |
-| DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [ ] |
+| DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [x] |
 | DB-22 | — | — | **DIBATALKAN** — Lampiran: kompresi gambar | — | [x] |
 | DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [x] |
 | DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [x] |
@@ -1007,7 +1008,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     test/67 file hijau** (baseline DB-19 822/66); `npm run build` berhasil.
     Tidak menyentuh `data/`, jurnal, backup, atau commit.
 
-- [ ] **DB-21 — Panjar: batal/reopen panjar OPEN** · P2 · M
+- [x] **DB-21 — Panjar: batal/reopen panjar OPEN** · P2 · M
   - **Konteks:** koreksi panjar diblokir dari Jurnal Umum, tetapi belum ada
     “Batalkan panjar”. Salah serah = buntu.
   - **Langkah:**
@@ -1020,6 +1021,16 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** `tests/panjar.test.ts` + `tests/reversal.test.ts`.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-18.
+  - **Bukti (2026-10-31):** migrasi v19 aditif menambah
+    `jurnal_batal_id`/`tanggal_batal`/`alasan_batal` + partial unique index
+    `ux_panjar_jurnal_batal` tanpa rebuild; status publik DIBATALKAN diturunkan
+    dari link batal; `batalPanjarV2` + IPC `panjar:batal` membuat reversal
+    `D kas / K 1040` lewat `rencanaReversal` (guard Jurnal Umum
+    `PESAN_REVERSAL_PANJAR` tetap), atomik dengan audit `PANJAR-BATAL`.
+    Panjar batal hilang dari OPEN/CLOSED, ditolak close/batal ulang, dan audit
+    integritas mendeteksi link yatim/duplikat/status tidak konsisten. Test
+    `panjar`, `reversal`, `integritas`, `migrasi-v19`, `db-21-api`, IPC, dan UI
+    lulus; total **850 test / 69 file**.
 
 - [x] **DB-22 — DIBATALKAN: Lampiran: kompresi gambar** · — · —
   - **Keputusan 2026-10-30:** lampiran tidak dipakai; modul dan tabel dihapus

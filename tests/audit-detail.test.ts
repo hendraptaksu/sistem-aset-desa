@@ -224,6 +224,12 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('PANJAR-CLOSE p-1788665578796-123456')).toBe('Tutup panjar');
   });
 
+  it('DB-21: PANJAR-BATAL p-… → Batalkan panjar', () => {
+    expect(formatAksiAudit('PANJAR-BATAL p-1788665578796-123456')).toBe(
+      'Batalkan panjar',
+    );
+  });
+
   it('TUTUP / TUTUP-ULANG → label tutup buku', () => {
     expect(formatAksiAudit('TUTUP 2025')).toBe('Tutup buku');
     expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Tutup buku (ulang)');

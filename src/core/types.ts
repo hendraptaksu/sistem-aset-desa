@@ -7,13 +7,23 @@ export type Panjar = {
   penerima: string;
   jumlah: number; // sen
   akun_kas_sumber: string;
-  status: 'OPEN' | 'CLOSED';
+  /**
+   * Status publik. `DIBATALKAN` diturunkan dari `jurnal_batal_id` (kolom DB
+   * tetap OPEN/CLOSED agar CHECK lama tidak perlu rebuild).
+   */
+  status: 'OPEN' | 'CLOSED' | 'DIBATALKAN';
   /** Tanggal pertanggungjawaban; null selama masih OPEN. */
   tanggal_close?: string | null;
   /** Jurnal serah (D 1040 / K kas sumber). */
   jurnal_open_id?: string | null;
   /** Jurnal pertanggungjawaban; null selama masih OPEN. */
   jurnal_close_id?: string | null;
+  /** DB-21: jurnal balik saat panjar OPEN dibatalkan; null bila tidak. */
+  jurnal_batal_id?: string | null;
+  /** DB-21: tanggal jurnal balik pembatalan. */
+  tanggal_batal?: string | null;
+  /** DB-21: alasan pembatalan yang juga tercatat di audit. */
+  alasan_batal?: string;
   created_at?: string; // ISO
   /**
    * Ringkasan TURUNAN untuk daftar UI (dihitung dari `panjar_item`), bukan

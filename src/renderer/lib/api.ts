@@ -315,8 +315,18 @@ export const api = {
       opsi,
     ),
   // ---- Panjar & tutup buku (P1-5) ----
-  panjarList: (status?: 'OPEN' | 'CLOSED') => call<Panjar[]>('panjar:list', status),
+  panjarList: (status?: 'OPEN' | 'CLOSED' | 'DIBATALKAN') =>
+    call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
+  /** DB-21: batalkan panjar OPEN; alasan wajib >= 5 karakter. */
+  panjarBatal: (
+    id: string,
+    alasan: string,
+    opsi: {
+      tanggalBatal?: string;
+      konfirmasiPeringatan?: boolean;
+    } = {},
+  ) => call<{ panjar: Panjar; jurnal?: Jurnal }>('panjar:batal', id, alasan, opsi),
   panjarCreate: (
     input: {
       tanggal: string;

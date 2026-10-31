@@ -119,6 +119,7 @@ function TabelItemPanjar({ items }: { items: AuditItemPanjar[] }) {
 const STATUS_PANJAR: Record<string, string> = {
   OPEN: 'Terbuka',
   CLOSED: 'Ditutup',
+  DIBATALKAN: 'Dibatalkan',
 };
 
 function DetailPanjar({

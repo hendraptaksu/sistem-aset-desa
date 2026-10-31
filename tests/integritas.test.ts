@@ -898,3 +898,141 @@ describe('DB-20 — header panjar vs jurnal serah', () => {
     });
   });
 });
+
+describe('DB-21 — audit integritas pembatalan panjar', () => {
+  type OpsiBatal = {
+    status?: 'OPEN' | 'CLOSED';
+    batalId?: string | null;
+    /** Default true; false dipakai untuk mensimulasikan tautan yatim. */
+    buatJurnalBatal?: boolean;
+    tanggalBatal?: string | null;
+    alasanBatal?: string;
+    closeId?: string | null;
+    tanggalClose?: string | null;
+  };
+
+  /** Panjar + jurnal serah + (opsional) jurnal batal; cukup untuk audit. */
+  function panjarBatal(db: Database.Database, id: string, opsi: OpsiBatal = {}): void {
+    const openId = `j-open-${id}`;
+    jurnalOpenPanjar(db, openId);
+    const batalId = opsi.batalId === undefined ? `j-batal-${id}` : opsi.batalId;
+    if (batalId && opsi.buatJurnalBatal !== false) {
+      buatJurnalLengkap(db, batalId, {
+        tanggal: opsi.tanggalBatal ?? '2026-02-02',
+        jenis: 'REVERSAL',
+        grupId: openId,
+        reversalOf: openId,
+        baris: [
+          ['1040', 0, 100_000],
+          ['1001', 100_000, 0],
+        ],
+      });
+    }
+    db.prepare(
+      `INSERT INTO panjar
+         (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+          tanggal_close, jurnal_open_id, jurnal_close_id,
+          jurnal_batal_id, tanggal_batal, alasan_batal, created_at)
+       VALUES (?, '2026-02-01', 'Penerima Uji', 100000, '1001', ?,
+               ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      opsi.status ?? 'OPEN',
+      opsi.tanggalClose ?? null,
+      openId,
+      opsi.closeId ?? null,
+      batalId,
+      opsi.tanggalBatal === undefined ? '2026-02-02' : opsi.tanggalBatal,
+      opsi.alasanBatal ?? 'Salah serah ke panitia',
+      WAKTU,
+    );
+  }
+
+  it('panjar yang dibatalkan dengan jurnal balik valid tidak menghasilkan temuan', () => {
+    denganDb((db) => {
+      panjarBatal(db, 'p-batal-bersih');
+      const hasil = auditIntegritas(db);
+      expect(hasil.temuan).toEqual([]);
+      expect(hasil.ok).toBe(true);
+    });
+  });
+
+  it('mendeteksi tautan jurnal batal yatim tanpa menghapus data', () => {
+    denganDb((db) => {
+      tanpaFk(db, () =>
+        panjarBatal(db, 'p-batal-yatim', {
+          batalId: 'j-hilang',
+          buatJurnalBatal: false,
+        }),
+      );
+      const hasil = auditIntegritas(db);
+      expect(hasil.ok).toBe(false);
+      expect(kodeTemuan(db)).toEqual(
+        expect.arrayContaining(['PANJAR_BATAL_TIDAK_LENGKAP', 'FOREIGN_KEY']),
+      );
+      expect(
+        (db.prepare("SELECT COUNT(*) AS n FROM panjar WHERE id = 'p-batal-yatim'").get() as {
+          n: number;
+        }).n,
+      ).toBe(1);
+    });
+  });
+
+  it('mendeteksi satu jurnal batal dipakai dua panjar', () => {
+    denganDb((db) => {
+      panjarBatal(db, 'p-batal-a');
+      // Lepas index agar korupsi SQL langsung bisa di-seed.
+      db.exec('DROP INDEX IF EXISTS ux_panjar_jurnal_batal');
+      panjarBatal(db, 'p-batal-b');
+      db.prepare(
+        "UPDATE panjar SET jurnal_batal_id = 'j-batal-p-batal-a' WHERE id = 'p-batal-b'",
+      ).run();
+
+      const hasil = auditIntegritas(db);
+      expect(hasil.ok).toBe(false);
+      expect(kodeTemuan(db)).toContain('PANJAR_BATAL_GANDA');
+      expect(
+        hasil.temuan.find((t) => t.kode === 'PANJAR_BATAL_GANDA')?.pesan,
+      ).toMatch(/dipakai 2 panjar/i);
+    });
+  });
+
+  it('mendeteksi status/close/item dan jenis jurnal batal yang tidak konsisten', () => {
+    denganDb((db) => {
+      // Status tersimpan CLOSED padahal punya jurnal batal.
+      panjarBatal(db, 'p-batal-closed', {
+        status: 'CLOSED',
+        tanggalClose: '2026-02-03',
+      });
+      // Jurnal batal ada tetapi bukan REVERSAL dan tidak membalik jurnal serah.
+      panjarBatal(db, 'p-batal-jenis');
+      buatJurnalLengkap(db, 'j-batal-salah', {
+        jenis: 'UMUM',
+        grupId: 'g-lain',
+        reversalOf: null,
+      });
+      db.prepare(
+        "UPDATE panjar SET jurnal_batal_id = 'j-batal-salah' WHERE id = 'p-batal-jenis'",
+      ).run();
+
+      // Item pertanggungjawaban tidak boleh ada pada panjar yang dibatalkan.
+      buatJurnalLengkap(db, 'j-close-item', {
+        jenis: 'PANJAR',
+        baris: [
+          ['5004', 50_000, 0],
+          ['1040', 0, 50_000],
+        ],
+      });
+      buatItemPanjar(db, 'p-batal-closed', '5004', 50_000, 'j-close-item');
+
+      const hasil = auditIntegritas(db);
+      expect(hasil.ok).toBe(false);
+      expect(kodeTemuan(db)).toContain('PANJAR_BATAL_TIDAK_KONSISTEN');
+      const detail = hasil.temuan.find(
+        (t) => t.kode === 'PANJAR_BATAL_TIDAK_KONSISTEN' && t.detail,
+      )?.detail as { id: string; alasan: string[] } | undefined;
+      expect(detail?.id).toBeTruthy();
+      expect(detail?.alasan.join(' ')).toMatch(/status tersimpan|bukan REVERSAL/);
+    });
+  });
+});

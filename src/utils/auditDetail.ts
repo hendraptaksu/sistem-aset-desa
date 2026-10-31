@@ -291,5 +291,6 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('RESTORE')) return 'Restore database';
   if (a.startsWith('PANJAR-OPEN')) return 'Panjar baru';
   if (a.startsWith('PANJAR-CLOSE')) return 'Tutup panjar';
+  if (a.startsWith('PANJAR-BATAL')) return 'Batalkan panjar';
   return a;
 }

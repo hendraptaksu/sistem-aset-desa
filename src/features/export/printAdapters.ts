@@ -631,13 +631,19 @@ export function panjarPrintDoc(
           p.penerima,
           namaAkun(coa, p.akun_kas_sumber),
           formatRp(p.jumlah),
-          p.status === 'OPEN' ? 'Belum' : 'Sudah',
+          p.status === 'OPEN'
+            ? 'Belum'
+            : p.status === 'CLOSED'
+              ? 'Sudah'
+              : 'DIBATALKAN',
           formatRp(realisasi),
           formatRp(sisa),
           formatRp(kurang),
           p.status === 'CLOSED'
             ? `Ditutup ${p.tanggal_close ? formatTanggal(p.tanggal_close) : ''}`.trim()
-            : 'Masih terbuka',
+            : p.status === 'DIBATALKAN'
+              ? `Dibatalkan ${p.tanggal_batal ? formatTanggal(p.tanggal_batal) : ''}`.trim()
+              : 'Masih terbuka',
         ],
         [null, null, null, p.jumlah, null, realisasi, sisa, kurang, null],
       ),

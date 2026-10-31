@@ -74,8 +74,13 @@ import {
  *          NULL. Satu jurnal serah/close hanya boleh dipakai satu dokumen
  *          panjar. Migrasi berhenti bila DB lama sudah berisi link duplikat;
  *          data tidak diubah/dihapus.
+ * - 19   = pembatalan panjar OPEN (DB-21): kolom aditif
+ *          `panjar.jurnal_batal_id`, `tanggal_batal`, `alasan_batal` + partial
+ *          unique index `ux_panjar_jurnal_batal`. Status kolom tetap
+ *          OPEN/CLOSED (CHECK lama tidak diubah); status publik DIBATALKAN
+ *          diturunkan dari `jurnal_batal_id`. Jurnal serah asli tidak dihapus.
  */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -101,6 +106,8 @@ export const PESAN_DB_VERSI_BARU =
  * Unique index link jurnal panjar v18 juga dibuat di `terapkanMigrasiV18()`
  * setelah pemeriksaan duplikat, BUKAN di DDL ini, agar DB bermasalah tidak
  * langsung gagal dengan error UNIQUE tanpa pesan migrasi yang jelas.
+ * Kolom pembatalan panjar v19 dan partial unique index `ux_panjar_jurnal_batal`
+ * juga dibuat di `terapkanMigrasiV19()` (ALTER TABLE aditif, tanpa rebuild).
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -773,6 +780,55 @@ function terapkanMigrasiV18(db: Database.Database): void {
   }
 }
 
+/** DB-21: pesan migrasi saat lebih dari satu panjar memakai jurnal batal sama. */
+export const PESAN_DUPLIKAT_JURNAL_BATAL_PANJAR =
+  'Migrasi v19 dibatalkan: ditemukan lebih dari satu panjar yang memakai ' +
+  'jurnal_batal_id yang sama. Satu jurnal batal hanya boleh dipakai satu dokumen ' +
+  'panjar. Perbaiki tautan duplikat secara manual; tidak ada data yang dihapus ' +
+  'atau diubah.';
+
+/**
+ * DB-21 — pembatalan panjar v19 (aditif, tanpa rebuild tabel).
+ *
+ * Tiga kolom baru ditambahkan bila belum ada. Baris lama otomatis mendapat
+ * `NULL`/`NULL`/`''` sehingga tetap OPEN/CLOSED seperti sebelumnya. Status
+ * tersimpan tetap OPEN saat dibatalkan (CHECK lama tidak diubah); status publik
+ * DIBATALKAN diturunkan dari `jurnal_batal_id`.
+ *
+ * Partial unique index mencegah satu jurnal batal dipakai dua dokumen panjar.
+ * Duplikat diperiksa lebih dulu agar DB bermasalah tidak gagal dengan error
+ * UNIQUE mentah; bila ada, transaksi `migrasi()` rollback penuh. Idempoten:
+ * kolom diperiksa dari `table_info` dan index memakai `IF NOT EXISTS`.
+ */
+function terapkanMigrasiV19(db: Database.Database): void {
+  const kolom = new Set(kolomTabel(db, 'panjar'));
+
+  if (!kolom.has('jurnal_batal_id'))
+    db.exec('ALTER TABLE panjar ADD COLUMN jurnal_batal_id TEXT REFERENCES jurnal(id)');
+  if (!kolom.has('tanggal_batal'))
+    db.exec('ALTER TABLE panjar ADD COLUMN tanggal_batal TEXT');
+  if (!kolom.has('alasan_batal'))
+    db.exec("ALTER TABLE panjar ADD COLUMN alasan_batal TEXT NOT NULL DEFAULT ''");
+
+  const duplikatBatal = db
+    .prepare(
+      `SELECT jurnal_batal_id, COUNT(*) AS jumlah
+         FROM panjar
+        WHERE jurnal_batal_id IS NOT NULL AND jurnal_batal_id <> ''
+        GROUP BY jurnal_batal_id
+       HAVING COUNT(*) > 1
+        LIMIT 1`,
+    )
+    .get() as { jurnal_batal_id: string; jumlah: number } | undefined;
+  if (duplikatBatal) throw new Error(PESAN_DUPLIKAT_JURNAL_BATAL_PANJAR);
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_batal
+      ON panjar(jurnal_batal_id)
+      WHERE jurnal_batal_id IS NOT NULL;
+  `);
+}
+
 /**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
@@ -799,6 +855,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v16 (metadata is_kas/kelompok/sumber + backfill).
  * - Menerapkan migrasi v17 (detail nota panjar, aditif).
  * - Menerapkan migrasi v18 (link jurnal open/close panjar unik).
+ * - Menerapkan migrasi v19 (kolom pembatalan panjar + link jurnal batal unik).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -823,6 +880,7 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV16(db);
     terapkanMigrasiV17(db);
     terapkanMigrasiV18(db);
+    terapkanMigrasiV19(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

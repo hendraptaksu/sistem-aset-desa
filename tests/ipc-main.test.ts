@@ -180,6 +180,7 @@ const CHANNEL_IPC = [
   'lock:setup',
   'lock:status',
   'lock:unlock',
+  'panjar:batal',
   'panjar:close',
   'panjar:create',
   'panjar:items',
@@ -196,11 +197,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 52 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 53 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(52);
+    expect(env.handlers.size).toBe(53);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(52);
+    expect(CHANNEL_IPC).toHaveLength(53);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1391,6 +1392,82 @@ describe('AKT-08 — IPC meneruskan alasan override overrun panjar', () => {
     };
     expect(data.nominalKurang).toBe(100_000);
     expect(data.alasanKurang).toBe(alasan);
+  });
+});
+
+describe('DB-21 — IPC pembatalan panjar OPEN', () => {
+  it('menolak alasan pendek, membatalkan OPEN, dan mengekspos status DIBATALKAN', async () => {
+    const env = buatEnv();
+    expect(
+      (
+        await env.panggil('saldo-awal:posting', {
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal DB-21',
+          saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
+        })
+      ).ok,
+    ).toBe(true);
+
+    const buat = await env.panggil('panjar:create', {
+      tanggal: '2026-01-02',
+      penerima: 'Panitia DB-21',
+      jumlah: 200_000,
+      akunKasSumber: '1001',
+    });
+    expect(buat.ok, buat.error).toBe(true);
+    const id = buat.data.id as string;
+
+    const pendek = await env.panggil('panjar:batal', id, 'sala');
+    expect(pendek.ok).toBe(false);
+    expect(pendek.error).toMatch(/alasan.*minimal 5/i);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+
+    const kosong = await env.panggil('panjar:batal', '  ', 'Salah serah panjang');
+    expect(kosong.ok).toBe(false);
+    expect(kosong.error).toMatch(/ID panjar/i);
+
+    const batal = await env.panggil(
+      'panjar:batal',
+      id,
+      'Salah serah ke panitia',
+    );
+    expect(batal.ok, batal.error).toBe(true);
+    expect(batal.data.panjar).toMatchObject({
+      id,
+      status: 'DIBATALKAN',
+      alasan_batal: 'Salah serah ke panitia',
+    });
+    expect(batal.data.jurnal).toMatchObject({
+      jenis: 'REVERSAL',
+      reversal_of: buat.data.panjar.jurnal_open_id,
+    });
+
+    expect((await env.panggil('panjar:list', 'OPEN')).data).toEqual([]);
+    expect((await env.panggil('panjar:list', 'CLOSED')).data).toEqual([]);
+    const dibatalkan = await env.panggil('panjar:list', 'DIBATALKAN');
+    expect(dibatalkan.ok, dibatalkan.error).toBe(true);
+    expect(dibatalkan.data).toHaveLength(1);
+    expect(dibatalkan.data[0]).toMatchObject({ id, status: 'DIBATALKAN' });
+
+    const close = await env.panggil('panjar:close', {
+      id,
+      tanggalClose: '2026-01-03',
+      items: [{ kategori_baga: '5004', nominal: 100_000 }],
+    });
+    expect(close.ok).toBe(false);
+    expect(close.error).toMatch(/sudah dibatalkan/i);
+
+    const ulang = await env.panggil('panjar:batal', id, 'Coba batalkan lagi');
+    expect(ulang.ok).toBe(false);
+    expect(ulang.error).toMatch(/sudah dibatalkan/i);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(3);
+
+    const audit = await env.panggil('audit:list', { aksi: 'PANJAR-BATAL' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    const integritas = await env.panggil('audit:integritas');
+    expect(integritas.ok, integritas.error).toBe(true);
+    expect(integritas.data.ok).toBe(true);
   });
 });
 

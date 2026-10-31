@@ -43,7 +43,10 @@ export type KodeTemuan =
   | 'PANJAR_OPEN_PUNYA_CLOSE'
   | 'PANJAR_OPEN_PUNYA_ITEM'
   | 'PANJAR_HEADER_TIDAK_COCOK'
-  | 'PANJAR_ITEM_TIDAK_COCOK';
+  | 'PANJAR_ITEM_TIDAK_COCOK'
+  | 'PANJAR_BATAL_TIDAK_LENGKAP'
+  | 'PANJAR_BATAL_GANDA'
+  | 'PANJAR_BATAL_TIDAK_KONSISTEN';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
 export type Temuan = {
@@ -175,6 +178,27 @@ type PanjarItemTidakCocok = {
   }[];
 };
 
+type PanjarBatalTidakKonsisten = {
+  id: string;
+  status: string;
+  jurnal_open_id: string | null;
+  jurnal_batal_id: string | null;
+  tanggal_batal: string | null;
+  alasan_batal: string;
+  jurnal_close_id: string | null;
+  tanggal_close: string | null;
+  jumlah_item: number;
+  batal_jenis: string | null;
+  batal_reversal_of: string | null;
+  alasan: string[];
+};
+
+type PanjarBatalGanda = {
+  jurnal_batal_id: string;
+  jumlah: number;
+  ids: string;
+};
+
 type AkunTidakValid = {
   kode: string;
   nama: string;
@@ -209,7 +233,10 @@ const TIPE_VALID_TEKS = DAFTAR_TIPE.join(', ');
  *     jurnal serah;
  * 11. DB-19: total `panjar_item` per akun BEBAN sama dengan debit BEBAN jurnal
  *     close (helper yang sama dengan `closePanjarV2`);
- * 12. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
+ * 12. DB-21: panjar yang dibatalkan punya jurnal balik REVERSAL yang valid,
+ *     tanggal/alasan, tetap tersimpan OPEN, tanpa close/item; link batal
+ *     yatim/duplikat dilaporkan;
+ * 13. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
  *
  * Hasil selalu deterministik dan tidak mengubah database.
  */
@@ -525,6 +552,107 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       pesan:
         `Panjar ${r.id} berstatus OPEN tetapi sudah punya ${r.jumlah_item} item ` +
         `pertanggungjawaban; item hanya boleh ada setelah close.`,
+      detail: r,
+    });
+  }
+
+  // DB-21: panjar yang dibatalkan wajib punya jurnal balik yang valid, tanggal
+  // dan alasan, tetap tersimpan OPEN, serta tidak punya close/item. Tautan
+  // yatim/duplikat dan status yang tidak konsisten dilaporkan tanpa perbaikan
+  // otomatis. Panjar OPEN non-batal tetap memakai pemeriksaan lama di atas.
+  //
+  // Audit juga dipakai untuk memvalidasi backup lama SEBELUM migrasi. Karena
+  // kolom v19 belum tentu ada di sana, bagian batal dilewati bila kolomnya
+  // belum lengkap (bukan error); backup lama tetap bisa dipulihkan dan
+  // migrasi v19 akan menambah kolom setelah restore.
+  const kolomPanjar = new Set(
+    (db.pragma('table_info(panjar)') as { name: string }[]).map((k) => k.name),
+  );
+  const adaKolomBatal = [
+    'jurnal_batal_id',
+    'tanggal_batal',
+    'alasan_batal',
+  ].every((k) => kolomPanjar.has(k));
+  const panjarBatal = adaKolomBatal
+    ? (db
+        .prepare(
+          `SELECT p.id, p.status, p.jurnal_open_id, p.jurnal_batal_id,
+                  p.tanggal_batal, p.alasan_batal, p.jurnal_close_id,
+                  p.tanggal_close,
+                  COUNT(i.id) AS jumlah_item,
+                  j.jenis AS batal_jenis,
+                  j.reversal_of AS batal_reversal_of
+             FROM panjar p
+             LEFT JOIN jurnal j ON j.id = p.jurnal_batal_id
+             LEFT JOIN panjar_item i ON i.panjar_id = p.id
+            WHERE p.jurnal_batal_id IS NOT NULL AND p.jurnal_batal_id <> ''
+            GROUP BY p.id
+            ORDER BY p.id`,
+        )
+        .all() as Omit<PanjarBatalTidakKonsisten, 'alasan'>[])
+    : [];
+  for (const r of panjarBatal) {
+    const alasan: string[] = [];
+    if (!r.batal_jenis) {
+      alasan.push(`jurnal batal ${r.jurnal_batal_id} tidak ditemukan (tautan yatim)`);
+    } else {
+      if (r.batal_jenis !== 'REVERSAL')
+        alasan.push(`jurnal batal berjenis ${r.batal_jenis}, bukan REVERSAL`);
+      if (r.batal_reversal_of !== r.jurnal_open_id)
+        alasan.push(
+          `jurnal batal membalik ${r.batal_reversal_of ?? '-'}, ` +
+            `bukan jurnal serah ${r.jurnal_open_id ?? '-'}`,
+        );
+    }
+    if (!r.tanggal_batal)
+      alasan.push('tanggal_batal masih kosong');
+    if (String(r.alasan_batal ?? '').trim().length < 5)
+      alasan.push('alasan_batal kurang dari 5 karakter');
+    if (r.status !== 'OPEN')
+      alasan.push(`status tersimpan ${r.status}, seharusnya tetap OPEN`);
+    if (r.jurnal_close_id)
+      alasan.push(`masih punya jurnal close ${r.jurnal_close_id}`);
+    if (r.tanggal_close)
+      alasan.push(`masih punya tanggal close ${r.tanggal_close}`);
+    if (Number(r.jumlah_item) > 0)
+      alasan.push(`masih punya ${r.jumlah_item} item pertanggungjawaban`);
+    if (alasan.length === 0) continue;
+
+    if (!r.batal_jenis) {
+      temuan.push({
+        kode: 'PANJAR_BATAL_TIDAK_LENGKAP',
+        pesan:
+          `Panjar ${r.id} punya jurnal_batal_id ${r.jurnal_batal_id} tetapi ` +
+          `jurnal batalnya tidak ditemukan (tautan yatim).`,
+        detail: { ...r, alasan },
+      });
+      continue;
+    }
+    temuan.push({
+      kode: 'PANJAR_BATAL_TIDAK_KONSISTEN',
+      pesan: `Panjar ${r.id} yang dibatalkan tidak konsisten: ${alasan.join('; ')}.`,
+      detail: { ...r, alasan },
+    });
+  }
+
+  const panjarBatalGanda = adaKolomBatal
+    ? (db
+        .prepare(
+          `SELECT jurnal_batal_id, COUNT(*) AS jumlah, GROUP_CONCAT(id, ', ') AS ids
+             FROM panjar
+            WHERE jurnal_batal_id IS NOT NULL AND jurnal_batal_id <> ''
+            GROUP BY jurnal_batal_id
+           HAVING COUNT(*) > 1
+            ORDER BY jurnal_batal_id`,
+        )
+        .all() as PanjarBatalGanda[])
+    : [];
+  for (const r of panjarBatalGanda) {
+    temuan.push({
+      kode: 'PANJAR_BATAL_GANDA',
+      pesan:
+        `Jurnal batal ${r.jurnal_batal_id} dipakai ${r.jumlah} panjar (${r.ids}); ` +
+        `satu jurnal batal hanya boleh dipakai satu dokumen panjar.`,
       detail: r,
     });
   }

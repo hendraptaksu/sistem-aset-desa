@@ -145,11 +145,20 @@ pertanggungjawabannya.
 6. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
    panjar dipertanggungjawabkan.
 
+**Membatalkan panjar OPEN (salah serah):** bila uang sudah diserahkan tetapi
+panjar belum dipertanggungjawabkan, buka **Buku Panjar**, cari panjar berstatus
+**Belum**, lalu klik **Batalkan**. Tulis alasan minimal 5 karakter dan konfirmasi.
+Sistem membuat **jurnal balik** (kas sumber kembali di debit, `1040` di kredit),
+menyimpan status **DIBATALKAN**, dan mencatat audit `PANJAR-BATAL`. Jurnal serah
+asli tidak dihapus/diubah, dan panjar yang sudah dibatalkan tidak bisa
+dipertanggungjawabkan atau dibatalkan ulang. Panjar yang sudah **Sudah**
+(CLOSED) belum bisa dibatalkan lewat alur ini.
+
 **Penting — koreksi panjar:** jurnal serah maupun pertanggungjawaban panjar
 tidak bisa direversal dari **Jurnal Umum**. Sistem menolak agar status panjar
 tidak basi (mis. panjar tetap CLOSED padahal `1040` sudah bersaldo lagi).
-Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
-**Batalkan panjar** masih backlog dan belum tersedia di aplikasi.
+Gunakan modul **Buku Panjar**: **Batalkan** untuk panjar OPEN yang salah serah,
+atau alur pertanggungjawaban untuk panjar yang benar-benar sudah dibelanjakan.
 
 ### 2.5 Utang Usaha
 

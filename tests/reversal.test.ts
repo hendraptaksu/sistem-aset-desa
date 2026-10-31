@@ -23,6 +23,7 @@ import {
   reverseJurnal,
 } from '../src/db/reversal.js';
 import {
+  batalPanjarV2,
   closePanjarV2,
   getPanjar,
   serahkanPanjar,
@@ -1135,6 +1136,66 @@ describe('AUD-07 — reversal jurnal yang terhubung ke panjar diblokir', () => {
         jenis: 'REVERSAL',
       });
       expect(saldoAkun(listBarisJurnal(db), '4005', '2026-12-31')).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('DB-21: setelah panjar dibatalkan, jurnal serah & jurnal batal tetap tidak bisa direversal dari Jurnal Umum', () => {
+    const db = freshDb();
+    try {
+      siapkanPanjar(db);
+      const batal = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Salah serah ke panitia',
+        jurnalId: 'j-batal-p1',
+        tanggalBatal: '2026-02-02',
+      });
+      expect(batal.tersimpan, batal.errors.join(' ')).toBe(true);
+      const sebelum = jumlahJurnal(db);
+
+      // Jurnal serah asli tetap terhubung panjar → guard lama tidak dilonggarkan.
+      const asli = reverseJurnal(db, 'j-p1-open', 'Koreksi panjar', {
+        id: 'j-balik-p1-open',
+        tanggal: '2026-03-02',
+      });
+      expect(asli.tersimpan).toBe(false);
+      expect(asli.errors).toContain(PESAN_REVERSAL_PANJAR);
+
+      // Jurnal batal adalah reversal: jalur Jurnal Umum menolak reversal atas
+      // reversal, bukan lewat opsi internal pembatalan panjar.
+      const batalLagi = reverseJurnal(db, 'j-batal-p1', 'Balik jurnal batal', {
+        id: 'j-balik-batal-p1',
+        tanggal: '2026-03-02',
+      });
+      expect(batalLagi.tersimpan).toBe(false);
+      expect(batalLagi.errors.join(' ')).toMatch(/jurnal balik/i);
+
+      const koreksi = koreksiDanIsiUlang(
+        db,
+        'j-p1-open',
+        'Koreksi panjar',
+        {
+          header: {
+            id: 'j-p1-baru',
+            tanggal: '2026-03-02',
+            no_bukti: 'PNJ-2026-0002',
+            keterangan: 'Serah panjar (koreksi)',
+            jenis: 'PANJAR',
+          },
+          baris: pasangan('1040', '1001', RP(100_000)),
+        },
+        { id: 'j-balik-p1-open', tanggal: '2026-03-02' },
+      );
+      expect(koreksi.tersimpan).toBe(false);
+      expect(koreksi.errors).toContain(PESAN_REVERSAL_PANJAR);
+
+      expect(jumlahJurnal(db)).toBe(sebelum);
+      expect(getPanjar(db, 'p1')?.status).toBe('DIBATALKAN');
+      expect(listAuditLog(db).map((a) => a.aksi).sort()).toEqual([
+        'PANJAR-BATAL p1',
+        'PANJAR-OPEN p1',
+      ]);
     } finally {
       db.close();
     }

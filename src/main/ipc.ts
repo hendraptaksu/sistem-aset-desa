@@ -36,6 +36,7 @@ import {
 } from '../db/posting.js';
 import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
 import {
+  batalPanjarV2,
   closePanjarV2,
   listPanjarItemsV2,
   listPanjarV2,
@@ -819,10 +820,13 @@ export function registerIpc(deps: IpcDeps): void {
   // Form Catat/Bayar Utang Usaha memakai `transaksi:posting` dengan jenis
   // HUTANG; tidak ada lagi IPC master pihak / pemetaan `jurnal_pihak`.
 
-  daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
+  daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED' | 'DIBATALKAN') => {
     const k = perluBuka();
     if (k) return fail(k);
-    const filter = status === 'OPEN' || status === 'CLOSED' ? status : undefined;
+    const filter =
+      status === 'OPEN' || status === 'CLOSED' || status === 'DIBATALKAN'
+        ? status
+        : undefined;
     return ok(listPanjarV2(deps.db(), filter));
   });
 
@@ -874,6 +878,50 @@ export function registerIpc(deps: IpcDeps): void {
           panjar: hasil.panjar,
           jurnal: hasil.jurnal,
         });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:batal',
+    (_e, id: unknown, alasan: unknown, opsi?: unknown) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        if (typeof id !== 'string' || !id.trim())
+          return fail('ID panjar yang akan dibatalkan wajib diisi.');
+        const alasanTeks = typeof alasan === 'string' ? alasan.trim() : '';
+        if (alasanTeks.length < 5)
+          return fail('Alasan pembatalan panjar wajib diisi minimal 5 karakter.');
+        const konfirmasi =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+        const hasil = batalPanjarV2(deps.db(), {
+          id: id.trim(),
+          alasan: alasanTeks,
+          ...(bacaTeksOpsi(opsi, 'tanggalBatal')
+            ? { tanggalBatal: bacaTeksOpsi(opsi, 'tanggalBatal')! }
+            : {}),
+          konfirmasiPeringatan: konfirmasi,
+        });
+        if (!hasil.tersimpan || !hasil.panjar) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Pembatalan panjar gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          const perluKonfirmasi =
+            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+          return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
+        return ok({ panjar: hasil.panjar, jurnal: hasil.jurnal });
       } catch (e) {
         return fail(pesanError(e, GAGAL_PANJAR));
       }

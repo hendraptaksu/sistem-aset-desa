@@ -38,6 +38,7 @@ import {
   ErrorBox,
   Field,
   LockModal,
+  Modal,
   PeringatanModal,
   Select,
   TextInput,
@@ -134,6 +135,88 @@ function TabelPratinjau({
   );
 }
 
+/** DB-21: konfirmasi pembatalan panjar OPEN dengan alasan wajib. */
+function BatalPanjarModal({
+  target,
+  sibuk,
+  pesanError,
+  onCancel,
+  onSubmit,
+}: {
+  target: Panjar;
+  sibuk: boolean;
+  pesanError: string | null;
+  onCancel: () => void;
+  onSubmit: (alasan: string) => void;
+}) {
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasanPeringatanCukup(alasan);
+
+  return (
+    <Modal
+      judul="Batalkan panjar?"
+      deskripsi={
+        <div className="space-y-2 text-[15px] text-stone-700">
+          <p>
+            Panjar <b>{target.penerima}</b> sebesar{' '}
+            <b>{formatRp(target.jumlah)}</b> akan dibatalkan. Sistem membuat
+            jurnal balik sehingga kas sumber bertambah dan Uang Panjar (1040)
+            kembali seperti sebelum panjar.
+          </p>
+          <p>
+            Jurnal serah asli tetap tersimpan; status panjar menjadi{' '}
+            <b>DIBATALKAN</b> dan tidak bisa dipertanggungjawabkan lagi. Tulis
+            alasan minimal {MIN_ALASAN_PERINGATAN} karakter — alasan ini tercatat
+            di audit.
+          </p>
+        </div>
+      }
+      onTutup={onCancel}
+      sibuk={sibuk}
+      lebar="md"
+    >
+      <Field label={`Alasan pembatalan (min. ${MIN_ALASAN_PERINGATAN} karakter)`}>
+        <TextInput
+          autoFocus
+          value={alasan}
+          disabled={sibuk}
+          onChange={(e) => setAlasan(e.target.value)}
+          placeholder="cth: salah serah ke panitia lain"
+        />
+      </Field>
+      {pesanError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+        >
+          {pesanError}
+        </p>
+      )}
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">
+          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
+          dan akhir diabaikan.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
+        <Button
+          variant="danger"
+          disabled={sibuk || !cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(rapikanAlasanPeringatan(alasan));
+          }}
+        >
+          {sibuk ? 'Membatalkan…' : 'Ya, batalkan panjar'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 export function PanjarTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [list, setList] = useState<Panjar[]>([]);
@@ -141,7 +224,12 @@ export function PanjarTab() {
   const [info, setInfo] = useState<string | null>(null);
   const [errClose, setErrClose] = useState<string | null>(null);
   const [infoClose, setInfoClose] = useState<string | null>(null);
-  const [fStatus, setFStatus] = useState<'' | 'OPEN' | 'CLOSED'>('');
+  const [fStatus, setFStatus] = useState<'' | 'OPEN' | 'CLOSED' | 'DIBATALKAN'>('');
+  const [batalTarget, setBatalTarget] = useState<Panjar | null>(null);
+  const [busyBatal, setBusyBatal] = useState(false);
+  const busyBatalRef = useRef(false);
+  const [errBatal, setErrBatal] = useState<string | null>(null);
+  const [infoBatal, setInfoBatal] = useState<string | null>(null);
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
   const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
   const saldoAwalTargetRef = useRef<'OPEN' | 'CLOSE'>('OPEN');
@@ -488,6 +576,43 @@ export function PanjarTab() {
     } finally {
       busyCloseRef.current = false;
       setBusyClose(false);
+    }
+  }
+
+  async function submitBatal(alasan: string): Promise<void> {
+    if (!batalTarget || busyBatalRef.current) return;
+    const alasanBersih = rapikanAlasanPeringatan(alasan);
+    setErrBatal(null);
+    if (!alasanPeringatanCukup(alasanBersih)) {
+      setErrBatal('Alasan pembatalan panjar wajib diisi minimal 5 karakter.');
+      return;
+    }
+    setLockRetry(null);
+    busyBatalRef.current = true;
+    setBusyBatal(true);
+    try {
+      const r = await api.panjarBatal(batalTarget.id, alasanBersih);
+      setBatalTarget(null);
+      setErrBatal(null);
+      setDetailId('');
+      setDetailItems({});
+      await refresh();
+      setInfoBatal(
+        `Panjar untuk ${r.panjar.penerima} dibatalkan. Jurnal balik dibuat; ` +
+          `Uang Panjar (1040) dan kas sumber kembali seperti sebelum panjar. ` +
+          `Jurnal asli tetap tersimpan.`,
+      );
+    } catch (e) {
+      if (isPerluAlasan(e)) {
+        // Alasan pembatalan (>= 5 karakter) yang sama juga memenuhi kunci
+        // periode, jadi operator tidak perlu mengetik ulang.
+        setLockRetry(() => (a: string) => submitBatal(a));
+      } else {
+        setErrBatal(pesanError(e));
+      }
+    } finally {
+      busyBatalRef.current = false;
+      setBusyBatal(false);
     }
   }
 
@@ -967,11 +1092,14 @@ export function PanjarTab() {
           <div className="flex flex-col items-start gap-2 md:items-end">
             <Select
               value={fStatus}
-              onChange={(e) => setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED')}
+              onChange={(e) =>
+                setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED' | 'DIBATALKAN')
+              }
             >
               <option value="">Semua status</option>
               <option value="OPEN">Belum dipertanggungjawabkan</option>
               <option value="CLOSED">Sudah dipertanggungjawabkan</option>
+              <option value="DIBATALKAN">Dibatalkan</option>
             </Select>
             <ExportActions
               namaDasar={namaDasarPanjar}
@@ -986,6 +1114,18 @@ export function PanjarTab() {
             />
           </div>
         </div>
+        <ErrorBox msg={errBatal} />
+        {infoBatal && (
+          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+            {infoBatal}
+          </div>
+        )}
+        <p className="mb-2 text-sm text-stone-600">
+          Panjar yang masih <b>OPEN</b> bisa dibatalkan lewat tombol{' '}
+          <b>Batalkan</b>. Pembatalan membuat jurnal balik (kas kembali, 1040
+          nol), menyimpan alasan minimal 5 karakter, dan menampilkan status{' '}
+          <b>DIBATALKAN</b>; jurnal serah asli tidak dihapus.
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">
             <thead>
@@ -1014,9 +1154,26 @@ export function PanjarTab() {
                         {formatRp(p.jumlah)}
                       </td>
                       <td className="py-2 pr-3">
-                        <Badge tone={p.status === 'OPEN' ? 'amber' : 'green'}>
-                          {p.status === 'OPEN' ? 'Belum' : 'Sudah'}
+                        <Badge
+                          tone={
+                            p.status === 'OPEN'
+                              ? 'amber'
+                              : p.status === 'CLOSED'
+                                ? 'green'
+                                : 'red'
+                          }
+                        >
+                          {p.status === 'OPEN'
+                            ? 'Belum'
+                            : p.status === 'CLOSED'
+                              ? 'Sudah'
+                              : 'DIBATALKAN'}
                         </Badge>
+                        {p.status === 'DIBATALKAN' && p.tanggal_batal && (
+                          <div className="mt-1 text-helper text-stone-500">
+                            {formatTanggal(p.tanggal_batal)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 pr-3 text-right whitespace-nowrap">
                         {p.status === 'CLOSED' ? (
@@ -1041,6 +1198,19 @@ export function PanjarTab() {
                           {p.status === 'OPEN' && (
                             <Button variant="ghost" onClick={() => pilihUntukClose(p)}>
                               Pertanggungjawaban
+                            </Button>
+                          )}
+                          {p.status === 'OPEN' && (
+                            <Button
+                              variant="danger"
+                              disabled={busyBatal}
+                              onClick={() => {
+                                setErrBatal(null);
+                                setInfoBatal(null);
+                                setBatalTarget(p);
+                              }}
+                            >
+                              Batalkan
                             </Button>
                           )}
                           <Button variant="ghost" onClick={() => void toggleDetail(p.id)}>
@@ -1123,6 +1293,20 @@ export function PanjarTab() {
           </table>
         </div>
       </Card>
+
+      {batalTarget && (
+        <BatalPanjarModal
+          target={batalTarget}
+          sibuk={busyBatal}
+          pesanError={errBatal}
+          onCancel={() => {
+            if (busyBatal) return;
+            setBatalTarget(null);
+            setErrBatal(null);
+          }}
+          onSubmit={(alasan) => void submitBatal(alasan)}
+        />
+      )}
 
       {lockRetry && (
         <LockModal
