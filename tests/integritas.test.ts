@@ -114,6 +114,19 @@ function buatJurnalLengkap(
   for (const [akun, debit, kredit] of baris) buatBaris(db, id, akun, debit, kredit);
 }
 
+/** Jurnal serah panjar: D 1040 / K kas, sesuai header `panjar` uji. */
+function jurnalOpenPanjar(
+  db: Database.Database,
+  id: string,
+  tanggal = '2026-02-01',
+  jumlah = 100_000,
+  kas = '1001',
+): void {
+  buatJurnal(db, id, tanggal);
+  buatBaris(db, id, '1040', jumlah, 0);
+  buatBaris(db, id, kas, 0, jumlah);
+}
+
 function buatPanjar(
   db: Database.Database,
   data: {
@@ -514,7 +527,7 @@ describe('DB-12 — perluasan audit integritas', () => {
 
   it('mendeteksi panjar CLOSED yang punya jurnal close tetapi tanpa item', () => {
     denganDb((db) => {
-      buatJurnalLengkap(db, 'j-open');
+      jurnalOpenPanjar(db, 'j-open');
       buatJurnalLengkap(db, 'j-close');
       buatPanjar(db, {
         id: 'p-closed-tanpa-item',
@@ -538,7 +551,7 @@ describe('DB-12 — perluasan audit integritas', () => {
 
   it('mendeteksi panjar OPEN yang hanya punya tanggal_close', () => {
     denganDb((db) => {
-      buatJurnalLengkap(db, 'j-open');
+      jurnalOpenPanjar(db, 'j-open');
       buatPanjar(db, {
         id: 'p-open-tanggal-close',
         status: 'OPEN',
@@ -787,6 +800,101 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
         detail: { id: 'p-open-punya-item', status: 'OPEN', jumlah_item: 1 },
       });
       expect(hasil.temuan[0]?.pesan).toMatch(/status OPEN.*item pertanggungjawaban/i);
+    });
+  });
+});
+
+describe('DB-20 — header panjar vs jurnal serah', () => {
+  it('panjar normal lolos audit header', () => {
+    denganDb((db) => {
+      jurnalOpenPanjar(db, 'j-open-header', '2026-02-01', 100_000, '1001');
+      buatPanjar(db, {
+        id: 'p-header-ok',
+        status: 'OPEN',
+        jurnalOpenId: 'j-open-header',
+      });
+
+      expect(auditIntegritas(db).ok).toBe(true);
+    });
+  });
+
+  it('mendeteksi jumlah header yang diubah lewat SQL langsung', () => {
+    denganDb((db) => {
+      jurnalOpenPanjar(db, 'j-open-jumlah', '2026-02-01', 100_000, '1001');
+      buatPanjar(db, {
+        id: 'p-header-jumlah',
+        status: 'OPEN',
+        jurnalOpenId: 'j-open-jumlah',
+      });
+      db.prepare("UPDATE panjar SET jumlah = 90000 WHERE id = 'p-header-jumlah'").run();
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_HEADER_TIDAK_COCOK',
+        detail: {
+          id: 'p-header-jumlah',
+          jurnal_open_id: 'j-open-jumlah',
+          jumlah: 90_000,
+          debit_panjar: 100_000,
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/jumlah header.*debit 1040/i);
+    });
+  });
+
+  it('mendeteksi tanggal header yang berbeda dari jurnal serah', () => {
+    denganDb((db) => {
+      jurnalOpenPanjar(db, 'j-open-tanggal', '2026-02-01', 100_000, '1001');
+      buatPanjar(db, {
+        id: 'p-header-tanggal',
+        status: 'OPEN',
+        jurnalOpenId: 'j-open-tanggal',
+      });
+      db.prepare("UPDATE panjar SET tanggal = '2026-02-03' WHERE id = 'p-header-tanggal'").run();
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_HEADER_TIDAK_COCOK',
+        detail: {
+          id: 'p-header-tanggal',
+          tanggal: '2026-02-03',
+          tanggal_jurnal: '2026-02-01',
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/tanggal header/i);
+    });
+  });
+
+  it('mendeteksi akun kas header yang tidak dipakai jurnal serah', () => {
+    denganDb((db) => {
+      jurnalOpenPanjar(db, 'j-open-kas', '2026-02-01', 100_000, '1001');
+      buatPanjar(db, {
+        id: 'p-header-kas',
+        status: 'OPEN',
+        jurnalOpenId: 'j-open-kas',
+      });
+      db.prepare("UPDATE panjar SET akun_kas_sumber = '1010' WHERE id = 'p-header-kas'").run();
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_HEADER_TIDAK_COCOK',
+        detail: {
+          id: 'p-header-kas',
+          akun_kas_sumber: '1010',
+          akun_kredit: '1001',
+          kredit_kas: 0,
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/akun kas header/i);
     });
   });
 });

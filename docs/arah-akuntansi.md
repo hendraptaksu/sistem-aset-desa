@@ -136,6 +136,26 @@ dev seed baru dibuat di atas jurnal v2.
 - Backup/restore tetap aman karena nanti dipakai untuk data nyata: `VACUUM INTO`, validasi integritas,
   dan auto-backup sebelum restore.
 
+### Kolom header panjar: disimpan vs dihitung (DB-20)
+
+`panjar` menyimpan header operasional agar daftar/detail dokumen tidak perlu
+join ke jurnal setiap saat:
+
+- **Sengaja disimpan:** `tanggal`, `jumlah`, `akun_kas_sumber`, `status`,
+  `tanggal_close`, `jurnal_open_id`, `jurnal_close_id`, `created_at`.
+  `tanggal`, `jumlah`, dan `akun_kas_sumber` adalah cermin jurnal serah
+  (D 1040 / K kas sumber) dan wajib sama dengan jurnal tersebut.
+- **Dihitung, bukan kolom:** `total_realisasi` = `SUM(panjar_item.nominal)`,
+  `sisa`, dan `kurang`. Sumber angka laporan tetap jurnal.
+- `panjar_item` tetap dipertahankan sebagai detail nota per baris; tidak ada
+  over-normalisasi atau drop tabel.
+
+Satu jurnal serah/close hanya boleh dipakai satu dokumen panjar. Unique index
+`ux_panjar_jurnal_open` dan `ux_panjar_jurnal_close` (partial, mengabaikan
+`NULL`) dipasang lewat migrasi v18 setelah pemeriksaan duplikat. Audit
+`PANJAR_HEADER_TIDAK_COCOK` melaporkan drift header terhadap jurnal serah yang
+di-seed lewat SQL langsung.
+
 ## 11. Roadmap ringkas
 
 - **P0 — Pondasi:** COA ber-tipe, skema jurnal, reset DB POC + seed baru, laporan inti (Buku Besar,

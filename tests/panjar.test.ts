@@ -140,6 +140,49 @@ describe('P1-4 — serah panjar', () => {
     }
   });
 
+  it('header tanggal/jumlah/akun kas sama dengan jurnal serah dan stabil saat close', () => {
+    const db = dbKas();
+    try {
+      const hasil = serah(db);
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      const sebelum = getPanjar(db, 'p1');
+      const jurnalOpen = getJurnal(db, 'j-p1');
+      const barisOpen = listJurnalBaris(db, 'j-p1');
+      const debitPanjar = barisOpen
+        .filter((b) => b.akun_kode === '1040')
+        .reduce((t, b) => t + b.debit, 0);
+      const kreditKas = barisOpen
+        .filter((b) => b.akun_kode !== '1040' && b.kredit > 0)
+        .reduce((t, b) => t + b.kredit, 0);
+
+      expect(sebelum?.tanggal).toBe(jurnalOpen?.tanggal);
+      expect(sebelum?.jumlah).toBe(debitPanjar);
+      expect(sebelum?.jumlah).toBe(kreditKas);
+      expect(barisOpen.map((b) => b.akun_kode)).toContain(sebelum?.akun_kas_sumber);
+
+      const tutup = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-02-02',
+        items: [{ akun: '5004', nominal: RP(1_000_000) }],
+      });
+      expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
+
+      const sesudah = getPanjar(db, 'p1');
+      expect(sesudah).toMatchObject({
+        tanggal: sebelum?.tanggal,
+        jumlah: sebelum?.jumlah,
+        akun_kas_sumber: sebelum?.akun_kas_sumber,
+        jurnal_open_id: sebelum?.jurnal_open_id,
+        status: 'CLOSED',
+      });
+      expect(getJurnal(db, sesudah!.jurnal_open_id!)?.tanggal).toBe(sesudah?.tanggal);
+      expect(auditIntegritas(db).ok).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
   it('menolak penerima kosong, jumlah tidak valid, dan kas sumber bukan kas', () => {
     const db = dbKas();
     try {

@@ -2,11 +2,11 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-10-31 (setelah DB-17):** `npm run typecheck` bersih;
-> `npm test` **805 test / 65 file hijau**; `npm run build` berhasil.
-> `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
-> arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
-> relevan. Verifikasi ulang sebelum mulai.
+> **Baseline terakhir 2026-10-31 (setelah DB-20):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **832 test / 67 file hijau**; `npm run build`
+> berhasil. Baseline DB-19 adalah 822/66. `docs/panduan-portable.md` dipulihkan;
+> test arsip ERD v1 dihapus karena arsipnya memang tidak dipakai. Angka **737/58**
+> di dokumen AKT sudah tidak relevan. Verifikasi ulang sebelum mulai.
 >
 > Prinsip yang tidak boleh dilanggar:
 > - Jurnal + jurnal_baris adalah satu-satunya sumber angka.
@@ -101,7 +101,7 @@
 | DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
 | DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [x] |
 | DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [x] |
-| DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [ ] |
+| DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [x] |
 | DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [ ] |
 | DB-22 | — | — | **DIBATALKAN** — Lampiran: kompresi gambar | — | [x] |
 | DB-23a | P1 | M | Hapus alur piutang 1050 (UI/API/builder/test) | — | [x] |
@@ -966,7 +966,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     file hijau** (baseline 814/66); `npm run build` berhasil.
   - **Dependency:** DB-18.
 
-- [ ] **DB-20 — Panjar: rapikan kolom header (bukan drop item)** · P2 · S
+- [x] **DB-20 — Panjar: rapikan kolom header (bukan drop item)** · P2 · S
   - **Konteks:** `panjar` menyimpan `tanggal`, `jumlah`, `akun_kas_sumber`,
     `status`, `tanggal_close`; sebagian bisa dibaca dari jurnal, tetapi
     menyimpannya membuat UI sederhana. Jangan over-normalisasi.
@@ -981,6 +981,31 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     berfungsi.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-19.
+  - **Bukti 2026-10-31:** `SCHEMA_VERSION` 17→18 dan migrasi idempoten
+    `terapkanMigrasiV18` membuat `ux_panjar_jurnal_open` pada
+    `panjar(jurnal_open_id)` serta partial unique index `ux_panjar_jurnal_close`
+    pada `panjar(jurnal_close_id) WHERE jurnal_close_id IS NOT NULL`. Sebelum
+    index dibuat, migrasi menghitung duplikat open/close; bila ada, migrasi
+    melempar pesan Indonesia (`PESAN_DUPLIKAT_JURNAL_OPEN_PANJAR`/
+    `PESAN_DUPLIKAT_JURNAL_CLOSE_PANJAR`) sehingga transaksi rollback:
+    `user_version` tetap 17 dan data tidak berubah. Tabel `panjar` bentuk lama
+    (pra-v4) yang belum punya kolom link tidak direbuild/diubah; index terkait
+    dilewati agar DB-06 tetap aman. Index sengaja hanya dibuat di migrasi
+    (bukan DDL dasar) mengikuti pola DB-13/14/15. Dokumentasi kolom header
+    disimpan vs turunan ada di komentar DDL/`src/db/panjar.ts` dan
+    `docs/arah-akuntansi.md`; `total_realisasi`/`sisa`/`kurang` tetap dihitung
+    dari `panjar_item`, dan `panjar_item` tidak di-drop. Audit
+    `PANJAR_HEADER_TIDAK_COCOK` memeriksa `tanggal`, `jumlah` (debit 1040), dan
+    `akun_kas_sumber` (akun/amount kredit) terhadap jurnal serah sehingga drift
+    yang di-seed SQL langsung terdeteksi. Test baru `tests/migrasi-v18.test.ts`
+    (5: index+data+idempoten, abort duplikat open/close tanpa perubahan,
+    unique open/close via SQL) dan `tests/panjar.test.ts` (header sama dengan
+    jurnal open dan stabil setelah close), `tests/integritas.test.ts` (4 temuan
+    header), serta fixture `tests/migrasi-v12.test.ts` diberi jurnal open panjar
+    yang sah. Ekspektasi `SCHEMA_VERSION` di seluruh test migrasi diperbarui ke
+    18. `npm run typecheck` bersih; `npx vitest run --pool=threads` **832
+    test/67 file hijau** (baseline DB-19 822/66); `npm run build` berhasil.
+    Tidak menyentuh `data/`, jurnal, backup, atau commit.
 
 - [ ] **DB-21 — Panjar: batal/reopen panjar OPEN** · P2 · M
   - **Konteks:** koreksi panjar diblokir dari Jurnal Umum, tetapi belum ada

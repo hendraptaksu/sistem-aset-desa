@@ -18,7 +18,7 @@
 // sudah dihapus (DB-33/DB-37/DB-24).
 
 import type Database from 'better-sqlite3';
-import { POSISI_NORMAL, type CoaTipe } from './coa.js';
+import { AKUN_PANJAR, POSISI_NORMAL, type CoaTipe } from './coa.js';
 import { formatRp } from '../utils/format.js';
 import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
 
@@ -42,6 +42,7 @@ export type KodeTemuan =
   | 'PANJAR_CLOSED_TIDAK_LENGKAP'
   | 'PANJAR_OPEN_PUNYA_CLOSE'
   | 'PANJAR_OPEN_PUNYA_ITEM'
+  | 'PANJAR_HEADER_TIDAK_COCOK'
   | 'PANJAR_ITEM_TIDAK_COCOK';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
@@ -147,6 +148,19 @@ type PanjarOpenDenganItem = {
   jumlah_item: number;
 };
 
+type PanjarHeaderTidakCocok = {
+  id: string;
+  jurnal_open_id: string;
+  tanggal: string;
+  tanggal_jurnal: string;
+  jumlah: number;
+  debit_panjar: number;
+  akun_kas_sumber: string;
+  akun_kredit: string | null;
+  kredit_kas: number;
+  alasan: string[];
+};
+
 type PanjarItemTidakCocok = {
   id: string;
   jurnal_close_id: string;
@@ -191,9 +205,11 @@ const TIPE_VALID_TEKS = DAFTAR_TIPE.join(', ');
  *    bukan reversal, `grup_id` sama;
  * 9. status panjar konsisten dengan jurnal/tanggal close dan item-nya (OPEN
  *    tanpa close/item, CLOSED punya jurnal close/tanggal/item);
- * 10. DB-19: total `panjar_item` per akun BEBAN sama dengan debit BEBAN jurnal
+ * 10. DB-20: header `panjar` (tanggal, jumlah, akun_kas_sumber) sama dengan
+ *     jurnal serah;
+ * 11. DB-19: total `panjar_item` per akun BEBAN sama dengan debit BEBAN jurnal
  *     close (helper yang sama dengan `closePanjarV2`);
- * 11. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
+ * 12. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
  *
  * Hasil selalu deterministik dan tidak mengubah database.
  */
@@ -510,6 +526,87 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         `Panjar ${r.id} berstatus OPEN tetapi sudah punya ${r.jumlah_item} item ` +
         `pertanggungjawaban; item hanya boleh ada setelah close.`,
       detail: r,
+    });
+  }
+
+  // DB-20: header panjar adalah cermin jurnal serah, bukan sumber angka kedua.
+  // Tanggal/jumlah/akun kas harus sama dengan jurnal open. Jurnal yang hilang
+  // sudah dilaporkan lewat FK/PANJAR_OPEN_TIDAK_LENGKAP, jadi query ini hanya
+  // memeriksa panjar yang tautan jurnal serahnya benar-benar ada.
+  const panjarHeader = db
+    .prepare(
+      `SELECT p.id, p.tanggal, p.jumlah, p.akun_kas_sumber, p.jurnal_open_id,
+              j.tanggal AS tanggal_jurnal,
+              COALESCE((
+                SELECT SUM(b.debit)
+                  FROM jurnal_baris b
+                 WHERE b.jurnal_id = p.jurnal_open_id
+                   AND b.akun_kode = '${AKUN_PANJAR}'
+              ), 0) AS debit_panjar,
+              COALESCE((
+                SELECT SUM(b.kredit)
+                  FROM jurnal_baris b
+                 WHERE b.jurnal_id = p.jurnal_open_id
+                   AND b.akun_kode = p.akun_kas_sumber
+              ), 0) AS kredit_kas,
+              (
+                SELECT GROUP_CONCAT(DISTINCT b.akun_kode)
+                  FROM jurnal_baris b
+                 WHERE b.jurnal_id = p.jurnal_open_id
+                   AND b.kredit > 0
+                   AND b.akun_kode <> '${AKUN_PANJAR}'
+              ) AS akun_kredit
+         FROM panjar p
+         JOIN jurnal j ON j.id = p.jurnal_open_id
+        ORDER BY p.id`,
+    )
+    .all() as {
+    id: string;
+    tanggal: string;
+    jumlah: number;
+    akun_kas_sumber: string;
+    jurnal_open_id: string;
+    tanggal_jurnal: string;
+    debit_panjar: number;
+    kredit_kas: number;
+    akun_kredit: string | null;
+  }[];
+  for (const r of panjarHeader) {
+    const jumlah = Number(r.jumlah);
+    const debitPanjar = Number(r.debit_panjar);
+    const kreditKas = Number(r.kredit_kas);
+    const alasan: string[] = [];
+    if (r.tanggal !== r.tanggal_jurnal)
+      alasan.push(`tanggal header ${r.tanggal} vs jurnal ${r.tanggal_jurnal}`);
+    if (jumlah !== debitPanjar)
+      alasan.push(
+        `jumlah header ${formatRp(jumlah)} vs debit ${AKUN_PANJAR} jurnal ` +
+          `${formatRp(debitPanjar)}`,
+      );
+    if (r.akun_kredit !== r.akun_kas_sumber || kreditKas !== jumlah)
+      alasan.push(
+        `akun kas header ${r.akun_kas_sumber} (${formatRp(jumlah)}) vs kredit ` +
+          `jurnal ${r.akun_kredit ?? '-'} (${formatRp(kreditKas)})`,
+      );
+    if (alasan.length === 0) continue;
+    const detail: PanjarHeaderTidakCocok = {
+      id: r.id,
+      jurnal_open_id: r.jurnal_open_id,
+      tanggal: r.tanggal,
+      tanggal_jurnal: r.tanggal_jurnal,
+      jumlah,
+      debit_panjar: debitPanjar,
+      akun_kas_sumber: r.akun_kas_sumber,
+      akun_kredit: r.akun_kredit,
+      kredit_kas: kreditKas,
+      alasan,
+    };
+    temuan.push({
+      kode: 'PANJAR_HEADER_TIDAK_COCOK',
+      pesan:
+        `Panjar ${r.id}: header tidak cocok dengan jurnal serah ` +
+        `${r.jurnal_open_id}: ${alasan.join('; ')}.`,
+      detail,
     });
   }
 

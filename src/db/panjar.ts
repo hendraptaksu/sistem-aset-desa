@@ -7,6 +7,17 @@
 //   besar dari panjar, kekurangan dibayar dari kas sumber (K kas).
 // Tabel `panjar`/`panjar_item` hanya menyimpan metadata dokumen + rincian item,
 // TIDAK menyimpan saldo/laba/realisasi turunan.
+//
+// DB-20 — header `panjar` yang SENGAJA disimpan:
+// - tanggal, jumlah, akun_kas_sumber: cermin jurnal serah (D 1040 / K kas
+//   sumber) agar daftar/detail tidak perlu join setiap saat; wajib sama dengan
+//   jurnal open dan tidak boleh diubah terpisah.
+// - status, tanggal_close, jurnal_open_id, jurnal_close_id, created_at:
+//   status operasional dokumen dan tautan jurnal.
+// Nilai TURUNAN (tidak disimpan, dihitung dari item + jurnal):
+// total_realisasi = SUM(panjar_item.nominal), sisa, dan kurang. `panjar_item`
+// adalah detail nota dan tidak boleh di-drop. Audit `PANJAR_HEADER_TIDAK_COCOK`
+// menangkap drift header terhadap jurnal serah yang di-seed lewat SQL.
 
 import type Database from 'better-sqlite3';
 import {

@@ -112,8 +112,8 @@ describe('DB-10 — migrasi v14', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(17);
-      expect(versi(db)).toBe(17);
+      expect(SCHEMA_VERSION).toBe(18);
+      expect(versi(db)).toBe(18);
 
       const index = indeksReversal(db);
       expect(index?.name).toBe('ux_jurnal_reversal');
@@ -136,8 +136,8 @@ describe('DB-10 — migrasi v14', () => {
       ]);
 
       // Migrasi berulang tidak menggandakan index/trigger.
-      expect(migrasi(db)).toBe(17);
-      expect(migrasi(db)).toBe(17);
+      expect(migrasi(db)).toBe(18);
+      expect(migrasi(db)).toBe(18);
       expect(
         db
           .prepare(
@@ -152,7 +152,7 @@ describe('DB-10 — migrasi v14', () => {
 
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(17);
+      expect(versi(db2)).toBe(18);
       expect(indeksReversal(db2)?.name).toBe('ux_jurnal_reversal');
       expect(triggerValidasi(db2)?.name).toBe('trg_jurnal_validasi_insert');
     } finally {
