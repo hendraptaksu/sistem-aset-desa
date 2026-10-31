@@ -20,6 +20,7 @@
 import type Database from 'better-sqlite3';
 import { POSISI_NORMAL, type CoaTipe } from './coa.js';
 import { formatRp } from '../utils/format.js';
+import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
 
 export type KodeTemuan =
   | 'JURNAL_TANPA_BARIS'
@@ -39,7 +40,9 @@ export type KodeTemuan =
   | 'NOMOR_BUKTI_DUPLIKAT'
   | 'PANJAR_OPEN_TIDAK_LENGKAP'
   | 'PANJAR_CLOSED_TIDAK_LENGKAP'
-  | 'PANJAR_OPEN_PUNYA_CLOSE';
+  | 'PANJAR_OPEN_PUNYA_CLOSE'
+  | 'PANJAR_OPEN_PUNYA_ITEM'
+  | 'PANJAR_ITEM_TIDAK_COCOK';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
 export type Temuan = {
@@ -138,6 +141,26 @@ type PanjarClosedTidakLengkap = {
   jumlah_item: number;
 };
 
+type PanjarOpenDenganItem = {
+  id: string;
+  status: string;
+  jumlah_item: number;
+};
+
+type PanjarItemTidakCocok = {
+  id: string;
+  jurnal_close_id: string;
+  total_item: number;
+  total_jurnal: number;
+  selisih: number;
+  akun_selisih: {
+    akun: string;
+    total_item: number;
+    total_jurnal: number;
+    selisih: number;
+  }[];
+};
+
 type AkunTidakValid = {
   kode: string;
   nama: string;
@@ -166,8 +189,11 @@ const TIPE_VALID_TEKS = DAFTAR_TIPE.join(', ');
  * 7. nomor bukti unik per tahun (kosong diabaikan);
  * 8. pasangan reversal valid: satu reversal per jurnal asli, asli ada dan
  *    bukan reversal, `grup_id` sama;
- * 9. status panjar konsisten dengan jurnal/tanggal close dan item-nya;
- * 10. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
+ * 9. status panjar konsisten dengan jurnal/tanggal close dan item-nya (OPEN
+ *    tanpa close/item, CLOSED punya jurnal close/tanggal/item);
+ * 10. DB-19: total `panjar_item` per akun BEBAN sama dengan debit BEBAN jurnal
+ *     close (helper yang sama dengan `closePanjarV2`);
+ * 11. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1.
  *
  * Hasil selalu deterministik dan tidak mengubah database.
  */
@@ -461,6 +487,73 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       kode: 'PANJAR_OPEN_PUNYA_CLOSE',
       pesan: `Panjar ${r.id} berstatus OPEN tetapi sudah punya ${bagian.join(' dan ')}.`,
       detail: r,
+    });
+  }
+
+  // DB-19: panjar OPEN belum boleh punya item pertanggungjawaban. Item hanya
+  // ditulis saat close, jadi adanya item berarti drift/duplikasi data.
+  const panjarOpenDenganItem = db
+    .prepare(
+      `SELECT p.id, p.status, COUNT(i.id) AS jumlah_item
+         FROM panjar p
+         JOIN panjar_item i ON i.panjar_id = p.id
+        WHERE p.status = 'OPEN'
+        GROUP BY p.id
+       HAVING COUNT(i.id) > 0
+        ORDER BY p.id`,
+    )
+    .all() as PanjarOpenDenganItem[];
+  for (const r of panjarOpenDenganItem) {
+    temuan.push({
+      kode: 'PANJAR_OPEN_PUNYA_ITEM',
+      pesan:
+        `Panjar ${r.id} berstatus OPEN tetapi sudah punya ${r.jumlah_item} item ` +
+        `pertanggungjawaban; item hanya boleh ada setelah close.`,
+      detail: r,
+    });
+  }
+
+  // DB-19: jurnal close adalah sumber total. Untuk panjar CLOSED yang sudah
+  // punya item dan jurnal close, total item per akun BEBAN wajib sama dengan
+  // debit BEBAN jurnal close. Memakai helper yang sama dengan closePanjarV2.
+  // Kasus item kosong/jurnal kosong sudah dilaporkan oleh pemeriksaan di atas,
+  // jadi di sini hanya panjar yang lengkap (menghindari temuan ganda).
+  const panjarClosedLengkap = db
+    .prepare(
+      `SELECT p.id, p.jurnal_close_id, COUNT(i.id) AS jumlah_item
+         FROM panjar p
+         JOIN panjar_item i ON i.panjar_id = p.id
+        WHERE p.status = 'CLOSED'
+          AND p.jurnal_close_id IS NOT NULL AND p.jurnal_close_id <> ''
+        GROUP BY p.id
+       HAVING COUNT(i.id) > 0
+        ORDER BY p.id`,
+    )
+    .all() as { id: string; jurnal_close_id: string; jumlah_item: number }[];
+  for (const r of panjarClosedLengkap) {
+    const hasil = rekonsiliasiPanjarTersimpan(db, r.id);
+    if (!hasil || hasil.ok) continue;
+    const detail: PanjarItemTidakCocok = {
+      id: r.id,
+      jurnal_close_id: r.jurnal_close_id,
+      total_item: hasil.total_item,
+      total_jurnal: hasil.total_jurnal,
+      selisih: hasil.selisih,
+      akun_selisih: hasil.akun_selisih,
+    };
+    const rincian = hasil.akun_selisih
+      .map(
+        (a) =>
+          `${a.akun} item ${formatRp(a.total_item)} vs jurnal ${formatRp(a.total_jurnal)} ` +
+          `(selisih ${formatRp(a.selisih)})`,
+      )
+      .join('; ');
+    temuan.push({
+      kode: 'PANJAR_ITEM_TIDAK_COCOK',
+      pesan:
+        `Panjar ${r.id}: total item tidak cocok dengan jurnal close ` +
+        `${r.jurnal_close_id}: ${rincian || `selisih ${formatRp(hasil.selisih)}`}.`,
+      detail,
     });
   }
 

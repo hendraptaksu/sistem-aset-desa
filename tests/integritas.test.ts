@@ -143,6 +143,43 @@ function kodeTemuan(db: Database.Database): string[] {
   return auditIntegritas(db).temuan.map((t) => t.kode);
 }
 
+function buatItemPanjar(
+  db: Database.Database,
+  panjarId: string,
+  akun: string,
+  nominal: number,
+  jurnalId: string,
+): void {
+  db.prepare(
+    `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
+     VALUES (?, ?, ?, ?)`,
+  ).run(panjarId, akun, nominal, jurnalId);
+}
+
+/** Panjar CLOSED lengkap: jurnal open 100k, close sesuai item, item tersimpan. */
+function panjarClosedLengkap(
+  db: Database.Database,
+  id: string,
+  items: [akun: string, nominal: number][],
+  barisClose: [akun: string, debit: number, kredit: number][],
+): void {
+  buatJurnal(db, `j-open-${id}`, '2026-02-01', `PJ-O-${id}`);
+  buatBaris(db, `j-open-${id}`, '1040', 100_000, 0);
+  buatBaris(db, `j-open-${id}`, '1001', 0, 100_000);
+  buatJurnal(db, `j-close-${id}`, '2026-02-02', `PJ-C-${id}`);
+  for (const [akun, debit, kredit] of barisClose)
+    buatBaris(db, `j-close-${id}`, akun, debit, kredit);
+  buatPanjar(db, {
+    id,
+    status: 'CLOSED',
+    jurnalOpenId: `j-open-${id}`,
+    jurnalCloseId: `j-close-${id}`,
+    tanggalClose: '2026-02-02',
+  });
+  for (const [akun, nominal] of items)
+    buatItemPanjar(db, id, akun, nominal, `j-close-${id}`);
+}
+
 describe('AKT-09 — audit integritas akuntansi', () => {
   it('DB bersih dengan jurnal seimbang dan panjar OPEN tidak menghasilkan temuan', () => {
     denganDb((db) => {
@@ -584,5 +621,172 @@ describe('DB-12 — pemanggilan audit di startup, backup, dan tutup buku', () =>
     const tutup = baca('src/db/tutup.ts');
     expect(tutup).toContain("from './integritas.js'");
     expect(tutup.match(/auditIntegritas\(db\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
+  it('panjar CLOSED normal lolos audit tanpa temuan', () => {
+    denganDb((db) => {
+      panjarClosedLengkap(
+        db,
+        'p-ok',
+        [
+          ['5004', 30_000],
+          ['5004', 30_000],
+          ['5010', 40_000],
+        ],
+        [
+          ['5004', 60_000, 0],
+          ['5010', 40_000, 0],
+          ['1040', 0, 100_000],
+        ],
+      );
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(true);
+      expect(hasil.temuan).toEqual([]);
+    });
+  });
+
+  it('mendeteksi nominal item diubah lewat SQL langsung', () => {
+    denganDb((db) => {
+      panjarClosedLengkap(
+        db,
+        'p-nominal',
+        [['5004', 60_000]],
+        [
+          ['5004', 60_000, 0],
+          ['1040', 0, 60_000],
+        ],
+      );
+      db.prepare("UPDATE panjar_item SET nominal = 70000 WHERE panjar_id = 'p-nominal'").run();
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_ITEM_TIDAK_COCOK',
+        detail: {
+          id: 'p-nominal',
+          jurnal_close_id: 'j-close-p-nominal',
+          total_item: 70_000,
+          total_jurnal: 60_000,
+          selisih: 10_000,
+          akun_selisih: [
+            {
+              akun: '5004',
+              total_item: 70_000,
+              total_jurnal: 60_000,
+              selisih: 10_000,
+            },
+          ],
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/tidak cocok dengan jurnal close/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/5004/);
+    });
+  });
+
+  it('mendeteksi item yang dihapus sehingga total per akun kurang', () => {
+    denganDb((db) => {
+      panjarClosedLengkap(
+        db,
+        'p-hapus-item',
+        [
+          ['5004', 60_000],
+          ['5010', 40_000],
+        ],
+        [
+          ['5004', 60_000, 0],
+          ['5010', 40_000, 0],
+          ['1040', 0, 100_000],
+        ],
+      );
+      db.prepare("DELETE FROM panjar_item WHERE panjar_id = 'p-hapus-item' AND kategori_baga = '5010'").run();
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_ITEM_TIDAK_COCOK',
+        detail: {
+          id: 'p-hapus-item',
+          total_item: 60_000,
+          total_jurnal: 100_000,
+          akun_selisih: [
+            {
+              akun: '5010',
+              total_item: 0,
+              total_jurnal: 40_000,
+              selisih: -40_000,
+            },
+          ],
+        },
+      });
+    });
+  });
+
+  it('mendeteksi item dengan akun ekstra di luar jurnal close', () => {
+    denganDb((db) => {
+      panjarClosedLengkap(
+        db,
+        'p-akun-ekstra',
+        [['5004', 60_000]],
+        [
+          ['5004', 60_000, 0],
+          ['1040', 0, 60_000],
+        ],
+      );
+      buatItemPanjar(db, 'p-akun-ekstra', '5001', 25_000, 'j-close-p-akun-ekstra');
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_ITEM_TIDAK_COCOK',
+        detail: {
+          id: 'p-akun-ekstra',
+          total_item: 85_000,
+          total_jurnal: 60_000,
+          akun_selisih: [
+            {
+              akun: '5001',
+              total_item: 25_000,
+              total_jurnal: 0,
+              selisih: 25_000,
+            },
+          ],
+        },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/5001/);
+    });
+  });
+
+  it('mendeteksi panjar OPEN yang sudah punya item', () => {
+    denganDb((db) => {
+      buatJurnal(db, 'j-open-punya-item', '2026-02-01', 'PJ-OI');
+      buatBaris(db, 'j-open-punya-item', '1040', 100_000, 0);
+      buatBaris(db, 'j-open-punya-item', '1001', 0, 100_000);
+      buatPanjar(db, {
+        id: 'p-open-punya-item',
+        status: 'OPEN',
+        jurnalOpenId: 'j-open-punya-item',
+      });
+      buatItemPanjar(db, 'p-open-punya-item', '5004', 10_000, 'j-open-punya-item');
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.ok).toBe(false);
+      expect(hasil.temuan).toHaveLength(1);
+      expect(hasil.temuan[0]).toMatchObject({
+        kode: 'PANJAR_OPEN_PUNYA_ITEM',
+        detail: { id: 'p-open-punya-item', status: 'OPEN', jumlah_item: 1 },
+      });
+      expect(hasil.temuan[0]?.pesan).toMatch(/status OPEN.*item pertanggungjawaban/i);
+    });
   });
 });

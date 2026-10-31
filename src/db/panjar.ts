@@ -27,6 +27,9 @@ import { formatRp } from '../utils/format.js';
 import { isAkunKasData } from './coa.js';
 import { getAkun, listAkun } from './repository.js';
 import { postingJurnal } from './posting.js';
+import { rekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
+import type { HasilRekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
+import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
 
 export type SerahPanjarInput = {
   /** ID dokumen panjar; opsional (dibuat otomatis). */
@@ -102,6 +105,21 @@ function gagal(pesan: string, extra: Partial<HasilPanjar> = {}): HasilPanjar {
     tersimpan: false,
     ...extra,
   };
+}
+
+/** DB-19: pesan selisih per akun yang dipakai closePanjarV2. */
+function pesanSelisihRekonsiliasi(hasil: HasilRekonsiliasiPanjar): string {
+  const rincian = hasil.akun_selisih
+    .map(
+      (a) =>
+        `${a.akun} item ${formatRp(a.total_item)} vs jurnal ${formatRp(a.total_jurnal)} ` +
+        `(selisih ${formatRp(a.selisih)})`,
+    )
+    .join('; ');
+  return (
+    'Rincian realisasi panjar tidak cocok dengan jurnal close: ' +
+    `${rincian || 'total item dan jurnal berbeda'}. Pertanggungjawaban dibatalkan.`
+  );
 }
 
 function uid(prefix: string): string {
@@ -275,6 +293,7 @@ export function closePanjarV2(
     items.push({ akun, nominal, ...nota.nota });
   }
 
+  const daftarAkun = listAkun(db);
   let rencana: HasilPanjarClose;
   try {
     rencana = buatJurnalPanjarClose({
@@ -283,12 +302,32 @@ export function closePanjarV2(
       akunKas: panjar.akun_kas_sumber,
       jumlahPanjar: panjar.jumlah,
       items,
-      daftarAkun: listAkun(db),
+      daftarAkun,
       ...(input.alasan ? { alasan: input.alasan } : {}),
       ...(input.jurnalId ? { id: input.jurnalId } : {}),
     });
   } catch (e) {
     return gagal(e instanceof Error ? e.message : String(e));
+  }
+
+  // DB-19: jurnal adalah sumber total. Bandingkan item yang akan disimpan
+  // dengan debit BEBAN jurnal close memakai helper yang sama dengan audit.
+  // Normalnya selalu cocok karena keduanya berasal dari `items`; guard ini
+  // menangkap drift/duplicate code path sebelum ada yang ditulis.
+  const kodeBeban = new Set(
+    daftarAkun.filter((a) => a.tipe === 'BEBAN').map((a) => a.kode),
+  );
+  const cekRencana = rekonsiliasiPanjar(
+    items.map((it) => ({ akun: it.akun, nominal: it.nominal })),
+    rencana.input.baris,
+    kodeBeban,
+  );
+  if (!cekRencana.ok) {
+    return gagal(pesanSelisihRekonsiliasi(cekRencana), {
+      totalRealisasi: rencana.totalRealisasi,
+      sisa: rencana.sisa,
+      kurang: rencana.kurang,
+    });
   }
 
   const alasanKurang = String(input.alasanKurang ?? '').trim();
@@ -417,6 +456,18 @@ export function closePanjarV2(
           it.toko ?? '',
           it.keterangan ?? '',
         );
+
+      // DB-19: verifikasi ulang dari `panjar_item` yang benar-benar tersimpan
+      // terhadap jurnal close. Helper sama dengan audit; selisih melempar error
+      // sehingga seluruh transaksi (jurnal/metadata/item/audit) rollback.
+      const cekTersimpan = rekonsiliasiPanjarTersimpan(db, id);
+      if (!cekTersimpan || !cekTersimpan.ok) {
+        throw new Error(
+          cekTersimpan
+            ? pesanSelisihRekonsiliasi(cekTersimpan)
+            : 'Jurnal close panjar tidak ditemukan saat rekonsiliasi.',
+        );
+      }
 
       return {
         ...hasil,

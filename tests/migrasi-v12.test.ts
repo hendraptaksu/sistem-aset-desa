@@ -175,6 +175,8 @@ function buatFixtureV11(path: string): void {
     insAkun.run('2050', 'HUTANG LAIN-LAIN', 'KEWAJIBAN', 'KREDIT');
     insAkun.run('3000', 'MODAL', 'EKUITAS', 'KREDIT');
     insAkun.run('4001', 'PENDAPATAN', 'PENDAPATAN', 'KREDIT');
+    insAkun.run('1040', 'UANG PANJAR', 'AKTIVA', 'DEBIT');
+    insAkun.run('5004', 'BEBAN KONSUMSI', 'BEBAN', 'DEBIT');
 
     lama
       .prepare(
@@ -198,20 +200,49 @@ function buatFixtureV11(path: string): void {
     insBaris.run('j-v11', '1001', 5_000_000, 0);
     insBaris.run('j-v11', '3000', 0, 5_000_000);
 
+    // Jurnal close panjar agar fixture tetap lolos audit DB-19 (item CLOSED
+    // harus cocok dengan debit BEBAN jurnal close).
+    lama
+      .prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+         VALUES (?, ?, ?, ?, 'PANJAR', ?, NULL, ?)`,
+      )
+      .run(
+        'j-v11-close',
+        '2026-01-03',
+        '',
+        'Pertanggungjawaban panjar v11',
+        'j-v11-close',
+        WAKTU,
+      );
+    insBaris.run('j-v11-close', '5004', 50_000, 0);
+    insBaris.run('j-v11-close', '1040', 0, 50_000);
+
     lama
       .prepare(
         `INSERT INTO panjar
            (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
             tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
-         VALUES (?, ?, ?, ?, ?, 'OPEN', NULL, ?, NULL, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'CLOSED', ?, ?, ?, ?)`,
       )
-      .run('p-v11', '2026-01-02', 'Penerima Panjar', 100_000, '1001', 'j-v11', WAKTU);
+      .run(
+        'p-v11',
+        '2026-01-02',
+        'Penerima Panjar',
+        100_000,
+        '1001',
+        '2026-01-03',
+        'j-v11',
+        'j-v11-close',
+        WAKTU,
+      );
     lama
       .prepare(
         `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
          VALUES (?, ?, ?, ?)`,
       )
-      .run('p-v11', '4001', 50_000, 'j-v11');
+      .run('p-v11', '5004', 50_000, 'j-v11-close');
 
     lama
       .prepare(
@@ -325,16 +356,16 @@ describe('DB-33 — migrasi v11 → v17', () => {
       }
 
       // Jurnal + panjar + tutup buku + audit + pengaturan utuh.
-      expect(listJurnal(db).map((j) => j.id)).toEqual(['j-v11']);
+      expect(listJurnal(db).map((j) => j.id)).toEqual(['j-v11', 'j-v11-close']);
       const baris = listJurnalBaris(db, 'j-v11');
       expect(baris).toHaveLength(2);
       expect(baris.reduce((t, b) => t + b.debit, 0)).toBe(5_000_000);
       expect(baris.reduce((t, b) => t + b.kredit, 0)).toBe(5_000_000);
       expect(db.prepare('SELECT id, status FROM panjar').all()).toEqual([
-        { id: 'p-v11', status: 'OPEN' },
+        { id: 'p-v11', status: 'CLOSED' },
       ]);
       expect(db.prepare('SELECT panjar_id, kategori_baga FROM panjar_item').all()).toEqual([
-        { panjar_id: 'p-v11', kategori_baga: '4001' },
+        { panjar_id: 'p-v11', kategori_baga: '5004' },
       ]);
       expect(listTutupBuku(db).map((t) => t.tahun)).toEqual([2025]);
       expect(listAuditLog(db).map((a) => a.id)).toEqual(['audit-v11']);
@@ -365,7 +396,7 @@ describe('DB-33 — migrasi v11 → v17', () => {
       expect(versi(db2)).toBe(17);
       const tabel = daftarTabel(db2);
       for (const lama of TABEL_DIHAPUS_V12) expect(tabel).not.toContain(lama);
-      expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v11']);
+      expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v11', 'j-v11-close']);
     } finally {
       db2.close();
     }

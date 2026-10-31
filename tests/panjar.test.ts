@@ -24,6 +24,7 @@ import {
   listPanjarV2,
   serahkanPanjar,
 } from '../src/db/panjar.js';
+import { auditIntegritas } from '../src/db/integritas.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import {
@@ -36,6 +37,10 @@ import {
   buatJurnalPanjarClose,
   buatJurnalPanjarSerah,
 } from '../src/core/forms.js';
+import {
+  rekonsiliasiPanjar,
+  totalPanjarPerAkun,
+} from '../src/core/rekonsiliasiPanjar.js';
 import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
 import { AKUN_MODAL, KAS_KODES } from '../src/db/coa.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
@@ -812,5 +817,161 @@ describe('AKT-08 — UI konfirmasi overrun tanpa checkbox', () => {
     expect(html).not.toContain('Saya setuju kekurangan');
     expect(html).not.toContain('Centang persetujuan');
     expect(html).toContain('sistem akan meminta alasan minimal 5 karakter');
+  });
+});
+
+describe('DB-19 — rekonsiliasi item panjar vs jurnal close', () => {
+  it('close normal lolos audit; total realisasi dan total per akun = SUM item', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const hasil = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-03-01',
+        items: [
+          {
+            kategori_baga: '5004',
+            nominal: RP(300_000),
+            nota_nomor: 'N-001',
+            toko: 'Toko A',
+          },
+          {
+            kategori_baga: '5010',
+            nominal: RP(200_000),
+            nota_nomor: 'N-002',
+            toko: 'Toko B',
+          },
+          {
+            kategori_baga: '5004',
+            nominal: RP(100_000),
+            nota_nomor: 'N-003',
+            toko: 'Toko A',
+          },
+        ],
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      const items = listPanjarItemsV2(db, 'p1');
+      const totalItem = items.reduce((s, it) => s + it.nominal, 0);
+      expect(items).toHaveLength(3);
+      // Field nota/toko/keterangan DB-18 tetap terekspos di daftar item.
+      expect(items[0]).toMatchObject({
+        kategori_baga: '5004',
+        nota_nomor: 'N-001',
+        toko: 'Toko A',
+        keterangan: '',
+      });
+      expect(totalItem).toBe(RP(600_000));
+      expect(totalPanjarPerAkun(items)).toEqual([
+        { akun: '5004', nominal: RP(400_000) },
+        { akun: '5010', nominal: RP(200_000) },
+      ]);
+
+      expect(getPanjar(db, 'p1')?.total_realisasi).toBe(totalItem);
+      expect(listPanjarV2(db, 'CLOSED')[0]?.total_realisasi).toBe(totalItem);
+      // Close normal tidak boleh menghasilkan temuan integritas apa pun.
+      expect(auditIntegritas(db).temuan).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('close ditolak bila panjar_item berubah setelah insert (guard transaksi)', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      // Simulasikan jalur tulis lain yang mengubah nominal setelah insert.
+      db.exec(`
+        CREATE TRIGGER uji_drift_panjar_item
+        AFTER INSERT ON panjar_item
+        BEGIN
+          UPDATE panjar_item SET nominal = nominal + 100 WHERE id = NEW.id;
+        END;
+      `);
+
+      const hasil = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-03-01',
+        items: [{ kategori_baga: '5004', nominal: RP(600_000) }],
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/tidak cocok dengan jurnal close/i);
+      expect(hasil.errors.join(' ')).toMatch(/5004/);
+      // Rollback menyeluruh: jurnal close, status, item, dan audit tidak ada.
+      expect(listJurnal(db)).toHaveLength(2); // saldo awal + serah
+      expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
+      expect(listPanjarItemsV2(db, 'p1')).toHaveLength(0);
+      expect(listAuditLog(db, { aksi: 'PANJAR-CLOSE' })).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('helper rekonsiliasi menolak item eksternal yang tidak cocok per akun', () => {
+    const kodeBeban = new Set(['5004', '5010']);
+    const baris = [
+      { akun_kode: '5004', debit: RP(600_000) },
+      { akun_kode: '5010', debit: RP(200_000) },
+      { akun_kode: '1001', debit: RP(400_000) }, // sisa kas, bukan BEBAN
+      { akun_kode: '1040', debit: 0 },
+    ];
+
+    const cocok = rekonsiliasiPanjar(
+      [
+        { akun: '5004', nominal: RP(400_000) },
+        { akun: '5004', nominal: RP(200_000) },
+        { akun: '5010', nominal: RP(200_000) },
+      ],
+      baris,
+      kodeBeban,
+    );
+    expect(cocok).toMatchObject({
+      ok: true,
+      total_item: RP(800_000),
+      total_jurnal: RP(800_000),
+      selisih: 0,
+      akun_selisih: [],
+    });
+
+    const nominalBeda = rekonsiliasiPanjar(
+      [{ akun: '5004', nominal: RP(500_000) }],
+      baris,
+      kodeBeban,
+    );
+    expect(nominalBeda.ok).toBe(false);
+    expect(nominalBeda.akun_selisih).toEqual([
+      {
+        akun: '5004',
+        total_item: RP(500_000),
+        total_jurnal: RP(600_000),
+        selisih: -RP(100_000),
+      },
+      {
+        akun: '5010',
+        total_item: 0,
+        total_jurnal: RP(200_000),
+        selisih: -RP(200_000),
+      },
+    ]);
+
+    const akunEkstra = rekonsiliasiPanjar(
+      [
+        { akun: '5004', nominal: RP(600_000) },
+        { akun: '5010', nominal: RP(200_000) },
+        { akun: '5011', nominal: RP(50_000) },
+      ],
+      baris,
+      kodeBeban,
+    );
+    expect(akunEkstra.ok).toBe(false);
+    expect(akunEkstra.akun_selisih).toEqual([
+      {
+        akun: '5011',
+        total_item: RP(50_000),
+        total_jurnal: 0,
+        selisih: RP(50_000),
+      },
+    ]);
   });
 });

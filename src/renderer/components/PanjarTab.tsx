@@ -7,6 +7,7 @@ import {
   type HasilPanjarClose,
 } from '../../core/forms.js';
 import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
+import { totalPanjarPerAkun } from '../../core/rekonsiliasiPanjar.js';
 import type { Panjar, PanjarItem } from '../../core/types.js';
 import {
   panjarToWorkbook,
@@ -1001,6 +1002,8 @@ export function PanjarTab() {
             <tbody>
               {shown.map((p) => {
                 const realisasi = p.total_realisasi ?? 0;
+                const realisasiPerAkun =
+                  detailId === p.id ? totalPanjarPerAkun(detailItems[p.id] ?? []) : [];
                 return (
                   <Fragment key={p.id}>
                     <tr className="border-b last:border-0 align-top">
@@ -1052,38 +1055,51 @@ export function PanjarTab() {
                           {detailBusy === p.id ? (
                             <p className="text-stone-500">Memuat rincian…</p>
                           ) : (detailItems[p.id]?.length ?? 0) > 0 ? (
-                            <table className="w-full text-left text-sm">
-                              <thead>
-                                <tr className="text-stone-500">
-                                  <th className="py-1 pr-3">No. nota</th>
-                                  <th className="py-1 pr-3">Tgl nota</th>
-                                  <th className="py-1 pr-3">Toko / penerima</th>
-                                  <th className="py-1 pr-3">Jenis belanja</th>
-                                  <th className="py-1 pr-3 text-right">Nominal</th>
-                                  <th className="py-1 pr-3">Keterangan</th>
-                                  <th className="py-1">Jurnal</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {detailItems[p.id]!.map((it) => (
-                                  <tr key={it.id ?? `${it.kategori_baga}-${it.nominal}`}>
-                                    <td className="py-1 pr-3">{it.nota_nomor || '—'}</td>
-                                    <td className="py-1 pr-3 whitespace-nowrap">
-                                      {it.nota_tanggal ? formatTanggal(it.nota_tanggal) : '—'}
-                                    </td>
-                                    <td className="py-1 pr-3">{it.toko || '—'}</td>
-                                    <td className="py-1 pr-3">{labelAkun(it.kategori_baga)}</td>
-                                    <td className="py-1 pr-3 text-right">
-                                      {formatRp(it.nominal)}
-                                    </td>
-                                    <td className="py-1 pr-3">{it.keterangan || '—'}</td>
-                                    <td className="py-1 text-xs text-stone-500">
-                                      {it.jurnal_id ?? '—'}
-                                    </td>
+                            <>
+                              <table className="w-full text-left text-sm">
+                                <thead>
+                                  <tr className="text-stone-500">
+                                    <th className="py-1 pr-3">No. nota</th>
+                                    <th className="py-1 pr-3">Tgl nota</th>
+                                    <th className="py-1 pr-3">Toko / penerima</th>
+                                    <th className="py-1 pr-3">Jenis belanja</th>
+                                    <th className="py-1 pr-3 text-right">Nominal</th>
+                                    <th className="py-1 pr-3">Keterangan</th>
+                                    <th className="py-1">Jurnal</th>
                                   </tr>
+                                </thead>
+                                <tbody>
+                                  {detailItems[p.id]!.map((it) => (
+                                    <tr key={it.id ?? `${it.kategori_baga}-${it.nominal}`}>
+                                      <td className="py-1 pr-3">{it.nota_nomor || '—'}</td>
+                                      <td className="py-1 pr-3 whitespace-nowrap">
+                                        {it.nota_tanggal ? formatTanggal(it.nota_tanggal) : '—'}
+                                      </td>
+                                      <td className="py-1 pr-3">{it.toko || '—'}</td>
+                                      <td className="py-1 pr-3">{labelAkun(it.kategori_baga)}</td>
+                                      <td className="py-1 pr-3 text-right">
+                                        {formatRp(it.nominal)}
+                                      </td>
+                                      <td className="py-1 pr-3">{it.keterangan || '—'}</td>
+                                      <td className="py-1 text-xs text-stone-500">
+                                        {it.jurnal_id ?? '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-1 border-t pt-2 text-sm">
+                                <span className="font-semibold">Total per akun:</span>
+                                {realisasiPerAkun.map((a) => (
+                                  <span key={a.akun}>
+                                    {labelAkun(a.akun)} = {formatRp(a.nominal)}
+                                  </span>
                                 ))}
-                              </tbody>
-                            </table>
+                                <span className="font-semibold">
+                                  Total realisasi = {formatRp(realisasi)}
+                                </span>
+                              </div>
+                            </>
                           ) : (
                             <p className="text-stone-500">
                               Belum ada rincian. Rincian muncul setelah pertanggungjawaban

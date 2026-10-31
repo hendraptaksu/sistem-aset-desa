@@ -100,7 +100,7 @@
 | DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
 | DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
 | DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [x] |
-| DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [ ] |
+| DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [x] |
 | DB-20 | P2 | S | Panjar: rapikan kolom header (bukan drop item) | DB-19 | [ ] |
 | DB-21 | P2 | M | Panjar: batal/reopen panjar OPEN | DB-18 | [ ] |
 | DB-22 | — | — | **DIBATALKAN** — Lampiran: kompresi gambar | — | [x] |
@@ -922,7 +922,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     (baseline 805/65); `npm run build` berhasil.
   - **Dependency:** —
 
-- [ ] **DB-19 — Panjar: validasi item vs jurnal close** · P1 · M
+- [x] **DB-19 — Panjar: validasi item vs jurnal close** · P1 · M
   - **Konteks:** setelah DB-18, `panjar_item` adalah subledger detail dan
     jurnal close adalah sumber total. Keduanya bisa drift jika tidak
     direkonsiliasi.
@@ -939,6 +939,31 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     total panjar benar.
   - **Test:** `tests/panjar.test.ts`, `tests/integritas.test.ts`.
   - **Verifikasi:** typecheck + test.
+  - **Bukti 2026-10-31:** helper rekonsiliasi bersama ada di
+    `src/core/rekonsiliasiPanjar.ts` (`rekonsiliasiPanjar`, total per akun) dan
+    adapter baca-saja `src/db/panjarRekonsiliasi.ts`
+    (`rekonsiliasiPanjarTersimpan`). `closePanjarV2` memakai helper yang sama
+    dua kali: sebelum posting (item input vs rencana jurnal) dan di dalam
+    transaksi setelah `panjar_item` benar-benar tersimpan (item DB vs jurnal
+    close). Selisih melempar error sehingga jurnal, status, item, dan audit
+    rollback; close normal tetap lolos. Audit `auditIntegritas` kini memeriksa
+    panjar CLOSED yang lengkap: total item per akun BEBAN harus sama dengan
+    debit BEBAN jurnal close (kode `PANJAR_ITEM_TIDAK_COCOK`, detail
+    `akun_selisih`), dan panjar OPEN tidak boleh punya item (kode
+    `PANJAR_OPEN_PUNYA_ITEM`). Panjar CLOSED tanpa item/jurnal tetap dilaporkan
+    oleh `PANJAR_CLOSED_TIDAK_LENGKAP` yang sudah ada; tidak ada item yang
+    dihapus. `total_realisasi` tetap dihitung `SUM(panjar_item.nominal)` dan
+    rincian UI menampilkan total per akun + total realisasi. `listPanjarItemsV2`
+    tetap mengembalikan `nota_nomor`, `nota_tanggal`, `toko`, dan `keterangan`
+    dari DB-18. Test: `tests/panjar.test.ts` (close normal lolos audit + total
+    per akun; trigger drift saat insert ditolak dan rollback; helper menolak
+    nominal/akun ekstra) dan `tests/integritas.test.ts` (CLOSED normal, nominal
+    diubah, item dihapus, akun ekstra, OPEN punya item). Fixture migrasi v11 di
+    `tests/migrasi-v12.test.ts` disesuaikan menjadi panjar CLOSED yang sah agar
+    tetap lolos audit baru. Tanpa perubahan skema/`SCHEMA_VERSION` (tetap 17),
+    tanpa menyentuh `data/`, jurnal, backup, atau commit.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads` **822 test/66
+    file hijau** (baseline 814/66); `npm run build` berhasil.
   - **Dependency:** DB-18.
 
 - [ ] **DB-20 — Panjar: rapikan kolom header (bukan drop item)** · P2 · S
