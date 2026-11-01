@@ -185,11 +185,10 @@ Saldo `2060` dihitung dari jurnal dan bisa diperiksa di Buku Besar atau Neraca.
 Tidak ada tabel saldo per pihak yang disimpan.
 
 `2050 HUTANG LAIN-LAIN` adalah pinjaman atau saldo lama; pembayarannya masuk
-kelompok **Pendanaan**. Pinjaman LPD memakai modul LPD tersendiri. Lapisan
-data dan jadwalnya sudah disiapkan (DB-16b); layar wizard/form pinjaman
-menyusul pada DB-16c/DB-16d. Jangan membuat pinjaman baru lewat Jurnal Umum
-kecuali untuk koreksi oleh akuntan pendamping; saldo 2050 lama tetap terbaca
-di laporan.
+kelompok **Pendanaan**. Pinjaman LPD memakai menu **Pinjaman LPD** tersendiri
+(DB-16c); form pembayaran angsuran menyusul pada DB-16d. Jangan membuat
+pinjaman baru lewat Jurnal Umum kecuali untuk koreksi oleh akuntan pendamping;
+saldo 2050 lama tetap terbaca di laporan.
 
 ### 2.5a Pinjaman LPD (jadwal dan pembayaran)
 
@@ -213,6 +212,30 @@ Pinjaman LPD dipisahkan dari **rencana** dan **realisasi**:
   dan jadwalnya tanpa membuat jurnal pencairan baru. Sisa pokok itu harus sudah
   masuk sebagai **kredit 2050 di Saldo Awal**. Membuat jurnal pencairan baru
   akan membuat kas dan utang menjadi dobel.
+
+#### Langkah wizard Pinjaman LPD
+
+Buka menu **Pinjaman LPD** (juga tersedia sebagai kartu di tab **Transaksi**),
+lalu pilih salah satu mode:
+
+1. **Pencairan baru** — isi tanggal pencairan, nama kreditur/LPD, pokok,
+   akun kas/bank penerima, akun bunga (default `5063 BEBAN BUNGA PINJAMAN`),
+   tenor, dan catatan. Saat disimpan, sistem membuat jurnal seimbang
+   **D akun kas penerima / K 2050 HUTANG LAIN-LAIN** dengan keterangan yang
+   memuat nama kreditur, lalu menyimpan pinjaman + jadwal secara atomik.
+2. **Sudah berjalan** — isi kreditur, **sisa pokok saat ini**, tanggal mulai
+   jadwal, akun bunga, tenor, dan catatan. Mode ini **tidak** membuat jurnal
+   pencairan baru. Pastikan sisa pokok sudah tercatat sebagai kredit 2050 di
+   **Saldo Awal**; jika belum, isi Saldo Awal lebih dulu agar 2050 tidak dobel.
+3. **Jadwal angsuran** diisi manual per baris: nomor ke, jatuh tempo, pokok,
+   bunga, dan catatan. Aplikasi tidak menghitung amortisasi sendiri. Total
+   pokok semua baris wajib sama dengan pokok (mode pencairan) atau sisa pokok
+   (mode berjalan); tanggal jatuh tempo tidak boleh mundur dan nomor ke tidak
+   boleh ganda. Server menolak simpan bila aturan ini dilanggar.
+4. Setelah tersimpan, pinjaman dan jadwal tampil di **Daftar Pinjaman LPD**.
+   Tombol **Lihat jadwal** menampilkan rincian angsuran dan statusnya. Jurnal
+   pencairan bisa dibuka lewat menu **Jurnal Umum**; pinjaman mode berjalan
+   ditandai **Saldo awal** dan tidak memiliki jurnal pencairan.
 
 **Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
 tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada

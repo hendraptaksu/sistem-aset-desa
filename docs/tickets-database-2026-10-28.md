@@ -2,10 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-01 (setelah DB-16b):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **882 test / 71 file hijau**; `npm run build`
-> berhasil. Baseline DB-34 adalah 869/69. Baseline DB-21 adalah 850/69;
-> baseline DB-20 adalah 832/67.
+> **Baseline terakhir 2026-11-01 (setelah DB-16c):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **896 test / 72 file hijau**; `npm run build`
+> berhasil. Baseline DB-16b adalah 882/71. Baseline DB-34 adalah 869/69.
+> Baseline DB-21 adalah 850/69; baseline DB-20 adalah 832/67.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
 > relevan. Verifikasi ulang sebelum mulai.
@@ -96,7 +96,7 @@
 | DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [x] |
 | DB-16a | P0 | S | Desain input pinjaman LPD (user input, bukan data awal) | — | [x] |
 | DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [x] |
-| DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [ ] |
+| DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [x] |
 | DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [ ] |
 | DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [ ] |
 | DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
@@ -793,7 +793,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run typecheck` bersih; `npx vitest run --pool=threads`
     **882 test/71 file hijau** (baseline 869/69); `npm run build` berhasil.
 
-- [ ] **DB-16c — Wizard pinjaman LPD: pencairan / saldo awal berjalan** · P1 · M
+- [x] **DB-16c — Wizard pinjaman LPD: pencairan / saldo awal berjalan** · P1 · M
   - **Konteks:** pinjaman mungkin sudah berjalan sebelum aplikasi dipakai.
     Jangan memaksa jurnal pencairan baru yang membuat kas/2050 dobel.
   - **Langkah:**
@@ -810,6 +810,25 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** dua mode; total jadwal salah ditolak; jurnal seimbang.
   - **Verifikasi:** typecheck + test + build.
   - **Dependency:** DB-16b.
+  - **Bukti 2026-11-01:** `simpanPinjamanLpd` di `src/db/pinjaman.ts` menjadi
+    service atomik dua mode. Mode **PENCAIRAN** memposting jurnal seimbang
+    **D akun kas / K 2050** (jenis `HUTANG`, keterangan memuat kreditur) lalu
+    menyimpan `pinjaman` + jadwal dengan `jurnal_pencairan_id`; bila jadwal/
+    akun gagal, transaksi luar rollback sehingga jurnal + audit tidak
+    tertinggal. Mode **BERJALAN** tidak membuat jurnal (`jurnal_pencairan_id`
+    null), menetapkan `pokok_awal = sisa_pokok_awal`, dan memakai kas aktif
+    pertama dari master DB. UI baru `PinjamanTab.tsx` menyediakan dua mode,
+    peringatan Saldo Awal 2050, editor jadwal manual (tanpa amortisasi), daftar
+    pinjaman, dan detail jadwal; kartu **Pinjaman LPD** juga ditambahkan di tab
+    Transaksi dan menu sidebar. IPC `pinjaman:list/detail/simpan` (total 56
+    channel), `validasiBentukPinjamanSimpan` di `main/validation.ts`, API
+    renderer, serta audit `PINJAMAN-CREATE`/`PINJAMAN-PENCAIRAN`. Test baru
+    `tests/db-16c-pinjaman-ui.test.ts` + test IPC di `tests/ipc-main.test.ts`
+    mencakup dua mode, jurnal seimbang dan tertaut, mode berjalan tanpa jurnal,
+    total jadwal salah, rollback jurnal, validasi bentuk/akun/mode, serta
+    sumber IPC/API/UI/menu/dokumen. `docs/panduan-pengguna.md` memuat langkah
+    wizard. `npm run typecheck` bersih; `npx vitest run --pool=threads`
+    **896 test/72 file hijau** (baseline 882/71); `npm run build` berhasil.
 
 - [ ] **DB-16d — Form bayar angsuran: pokok + bunga + denda** · P1 · M
   - **Konteks:** pembayaran LPD harus memisahkan pokok (mengurangi 2050) dan

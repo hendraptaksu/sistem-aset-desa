@@ -187,6 +187,9 @@ const CHANNEL_IPC = [
   'panjar:list',
   'pengaturan:get',
   'pengaturan:simpan',
+  'pinjaman:detail',
+  'pinjaman:list',
+  'pinjaman:simpan',
   'saldo-awal:posting',
   'saldo-awal:status',
   'saldo:list',
@@ -197,11 +200,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 53 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 56 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(53);
+    expect(env.handlers.size).toBe(56);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(53);
+    expect(CHANNEL_IPC).toHaveLength(56);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1693,5 +1696,74 @@ describe('DB-09 — restore .db wajib konfirmasi lanjutan eksplisit', () => {
     expect((await env.panggil('jurnal:list', {})).data.map((j: { id: string }) => j.id)).toEqual([
       'j-db09-awal',
     ]);
+  });
+});
+
+describe('DB-16c — IPC pinjaman LPD', () => {
+  it('menyimpan pencairan, membaca list/detail, dan menolak input tidak sah', async () => {
+    const env = buatEnv();
+    const saldo = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 10_000_000 }],
+    });
+    expect(saldo.ok, saldo.error).toBe(true);
+
+    const jadwal = [1, 2, 3].map((ke) => ({
+      ke,
+      jatuh_tempo: `2026-0${ke + 1}-01`,
+      pokok: ke === 3 ? 4_000_000 : 3_000_000,
+      bunga: 100_000,
+      catatan: `Angsuran ${ke}`,
+    }));
+    const input = {
+      mode: 'PENCAIRAN',
+      kreditur: 'LPD IPC',
+      tanggal: '2026-01-02',
+      akunKas: '1014',
+      akunBunga: '5063',
+      pokok: 10_000_000,
+      tenor: 3,
+      angsuran: jadwal,
+    };
+
+    const simpan = await env.panggil('pinjaman:simpan', input);
+    expect(simpan.ok, simpan.error).toBe(true);
+    expect(simpan.data.pinjaman).toMatchObject({
+      kreditur: 'LPD IPC',
+      pokok_awal: 10_000_000,
+      sisa_pokok_awal: 10_000_000,
+    });
+    expect(simpan.data.jurnal).toMatchObject({ jenis: 'HUTANG' });
+    expect(simpan.data.pinjaman.jurnal_pencairan_id).toBe(simpan.data.jurnal.id);
+
+    const daftar = await env.panggil('pinjaman:list');
+    expect(daftar.ok, daftar.error).toBe(true);
+    expect(daftar.data).toHaveLength(1);
+    expect(daftar.data[0].angsuran).toHaveLength(3);
+
+    const detail = await env.panggil('pinjaman:detail', simpan.data.pinjaman.id);
+    expect(detail.ok, detail.error).toBe(true);
+    expect(detail.data.id).toBe(simpan.data.pinjaman.id);
+    expect((await env.panggil('pinjaman:detail', 'tidak-ada')).ok).toBe(false);
+
+    const modeSalah = await env.panggil('pinjaman:simpan', {
+      ...input,
+      mode: 'SALAH',
+    });
+    expect(modeSalah.ok).toBe(false);
+    expect(modeSalah.error).toMatch(/mode pinjaman/i);
+
+    const akunSalah = await env.panggil('pinjaman:simpan', {
+      ...input,
+      mode: 'BERJALAN',
+      id: 'pjr-akun-salah',
+      sisaPokok: 1_000_000,
+      akunKas: '2050',
+      angsuran: [
+        { ke: 1, jatuh_tempo: '2026-02-01', pokok: 1_000_000, bunga: 0 },
+      ],    });
+    expect(akunSalah.ok).toBe(false);
+    expect(akunSalah.error).toMatch(/akun kas/i);
+    expect((await env.panggil('pinjaman:list')).data).toHaveLength(1);
   });
 });

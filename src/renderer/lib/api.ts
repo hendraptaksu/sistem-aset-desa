@@ -10,6 +10,7 @@ import type {
   JurnalHeaderInput,
   Panjar,
   PanjarItem,
+  Pinjaman,
   TutupBuku,
 } from '../../core/types.js';
 import type {
@@ -117,6 +118,31 @@ export type AuditFilterApi = {
 export type AuditLogPage = {
   rows: AuditLog[];
   total: number;
+};
+
+/** Mode wizard pinjaman LPD (DB-16c). */
+export type ModePinjamanApi = 'PENCAIRAN' | 'BERJALAN';
+
+/** Input wizard pinjaman LPD; jadwal diisi manual, bukan hasil amortisasi. */
+export type PinjamanSimpanApi = {
+  mode: ModePinjamanApi;
+  id?: string;
+  kreditur: string;
+  tanggal: string;
+  akunKas?: string;
+  akunBunga?: string;
+  pokok?: number;
+  sisaPokok?: number;
+  tenor?: number | null;
+  catatan?: string;
+  noBukti?: string;
+  angsuran: {
+    ke: number;
+    jatuh_tempo: string;
+    pokok: number;
+    bunga: number;
+    catatan?: string;
+  }[];
 };
 
 /** Status Wizard Saldo Awal (P1-6). */
@@ -380,6 +406,18 @@ export const api = {
       panjar: Panjar;
       jurnal?: Jurnal;
     }>('panjar:close', req, alasan),
+  // ---- Pinjaman LPD (DB-16c) ----
+  pinjamanList: () => call<Pinjaman[]>('pinjaman:list'),
+  pinjamanDetail: (id: string) => call<Pinjaman>('pinjaman:detail', id),
+  pinjamanSimpan: (
+    input: PinjamanSimpanApi,
+    opsi: OpsiPostingApi = {},
+  ) =>
+    call<{
+      mode: ModePinjamanApi;
+      pinjaman: Pinjaman;
+      jurnal: Jurnal | null;
+    }>('pinjaman:simpan', input, opsi),
   tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
   tutupCreate: (req: {

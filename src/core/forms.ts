@@ -237,6 +237,42 @@ export function buatJurnalPanjarSerah(form: FormPanjarSerah): JurnalInput {
 }
 
 // ---------------------------------------------------------------------------
+// Pinjaman LPD (DB-16c)
+// ---------------------------------------------------------------------------
+
+export type FormPinjamanPencairan = DasarFormJurnal & {
+  /** Kas/bank yang menerima pencairan pinjaman. */
+  akunKas: string;
+  /** Nama LPD/kreditur; selalu masuk keterangan jurnal. */
+  kreditur: string;
+};
+
+/**
+ * Pencairan pinjaman LPD: **D akun kas penerima / K 2050 HUTANG LAIN-LAIN**.
+ *
+ * Jurnal ini hanya dibuat untuk mode "Pencairan baru". Pinjaman yang sudah
+ * berjalan memakai saldo awal 2050 dan tidak boleh membuat jurnal baru.
+ * Keterangan selalu memuat nama kreditur agar mudah ditelusuri.
+ */
+export function buatJurnalPinjamanPencairan(
+  form: FormPinjamanPencairan,
+): JurnalInput {
+  const nominal = wajibNominal(form.nominal);
+  const kas = akunKas(form.akunKas, 'Akun kas penerima', form.daftarAkun);
+  const kreditur = String(form.kreditur ?? '').trim();
+  if (!kreditur) throw new Error('Nama kreditur/LPD wajib diisi.');
+  const catatan = String(form.keterangan ?? '').trim();
+  const keterangan =
+    catatan && catatan.toLowerCase().includes(kreditur.toLowerCase())
+      ? catatan
+      : `Pencairan pinjaman LPD ${kreditur}${catatan ? ` — ${catatan}` : ''}`;
+  return susun({ ...form, keterangan }, 'HUTANG', [
+    debit(kas, nominal),
+    kredit(AKUN_HUTANG, nominal),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
 // Form utang usaha sederhana (DB-23b)
 // ---------------------------------------------------------------------------
 // Master pihak + `jurnal_pihak` sudah dihapus dari UI/API. Utang usaha non-LPD

@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   ArrowUpRight,
   HandCoins,
+  Landmark,
   Receipt,
   type LucideIcon,
 } from 'lucide-react';
@@ -16,10 +17,10 @@ import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 /** Tab lain yang bisa dibuka dari pintasan kartu jenis transaksi. */
-type TabTujuanTransaksi = 'panjar';
+type TabTujuanTransaksi = 'panjar' | 'pinjaman';
 
 type KartuJenis = {
-  id: JenisFormTransaksi | 'PANJAR';
+  id: JenisFormTransaksi | 'PANJAR' | 'PINJAMAN';
   label: string;
   keterangan: string;
   Icon: LucideIcon;
@@ -67,10 +68,17 @@ const KARTU_JENIS: KartuJenis[] = [
     Icon: HandCoins,
     tujuan: 'panjar',
   },
+  {
+    id: 'PINJAMAN',
+    label: 'Pinjaman LPD',
+    keterangan: 'Pencairan baru / sudah berjalan',
+    Icon: Landmark,
+    tujuan: 'pinjaman',
+  },
 ];
 
 const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
-  id !== 'PANJAR';
+  id !== 'PANJAR' && id !== 'PINJAMAN';
 
 export function TransaksiTab({
   jenisAwal,
@@ -193,9 +201,9 @@ export function TransaksiTab({
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
         <p className="mt-1 text-sm text-stone-600">
           Pilih <b>Terima Uang</b>, <b>Bayar</b>, <b>Pindah Dana</b>, <b>Catat Utang</b>,
-          atau <b>Bayar Utang</b> untuk mencatat lewat form terpandu. <b>Panjar</b>
-          dibuka dari kartu menunya sendiri. Pinjaman LPD akan memakai modul LPD
-          tersendiri (belum tersedia); saldo 2050 lama tetap terbaca di laporan.
+          atau <b>Bayar Utang</b> untuk mencatat lewat form terpandu. <b>Panjar</b>{' '}
+          dan <b>Pinjaman LPD</b> dibuka dari kartu menunya sendiri. Saldo 2050 lama
+          tetap terbaca di laporan.
         </p>
         {err && (
           <div className="mt-3">
@@ -250,7 +258,9 @@ export function TransaksiTab({
                       ? 'Sedang dipakai'
                       : tujuan === 'panjar'
                         ? 'Buka Buku Panjar'
-                        : 'Siap dipakai'}
+                        : tujuan === 'pinjaman'
+                          ? 'Buka Pinjaman LPD'
+                          : 'Siap dipakai'}
                   </span>
                 </span>
               </button>

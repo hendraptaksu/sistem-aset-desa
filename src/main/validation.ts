@@ -190,6 +190,220 @@ export function validasiBentukPanjarClose(
 }
 
 // ---------------------------------------------------------------------------
+// Bentuk input wizard pinjaman LPD (DB-16c)
+// ---------------------------------------------------------------------------
+
+export type ModePinjamanLpdInput = 'PENCAIRAN' | 'BERJALAN';
+
+export type AngsuranPinjamanInput = {
+  ke: number;
+  jatuh_tempo: string;
+  pokok: number;
+  bunga: number;
+  catatan: string;
+};
+
+export type BentukPinjamanSimpan = {
+  mode: ModePinjamanLpdInput;
+  id?: string;
+  kreditur: string;
+  /** Tanggal pencairan (PENCAIRAN) atau tanggal mulai jadwal (BERJALAN). */
+  tanggal: string;
+  /** Wajib untuk PENCAIRAN; BERJALAN memakai kas aktif pertama di service. */
+  akunKas?: string;
+  /** Kosong = service memakai default 5063 BEBAN BUNGA PINJAMAN. */
+  akunBunga?: string;
+  /** Nominal pokok untuk PENCAIRAN. */
+  pokok?: number;
+  /** Sisa pokok untuk BERJALAN; service menetapkan pokok_awal = sisa. */
+  sisaPokok?: number;
+  tenor?: number | null;
+  catatan?: string;
+  noBukti?: string;
+  angsuran: AngsuranPinjamanInput[];
+};
+
+/**
+ * Normalisasi bentuk wizard pinjaman LPD (DB-16c). Validasi ini hanya
+ * memeriksa bentuk/tipe aman; aturan akun aktif, total jadwal, urutan tanggal,
+ * dan saldo awal tetap ditegakkan service/repository di main.
+ */
+export function validasiBentukPinjamanSimpan(
+  nilai: unknown,
+): HasilBentuk<BentukPinjamanSimpan> {
+  if (!objek(nilai)) return { ok: false, error: 'Data pinjaman tidak lengkap.' };
+
+  const modeMentah = teksOpsional(nilai.mode, 'Mode pinjaman', 20);
+  if (!modeMentah.ok) return modeMentah;
+  const mode = modeMentah.nilai.toUpperCase();
+  if (mode !== 'PENCAIRAN' && mode !== 'BERJALAN')
+    return {
+      ok: false,
+      error: 'Mode pinjaman harus PENCAIRAN (pencairan baru) atau BERJALAN (sudah berjalan).',
+    };
+
+  const id = teksOpsional(nilai.id, 'ID pinjaman', 200);
+  if (!id.ok) return id;
+  const kreditur = teksOpsional(nilai.kreditur, 'Nama kreditur/LPD', 200);
+  if (!kreditur.ok) return kreditur;
+  if (!kreditur.nilai)
+    return { ok: false, error: 'Nama kreditur/LPD wajib diisi.' };
+
+  const tanggal = teksOpsional(nilai.tanggal, 'Tanggal pinjaman', 10);
+  if (!tanggal.ok) return tanggal;
+  if (!tanggal.nilai)
+    return { ok: false, error: 'Tanggal pinjaman wajib diisi.' };
+  if (!tanggalKalenderValid(tanggal.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
+
+  const akunKas = teksOpsional(nilai.akunKas, 'Akun kas penerima', 20);
+  if (!akunKas.ok) return akunKas;
+  if (mode === 'PENCAIRAN' && !akunKas.nilai)
+    return { ok: false, error: 'Akun kas penerima pinjaman wajib dipilih.' };
+
+  const akunBunga = teksOpsional(nilai.akunBunga, 'Akun bunga', 20);
+  if (!akunBunga.ok) return akunBunga;
+
+  const bacaNominal = (
+    field: unknown,
+    label: string,
+    wajib: boolean,
+  ): { ok: true; nilai?: number } | { ok: false; error: string } => {
+    if (field === undefined || field === null) {
+      return wajib
+        ? { ok: false, error: `${label} wajib diisi.` }
+        : { ok: true };
+    }
+    if (typeof field !== 'number' || !Number.isSafeInteger(field) || field <= 0)
+      return {
+        ok: false,
+        error: `${label} harus bilangan bulat lebih dari 0 (satuan sen).`,
+      };
+    return { ok: true, nilai: field };
+  };
+
+  let pokok: number | undefined;
+  if (mode === 'PENCAIRAN') {
+    const hasil = bacaNominal(nilai.pokok, 'Pokok pinjaman', true);
+    if (!hasil.ok) return hasil;
+    pokok = hasil.nilai;
+  }
+  let sisaPokok: number | undefined;
+  if (mode === 'BERJALAN') {
+    const hasil = bacaNominal(nilai.sisaPokok, 'Sisa pokok pinjaman', true);
+    if (!hasil.ok) return hasil;
+    sisaPokok = hasil.nilai;
+  }
+
+  let tenor: number | null = null;
+  if (nilai.tenor !== undefined && nilai.tenor !== null) {
+    if (
+      typeof nilai.tenor !== 'number' ||
+      !Number.isSafeInteger(nilai.tenor) ||
+      nilai.tenor <= 0
+    )
+      return {
+        ok: false,
+        error: 'Tenor pinjaman harus bilangan bulat lebih dari 0 bulan.',
+      };
+    tenor = nilai.tenor;
+  }
+
+  const catatan = teksOpsional(nilai.catatan, 'Catatan pinjaman', 1000);
+  if (!catatan.ok) return catatan;
+  const noBukti = teksOpsional(nilai.noBukti, 'Nomor bukti', 100);
+  if (!noBukti.ok) return noBukti;
+
+  if (!Array.isArray(nilai.angsuran))
+    return { ok: false, error: 'Jadwal angsuran tidak lengkap.' };
+  if (nilai.angsuran.length === 0)
+    return { ok: false, error: 'Jadwal angsuran wajib berisi minimal satu baris.' };
+  if (nilai.angsuran.length > 600)
+    return { ok: false, error: 'Jadwal angsuran maksimal 600 baris.' };
+
+  const angsuran: AngsuranPinjamanInput[] = [];
+  const bacaNominalBaris = (
+    field: unknown,
+    label: string,
+  ): { ok: true; nilai: number } | { ok: false; error: string } => {
+    if (field === undefined || field === null)
+      return { ok: false, error: `${label} wajib diisi.` };
+    if (typeof field !== 'number' || !Number.isSafeInteger(field) || field < 0)
+      return {
+        ok: false,
+        error: `${label} harus bilangan bulat ≥ 0 (satuan sen).`,
+      };
+    return { ok: true, nilai: field };
+  };
+  for (let i = 0; i < nilai.angsuran.length; i += 1) {
+    const it = nilai.angsuran[i];
+    const label = `Jadwal angsuran baris ${i + 1}`;
+    if (!objek(it)) return { ok: false, error: `${label}: data tidak valid.` };
+
+    const ke = it.ke;
+    if (typeof ke !== 'number' || !Number.isSafeInteger(ke) || ke <= 0)
+      return {
+        ok: false,
+        error: `${label}: nomor ke harus bilangan bulat lebih dari 0.`,
+      };
+
+    const jatuhTempo = teksOpsional(it.jatuh_tempo ?? it.jatuhTempo, 'Jatuh tempo', 10);
+    if (!jatuhTempo.ok) return jatuhTempo;
+    if (!tanggalKalenderValid(jatuhTempo.nilai))
+      return {
+        ok: false,
+        error: `${label}: tanggal jatuh tempo tidak valid (YYYY-MM-DD).`,
+      };
+
+    const pokokBaris = bacaNominalBaris(it.pokok, `${label}: pokok`);
+    if (!pokokBaris.ok) return pokokBaris;
+    const bungaBaris = bacaNominalBaris(it.bunga, `${label}: bunga`);
+    if (!bungaBaris.ok) return bungaBaris;
+
+    const catatanBaris = teksOpsional(it.catatan, `${label}: catatan`, 500);
+    if (!catatanBaris.ok) return catatanBaris;
+
+    angsuran.push({
+      ke,
+      jatuh_tempo: jatuhTempo.nilai,
+      pokok: pokokBaris.nilai,
+      bunga: bungaBaris.nilai,
+      catatan: catatanBaris.nilai,
+    });
+  }
+
+  const targetJadwal = mode === 'PENCAIRAN' ? pokok : sisaPokok;
+  if (targetJadwal !== undefined) {
+    const total = angsuran.reduce((s, r) => s + r.pokok, 0);
+    if (total !== targetJadwal)
+      return {
+        ok: false,
+        error:
+          `Total pokok jadwal (${total}) harus sama dengan ` +
+          `${mode === 'PENCAIRAN' ? 'pokok pinjaman' : 'sisa pokok'} (${targetJadwal}).`,
+      };
+  }
+
+  return {
+    ok: true,
+    input: {
+      mode,
+      ...(id.nilai ? { id: id.nilai } : {}),
+      kreditur: kreditur.nilai,
+      tanggal: tanggal.nilai,
+      ...(akunKas.nilai ? { akunKas: akunKas.nilai } : {}),
+      ...(akunBunga.nilai ? { akunBunga: akunBunga.nilai } : {}),
+      ...(pokok !== undefined ? { pokok } : {}),
+      ...(sisaPokok !== undefined ? { sisaPokok } : {}),
+      tenor,
+      catatan: catatan.nilai,
+      ...(noBukti.nilai ? { noBukti: noBukti.nilai } : {}),
+      angsuran,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Bentuk input jurnal dari renderer (P1-1)
 // ---------------------------------------------------------------------------
 

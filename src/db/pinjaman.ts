@@ -7,11 +7,15 @@
 // - Outstanding = sisa_pokok_awal - SUM(debit 2050 pada jurnal bayar tertaut),
 //   dihitung saat membaca dan tidak pernah disimpan sebagai kolom.
 //
-// Jurnal pencairan TIDAK dibuat di sini. Mode "sudah berjalan" memakai
-// `jurnal_pencairan_id = null`; sisa pokok dianggap sudah ada di Saldo Awal 2050.
+// `buatPinjaman` hanya menyimpan parameter + jadwal. Jurnal pencairan dibuat
+// oleh `simpanPinjamanLpd` (mode PENCAIRAN) dalam transaksi yang sama. Mode
+// "sudah berjalan" memakai `jurnal_pencairan_id = null`; sisa pokok dianggap
+// sudah ada di Saldo Awal 2050.
 
 import type Database from 'better-sqlite3';
 import { tanggalKalenderValid } from '../core/posting.js';
+import type { JurnalInput } from '../core/posting.js';
+import { buatJurnalPinjamanPencairan } from '../core/forms.js';
 import type {
   Jurnal,
   JurnalBaris,
@@ -21,7 +25,8 @@ import type {
   RincianPembayaranPinjaman,
 } from '../core/types.js';
 import { AKUN_HUTANG, akunBolehDiposting } from './coa.js';
-import { getAkun, getJurnalDetail, listAkun } from './repository.js';
+import { postingJurnal } from './posting.js';
+import { catatAudit, getAkun, getJurnalDetail, listAkun } from './repository.js';
 
 /** Akun bunga default DB-13b/DB-16a. */
 export const AKUN_BUNGA_PINJAMAN_DEFAULT = '5063';
@@ -76,6 +81,60 @@ export type HasilPinjaman = {
   perluKonfirmasi: boolean;
   tersimpan: boolean;
   pinjaman?: Pinjaman;
+};
+
+/** Mode wizard pinjaman LPD (DB-16c). */
+export type ModePinjamanLpd = 'PENCAIRAN' | 'BERJALAN';
+
+/**
+ * Input wizard pinjaman LPD. Mode pencairan membuat jurnal D kas / K 2050;
+ * mode berjalan hanya menyimpan sisa pokok + jadwal tanpa jurnal baru.
+ */
+export type SimpanPinjamanLpdInput = {
+  id?: string;
+  mode: ModePinjamanLpd | string;
+  kreditur: string;
+  /** Tanggal pencairan (mode baru) atau tanggal mulai jadwal (mode berjalan). */
+  tanggal?: string;
+  tanggal_mulai?: string;
+  tanggalMulai?: string;
+  /** Wajib mode pencairan; mode berjalan memakai kas aktif pertama dari DB. */
+  akun_kas?: string;
+  akunKas?: string;
+  akun_bunga?: string;
+  akunBunga?: string;
+  /** Pokok pencairan (mode baru). */
+  pokok?: number;
+  pokok_awal?: number;
+  pokokAwal?: number;
+  /** Sisa pokok saat mulai (mode berjalan); menjadi pokok_awal juga. */
+  sisa_pokok?: number;
+  sisa_pokok_awal?: number;
+  sisaPokok?: number;
+  sisaPokokAwal?: number;
+  tenor_bulan?: number | null;
+  tenorBulan?: number | null;
+  /** Alias bentuk IPC/UI. */
+  tenor?: number | null;
+  catatan?: string;
+  noBukti?: string;
+  angsuran?: PinjamanAngsuranInput[];
+  jadwal?: PinjamanAngsuranInput[];
+};
+
+export type OpsiSimpanPinjamanLpd = {
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+  wajibSaldoAwal?: boolean;
+  konfirmasiTanpaSaldoAwal?: boolean;
+  /** Tanggal acuan validasi posting (test deterministik). */
+  sekarang?: string;
+};
+
+export type HasilSimpanPinjamanLpd = HasilPinjaman & {
+  mode?: ModePinjamanLpd;
+  /** Jurnal pencairan yang dibuat; null untuk mode berjalan. */
+  jurnal?: Jurnal | null;
 };
 
 export type TautkanPembayaranInput = {
@@ -550,6 +609,176 @@ export function buatPinjaman(
     tersimpan: true,
     pinjaman: getPinjaman(db, id) ?? pinjaman,
   };
+}
+
+class GagalPinjamanLpd extends Error {
+  readonly errors: string[];
+
+  constructor(errors: string[]) {
+    super(errors.join(' '));
+    this.errors = errors;
+  }
+}
+
+/** Kas aktif pertama dari master DB; dipakai mode berjalan yang tidak mengisi kas. */
+export function akunKasAktifPertama(db: Database.Database): string | null {
+  const row = db
+    .prepare(
+      `SELECT kode FROM akun
+        WHERE aktif = 1 AND is_kas = 1 AND tipe = 'AKTIVA'
+        ORDER BY kode LIMIT 1`,
+    )
+    .get() as { kode: string } | undefined;
+  return row ? String(row.kode) : null;
+}
+
+/**
+ * Wizard DB-16c: simpan pinjaman dari dua mode.
+ *
+ * - `PENCAIRAN`: dalam SATU transaksi, posting jurnal **D kas / K 2050**
+ *   (jenis HUTANG, keterangan memuat kreditur), lalu simpan pinjaman + jadwal
+ *   dengan `jurnal_pencairan_id` terisi. Bila jadwal/pinjaman gagal, seluruh
+ *   transaksi dibatalkan sehingga jurnal tidak tertinggal.
+ * - `BERJALAN`: tidak membuat jurnal; `jurnal_pencairan_id = null` dan
+ *   `pokok_awal = sisa_pokok_awal = sisa pokok`. Sisa pokok harus sudah ada
+ *   di Saldo Awal 2050 (UI menampilkan peringatan).
+ *
+ * `buatPinjaman` tetap menjadi validator bisnis terakhir untuk akun, nominal,
+ * tanggal, dan total jadwal. Audit `PINJAMAN-CREATE` selalu ditulis; mode
+ * pencairan menambah `PINJAMAN-PENCAIRAN`.
+ */
+export function simpanPinjamanLpd(
+  db: Database.Database,
+  input: SimpanPinjamanLpdInput,
+  opsi: OpsiSimpanPinjamanLpd = {},
+): HasilSimpanPinjamanLpd {
+  const data = (input ?? {}) as SimpanPinjamanLpdInput;
+  const modeMentah = teks(data.mode).toUpperCase();
+  if (modeMentah !== 'PENCAIRAN' && modeMentah !== 'BERJALAN')
+    return {
+      ...gagal('Mode pinjaman harus PENCAIRAN (pencairan baru) atau BERJALAN (sudah berjalan).'),
+    };
+  const mode: ModePinjamanLpd = modeMentah;
+
+  const kreditur = teks(data.kreditur);
+  const tanggal = teks(data.tanggal ?? data.tanggal_mulai ?? data.tanggalMulai);
+  const akunBunga = teks(data.akun_bunga ?? data.akunBunga) || AKUN_BUNGA_PINJAMAN_DEFAULT;
+  const pokokMentah = data.pokok ?? data.pokok_awal ?? data.pokokAwal;
+  const sisaMentah =
+    data.sisa_pokok ??
+    data.sisa_pokok_awal ??
+    data.sisaPokok ??
+    data.sisaPokokAwal;
+  const nominalAwal = mode === 'PENCAIRAN' ? pokokMentah : sisaMentah;
+  const nominal = isInt(nominalAwal) ? nominalAwal : 0;
+
+  let akunKas = teks(data.akun_kas ?? data.akunKas);
+  if (!akunKas && mode === 'BERJALAN') {
+    const bawaan = akunKasAktifPertama(db);
+    if (bawaan) akunKas = bawaan;
+  }
+
+  const jadwal = data.angsuran ?? data.jadwal;
+
+  try {
+    const simpan = db.transaction((): HasilSimpanPinjamanLpd => {
+      let jurnal: Jurnal | null = null;
+      let jurnalId: string | null = null;
+
+      if (mode === 'PENCAIRAN') {
+        let inputJurnal: JurnalInput;
+        try {
+          inputJurnal = buatJurnalPinjamanPencairan({
+            tanggal,
+            nominal,
+            keterangan: teks(data.catatan),
+            kreditur,
+            akunKas,
+            ...(teks(data.noBukti) ? { noBukti: teks(data.noBukti) } : {}),
+            daftarAkun: listAkun(db),
+          });
+        } catch (e) {
+          return {
+            ...gagal(e instanceof Error ? e.message : String(e)),
+            mode,
+            jurnal: null,
+          };
+        }
+
+        const posting = postingJurnal(db, inputJurnal, {
+          konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          alasanPeringatan: opsi.alasanPeringatan,
+          wajibSaldoAwal: opsi.wajibSaldoAwal === true,
+          konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
+          sekarang: opsi.sekarang,
+        });
+        if (!posting.tersimpan || !posting.jurnal) {
+          return {
+            ...kosong,
+            errors: posting.errors,
+            peringatan: posting.peringatan,
+            perluKonfirmasi: posting.perluKonfirmasi,
+            mode,
+            jurnal: null,
+          };
+        }
+        jurnal = posting.jurnal;
+        jurnalId = jurnal.id;
+      }
+
+      const hasil = buatPinjaman(db, {
+        ...(teks(data.id) ? { id: teks(data.id) } : {}),
+        kreditur,
+        akun_kas: akunKas,
+        akun_bunga: akunBunga,
+        pokok_awal: nominal,
+        sisa_pokok_awal: nominal,
+        tanggal_mulai: tanggal,
+        tenor_bulan:
+          data.tenor ?? data.tenor_bulan ?? data.tenorBulan ?? null,
+        jurnal_pencairan_id: jurnalId,
+        catatan: teks(data.catatan),
+        angsuran: jadwal ?? [],
+      });
+      // Jangan `return` gagal di sini: transaksi luar harus di-rollback agar
+      // jurnal pencairan yang sudah diposting tidak tertinggal.
+      if (!hasil.tersimpan || !hasil.pinjaman)
+        throw new GagalPinjamanLpd(
+          hasil.errors.length > 0 ? hasil.errors : ['Pinjaman gagal disimpan.'],
+        );
+
+      const pinjaman = hasil.pinjaman;
+      catatAudit(db, {
+        aksi: `PINJAMAN-CREATE ${pinjaman.id}`,
+        alasan: `Buat pinjaman LPD ${pinjaman.kreditur}`,
+        baru: { pinjaman, jurnal },
+      });
+      if (mode === 'PENCAIRAN' && jurnal) {
+        catatAudit(db, {
+          aksi: `PINJAMAN-PENCAIRAN ${pinjaman.id}`,
+          alasan: `Pencairan pinjaman LPD ${pinjaman.kreditur}`,
+          baru: { pinjaman_id: pinjaman.id, jurnal },
+        });
+      }
+
+      return {
+        ...kosong,
+        boleh: true,
+        tersimpan: true,
+        mode,
+        pinjaman: getPinjaman(db, pinjaman.id) ?? pinjaman,
+        jurnal,
+      };
+    });
+    return simpan();
+  } catch (e) {
+    if (e instanceof GagalPinjamanLpd)
+      return { ...gagal(e.errors), mode };
+    return {
+      ...gagal(`Pinjaman gagal disimpan: ${e instanceof Error ? e.message : String(e)}`),
+      mode,
+    };
+  }
 }
 
 /** Daftar pinjaman + jadwal + outstanding turunan (bukan kolom tersimpan). */

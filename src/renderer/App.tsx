@@ -9,6 +9,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   LayoutDashboard,
+  Landmark,
   List,
   ListChecks,
   Lock,
@@ -25,6 +26,7 @@ import { JurnalTab } from './components/JurnalTab.js';
 import { BukuBesarTab } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
+import { PinjamanTab } from './components/PinjamanTab.js';
 import { PembantuTab } from './components/PembantuTab.js';
 import { LabaRugiTab } from './components/LabaRugiTab.js';
 import { ArusKasTab } from './components/ArusKasTab.js';
@@ -44,7 +46,7 @@ import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pembantu' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pinjaman' | 'pembantu' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -54,6 +56,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'buku-besar', label: 'Buku Besar', Icon: BookMarked },
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
+  { id: 'pinjaman', label: 'Pinjaman LPD', Icon: Landmark },
   { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
@@ -77,7 +80,7 @@ const GRUP_MENU: {
     id: 'harian',
     label: 'Harian',
     defaultTerbuka: true,
-    item: ['dashboard', 'transaksi', 'panjar', 'jurnal'],
+    item: ['dashboard', 'transaksi', 'panjar', 'pinjaman', 'jurnal'],
   },
   {
     id: 'laporan',
@@ -627,6 +630,7 @@ function AppShell() {
               />
             )}
             {tab === 'panjar' && <PanjarTab />}
+            {tab === 'pinjaman' && <PinjamanTab />}
             {tab === 'pembantu' && <PembantuTab />}
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (

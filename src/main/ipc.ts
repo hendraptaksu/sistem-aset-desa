@@ -43,6 +43,11 @@ import {
   serahkanPanjar,
 } from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
+import {
+  getPinjaman,
+  listPinjaman,
+  simpanPinjamanLpd,
+} from '../db/pinjaman.js';
 import { auditIntegritas } from '../db/integritas.js';
 import { AKUN_PIUTANG } from '../db/coa.js';
 import {
@@ -90,6 +95,7 @@ import {
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
+  validasiBentukPinjamanSimpan,
   validasiBentukSaldoAwal,
   validasiBentukTransaksiInput,
   validasiCutoffLaporan,
@@ -243,6 +249,8 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat menyimpan koreksi. Jurnal asli tidak diubah; coba lagi atau hubungi pendamping.';
   const GAGAL_PANJAR =
     'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
+  const GAGAL_PINJAMAN =
+    'Terjadi kesalahan saat menyimpan pinjaman LPD. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_TUTUP =
     'Terjadi kesalahan saat memproses tutup buku. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
@@ -988,6 +996,79 @@ export function registerIpc(deps: IpcDeps): void {
       }
     },
   );
+
+  // ---- Pinjaman LPD (DB-16c) ----
+  daftarkan('pinjaman:list', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(listPinjaman(deps.db()));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:detail', (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      if (typeof id !== 'string' || !id.trim())
+        return fail('ID pinjaman wajib diisi.');
+      if (id.trim().length > 200) return fail('ID pinjaman terlalu panjang.');
+      const pinjaman = getPinjaman(deps.db(), id.trim());
+      if (!pinjaman) return fail('Pinjaman tidak ditemukan.');
+      return ok(pinjaman);
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:simpan', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanSimpan(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const konfirmasi =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+      const hasil = simpanPinjamanLpd(deps.db(), bentuk.input, {
+        konfirmasiPeringatan: konfirmasi,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        // Pinjaman pencairan adalah transaksi baru; ikuti pintu input lain
+        // yang mewajibkan saldo awal, kecuali operator sudah mengonfirmasi.
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
+      });
+      if (!hasil.tersimpan || !hasil.pinjaman) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pinjaman gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        const perluKonfirmasi =
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) =>
+              m.includes('wajib disertai alasan minimal 5 karakter'),
+            ));
+        return fail(pesan, perluAlasan, perluKonfirmasi);
+      }
+      return ok({
+        mode: hasil.mode,
+        pinjaman: hasil.pinjaman,
+        jurnal: hasil.jurnal ?? null,
+      });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
 
   daftarkan('tutup:list', () => {
     const k = perluBuka();
