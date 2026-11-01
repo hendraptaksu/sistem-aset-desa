@@ -535,6 +535,79 @@ export function validasiBentukPinjamanBayar(
 }
 
 // ---------------------------------------------------------------------------
+// Bentuk filter kartu hutang / mutasi pinjaman LPD (DB-16e)
+// ---------------------------------------------------------------------------
+
+export type BentukPinjamanMutasi = {
+  pinjamanId: string;
+  /** `YYYY-MM`; boleh kosong bila memakai `mulai`/`sampai`. */
+  periode?: string;
+  mulai?: string;
+  sampai?: string;
+};
+
+const POLA_PERIODE_BULAN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+/**
+ * Normalisasi filter `pinjaman:mutasi`.
+ *
+ * `periode` (bulan `YYYY-MM`) dan rentang `mulai`/`sampai` saling eksklusif.
+ * Tanpa keduanya, service memakai tahun berjalan. Validasi di sini hanya
+ * bentuk/tanggal; kepemilikan pinjaman dan isi laporan tetap dicek service.
+ */
+export function validasiBentukPinjamanMutasi(
+  nilai: unknown,
+): HasilBentuk<BentukPinjamanMutasi> {
+  if (!objek(nilai))
+    return { ok: false, error: 'Data mutasi pinjaman tidak lengkap.' };
+
+  const pinjamanId = teksOpsional(
+    nilai.pinjamanId ?? nilai.pinjaman_id,
+    'ID pinjaman',
+    200,
+  );
+  if (!pinjamanId.ok) return pinjamanId;
+  if (!pinjamanId.nilai)
+    return { ok: false, error: 'Pinjaman yang akan dilihat mutasinya wajib dipilih.' };
+
+  const periode = teksOpsional(nilai.periode, 'Periode mutasi', 7);
+  if (!periode.ok) return periode;
+  if (periode.nilai && !POLA_PERIODE_BULAN.test(periode.nilai))
+    return {
+      ok: false,
+      error: 'Periode mutasi harus berformat YYYY-MM (contoh 2026-03).',
+    };
+  if (periode.nilai) {
+    const tahun = Number(periode.nilai.slice(0, 4));
+    if (tahun < 1900 || tahun > 9999)
+      return { ok: false, error: 'Tahun periode mutasi tidak valid (1900–9999).' };
+  }
+
+  const mulai = tanggalFilterLaporan(nilai.mulai);
+  if (!mulai.ok) return mulai;
+  const sampai = tanggalFilterLaporan(nilai.sampai);
+  if (!sampai.ok) return sampai;
+  if (mulai.input && sampai.input && mulai.input > sampai.input)
+    return { ok: false, error: 'Tanggal mulai tidak boleh setelah tanggal sampai.' };
+
+  if (periode.nilai && (mulai.input || sampai.input))
+    return {
+      ok: false,
+      error: 'Pilih periode bulan atau rentang tanggal, jangan keduanya.',
+    };
+
+  return {
+    ok: true,
+    input: {
+      pinjamanId: pinjamanId.nilai,
+      ...(periode.nilai ? { periode: periode.nilai } : {}),
+      ...(mulai.input ? { mulai: mulai.input } : {}),
+      ...(sampai.input ? { sampai: sampai.input } : {}),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Bentuk input jurnal dari renderer (P1-1)
 // ---------------------------------------------------------------------------
 

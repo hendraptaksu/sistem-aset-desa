@@ -29,6 +29,15 @@ import { AKUN_HUTANG, akunBolehDiposting } from './coa.js';
 import { postingJurnal } from './posting.js';
 import { catatAudit, getAkun, getJurnalDetail, listAkun } from './repository.js';
 import { formatRp } from '../utils/format.js';
+import { tanggalLokal } from '../utils/tanggal.js';
+import {
+  hitungMutasiPinjaman,
+  periodeMutasiPinjaman,
+  type FilterPeriodeMutasiPinjaman,
+  type MutasiPinjamanHasil,
+  type PembayaranMutasiPinjaman,
+  type BarisMutasiJurnal,
+} from '../core/pinjamanMutasi.js';
 
 /** Akun bunga default DB-13b/DB-16a. */
 export const AKUN_BUNGA_PINJAMAN_DEFAULT = '5063';
@@ -870,6 +879,127 @@ export function listPinjamanBayar(
 ): PinjamanBayar[] {
   return daftarPembayaran(db, teks(pinjamanId));
 }
+
+/**
+ * DB-16e: filter kartu hutang. `periode` = `YYYY-MM`, atau `mulai`/`sampai`
+ * (YYYY-MM-DD). Tanpa filter dipakai tahun berjalan dari `sekarang`.
+ */
+export type FilterMutasiPinjaman = FilterPeriodeMutasiPinjaman & {
+  /** Tanggal acuan default tahun berjalan; dipakai test agar deterministik. */
+  sekarang?: string;
+};
+
+type RowMutasiBayar = {
+  id: string;
+  jurnal_id: string;
+  angsuran_id: number | null;
+  tanggal_bayar: string;
+  catatan: string;
+  jurnal_tanggal: string;
+  no_bukti: string;
+  keterangan: string;
+};
+
+type RowMutasiBaris = {
+  jurnal_id: string;
+  akun_kode: string;
+  debit: number;
+  kredit: number;
+};
+
+/**
+ * Adapter DB untuk kartu hutang / mutasi bulanan pinjaman LPD (DB-16e).
+ *
+ * Hanya mengambil link `pinjaman_bayar` + baris jurnal yang ditautkan. Tidak
+ * ada nominal atau saldo bulanan yang dibaca/ditulis ke tabel pembayaran;
+ * seluruh perhitungan diserahkan ke `core/pinjamanMutasi.ts`.
+ */
+export function laporanMutasiPinjaman(
+  db: Database.Database,
+  pinjamanId: string,
+  filter: FilterMutasiPinjaman = {},
+): MutasiPinjamanHasil {
+  const pinjaman = getPinjaman(db, teks(pinjamanId));
+  if (!pinjaman) throw new Error(`Pinjaman ${teks(pinjamanId)} tidak ditemukan.`);
+
+  const periode = periodeMutasiPinjaman(
+    {
+      ...(filter.periode ? { periode: filter.periode } : {}),
+      ...(filter.mulai ? { mulai: filter.mulai } : {}),
+      ...(filter.sampai ? { sampai: filter.sampai } : {}),
+    },
+    filter.sekarang ?? tanggalLokal(),
+  );
+
+  const pembayaranRows = db
+    .prepare(
+      `SELECT pb.id, pb.jurnal_id, pb.angsuran_id,
+              pb.tanggal AS tanggal_bayar, pb.catatan,
+              j.tanggal AS jurnal_tanggal, j.no_bukti, j.keterangan
+         FROM pinjaman_bayar pb
+         JOIN jurnal j ON j.id = pb.jurnal_id
+        WHERE pb.pinjaman_id = ?
+        ORDER BY j.tanggal, j.rowid, pb.id`,
+    )
+    .all(pinjaman.id) as RowMutasiBayar[];
+
+  const barisRows = db
+    .prepare(
+      `SELECT b.jurnal_id, b.akun_kode, b.debit, b.kredit
+         FROM pinjaman_bayar pb
+         JOIN jurnal_baris b ON b.jurnal_id = pb.jurnal_id
+        WHERE pb.pinjaman_id = ?
+        ORDER BY b.jurnal_id, b.id`,
+    )
+    .all(pinjaman.id) as RowMutasiBaris[];
+
+  const pembayaran: PembayaranMutasiPinjaman[] = pembayaranRows.map((r) => ({
+    id: String(r.id),
+    jurnal_id: String(r.jurnal_id),
+    tanggal: String(r.jurnal_tanggal),
+    tanggal_bayar: String(r.tanggal_bayar),
+    angsuran_id:
+      r.angsuran_id === null || r.angsuran_id === undefined
+        ? null
+        : angka(r.angsuran_id),
+    catatan: String(r.catatan ?? ''),
+    no_bukti: String(r.no_bukti ?? ''),
+    keterangan: String(r.keterangan ?? ''),
+  }));
+
+  const baris: BarisMutasiJurnal[] = barisRows.map((r) => ({
+    jurnal_id: String(r.jurnal_id),
+    akun_kode: String(r.akun_kode),
+    debit: angka(r.debit),
+    kredit: angka(r.kredit),
+  }));
+
+  return hitungMutasiPinjaman({
+    pinjaman: {
+      id: pinjaman.id,
+      kreditur: pinjaman.kreditur,
+      akun_bunga: pinjaman.akun_bunga,
+      sisa_pokok_awal: pinjaman.sisa_pokok_awal,
+      tanggal_mulai: pinjaman.tanggal_mulai,
+    },
+    jadwal: (pinjaman.angsuran ?? []).map((a) => ({
+      id: a.id,
+      ke: a.ke,
+      jatuh_tempo: a.jatuh_tempo,
+      pokok: a.pokok,
+      bunga: a.bunga,
+      catatan: a.catatan,
+    })),
+    pembayaran,
+    baris,
+    akun: listAkun(db),
+    periode,
+  });
+}
+
+/** Alias pendek untuk pemanggil baru. */
+export const mutasiPinjaman = laporanMutasiPinjaman;
+export const getMutasiPinjaman = laporanMutasiPinjaman;
 
 export function getPembayaranPinjaman(
   db: Database.Database,

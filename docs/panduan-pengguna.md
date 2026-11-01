@@ -259,6 +259,26 @@ lalu pilih salah satu mode:
    dibuka lewat **Jurnal Umum**. Nominal pembayaran tetap dibaca dari baris
    jurnal dan **tidak disimpan ulang** di tabel pembayaran.
 
+#### Kartu hutang / mutasi bulanan (DB-16e)
+
+Bagian **Kartu Hutang / Mutasi Bulanan** di menu **Pinjaman LPD** menampilkan
+mutasi pokok, bunga, denda, dan kas keluar setiap bulan. Pilih pinjaman, tahun,
+dan bulan (kosongkan bulan untuk satu tahun penuh; default tahun berjalan).
+
+- **Saldo awal** periode dihitung dari `sisa pokok awal - pokok jurnal yang
+  tanggalnya sebelum periode`. **Saldo akhir** bulan = saldo awal − pokok bulan
+  itu; saldo berantai bulan ke bulan dan berakhir sama dengan outstanding
+  pinjaman.
+- **Pokok** di laporan adalah penurunan akun `2050 HUTANG LAIN-LAIN`;
+  **bunga** adalah beban akun bunga pinjaman; **denda** adalah beban denda; dan
+  **kas keluar** adalah kredit kas/bank pada jurnal pembayaran yang tertaut.
+- Tabel **Jadwal vs Realisasi** membandingkan pokok/bunga jadwal dengan nominal
+  jurnal per angsuran. Selisih negatif berarti kurang bayar. Jadwal tidak
+  diubah oleh realisasi.
+- Tombol **Lihat jurnal** per bulan menampilkan nomor bukti, tanggal jurnal,
+  tanggal link pembayaran, dan ID jurnal untuk drill-down. Semua angka dibaca
+  dari baris jurnal; total bulanan/saldo **tidak disimpan** di tabel pembayaran.
+
 **Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
 tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada
 di COA dan tetap terbaca di Buku Besar/Neraca/Arus Kas untuk data lama; jangan

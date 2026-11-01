@@ -2,10 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-01 (setelah DB-16d):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **907 test / 73 file hijau**; `npm run build`
-> berhasil. Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
-> Baseline DB-34 adalah 869/69.
+> **Baseline terakhir 2026-11-01 (setelah DB-16e):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **918 test / 74 file hijau**; `npm run build`
+> berhasil. Baseline DB-16d adalah 907/73. Baseline DB-16c adalah 896/72.
+> Baseline DB-16b adalah 882/71. Baseline DB-34 adalah 869/69.
 > Baseline DB-21 adalah 850/69; baseline DB-20 adalah 832/67.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
@@ -99,7 +99,7 @@
 | DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [x] |
 | DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [x] |
 | DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [x] |
-| DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [ ] |
+| DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [x] |
 | DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
 | DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
 | DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [x] |
@@ -868,7 +868,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `npm run build` berhasil.
   - **Dependency:** DB-16b, DB-16c.
 
-- [ ] **DB-16e — Kartu hutang / mutasi bulanan pinjaman LPD** · P1 · M
+- [x] **DB-16e — Kartu hutang / mutasi bulanan pinjaman LPD** · P1 · M
   - **Konteks:** client ingin melihat mutasi pokok/bunga/angsuran setiap bulan.
   - **Langkah:**
     1. Laporan per bulan: saldo awal pokok, pokok dibayar, bunga dibayar,
@@ -881,6 +881,28 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     bunga; saldo akhir bulan berurutan.
   - **Test:** `tests/pinjaman.test.ts`, `tests/laporan.test.ts`.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-11-01:** Helper murni `src/core/pinjamanMutasi.ts`
+    (`hitungMutasiPinjaman` + `periodeMutasiPinjaman`) dan adapter DB
+    `laporanMutasiPinjaman` di `src/db/pinjaman.ts` menghitung saldo awal/akhir
+    pokok per bulan dari `sisa_pokok_awal` dikurangi debit 2050 jurnal
+    pembayaran sebelum periode, lalu merantai bulan ke bulan. Pokok = neto
+    debit 2050; bunga = debit akun bunga pinjaman; denda = debit BEBAN lain;
+    kas keluar = kredit akun kas/bank. Jadwal vs realisasi per angsuran memakai
+    nominal jurnal yang ditautkan dan menyertakan `jurnal_id`, no. bukti,
+    tanggal jurnal, dan tanggal link untuk drill-down. Tidak ada total
+    bulanan/saldo tersimpan dan tidak ada perubahan skema (`SCHEMA_VERSION`
+    tetap 20). IPC `pinjaman:mutasi` (total **58 channel**) memakai
+    `validasiBentukPinjamanMutasi` (ID pinjaman, `periode` YYYY-MM atau
+    `mulai`/`sampai`, default tahun berjalan), API `pinjamanMutasi`, dan kartu
+    **Kartu Hutang / Mutasi Bulanan** di `PinjamanTab` dengan filter
+    tahun/bulan, tabel bulan, jadwal vs realisasi, dan detail no/ tanggal/ ID
+    jurnal. Test baru `tests/db-16e-pinjaman-mutasi.test.ts` (10) + test IPC
+    mencakup pembayaran lintas bulan, rantai saldo, pokok = penurunan 2050,
+    bunga = beban bunga, denda, kas = kredit kas, selisih jadwal, filter
+    bulan/rentang, periode kosong, skema tanpa total tersimpan, validasi, dan
+    sumber UI/dokumen. `docs/panduan-pengguna.md` memuat langkah kartu hutang.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads` **918 test/74
+    file hijau** (baseline DB-16d 907/73); `npm run build` berhasil.
   - **Dependency:** DB-16b, DB-16d.
 
 - [ ] **DB-16f — Rekonsiliasi saldo 2050 vs jadwal pinjaman** · P1 · S

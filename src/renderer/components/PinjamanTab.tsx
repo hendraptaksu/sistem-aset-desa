@@ -2,8 +2,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Pinjaman, PinjamanAngsuran } from '../../core/types.js';
+import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
-import { tanggalLokal } from '../../utils/tanggal.js';
+import { tanggalLokal, tahunLokal } from '../../utils/tanggal.js';
 import { api, isPerluKonfirmasi, type ModePinjamanApi } from '../lib/api.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
@@ -43,6 +44,51 @@ type FormBayar = {
   catatan: string;
 };
 
+const NAMA_BULAN_PENDEK = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mei',
+  'Jun',
+  'Jul',
+  'Agu',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Des',
+] as const;
+
+/** `2026-03` → `Mar 2026`; input lain dikembalikan apa adanya. */
+function labelBulanMutasi(bulan: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(bulan);
+  if (!m) return bulan;
+  const nama = NAMA_BULAN_PENDEK[Number(m[2]) - 1];
+  return nama ? `${nama} ${m[1]}` : bulan;
+}
+
+/**
+ * Periode UI kartu hutang: satu tahun penuh bila bulan kosong, atau satu bulan
+ * penuh. Mengembalikan null bila tahun/bulan belum valid.
+ */
+function batasPeriodeMutasi(
+  tahun: string,
+  bulan: string,
+): { mulai: string; sampai: string } | null {
+  if (!/^\d{4}$/.test(tahun)) return null;
+  const y = Number(tahun);
+  if (y < 1900 || y > 9999) return null;
+  if (!bulan) return { mulai: `${tahun}-01-01`, sampai: `${tahun}-12-31` };
+  const m = Number(bulan);
+  if (!Number.isSafeInteger(m) || m < 1 || m > 12) return null;
+  const kunci = `${tahun}-${String(m).padStart(2, '0')}`;
+  const akhir = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return {
+    mulai: `${kunci}-01`,
+    sampai: `${kunci}-${String(akhir).padStart(2, '0')}`,
+  };
+}
+
 export function PinjamanTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [list, setList] = useState<Pinjaman[]>([]);
@@ -69,6 +115,14 @@ export function PinjamanTab() {
   const [bayarPerluKonfirmasi, setBayarPerluKonfirmasi] = useState(false);
   const [bayarErr, setBayarErr] = useState<string | null>(null);
   const [bayarBusy, setBayarBusy] = useState(false);
+  // DB-16e — kartu hutang / mutasi bulanan.
+  const [mutasiPinjamanId, setMutasiPinjamanId] = useState('');
+  const [mutasiTahun, setMutasiTahun] = useState(String(tahunLokal()));
+  const [mutasiBulan, setMutasiBulan] = useState('');
+  const [mutasi, setMutasi] = useState<MutasiPinjamanHasil | null>(null);
+  const [mutasiBusy, setMutasiBusy] = useState(false);
+  const [mutasiErr, setMutasiErr] = useState<string | null>(null);
+  const [mutasiBuka, setMutasiBuka] = useState<Record<string, boolean>>({});
   const { setDirty } = useTabGuard();
 
   const kasList = useMemo(
@@ -88,6 +142,7 @@ export function PinjamanTab() {
   const totalPokokJadwal = jadwal.reduce((s, r) => s + (r.pokok || 0), 0);
   const cocokPokok =
     targetPokok > 0 && Number.isSafeInteger(targetPokok) && totalPokokJadwal === targetPokok;
+  const batasMutasi = batasPeriodeMutasi(mutasiTahun, mutasiBulan);
 
   useEffect(() => {
     let aktif = true;
@@ -118,6 +173,43 @@ export function PinjamanTab() {
       return bungaList[0]?.kode ?? '';
     });
   }, [coa, kasList, bungaList]);
+
+  useEffect(() => {
+    setMutasiPinjamanId((sebelum) => {
+      if (sebelum && list.some((p) => p.id === sebelum)) return sebelum;
+      return list[0]?.id ?? '';
+    });
+  }, [list]);
+
+  useEffect(() => {
+    if (!mutasiPinjamanId || !batasMutasi) {
+      setMutasi(null);
+      setMutasiBusy(false);
+      return;
+    }
+    let aktif = true;
+    setMutasiBusy(true);
+    setMutasiErr(null);
+    void (async () => {
+      try {
+        const hasil = await api.pinjamanMutasi({
+          pinjamanId: mutasiPinjamanId,
+          ...batasMutasi,
+        });
+        if (aktif) setMutasi(hasil);
+      } catch (e) {
+        if (aktif) {
+          setMutasi(null);
+          setMutasiErr(pesanError(e, PESAN_MUAT_GAGAL));
+        }
+      } finally {
+        if (aktif) setMutasiBusy(false);
+      }
+    })();
+    return () => {
+      aktif = false;
+    };
+  }, [mutasiPinjamanId, mutasiTahun, mutasiBulan, list]);
 
   useEffect(() => {
     setDirty(false);
@@ -390,6 +482,16 @@ export function PinjamanTab() {
     } finally {
       setBayarBusy(false);
     }
+  }
+
+  function toggleMutasiBulan(bulan: string): void {
+    setMutasiBuka((prev) => ({ ...prev, [bulan]: !prev[bulan] }));
+  }
+
+  function pilihKartuHutang(id: string): void {
+    setMutasiPinjamanId(id);
+    setMutasiBuka({});
+    setMutasiErr(null);
   }
 
   return (
@@ -761,9 +863,14 @@ export function PinjamanTab() {
                         </div>
                       </td>
                       <td className="py-2">
-                        <Button variant="ghost" onClick={() => void toggleDetail(p.id)}>
-                          {detailId === p.id ? 'Tutup jadwal' : 'Lihat jadwal'}
-                        </Button>
+                        <div className="flex flex-wrap gap-1">
+                          <Button variant="ghost" onClick={() => void toggleDetail(p.id)}>
+                            {detailId === p.id ? 'Tutup jadwal' : 'Lihat jadwal'}
+                          </Button>
+                          <Button variant="ghost" onClick={() => pilihKartuHutang(p.id)}>
+                            Kartu hutang
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                     {detailId === p.id && (
@@ -1017,6 +1124,318 @@ export function PinjamanTab() {
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold">Kartu Hutang / Mutasi Bulanan</h2>
+            <p className="mt-1 max-w-3xl text-sm text-stone-600">
+              Mutasi pokok, bunga, denda, dan kas keluar per bulan. Semua angka
+              dihitung ulang dari baris jurnal pembayaran yang tertaut ke pinjaman;
+              tidak ada saldo atau total bulanan yang disimpan di tabel pembayaran.
+            </p>
+          </div>
+          <Badge tone="stone">DB-16e</Badge>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Field label="Pinjaman">
+            <Select
+              value={mutasiPinjamanId}
+              disabled={list.length === 0}
+              onChange={(e) => pilihKartuHutang(e.target.value)}
+            >
+              {list.length === 0 && <option value="">Belum ada pinjaman</option>}
+              {list.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.kreditur} — {formatRp(p.outstanding ?? p.sisa_pokok_awal)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Tahun">
+            <TextInput
+              inputMode="numeric"
+              maxLength={4}
+              value={mutasiTahun}
+              disabled={mutasiBusy}
+              placeholder="cth: 2026"
+              onChange={(e) => setMutasiTahun(e.target.value.replace(/[^0-9]/g, ''))}
+            />
+          </Field>
+          <Field label="Bulan (kosong = satu tahun)">
+            <Select
+              value={mutasiBulan}
+              disabled={mutasiBusy}
+              onChange={(e) => setMutasiBulan(e.target.value)}
+            >
+              <option value="">Semua bulan</option>
+              {NAMA_BULAN_PENDEK.map((nama, i) => (
+                <option key={nama} value={String(i + 1).padStart(2, '0')}>
+                  {nama}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        {!batasMutasi && (
+          <p className="mt-2 text-sm font-semibold text-red-700">
+            Tahun wajib 4 digit (1900–9999) dan bulan harus valid.
+          </p>
+        )}
+        {mutasiBusy && <p className="mt-2 text-sm text-stone-500">Menghitung mutasi…</p>}
+        <ErrorBox msg={mutasiErr} />
+
+        {mutasi && (
+          <>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-[15px] md:grid-cols-6">
+              {[
+                ['Saldo awal periode', mutasi.saldo_awal_periode],
+                ['Pokok dibayar', mutasi.total_pokok],
+                ['Bunga dibayar', mutasi.total_bunga],
+                ['Denda dibayar', mutasi.total_denda],
+                ['Total kas keluar', mutasi.total_kas_keluar],
+                ['Saldo akhir periode', mutasi.saldo_akhir_periode],
+              ].map(([label, nilai]) => (
+                <div
+                  key={String(label)}
+                  className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2"
+                >
+                  <div className="text-helper text-stone-500">{label}</div>
+                  <div className="font-semibold whitespace-nowrap">
+                    {formatRp(Number(nilai))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-sm text-stone-600">
+              {mutasi.pinjaman.kreditur} · {mutasi.periode.label} · outstanding
+              seluruh riwayat <b>{formatRp(mutasi.outstanding)}</b>. Saldo akhir
+              periode = saldo awal − pokok dibayar; saldo berantai bulan ke bulan.
+            </p>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-left text-[15px]">
+                <thead>
+                  <tr className="border-b text-stone-500">
+                    <th className="py-2 pr-3">Bulan</th>
+                    <th className="py-2 pr-3 text-right">Saldo awal</th>
+                    <th className="py-2 pr-3 text-right">Pokok</th>
+                    <th className="py-2 pr-3 text-right">Bunga</th>
+                    <th className="py-2 pr-3 text-right">Denda</th>
+                    <th className="py-2 pr-3 text-right">Kas keluar</th>
+                    <th className="py-2 pr-3 text-right">Saldo akhir</th>
+                    <th className="py-2 pr-3">Jurnal</th>
+                    <th className="py-2">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mutasi.bulanan.map((b) => (
+                    <Fragment key={b.bulan}>
+                      <tr className="border-b align-top last:border-0">
+                        <td className="py-2 pr-3 whitespace-nowrap font-semibold">
+                          {labelBulanMutasi(b.bulan)}
+                        </td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap">
+                          {formatRp(b.saldo_awal)}
+                        </td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap">
+                          {formatRp(b.pokok)}
+                        </td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap">
+                          {formatRp(b.bunga)}
+                        </td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap">
+                          {formatRp(b.denda)}
+                        </td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap">
+                          {formatRp(b.kas_keluar)}
+                        </td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap font-semibold">
+                          {formatRp(b.saldo_akhir)}
+                        </td>
+                        <td className="py-2 pr-3 text-stone-600">
+                          {b.jurnal_ids.length} jurnal
+                        </td>
+                        <td className="py-2">
+                          <Button
+                            variant="ghost"
+                            disabled={b.pembayaran.length === 0}
+                            onClick={() => toggleMutasiBulan(b.bulan)}
+                          >
+                            {mutasiBuka[b.bulan] ? 'Tutup' : 'Lihat jurnal'}
+                          </Button>
+                        </td>
+                      </tr>
+                      {mutasiBuka[b.bulan] && (
+                        <tr className="border-b bg-stone-50 last:border-0">
+                          <td colSpan={9} className="px-3 py-3">
+                            <table className="w-full text-left text-sm">
+                              <thead>
+                                <tr className="text-stone-500">
+                                  <th className="py-1 pr-3">No. bukti</th>
+                                  <th className="py-1 pr-3">Tanggal jurnal</th>
+                                  <th className="py-1 pr-3">Tanggal link</th>
+                                  <th className="py-1 pr-3">Jurnal ID</th>
+                                  <th className="py-1 pr-3 text-right">Pokok</th>
+                                  <th className="py-1 pr-3 text-right">Bunga</th>
+                                  <th className="py-1 pr-3 text-right">Denda</th>
+                                  <th className="py-1 text-right">Kas keluar</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {b.pembayaran.map((p) => (
+                                  <tr key={p.pembayaran_id}>
+                                    <td className="py-1 pr-3">
+                                      {p.no_bukti || '(tanpa no. bukti)'}
+                                    </td>
+                                    <td className="py-1 pr-3 whitespace-nowrap">
+                                      {formatTanggal(p.tanggal)}
+                                    </td>
+                                    <td className="py-1 pr-3 whitespace-nowrap">
+                                      {p.tanggal_bayar === p.tanggal
+                                        ? 'sama'
+                                        : formatTanggal(p.tanggal_bayar)}
+                                    </td>
+                                    <td className="py-1 pr-3 font-mono text-helper">
+                                      {p.jurnal_id}
+                                    </td>
+                                    <td className="py-1 pr-3 text-right">
+                                      {formatRp(p.pokok)}
+                                    </td>
+                                    <td className="py-1 pr-3 text-right">
+                                      {formatRp(p.bunga)}
+                                    </td>
+                                    <td className="py-1 pr-3 text-right">
+                                      {formatRp(p.denda)}
+                                    </td>
+                                    <td className="py-1 text-right">
+                                      {formatRp(p.kas_keluar)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="font-bold">Jadwal vs Realisasi</h3>
+                <p className="mt-1 text-sm text-stone-600">
+                  Jadwal adalah rencana perjanjian; realisasi dibaca dari jurnal
+                  yang ditautkan ke angsuran. Selisih negatif berarti kurang bayar.
+                  Jadwal tidak diubah oleh realisasi.
+                </p>
+              </div>
+              {mutasi.jadwal.length > 0 && (
+                <Badge
+                  tone={
+                    mutasi.jadwal.some((a) => !a.dibayar) ? 'amber' : 'green'
+                  }
+                >
+                  {mutasi.jadwal.filter((a) => a.dibayar).length}/
+                  {mutasi.jadwal.length} angsuran lunas
+                </Badge>
+              )}
+            </div>
+
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-[15px]">
+                <thead>
+                  <tr className="border-b text-stone-500">
+                    <th className="py-2 pr-3">Ke</th>
+                    <th className="py-2 pr-3">Jatuh tempo</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2 pr-3 text-right">Pokok jadwal</th>
+                    <th className="py-2 pr-3 text-right">Bunga jadwal</th>
+                    <th className="py-2 pr-3 text-right">Pokok realisasi</th>
+                    <th className="py-2 pr-3 text-right">Bunga realisasi</th>
+                    <th className="py-2 pr-3 text-right">Selisih pokok</th>
+                    <th className="py-2 pr-3 text-right">Selisih bunga</th>
+                    <th className="py-2">Jurnal bayar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mutasi.jadwal.map((a) => (
+                    <tr key={a.angsuran_id} className="border-b align-top last:border-0">
+                      <td className="py-2 pr-3">{a.ke}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {formatTanggal(a.jatuh_tempo)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <Badge tone={a.dibayar ? 'green' : 'stone'}>
+                          {a.dibayar ? 'LUNAS' : 'BELUM'}
+                        </Badge>
+                      </td>
+                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                        {formatRp(a.pokok_jadwal)}
+                      </td>
+                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                        {formatRp(a.bunga_jadwal)}
+                      </td>
+                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                        {formatRp(a.pokok_realisasi)}
+                      </td>
+                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                        {formatRp(a.bunga_realisasi)}
+                      </td>
+                      <td
+                        className={`py-2 pr-3 text-right whitespace-nowrap ${
+                          a.selisih_pokok !== 0 ? 'font-semibold text-amber-800' : ''
+                        }`}
+                      >
+                        {formatRp(a.selisih_pokok)}
+                      </td>
+                      <td
+                        className={`py-2 pr-3 text-right whitespace-nowrap ${
+                          a.selisih_bunga !== 0 ? 'font-semibold text-amber-800' : ''
+                        }`}
+                      >
+                        {formatRp(a.selisih_bunga)}
+                      </td>
+                      <td className="py-2 text-helper">
+                        {a.jurnal_id ? (
+                          <>
+                            <div className="font-semibold text-stone-700">
+                              {a.no_bukti || '(tanpa no. bukti)'}
+                            </div>
+                            <div>
+                              {a.tanggal_jurnal
+                                ? formatTanggal(a.tanggal_jurnal)
+                                : '—'}
+                            </div>
+                            <div className="font-mono">{a.jurnal_id}</div>
+                            {a.tanggal_bayar && a.tanggal_bayar !== a.tanggal_jurnal && (
+                              <div>link: {formatTanggal(a.tanggal_bayar)}</div>
+                            )}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {mutasi.jadwal.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="py-4 text-center text-stone-500">
+                        Tidak ada jadwal angsuran pada periode ini.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </Card>
     </div>
   );

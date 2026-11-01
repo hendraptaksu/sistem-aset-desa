@@ -190,6 +190,7 @@ const CHANNEL_IPC = [
   'pinjaman:bayar',
   'pinjaman:detail',
   'pinjaman:list',
+  'pinjaman:mutasi',
   'pinjaman:simpan',
   'saldo-awal:posting',
   'saldo-awal:status',
@@ -201,11 +202,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 57 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 58 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(57);
+    expect(env.handlers.size).toBe(58);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(57);
+    expect(CHANNEL_IPC).toHaveLength(58);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1062,6 +1063,38 @@ describe('DB-16d — IPC bayar angsuran pinjaman', () => {
     expect(
       (await env.panggil('pinjaman:list')).data[0].angsuran[1].status,
     ).toBe('LUNAS');
+  });
+});
+
+describe('DB-16e — IPC mutasi pinjaman', () => {
+  it('menolak pinjaman kosong, periode salah, dan rentang tanggal terbalik', async () => {
+    const env = buatEnv();
+
+    const tanpaPinjaman = await env.panggil('pinjaman:mutasi', {});
+    expect(tanpaPinjaman.ok).toBe(false);
+    expect(tanpaPinjaman.error).toMatch(/pinjaman/i);
+
+    const periodeSalah = await env.panggil('pinjaman:mutasi', {
+      pinjamanId: 'pjr-tidak-ada',
+      periode: '2026-13',
+    });
+    expect(periodeSalah.ok).toBe(false);
+    expect(periodeSalah.error).toMatch(/YYYY-MM/i);
+
+    const terbalik = await env.panggil('pinjaman:mutasi', {
+      pinjamanId: 'pjr-tidak-ada',
+      mulai: '2026-12-31',
+      sampai: '2026-01-01',
+    });
+    expect(terbalik.ok).toBe(false);
+    expect(terbalik.error).toMatch(/sebelum|setelah/i);
+
+    const tidakAda = await env.panggil('pinjaman:mutasi', {
+      pinjamanId: 'pjr-tidak-ada',
+      periode: '2026-03',
+    });
+    expect(tidakAda.ok).toBe(false);
+    expect(tidakAda.error).toMatch(/tidak ditemukan/i);
   });
 });
 

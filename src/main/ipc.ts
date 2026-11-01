@@ -46,6 +46,7 @@ import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import {
   bayarAngsuranPinjaman,
   getPinjaman,
+  laporanMutasiPinjaman,
   listPinjaman,
   simpanPinjamanLpd,
 } from '../db/pinjaman.js';
@@ -97,6 +98,7 @@ import {
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
   validasiBentukPinjamanBayar,
+  validasiBentukPinjamanMutasi,
   validasiBentukPinjamanSimpan,
   validasiBentukSaldoAwal,
   validasiBentukTransaksiInput,
@@ -1118,6 +1120,27 @@ export function registerIpc(deps: IpcDeps): void {
       });
     } catch (e) {
       return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:mutasi', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanMutasi(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      if (!getPinjaman(deps.db(), bentuk.input.pinjamanId))
+        return fail('Pinjaman tidak ditemukan.');
+      return ok(
+        laporanMutasiPinjaman(deps.db(), bentuk.input.pinjamanId, {
+          ...(bentuk.input.periode ? { periode: bentuk.input.periode } : {}),
+          ...(bentuk.input.mulai ? { mulai: bentuk.input.mulai } : {}),
+          ...(bentuk.input.sampai ? { sampai: bentuk.input.sampai } : {}),
+          sekarang: tanggalSekarang(),
+        }),
+      );
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 

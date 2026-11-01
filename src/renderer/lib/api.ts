@@ -23,6 +23,7 @@ import type {
   NeracaHasil,
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
+import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 import type { HasilAuditIntegritas } from '../../db/integritas.js';
 import type { LokasiData } from '../../main/lokasiData.js';
@@ -33,6 +34,7 @@ export type {
   HasilAuditIntegritas,
   LabaRugiHasil,
   ModeNeracaSaldo,
+  MutasiPinjamanHasil,
   NeracaHasil,
   NeracaSaldoModeHasil,
 };
@@ -169,6 +171,16 @@ export type OpsiBayarPinjamanApi = {
   konfirmasiPeringatan?: boolean;
   alasanPeringatan?: string;
   konfirmasiTanpaSaldoAwal?: boolean;
+};
+
+/** Filter kartu hutang / mutasi bulanan pinjaman LPD (DB-16e). */
+export type FilterMutasiPinjamanApi = {
+  pinjamanId: string;
+  /** Bulan `YYYY-MM`; kosongkan bila memakai rentang tanggal. */
+  periode?: string;
+  /** Tanggal `YYYY-MM-DD`; default tahun berjalan bila semuanya kosong. */
+  mulai?: string;
+  sampai?: string;
 };
 
 /** Status Wizard Saldo Awal (P1-6). */
@@ -456,6 +468,9 @@ export const api = {
       selisih?: { pokok: number; bunga: number };
       pinjaman: Pinjaman | null;
     }>('pinjaman:bayar', input, opsi),
+  /** DB-16e: kartu hutang / mutasi bulanan dari jurnal pembayaran tertaut. */
+  pinjamanMutasi: (f: FilterMutasiPinjamanApi) =>
+    call<MutasiPinjamanHasil>('pinjaman:mutasi', f),
   tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
   tutupCreate: (req: {
