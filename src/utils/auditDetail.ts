@@ -293,6 +293,7 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('PANJAR-CLOSE')) return 'Tutup panjar';
   if (a.startsWith('PANJAR-BATAL')) return 'Batalkan panjar';
   if (a.startsWith('PINJAMAN-PENCAIRAN')) return 'Pencairan pinjaman LPD';
+  if (a.startsWith('PINJAMAN-BAYAR')) return 'Pembayaran angsuran pinjaman LPD';
   if (a.startsWith('PINJAMAN-CREATE')) return 'Pinjaman LPD baru';
   return a;
 }

@@ -186,9 +186,9 @@ Tidak ada tabel saldo per pihak yang disimpan.
 
 `2050 HUTANG LAIN-LAIN` adalah pinjaman atau saldo lama; pembayarannya masuk
 kelompok **Pendanaan**. Pinjaman LPD memakai menu **Pinjaman LPD** tersendiri
-(DB-16c); form pembayaran angsuran menyusul pada DB-16d. Jangan membuat
-pinjaman baru lewat Jurnal Umum kecuali untuk koreksi oleh akuntan pendamping;
-saldo 2050 lama tetap terbaca di laporan.
+(DB-16c), dan angsuran dibayar lewat tombol **Bayar Angsuran** di detail jadwal
+(DB-16d). Jangan membuat pinjaman baru lewat Jurnal Umum kecuali untuk koreksi
+oleh akuntan pendamping; saldo 2050 lama tetap terbaca di laporan.
 
 ### 2.5a Pinjaman LPD (jadwal dan pembayaran)
 
@@ -236,6 +236,28 @@ lalu pilih salah satu mode:
    Tombol **Lihat jadwal** menampilkan rincian angsuran dan statusnya. Jurnal
    pencairan bisa dibuka lewat menu **Jurnal Umum**; pinjaman mode berjalan
    ditandai **Saldo awal** dan tidak memiliki jurnal pencairan.
+
+#### Langkah membayar angsuran (DB-16d)
+
+1. Buka **Lihat jadwal** pada pinjaman yang akan dibayar. Setiap angsuran yang
+   belum lunas menampilkan tombol **Bayar Angsuran**; angsuran yang sudah
+   dibayar ditandai **LUNAS** dan tidak bisa dibayar lagi.
+2. Form menampilkan tanggal bayar, akun kas/bank aktif dari master akun,
+   pokok, bunga, denda, dan catatan. Pokok serta bunga otomatis terisi dari
+   jadwal; denda default 0.
+3. Periksa total. Jurnal yang dibuat server selalu seimbang:
+   **D 2050 HUTANG LAIN-LAIN sebesar pokok + D akun bunga pinjaman sebesar
+   bunga + D 5050 BIAYA LAIN-LAIN sebesar denda / K akun kas/bank sebesar
+   total**. Komponen boleh 0, tetapi total pembayaran harus lebih dari 0.
+4. Bila pokok atau bunga yang dibayar **berbeda dari jadwal**, server menolak
+   sekali dan meminta konfirmasi. Isi alasan minimal 5 karakter, lalu pilih
+   **Ya, bayar dengan konfirmasi**. Jadwal **tidak diubah**; selisih hanya
+   tercatat pada jurnal dan audit. Jika perlu, koreksi jadwal dilakukan lewat
+   perjanjian/akuntan pendamping, bukan diam-diam saat pembayaran.
+5. Setelah tersimpan, status angsuran menjadi **LUNAS**, outstanding pinjaman
+   langsung dihitung ulang dari pengurangan pokok, dan jurnal pembayaran bisa
+   dibuka lewat **Jurnal Umum**. Nominal pembayaran tetap dibaca dari baris
+   jurnal dan **tidak disimpan ulang** di tabel pembayaran.
 
 **Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
 tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada

@@ -187,6 +187,7 @@ const CHANNEL_IPC = [
   'panjar:list',
   'pengaturan:get',
   'pengaturan:simpan',
+  'pinjaman:bayar',
   'pinjaman:detail',
   'pinjaman:list',
   'pinjaman:simpan',
@@ -200,11 +201,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 56 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 57 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(56);
+    expect(env.handlers.size).toBe(57);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(56);
+    expect(CHANNEL_IPC).toHaveLength(57);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -948,6 +949,119 @@ describe('AUD-21b — IPC Neraca Saldo per mode', () => {
       mode: 'semua',
     });
     expect(modeSalah.ok).toBe(false);
+  });
+});
+
+describe('DB-16d — IPC bayar angsuran pinjaman', () => {
+  it('membuat jurnal bayar, menandai lunas, dan menolak bayar ganda/selisih tanpa konfirmasi', async () => {
+    const env = buatEnv();
+    const saldo = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 10_000_000 }],
+    });
+    expect(saldo.ok, saldo.error).toBe(true);
+
+    const jadwal = [1, 2, 3].map((ke) => ({
+      ke,
+      jatuh_tempo: `2026-0${ke + 1}-01`,
+      pokok: ke === 3 ? 4_000_000 : 3_000_000,
+      bunga: 100_000,
+      catatan: `Angsuran ${ke}`,
+    }));
+    const simpan = await env.panggil('pinjaman:simpan', {
+      mode: 'PENCAIRAN',
+      kreditur: 'LPD IPC Bayar',
+      tanggal: '2026-01-02',
+      akunKas: '1014',
+      akunBunga: '5063',
+      pokok: 10_000_000,
+      tenor: 3,
+      angsuran: jadwal,
+    });
+    expect(simpan.ok, simpan.error).toBe(true);
+    const pinjamanId = simpan.data.pinjaman.id as string;
+    const angsuran = simpan.data.pinjaman.angsuran as {
+      id: number;
+      ke: number;
+      pokok: number;
+      bunga: number;
+    }[];
+
+    const bayar = await env.panggil('pinjaman:bayar', {
+      pinjamanId,
+      angsuranId: angsuran[0].id,
+      tanggal: '2026-03-01',
+      akunKas: '1014',
+      pokok: angsuran[0].pokok,
+      bunga: angsuran[0].bunga,
+      denda: 50_000,
+      catatan: 'Angsuran pertama',
+    });
+    expect(bayar.ok, bayar.error).toBe(true);
+    expect(bayar.data.jurnal).toMatchObject({ jenis: 'HUTANG' });
+    expect(bayar.data.rincian).toEqual({
+      pokok: 3_000_000,
+      bunga: 100_000,
+      denda: 50_000,
+      kas_keluar: 3_150_000,
+    });
+    expect(bayar.data.pinjaman).toMatchObject({
+      outstanding: 7_000_000,
+      total_pokok_dibayar: 3_000_000,
+    });
+    expect(
+      bayar.data.pinjaman.angsuran.find(
+        (a: { id: number }) => a.id === angsuran[0].id,
+      ),
+    ).toMatchObject({ status: 'LUNAS', dibayar: true });
+
+    const detail = await env.panggil('pinjaman:detail', pinjamanId);
+    expect(detail.ok, detail.error).toBe(true);
+    expect(detail.data.angsuran[0].status).toBe('LUNAS');
+
+    const ganda = await env.panggil('pinjaman:bayar', {
+      pinjamanId,
+      angsuranId: angsuran[0].id,
+      tanggal: '2026-04-01',
+      akunKas: '1014',
+      pokok: angsuran[0].pokok,
+      bunga: angsuran[0].bunga,
+    });
+    expect(ganda.ok).toBe(false);
+    expect(ganda.error).toMatch(/sudah dibayar/i);
+
+    const selisih = await env.panggil('pinjaman:bayar', {
+      pinjamanId,
+      angsuranId: angsuran[1].id,
+      tanggal: '2026-04-01',
+      akunKas: '1014',
+      pokok: 2_500_000,
+      bunga: 100_000,
+    });
+    expect(selisih.ok).toBe(false);
+    expect(selisih.perluKonfirmasi).toBe(true);
+    expect(selisih.error).toMatch(/berbeda dari jadwal/i);
+
+    const dikonfirmasi = await env.panggil(
+      'pinjaman:bayar',
+      {
+        pinjamanId,
+        angsuranId: angsuran[1].id,
+        tanggal: '2026-04-01',
+        akunKas: '1014',
+        pokok: 2_500_000,
+        bunga: 100_000,
+      },
+      {
+        konfirmasiSelisih: true,
+        alasanSelisih: 'kesepakatan ulang dengan LPD',
+      },
+    );
+    expect(dikonfirmasi.ok, dikonfirmasi.error).toBe(true);
+    expect(dikonfirmasi.data.pinjaman.outstanding).toBe(4_500_000);
+    expect(
+      (await env.panggil('pinjaman:list')).data[0].angsuran[1].status,
+    ).toBe('LUNAS');
   });
 });
 

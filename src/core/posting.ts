@@ -96,6 +96,12 @@ export type JurnalInput = {
   baris: JurnalBarisInput[];
   /** Wajib diisi bila tanggal berada di periode yang sudah ditutup. */
   alasan?: string;
+  /**
+   * DB-16d: penanda internal untuk pembayaran angsuran pinjaman yang hanya
+   * berisi bunga/denda (pokok 0). Jurnal HUTANG tanpa akun 2050/2060 hanya sah
+   * untuk konteks ini; jalur IPC form manual tidak pernah mengirim field ini.
+   */
+  konteks?: 'PINJAMAN_BAYAR';
 };
 
 export type HasilValidasiJurnal = {
@@ -291,10 +297,15 @@ export function validasiJurnal(
       errors.push('Jurnal Panjar wajib memakai akun 1040 UANG PANJAR (KAS DI MUKA).');
     if (jenis === 'PIUTANG' && !kodeSah.includes('1050'))
       errors.push('Jurnal Piutang wajib memakai akun 1050 PIUTANG LAIN LAIN.');
-    if (jenis === 'HUTANG' && !kodeSah.includes(AKUN_HUTANG) && !kodeSah.includes(AKUN_HUTANG_USAHA))
-      errors.push(
-        'Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN (pinjaman) atau 2060 HUTANG USAHA (utang usaha).',
-      );
+    if (jenis === 'HUTANG' && !kodeSah.includes(AKUN_HUTANG) && !kodeSah.includes(AKUN_HUTANG_USAHA)) {
+      // DB-16d: pembayaran angsuran bunga/denda (tanpa pokok) tidak menyentuh
+      // 2050, tetapi tetap jurnal HUTANG. Hanya service pinjaman yang boleh
+      // memakai penanda ini; jurnal manual tidak punya akses ke `konteks`.
+      if (input?.konteks !== 'PINJAMAN_BAYAR')
+        errors.push(
+          'Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN (pinjaman) atau 2060 HUTANG USAHA (utang usaha).',
+        );
+    }
   }
 
   // ---- 3a. Jurnal campuran 2050 + 2060 (AKT-20) ----

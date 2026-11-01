@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
-import type { Pinjaman } from '../../core/types.js';
+import type { Pinjaman, PinjamanAngsuran } from '../../core/types.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluKonfirmasi, type ModePinjamanApi } from '../lib/api.js';
@@ -14,6 +14,7 @@ import {
   ErrorBox,
   Field,
   Select,
+  TextArea,
   TextInput,
 } from './ui.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -29,6 +30,18 @@ type BarisJadwal = {
 function barisBaru(ke: number, tanggal = ''): BarisJadwal {
   return { ke, jatuh_tempo: tanggal, pokok: 0, bunga: 0, catatan: '' };
 }
+
+/** State form bayar angsuran (DB-16d). */
+type FormBayar = {
+  pinjaman: Pinjaman;
+  angsuran: PinjamanAngsuran;
+  tanggal: string;
+  akunKas: string;
+  pokok: number;
+  bunga: number;
+  denda: number;
+  catatan: string;
+};
 
 export function PinjamanTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
@@ -51,6 +64,11 @@ export function PinjamanTab() {
   const [detailId, setDetailId] = useState('');
   const [detail, setDetail] = useState<Record<string, Pinjaman>>({});
   const [detailBusy, setDetailBusy] = useState('');
+  const [bayar, setBayar] = useState<FormBayar | null>(null);
+  const [bayarAlasan, setBayarAlasan] = useState('');
+  const [bayarPerluKonfirmasi, setBayarPerluKonfirmasi] = useState(false);
+  const [bayarErr, setBayarErr] = useState<string | null>(null);
+  const [bayarBusy, setBayarBusy] = useState(false);
   const { setDirty } = useTabGuard();
 
   const kasList = useMemo(
@@ -247,6 +265,130 @@ export function PinjamanTab() {
       setErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
       setDetailBusy('');
+    }
+  }
+
+  function mulaiBayar(p: Pinjaman, a: PinjamanAngsuran): void {
+    const akun =
+      kasList.some((k) => k.kode === p.akun_kas)
+        ? p.akun_kas
+        : (kasList[0]?.kode ?? '');
+    setBayar({
+      pinjaman: p,
+      angsuran: a,
+      tanggal: tanggalLokal(),
+      akunKas: akun,
+      pokok: a.pokok,
+      bunga: a.bunga,
+      denda: 0,
+      catatan: '',
+    });
+    setBayarAlasan('');
+    setBayarPerluKonfirmasi(false);
+    setBayarErr(null);
+    setInfo(null);
+    setDirty(true);
+  }
+
+  function batalBayar(): void {
+    setBayar(null);
+    setBayarAlasan('');
+    setBayarPerluKonfirmasi(false);
+    setBayarErr(null);
+    setDirty(false);
+  }
+
+  function ubahBayar(patch: Partial<FormBayar>): void {
+    setBayar((b) => (b ? { ...b, ...patch } : b));
+    setBayarPerluKonfirmasi(false);
+    setBayarErr(null);
+    setDirty(true);
+  }
+
+  async function simpanBayar(konfirmasi = false): Promise<void> {
+    if (!bayar || bayarBusy) return;
+    setBayarErr(null);
+    setInfo(null);
+    const { pokok, bunga, denda } = bayar;
+    if (
+      !Number.isSafeInteger(pokok) ||
+      !Number.isSafeInteger(bunga) ||
+      !Number.isSafeInteger(denda) ||
+      pokok < 0 ||
+      bunga < 0 ||
+      denda < 0
+    ) {
+      setBayarErr('Pokok, bunga, dan denda harus bilangan bulat ≥ 0.');
+      return;
+    }
+    const total = pokok + bunga + denda;
+    if (total <= 0) {
+      setBayarErr('Total pembayaran (pokok + bunga + denda) harus lebih dari 0.');
+      return;
+    }
+    if (!bayar.akunKas) {
+      setBayarErr('Akun kas/bank pembayaran wajib dipilih.');
+      return;
+    }
+    if (!bayar.tanggal) {
+      setBayarErr('Tanggal pembayaran wajib diisi.');
+      return;
+    }
+    const alasan = bayarAlasan.trim();
+    if (konfirmasi && alasan.length < 5) {
+      setBayarErr('Alasan konfirmasi wajib diisi minimal 5 karakter.');
+      return;
+    }
+
+    setBayarBusy(true);
+    const idPinjaman = bayar.pinjaman.id;
+    const ke = bayar.angsuran.ke;
+    try {
+      const r = await api.pinjamanBayar(
+        {
+          pinjamanId: idPinjaman,
+          angsuranId: bayar.angsuran.id,
+          tanggal: bayar.tanggal,
+          akunKas: bayar.akunKas,
+          pokok,
+          bunga,
+          denda,
+          catatan: bayar.catatan.trim(),
+        },
+        konfirmasi
+          ? {
+              konfirmasiSelisih: true,
+              alasanSelisih: alasan,
+              konfirmasiPeringatan: true,
+              alasanPeringatan: alasan,
+            }
+          : {},
+      );
+      setInfo(
+        `Bayar angsuran ke-${ke} ${bayar.pinjaman.kreditur} tersimpan ` +
+          `(${r.jurnal.no_bukti || r.jurnal.id}) — ${formatRp(total)}. ` +
+          `Outstanding sekarang ${formatRp(r.pinjaman?.outstanding ?? 0)}.`,
+      );
+      setBayar(null);
+      setBayarAlasan('');
+      setBayarPerluKonfirmasi(false);
+      setDirty(false);
+      await refresh();
+      try {
+        const d = await api.pinjamanDetail(idPinjaman);
+        setDetail((prev) => ({ ...prev, [idPinjaman]: d }));
+      } catch {
+        /* daftar sudah diperbarui; detail akan dimuat lagi saat dibuka */
+      }
+    } catch (e) {
+      if (isPerluKonfirmasi(e)) {
+        setBayarPerluKonfirmasi(true);
+        setBayarErr(pesanError(e));
+      } else {
+        setBayarErr(pesanError(e));
+      }
+    } finally {
+      setBayarBusy(false);
     }
   }
 
@@ -639,7 +781,8 @@ export function PinjamanTab() {
                                   <th className="py-1 pr-3 text-right">Bunga</th>
                                   <th className="py-1 pr-3">Status</th>
                                   <th className="py-1 pr-3">Jurnal bayar</th>
-                                  <th className="py-1">Catatan</th>
+                                  <th className="py-1 pr-3">Catatan</th>
+                                  <th className="py-1">Tindakan</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -659,17 +802,204 @@ export function PinjamanTab() {
                                       <Badge tone={a.status === 'LUNAS' ? 'green' : 'stone'}>
                                         {a.status}
                                       </Badge>
+                                      {a.tanggal_bayar && (
+                                        <div className="mt-1 text-helper text-stone-500">
+                                          {formatTanggal(a.tanggal_bayar)}
+                                        </div>
+                                      )}
                                     </td>
                                     <td className="py-1 pr-3 text-xs text-stone-500">
                                       {a.jurnal_id ?? '—'}
                                     </td>
                                     <td className="py-1">{a.catatan || '—'}</td>
+                                    <td className="py-1">
+                                      {a.dibayar ? (
+                                        <span className="text-helper text-stone-500">
+                                          Sudah lunas
+                                        </span>
+                                      ) : (
+                                        <Button
+                                          variant="ghost"
+                                          disabled={bayarBusy}
+                                          onClick={() => mulaiBayar(p, a)}
+                                        >
+                                          Bayar Angsuran
+                                        </Button>
+                                      )}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           ) : (
                             <p className="text-stone-500">Belum ada jadwal angsuran.</p>
+                          )}
+
+                          {bayar && bayar.pinjaman.id === p.id && (
+                            <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <h3 className="font-bold">
+                                    Bayar angsuran ke-{bayar.angsuran.ke}
+                                  </h3>
+                                  <p className="mt-1 text-sm text-stone-600">
+                                    Prefill pokok dan bunga dari jadwal. Nominal boleh
+                                    diubah, tetapi bila berbeda dari jadwal wajib
+                                    dikonfirmasi dengan alasan; jadwal tidak ikut
+                                    berubah.
+                                  </p>
+                                </div>
+                                <Badge
+                                  tone={
+                                    bayar.pokok + bayar.bunga + bayar.denda > 0
+                                      ? 'green'
+                                      : 'amber'
+                                  }
+                                >
+                                  Total {formatRp(bayar.pokok + bayar.bunga + bayar.denda)}
+                                </Badge>
+                              </div>
+
+                              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                <Field label="Tanggal bayar">
+                                  <TextInput
+                                    type="date"
+                                    value={bayar.tanggal}
+                                    disabled={bayarBusy}
+                                    onChange={(e) =>
+                                      ubahBayar({ tanggal: e.target.value })
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Akun kas / bank">
+                                  <Select
+                                    value={bayar.akunKas}
+                                    disabled={bayarBusy}
+                                    onChange={(e) =>
+                                      ubahBayar({ akunKas: e.target.value })
+                                    }
+                                  >
+                                    {kasList.map((k) => (
+                                      <option key={k.kode} value={k.kode}>
+                                        {k.kode} — {k.nama}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </Field>
+                                <Field label="Catatan (opsional)">
+                                  <TextInput
+                                    value={bayar.catatan}
+                                    disabled={bayarBusy}
+                                    placeholder="cth: angsuran bulan ini"
+                                    onChange={(e) =>
+                                      ubahBayar({ catatan: e.target.value })
+                                    }
+                                  />
+                                </Field>
+                                <Field label="Pokok dibayar (Rp)">
+                                  <CurrencyInput
+                                    value={bayar.pokok}
+                                    onChange={(n) => ubahBayar({ pokok: n })}
+                                  />
+                                </Field>
+                                <Field label="Bunga dibayar (Rp)">
+                                  <CurrencyInput
+                                    value={bayar.bunga}
+                                    onChange={(n) => ubahBayar({ bunga: n })}
+                                  />
+                                </Field>
+                                <Field label="Denda (Rp, opsional)">
+                                  <CurrencyInput
+                                    value={bayar.denda}
+                                    onChange={(n) => ubahBayar({ denda: n })}
+                                  />
+                                </Field>
+                              </div>
+
+                              <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+                                <p>
+                                  Jadwal: pokok <b>{formatRp(bayar.angsuran.pokok)}</b>{' '}
+                                  · bunga <b>{formatRp(bayar.angsuran.bunga)}</b>
+                                </p>
+                                <p className="mt-1">
+                                  Jurnal: <b>D 2050 pokok + D {labelAkun(p.akun_bunga)}{' '}
+                                  bunga + D 5050 denda / K kas total</b>
+                                </p>
+                                {(bayar.pokok !== bayar.angsuran.pokok ||
+                                  bayar.bunga !== bayar.angsuran.bunga) && (
+                                  <p className="mt-1 font-semibold text-amber-800">
+                                    Nominal berbeda dari jadwal. Server akan meminta
+                                    konfirmasi dan alasan; jadwal tetap tidak berubah.
+                                  </p>
+                                )}
+                              </div>
+
+                              {(bayarPerluKonfirmasi ||
+                                bayar.pokok !== bayar.angsuran.pokok ||
+                                bayar.bunga !== bayar.angsuran.bunga) && (
+                                <div className="mt-3">
+                                  <Field label="Alasan selisih / konfirmasi (wajib ≥ 5 karakter)">
+                                    <TextArea
+                                      value={bayarAlasan}
+                                      disabled={bayarBusy}
+                                      placeholder="cth: pembulatan sesuai kesepakatan LPD"
+                                      onChange={(e) => setBayarAlasan(e.target.value)}
+                                    />
+                                  </Field>
+                                </div>
+                              )}
+
+                              {!bayarPerluKonfirmasi && <ErrorBox msg={bayarErr} />}
+
+                              {bayarPerluKonfirmasi && (
+                                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900">
+                                  <p className="font-semibold">Perlu konfirmasi</p>
+                                  <p className="mt-1">{bayarErr}</p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <Button
+                                      disabled={bayarBusy}
+                                      onClick={() => void simpanBayar(true)}
+                                    >
+                                      Ya, bayar dengan konfirmasi
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      disabled={bayarBusy}
+                                      onClick={() => {
+                                        setBayarPerluKonfirmasi(false);
+                                        setBayarErr(null);
+                                      }}
+                                    >
+                                      Periksa lagi
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="mt-3 flex flex-wrap items-center gap-3">
+                                <Button
+                                  disabled={
+                                    bayarBusy ||
+                                    !bayar.akunKas ||
+                                    bayar.pokok + bayar.bunga + bayar.denda <= 0
+                                  }
+                                  onClick={() => void simpanBayar()}
+                                >
+                                  {bayarBusy ? 'Menyimpan…' : 'Bayar Angsuran'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  disabled={bayarBusy}
+                                  onClick={batalBayar}
+                                >
+                                  Batal
+                                </Button>
+                                <span className="text-sm text-stone-500">
+                                  Satu angsuran hanya bisa dibayar sekali; jurnal
+                                  dibuat seimbang dan tertaut otomatis.
+                                </span>
+                              </div>
+                            </div>
                           )}
                         </td>
                       </tr>

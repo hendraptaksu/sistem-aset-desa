@@ -44,6 +44,7 @@ import {
 } from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import {
+  bayarAngsuranPinjaman,
   getPinjaman,
   listPinjaman,
   simpanPinjamanLpd,
@@ -95,6 +96,7 @@ import {
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
+  validasiBentukPinjamanBayar,
   validasiBentukPinjamanSimpan,
   validasiBentukSaldoAwal,
   validasiBentukTransaksiInput,
@@ -1064,6 +1066,55 @@ export function registerIpc(deps: IpcDeps): void {
         mode: hasil.mode,
         pinjaman: hasil.pinjaman,
         jurnal: hasil.jurnal ?? null,
+      });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:bayar', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanBayar(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const konfirmasiSelisih =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiSelisih?: unknown }).konfirmasiSelisih === true;
+      const konfirmasiPeringatan =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+      const hasil = bayarAngsuranPinjaman(deps.db(), bentuk.input, {
+        konfirmasiSelisih,
+        alasanSelisih: bacaTeksOpsi(opsi, 'alasanSelisih'),
+        konfirmasiPeringatan,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
+      });
+      if (!hasil.tersimpan || !hasil.pembayaran || !hasil.jurnal) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pembayaran angsuran gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+      }
+      return ok({
+        pembayaran: hasil.pembayaran,
+        jurnal: hasil.jurnal,
+        rincian: hasil.rincian,
+        selisih: hasil.selisih,
+        pinjaman:
+          getPinjaman(deps.db(), hasil.pembayaran.pinjaman_id) ?? null,
       });
     } catch (e) {
       return fail(pesanError(e, GAGAL_PINJAMAN));

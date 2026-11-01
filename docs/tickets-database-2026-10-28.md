@@ -2,9 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-01 (setelah DB-16c):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **896 test / 72 file hijau**; `npm run build`
-> berhasil. Baseline DB-16b adalah 882/71. Baseline DB-34 adalah 869/69.
+> **Baseline terakhir 2026-11-01 (setelah DB-16d):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **907 test / 73 file hijau**; `npm run build`
+> berhasil. Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
+> Baseline DB-34 adalah 869/69.
 > Baseline DB-21 adalah 850/69; baseline DB-20 adalah 832/67.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
@@ -97,7 +98,7 @@
 | DB-16a | P0 | S | Desain input pinjaman LPD (user input, bukan data awal) | — | [x] |
 | DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [x] |
 | DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [x] |
-| DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [ ] |
+| DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [x] |
 | DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [ ] |
 | DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
 | DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
@@ -830,7 +831,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     wizard. `npm run typecheck` bersih; `npx vitest run --pool=threads`
     **896 test/72 file hijau** (baseline 882/71); `npm run build` berhasil.
 
-- [ ] **DB-16d — Form bayar angsuran: pokok + bunga + denda** · P1 · M
+- [x] **DB-16d — Form bayar angsuran: pokok + bunga + denda** · P1 · M
   - **Konteks:** pembayaran LPD harus memisahkan pokok (mengurangi 2050) dan
     bunga (beban), bukan satu baris “bayar hutang”.
   - **Langkah:**
@@ -846,6 +847,25 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     turun sebesar pokok; bunga masuk Laba Rugi; status angsuran terbayar.
   - **Test:** `tests/pinjaman.test.ts`, `tests/jurnal.test.ts`.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-11-01:** detail jadwal `PinjamanTab.tsx` menampilkan tombol
+    **Bayar Angsuran** untuk angsuran belum lunas; form tanggal, kas/bank aktif
+    dari master DB (`is_kas`), pokok/bunga prefill jadwal, denda, catatan, dan
+    konfirmasi + alasan saat nominal berbeda. Service
+    `bayarAngsuranPinjaman` memposting satu jurnal HUTANG 3–4 baris seimbang
+    lewat `postingJurnal` (**D 2050 pokok + D akun bunga + D 5050 denda / K
+    kas**), menulis audit `PINJAMAN-BAYAR`, lalu menautkan
+    `pinjaman_bayar` (`jurnal_id`+`angsuran_id`+`tanggal`+`catatan`) secara
+    atomik. `pinjaman_bayar` tetap link-only tanpa kolom nominal (DB-36);
+    jadwal tidak diubah saat realisasi berbeda. IPC `pinjaman:bayar`
+    (total **57 channel**), `validasiBentukPinjamanBayar`, API
+    `pinjamanBayar`, dan label audit ditambahkan. Test baru
+    `tests/db-16d-pinjaman-bayar.test.ts` + test IPC mencakup jurnal 3–4 baris,
+    penurunan 2050, bunga 5063, denda 5050, kredit kas, konfirmasi selisih,
+    jadwal tetap, tolak bayar ganda/akun nonaktif/negatif/pecahan/nol, schema
+    link-only, serta sumber IPC/API/UI/dokumen. `docs/panduan-pengguna.md`
+    memuat langkah bayar. `npm run typecheck` bersih; `npx vitest run
+    --pool=threads` **907 test/73 file hijau** (baseline DB-16c 896/72);
+    `npm run build` berhasil.
   - **Dependency:** DB-16b, DB-16c.
 
 - [ ] **DB-16e — Kartu hutang / mutasi bulanan pinjaman LPD** · P1 · M

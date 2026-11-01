@@ -19,6 +19,7 @@ import { buatJurnalPinjamanPencairan } from '../core/forms.js';
 import type {
   Jurnal,
   JurnalBaris,
+  JurnalBarisInput,
   Pinjaman,
   PinjamanAngsuran,
   PinjamanBayar,
@@ -27,9 +28,17 @@ import type {
 import { AKUN_HUTANG, akunBolehDiposting } from './coa.js';
 import { postingJurnal } from './posting.js';
 import { catatAudit, getAkun, getJurnalDetail, listAkun } from './repository.js';
+import { formatRp } from '../utils/format.js';
 
 /** Akun bunga default DB-13b/DB-16a. */
 export const AKUN_BUNGA_PINJAMAN_DEFAULT = '5063';
+
+/**
+ * Akun denda default DB-16a: 5050 BIAYA LAIN-LAIN. Ticket DB-16d memakai
+ * akun ini untuk komponen denda; konfigurasi per pinjaman dapat ditambah nanti
+ * tanpa mengubah skema (nominal tetap dibaca dari baris jurnal).
+ */
+export const AKUN_DENDA_PINJAMAN_DEFAULT = '5050';
 
 export type PinjamanAngsuranInput = {
   ke: number;
@@ -160,6 +169,56 @@ export type HasilPembayaranPinjaman = {
   perluKonfirmasi: boolean;
   tersimpan: boolean;
   pembayaran?: PinjamanBayar;
+};
+
+/**
+ * Input pembayaran angsuran (DB-16d). Nominal boleh 0 per komponen, tetapi
+ * total wajib > 0. Bila pokok/bunga berbeda dari jadwal, pemanggil wajib
+ * mengirim `konfirmasiSelisih` + `alasanSelisih`; jadwal TIDAK diubah.
+ */
+export type BayarAngsuranPinjamanInput = {
+  /** ID pembayaran; opsional, dibuat otomatis bila kosong. */
+  id?: string;
+  /** ID jurnal; opsional, dibuat otomatis bila kosong (berguna untuk test). */
+  jurnal_id?: string;
+  jurnalId?: string;
+  pinjaman_id?: string;
+  pinjamanId?: string;
+  angsuran_id?: number;
+  angsuranId?: number;
+  tanggal?: string;
+  akun_kas?: string;
+  akunKas?: string;
+  pokok?: number;
+  bunga?: number;
+  denda?: number;
+  catatan?: string;
+  noBukti?: string;
+  created_at?: string;
+  /** Alias konfirmasi di dalam input (selain opsi argumen). */
+  konfirmasiSelisih?: boolean;
+  alasanSelisih?: string;
+};
+
+export type OpsiBayarAngsuranPinjaman = {
+  /** Operator sudah melihat selisih pokok/bunga vs jadwal. */
+  konfirmasiSelisih?: boolean;
+  /** Wajib ≥5 karakter saat nominal berbeda dari jadwal. */
+  alasanSelisih?: string;
+  /** Konfirmasi peringatan posting (mis. saldo kas minus). */
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+  wajibSaldoAwal?: boolean;
+  konfirmasiTanpaSaldoAwal?: boolean;
+  /** Tanggal acuan validasi posting (test deterministik). */
+  sekarang?: string;
+};
+
+export type HasilBayarAngsuranPinjaman = HasilPembayaranPinjaman & {
+  jurnal?: Jurnal;
+  rincian?: RincianPembayaranPinjaman;
+  /** Selisih realisasi terhadap jadwal (hanya informatif; jadwal tidak diubah). */
+  selisih?: { pokok: number; bunga: number };
 };
 
 type Row = Record<string, unknown>;
@@ -972,9 +1031,350 @@ export function rincianPembayaranPinjaman(
   };
 }
 
+class GagalBayarAngsuran extends Error {
+  readonly errors: string[];
+  readonly peringatan: string[];
+  readonly perluKonfirmasi: boolean;
+
+  constructor(
+    errors: string[],
+    peringatan: string[] = [],
+    perluKonfirmasi = false,
+  ) {
+    super(errors.join(' ') || peringatan.join(' '));
+    this.errors = errors;
+    this.peringatan = peringatan;
+    this.perluKonfirmasi = perluKonfirmasi;
+  }
+}
+
+/**
+ * DB-16d: bayar satu angsuran pinjaman LPD.
+ *
+ * Satu pembayaran = satu jurnal seimbang yang diposting lewat `postingJurnal`:
+ * D 2050 pokok + D akun bunga + D 5050 denda / K kas total. Komponen boleh 0,
+ * tetapi total wajib > 0. `pinjaman_bayar` hanya menyimpan link jurnal +
+ * angsuran; tidak ada kolom nominal (DB-36).
+ *
+ * Jika pokok/bunga berbeda dari jadwal, `konfirmasiSelisih` + `alasanSelisih`
+ * (≥5 karakter) wajib diisi. Jadwal TIDAK diubah; alasan ikut di keterangan
+ * jurnal dan audit `PINJAMAN-BAYAR`.
+ */
+export function bayarAngsuranPinjaman(
+  db: Database.Database,
+  input: BayarAngsuranPinjamanInput,
+  opsi: OpsiBayarAngsuranPinjaman = {},
+): HasilBayarAngsuranPinjaman {
+  const data = (input ?? {}) as BayarAngsuranPinjamanInput;
+  const errors: string[] = [];
+
+  const pinjamanId = teks(data.pinjaman_id ?? data.pinjamanId);
+  const pinjaman = pinjamanId ? getPinjaman(db, pinjamanId) : null;
+  if (!pinjamanId) errors.push('Pinjaman yang dibayar belum dipilih.');
+  else if (!pinjaman) errors.push(`Pinjaman ${pinjamanId} tidak ditemukan.`);
+
+  const angsuranMentah = data.angsuran_id ?? data.angsuranId;
+  const angsuranId = Number(angsuranMentah);
+  if (
+    angsuranMentah === undefined ||
+    angsuranMentah === null ||
+    teks(angsuranMentah) === '' ||
+    !Number.isSafeInteger(angsuranId) ||
+    angsuranId <= 0
+  )
+    errors.push('Angsuran yang dibayar belum dipilih.');
+  const angsuran = pinjaman?.angsuran?.find((a) => a.id === angsuranId);
+  if (pinjaman && angsuranId > 0 && !angsuran)
+    errors.push(
+      `Angsuran ${angsuranId} tidak ditemukan pada pinjaman ${pinjamanId}.`,
+    );
+  if (angsuran?.dibayar)
+    errors.push(
+      `Angsuran ke-${angsuran.ke} sudah dibayar melalui pembayaran ` +
+        `${angsuran.pinjaman_bayar_id ?? '(tidak diketahui)'}. ` +
+        'Satu angsuran hanya boleh dibayar satu kali.',
+    );
+
+  const bacaKomponen = (
+    nilai: unknown,
+    fallback: number,
+    label: string,
+  ): number | null => {
+    if (nilai === undefined || nilai === null || teks(nilai) === '')
+      return fallback;
+    if (typeof nilai !== 'number' || !Number.isSafeInteger(nilai) || nilai < 0) {
+      errors.push(`${label} harus bilangan bulat ≥ 0 (satuan sen).`);
+      return null;
+    }
+    return nilai;
+  };
+  const pokok = bacaKomponen(data.pokok, angsuran?.pokok ?? 0, 'Pokok pembayaran');
+  const bunga = bacaKomponen(data.bunga, angsuran?.bunga ?? 0, 'Bunga pembayaran');
+  const denda = bacaKomponen(data.denda, 0, 'Denda pembayaran');
+  const total =
+    pokok !== null && bunga !== null && denda !== null
+      ? pokok + bunga + denda
+      : 0;
+  if (pokok !== null && bunga !== null && denda !== null && total <= 0)
+    errors.push(
+      'Total pembayaran (pokok + bunga + denda) harus lebih dari 0.',
+    );
+
+  const tanggal = teks(data.tanggal);
+  if (!tanggalKalenderValid(tanggal))
+    errors.push('Tanggal pembayaran tidak valid (YYYY-MM-DD).');
+
+  const akunKasKode = teks(data.akun_kas ?? data.akunKas);
+  const akunKas = akunKasKode ? getAkun(db, akunKasKode) : null;
+  if (
+    !akunKas ||
+    !akunKas.aktif ||
+    akunKas.tipe !== 'AKTIVA' ||
+    !akunKas.is_kas ||
+    !akunBolehDiposting(akunKasKode, akunKas.aktif, { dikenal: true })
+  )
+    errors.push(
+      'Akun kas/bank pembayaran wajib akun AKTIVA kas aktif (is_kas = 1).',
+    );
+
+  const akunBungaKode =
+    pinjaman?.akun_bunga ?? AKUN_BUNGA_PINJAMAN_DEFAULT;
+  const akunBunga = getAkun(db, akunBungaKode);
+  if (
+    !akunBunga ||
+    !akunBunga.aktif ||
+    akunBunga.tipe !== 'BEBAN' ||
+    !akunBolehDiposting(akunBungaKode, akunBunga.aktif, { dikenal: true })
+  )
+    errors.push(
+      `Akun bunga pinjaman ${akunBungaKode} wajib akun BEBAN yang aktif.`,
+    );
+
+  const akunHutang = getAkun(db, AKUN_HUTANG);
+  if (
+    !akunHutang ||
+    !akunHutang.aktif ||
+    akunHutang.tipe !== 'KEWAJIBAN' ||
+    !akunBolehDiposting(AKUN_HUTANG, akunHutang.aktif, { dikenal: true })
+  )
+    errors.push(
+      `Akun ${AKUN_HUTANG} HUTANG LAIN-LAIN wajib ada, aktif, dan bertipe KEWAJIBAN.`,
+    );
+
+  const akunDendaKode = AKUN_DENDA_PINJAMAN_DEFAULT;
+  if ((denda ?? 0) > 0) {
+    const akunDenda = getAkun(db, akunDendaKode);
+    if (
+      !akunDenda ||
+      !akunDenda.aktif ||
+      akunDenda.tipe !== 'BEBAN' ||
+      !akunBolehDiposting(akunDendaKode, akunDenda.aktif, { dikenal: true })
+    )
+      errors.push(
+        `Akun denda ${akunDendaKode} BIAYA LAIN-LAIN wajib akun BEBAN yang aktif.`,
+      );
+  }
+
+  const konfirmasiSelisih =
+    opsi.konfirmasiSelisih === true || data.konfirmasiSelisih === true;
+  const alasanSelisih = teks(opsi.alasanSelisih ?? data.alasanSelisih);
+  const selisih = {
+    pokok: (pokok ?? 0) - (angsuran?.pokok ?? 0),
+    bunga: (bunga ?? 0) - (angsuran?.bunga ?? 0),
+  };
+  if (errors.length > 0) return { ...gagalBayar(errors), selisih };
+
+  const berbedaJadwal =
+    angsuran !== undefined && (selisih.pokok !== 0 || selisih.bunga !== 0);
+  if (berbedaJadwal) {
+    const rincianSelisih =
+      `Pokok ${formatRp(pokok ?? 0)} vs jadwal ${formatRp(angsuran.pokok)}; ` +
+      `bunga ${formatRp(bunga ?? 0)} vs jadwal ${formatRp(angsuran.bunga)}.`;
+    if (!konfirmasiSelisih)
+      return {
+        ...gagalBayar(
+          `${rincianSelisih} Nominal berbeda dari jadwal. Konfirmasi selisih ` +
+            'dan isi alasan; jadwal tidak akan diubah.',
+        ),
+        perluKonfirmasi: true,
+        selisih,
+      };
+    if (alasanSelisih.length < 5)
+      return {
+        ...gagalBayar(
+          'Konfirmasi selisih wajib disertai alasan minimal 5 karakter. ' +
+            'Jadwal tidak akan diubah.',
+        ),
+        perluKonfirmasi: true,
+        selisih,
+      };
+  }
+
+  // Validasi di atas menjamin pinjaman, angsuran, dan komponen ada.
+  const p = pinjaman as Pinjaman;
+  const a = angsuran as PinjamanAngsuran;
+  const nilaiPokok = pokok as number;
+  const nilaiBunga = bunga as number;
+  const nilaiDenda = denda as number;
+  const totalBayar = nilaiPokok + nilaiBunga + nilaiDenda;
+
+  const id = teks(data.id) || uid('pby');
+  const jurnalId = teks(data.jurnal_id ?? data.jurnalId) || uid('j-bayar-pinjaman');
+  const catatan = teks(data.catatan);
+  const noBukti = teks(data.noBukti);
+
+  const bagianKeterangan = [
+    catatan,
+    alasanSelisih ? `alasan selisih: ${alasanSelisih}` : '',
+  ].filter(Boolean);
+  const keterangan =
+    `Pembayaran angsuran ke-${a.ke} pinjaman LPD ${p.kreditur}` +
+    (bagianKeterangan.length > 0 ? ` — ${bagianKeterangan.join('; ')}` : '');
+
+  const baris: JurnalBarisInput[] = [];
+  if (nilaiPokok > 0)
+    baris.push({ akun_kode: AKUN_HUTANG, debit: nilaiPokok, kredit: 0 });
+  if (nilaiBunga > 0)
+    baris.push({ akun_kode: akunBungaKode, debit: nilaiBunga, kredit: 0 });
+  if (nilaiDenda > 0)
+    baris.push({ akun_kode: akunDendaKode, debit: nilaiDenda, kredit: 0 });
+  baris.push({
+    akun_kode: akunKasKode,
+    debit: 0,
+    kredit: totalBayar,
+  });
+
+  const inputJurnal: JurnalInput = {
+    header: {
+      id: jurnalId,
+      tanggal,
+      keterangan,
+      jenis: 'HUTANG',
+      ...(noBukti ? { no_bukti: noBukti } : {}),
+    },
+    baris,
+    ...(alasanSelisih ? { alasan: alasanSelisih } : {}),
+    // Bunga/denda saja (pokok 0) tetap jurnal HUTANG tanpa baris 2050.
+    ...(nilaiPokok === 0
+      ? { konteks: 'PINJAMAN_BAYAR' as const }
+      : {}),
+  };
+
+  const created_at = teks(data.created_at) || new Date().toISOString();
+
+  try {
+    const simpan = db.transaction((): HasilBayarAngsuranPinjaman => {
+      // Cek ulang di dalam transaksi: dua klik bersamaan tidak boleh sama-sama
+      // menautkan angsuran/jurnal yang sama.
+      const sudah = db
+        .prepare('SELECT id FROM pinjaman_bayar WHERE angsuran_id = ? LIMIT 1')
+        .get(a.id) as { id: string } | undefined;
+      if (sudah)
+        throw new GagalBayarAngsuran([
+          `Angsuran ke-${a.ke} sudah dibayar melalui pembayaran ${sudah.id}. ` +
+            'Satu angsuran hanya boleh dibayar satu kali.',
+        ]);
+      const jurnalTerpakai = db
+        .prepare('SELECT id FROM pinjaman_bayar WHERE jurnal_id = ? LIMIT 1')
+        .get(jurnalId) as { id: string } | undefined;
+      if (jurnalTerpakai)
+        throw new GagalBayarAngsuran([
+          `Jurnal ${jurnalId} sudah ditautkan ke pembayaran ${jurnalTerpakai.id}.`,
+        ]);
+
+      const posting = postingJurnal(db, inputJurnal, {
+        konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+        alasanPeringatan: opsi.alasanPeringatan,
+        wajibAlasanPeringatan: true,
+        wajibSaldoAwal: opsi.wajibSaldoAwal === true,
+        konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
+        sekarang: opsi.sekarang,
+      });
+      if (!posting.tersimpan || !posting.jurnal)
+        throw new GagalBayarAngsuran(
+          posting.errors.length > 0 ? posting.errors : posting.peringatan,
+          posting.peringatan,
+          posting.perluKonfirmasi,
+        );
+
+      db.prepare(
+        `INSERT INTO pinjaman_bayar
+           (id, pinjaman_id, angsuran_id, jurnal_id, tanggal, catatan, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        p.id,
+        a.id,
+        jurnalId,
+        tanggal,
+        catatan,
+        created_at,
+      );
+
+      catatAudit(db, {
+        aksi: `PINJAMAN-BAYAR ${p.id}`,
+        alasan:
+          `Pembayaran angsuran ke-${a.ke} pinjaman LPD ${p.kreditur}` +
+          (alasanSelisih ? `; alasan selisih: ${alasanSelisih}` : ''),
+        baru: {
+          pinjaman_id: p.id,
+          angsuran_id: a.id,
+          pembayaran_id: id,
+          jurnal: posting.jurnal,
+          pokok: nilaiPokok,
+          bunga: nilaiBunga,
+          denda: nilaiDenda,
+          total: totalBayar,
+          ...(alasanSelisih ? { alasanSelisih } : {}),
+        },
+      });
+
+      return {
+        ...kosong,
+        boleh: true,
+        tersimpan: true,
+        pembayaran: getPembayaranPinjaman(db, id) ?? undefined,
+        jurnal: posting.jurnal,
+        rincian: rincianPembayaranDariJurnal(db, jurnalId, akunBungaKode),
+        selisih,
+      };
+    });
+    return simpan();
+  } catch (e) {
+    if (e instanceof GagalBayarAngsuran) {
+      const pesan = e.errors.length > 0 ? e.errors : e.peringatan;
+      return {
+        ...gagalBayar(pesan),
+        peringatan: e.peringatan,
+        perluKonfirmasi: e.perluKonfirmasi,
+        selisih,
+      };
+    }
+    const pesan = e instanceof Error ? e.message : String(e);
+    if (/UNIQUE constraint failed: pinjaman_bayar\.jurnal_id/i.test(pesan))
+      return {
+        ...gagalBayar(`Jurnal ${jurnalId} sudah ditautkan ke pembayaran lain.`),
+        selisih,
+      };
+    if (/UNIQUE constraint failed: pinjaman_bayar\.angsuran_id/i.test(pesan))
+      return {
+        ...gagalBayar(
+          `Angsuran ${a.id} sudah dibayar. Satu angsuran hanya boleh dibayar sekali.`,
+        ),
+        selisih,
+      };
+    return {
+      ...gagalBayar(`Pembayaran pinjaman gagal disimpan: ${pesan}`),
+      selisih,
+    };
+  }
+}
+
 /** Alias DB-16d: pembayaran link-only memakai fungsi yang sama. */
 export const catatPembayaran = tautkanPembayaran;
-/** Alias Inggris untuk pemanggil baru. */
+/** Alias Indonesia untuk pemanggil baru. */
+export const bayarAngsuran = bayarAngsuranPinjaman;
+export const bayarPinjaman = bayarAngsuranPinjaman;
 export const createPinjaman = buatPinjaman;
 export const getPinjamanDetail = getPinjaman;
 export const listPembayaranPinjaman = listPinjamanBayar;

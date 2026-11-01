@@ -11,6 +11,8 @@ import type {
   Panjar,
   PanjarItem,
   Pinjaman,
+  PinjamanBayar,
+  RincianPembayaranPinjaman,
   TutupBuku,
 } from '../../core/types.js';
 import type {
@@ -143,6 +145,30 @@ export type PinjamanSimpanApi = {
     bunga: number;
     catatan?: string;
   }[];
+};
+
+/** Input pembayaran angsuran pinjaman LPD (DB-16d). */
+export type PinjamanBayarApi = {
+  id?: string;
+  jurnalId?: string;
+  pinjamanId: string;
+  angsuranId: number;
+  tanggal: string;
+  akunKas: string;
+  pokok?: number;
+  bunga?: number;
+  denda?: number;
+  catatan?: string;
+  noBukti?: string;
+};
+
+/** Opsi konfirmasi pembayaran angsuran (selisih jadwal / peringatan kas). */
+export type OpsiBayarPinjamanApi = {
+  konfirmasiSelisih?: boolean;
+  alasanSelisih?: string;
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+  konfirmasiTanpaSaldoAwal?: boolean;
 };
 
 /** Status Wizard Saldo Awal (P1-6). */
@@ -418,6 +444,18 @@ export const api = {
       pinjaman: Pinjaman;
       jurnal: Jurnal | null;
     }>('pinjaman:simpan', input, opsi),
+  /** DB-16d: bayar satu angsuran; server membuat jurnal + link atomik. */
+  pinjamanBayar: (
+    input: PinjamanBayarApi,
+    opsi: OpsiBayarPinjamanApi = {},
+  ) =>
+    call<{
+      pembayaran: PinjamanBayar;
+      jurnal: Jurnal;
+      rincian?: RincianPembayaranPinjaman;
+      selisih?: { pokok: number; bunga: number };
+      pinjaman: Pinjaman | null;
+    }>('pinjaman:bayar', input, opsi),
   tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
   tutupCreate: (req: {

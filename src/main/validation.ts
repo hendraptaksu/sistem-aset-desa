@@ -404,6 +404,137 @@ export function validasiBentukPinjamanSimpan(
 }
 
 // ---------------------------------------------------------------------------
+// Bentuk input pembayaran angsuran pinjaman LPD (DB-16d)
+// ---------------------------------------------------------------------------
+
+export type BentukPinjamanBayar = {
+  id?: string;
+  jurnalId?: string;
+  pinjamanId: string;
+  angsuranId: number;
+  tanggal: string;
+  akunKas: string;
+  pokok?: number;
+  bunga?: number;
+  denda?: number;
+  catatan?: string;
+  noBukti?: string;
+};
+
+/**
+ * Normalisasi bentuk pembayaran angsuran (DB-16d). Hanya memeriksa tipe dan
+ * rentang aman; kepemilikan angsuran, status lunas, selisih jadwal, dan akun
+ * aktif tetap ditegakkan service di main.
+ */
+export function validasiBentukPinjamanBayar(
+  nilai: unknown,
+): HasilBentuk<BentukPinjamanBayar> {
+  if (!objek(nilai))
+    return { ok: false, error: 'Data pembayaran angsuran tidak lengkap.' };
+
+  const pinjamanId = teksOpsional(
+    nilai.pinjamanId ?? nilai.pinjaman_id,
+    'ID pinjaman',
+    200,
+  );
+  if (!pinjamanId.ok) return pinjamanId;
+  if (!pinjamanId.nilai)
+    return { ok: false, error: 'Pinjaman yang dibayar wajib dipilih.' };
+
+  const angsuranMentah = nilai.angsuranId ?? nilai.angsuran_id;
+  if (
+    typeof angsuranMentah !== 'number' ||
+    !Number.isSafeInteger(angsuranMentah) ||
+    angsuranMentah <= 0
+  )
+    return {
+      ok: false,
+      error: 'Angsuran yang dibayar wajib dipilih (ID bilangan bulat > 0).',
+    };
+
+  const tanggal = teksOpsional(nilai.tanggal, 'Tanggal pembayaran', 10);
+  if (!tanggal.ok) return tanggal;
+  if (!tanggal.nilai)
+    return { ok: false, error: 'Tanggal pembayaran wajib diisi.' };
+  if (!tanggalKalenderValid(tanggal.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
+
+  const akunKas = teksOpsional(
+    nilai.akunKas ?? nilai.akun_kas,
+    'Akun kas/bank',
+    20,
+  );
+  if (!akunKas.ok) return akunKas;
+  if (!akunKas.nilai)
+    return { ok: false, error: 'Akun kas/bank pembayaran wajib dipilih.' };
+
+  const bacaNominal = (
+    field: unknown,
+    label: string,
+  ): { ok: true; nilai?: number } | { ok: false; error: string } => {
+    if (field === undefined || field === null) return { ok: true };
+    if (typeof field !== 'number' || !Number.isSafeInteger(field) || field < 0)
+      return {
+        ok: false,
+        error: `${label} harus bilangan bulat ≥ 0 (satuan sen).`,
+      };
+    return { ok: true, nilai: field };
+  };
+
+  const pokok = bacaNominal(nilai.pokok, 'Pokok pembayaran');
+  if (!pokok.ok) return pokok;
+  const bunga = bacaNominal(nilai.bunga, 'Bunga pembayaran');
+  if (!bunga.ok) return bunga;
+  const denda = bacaNominal(nilai.denda, 'Denda pembayaran');
+  if (!denda.ok) return denda;
+
+  if (
+    pokok.nilai !== undefined &&
+    bunga.nilai !== undefined &&
+    denda.nilai !== undefined &&
+    pokok.nilai + bunga.nilai + denda.nilai <= 0
+  )
+    return {
+      ok: false,
+      error: 'Total pembayaran (pokok + bunga + denda) harus lebih dari 0.',
+    };
+
+  const catatan = teksOpsional(nilai.catatan, 'Catatan pembayaran', 1000);
+  if (!catatan.ok) return catatan;
+  const noBukti = teksOpsional(
+    nilai.noBukti ?? nilai.no_bukti,
+    'Nomor bukti',
+    100,
+  );
+  if (!noBukti.ok) return noBukti;
+  const id = teksOpsional(nilai.id, 'ID pembayaran', 200);
+  if (!id.ok) return id;
+  const jurnalId = teksOpsional(
+    nilai.jurnalId ?? nilai.jurnal_id,
+    'ID jurnal',
+    200,
+  );
+  if (!jurnalId.ok) return jurnalId;
+
+  return {
+    ok: true,
+    input: {
+      ...(id.nilai ? { id: id.nilai } : {}),
+      ...(jurnalId.nilai ? { jurnalId: jurnalId.nilai } : {}),
+      pinjamanId: pinjamanId.nilai,
+      angsuranId: angsuranMentah,
+      tanggal: tanggal.nilai,
+      akunKas: akunKas.nilai,
+      ...(pokok.nilai !== undefined ? { pokok: pokok.nilai } : {}),
+      ...(bunga.nilai !== undefined ? { bunga: bunga.nilai } : {}),
+      ...(denda.nilai !== undefined ? { denda: denda.nilai } : {}),
+      catatan: catatan.nilai,
+      ...(noBukti.nilai ? { noBukti: noBukti.nilai } : {}),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Bentuk input jurnal dari renderer (P1-1)
 // ---------------------------------------------------------------------------
 
