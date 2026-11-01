@@ -50,6 +50,10 @@ import {
   listPinjaman,
   simpanPinjamanLpd,
 } from '../db/pinjaman.js';
+import {
+  rekonsiliasiPinjaman,
+  rekonsiliasiSemuaPinjaman,
+} from '../db/pinjamanRekonsiliasi.js';
 import { auditIntegritas } from '../db/integritas.js';
 import { AKUN_PIUTANG } from '../db/coa.js';
 import {
@@ -99,6 +103,7 @@ import {
   validasiBentukPengaturanPembukuan,
   validasiBentukPinjamanBayar,
   validasiBentukPinjamanMutasi,
+  validasiBentukPinjamanRekonsiliasi,
   validasiBentukPinjamanSimpan,
   validasiBentukSaldoAwal,
   validasiBentukTransaksiInput,
@@ -1139,6 +1144,26 @@ export function registerIpc(deps: IpcDeps): void {
           sekarang: tanggalSekarang(),
         }),
       );
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:rekonsiliasi', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanRekonsiliasi(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      if (bentuk.input.pinjamanId) {
+        const hasil = rekonsiliasiPinjaman(deps.db(), bentuk.input.pinjamanId);
+        if (!hasil) return fail('Pinjaman tidak ditemukan.');
+        return ok(hasil);
+      }
+
+      // Tanpa ID: status seluruh pinjaman untuk tabel rekonsiliasi di UI.
+      return ok(rekonsiliasiSemuaPinjaman(deps.db()));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }

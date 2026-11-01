@@ -21,12 +21,16 @@
 // - baris jurnal tidak boleh negatif, dua sisi, atau tanpa sisi positif.
 // Pemeriksaan lampiran dan anggaran sengaja tidak ada karena tabel/modulnya
 // sudah dihapus (DB-33/DB-37/DB-24).
+// DB-16f menambahkan rekonsiliasi outstanding 2050 vs jadwal pinjaman per
+// pinjaman. Perbandingan hanya memakai jurnal yang tertaut ke pinjaman itu,
+// BUKAN saldo total 2050, karena akun 2050 juga menampung utang non-LPD.
 
 import type Database from 'better-sqlite3';
 import { JENIS_JURNAL } from '../core/posting.js';
 import { AKUN_PANJAR, POSISI_NORMAL, type CoaTipe } from './coa.js';
 import { formatRp } from '../utils/format.js';
 import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
+import { rekonsiliasiSemuaPinjaman } from './pinjamanRekonsiliasi.js';
 
 export type KodeTemuan =
   | 'JURNAL_TANPA_BARIS'
@@ -59,7 +63,8 @@ export type KodeTemuan =
   | 'PANJAR_ITEM_TIDAK_COCOK'
   | 'PANJAR_BATAL_TIDAK_LENGKAP'
   | 'PANJAR_BATAL_GANDA'
-  | 'PANJAR_BATAL_TIDAK_KONSISTEN';
+  | 'PANJAR_BATAL_TIDAK_KONSISTEN'
+  | 'REKONSILIASI_PINJAMAN_SELISIH';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
 export type Temuan = {
@@ -336,10 +341,12 @@ function petaSisiJurnal(
  * 14. DB-34: `jurnal.jenis` wajib salah satu `JENIS_JURNAL`;
  * 15. DB-34: baris `jurnal_baris` tidak negatif, tidak mengisi dua sisi, dan
  *     punya tepat satu sisi positif;
- * 16. DB-34: kode akun tepat 4 digit dan nama tidak kosong (legacy).
+ * 16. DB-34: kode akun tepat 4 digit dan nama tidak kosong (legacy);
+ * 17. DB-16f: outstanding 2050 yang tertaut ke pinjaman sama dengan outstanding
+ *     jadwal (selisih != 0 menjadi temuan, tanpa koreksi otomatis).
  *
- * Pemeriksaan tabel panjar dilewati dengan aman bila tabel/kolom belum ada
- * (backup v2/v3 atau panjar bentuk pra-v4).
+ * Pemeriksaan panjar dan pinjaman dilewati dengan aman bila tabel/kolom belum
+ * ada (backup v2/v3, atau backup lama sebelum tabel pinjaman v20).
  *
  * Hasil selalu deterministik dan tidak mengubah database.
  */
@@ -1129,6 +1136,54 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           `Akun ${a.kode} "${a.nama}" memiliki nilai aktif ${String(a.aktif)} ` +
           `(jenis ${a.tipe_aktif}); harus 0 atau 1.`,
         detail: a,
+      });
+    }
+  }
+
+  // DB-16f: bandingkan outstanding 2050 per pinjaman dengan jadwal. Hanya
+  // jurnal yang tertaut ke pinjaman (pencairan + pinjaman_bayar) yang dipakai.
+  // Saldo total 2050 sengaja TIDAK dibandingkan karena akun itu juga berisi
+  // utang non-LPD; jurnal 2050 tanpa link tidak dapat diatribusikan ke pinjaman.
+  // Temuan hanya muncul saat selisih != 0; tidak ada koreksi otomatis.
+  //
+  // Backup lama (v2/v3) belum punya tabel pinjaman, dan backup sebelum v20
+  // belum punya seluruh kolom. Pemeriksaan dilewati bila bentuknya belum
+  // lengkap, sama seperti pemeriksaan panjar opsional di atas.
+  const adaTabelPinjaman =
+    tabelAda(db, 'pinjaman') &&
+    tabelAda(db, 'pinjaman_bayar') &&
+    tabelAda(db, 'jurnal_baris');
+  const pinjamanLengkap =
+    adaTabelPinjaman &&
+    punyaSemuaKolom(kolomTabel(db, 'pinjaman'), [
+      'id',
+      'sisa_pokok_awal',
+      'jurnal_pencairan_id',
+      'akun_bunga',
+    ]) &&
+    punyaSemuaKolom(kolomTabel(db, 'pinjaman_bayar'), [
+      'id',
+      'pinjaman_id',
+      'jurnal_id',
+      'tanggal',
+    ]);
+
+  if (pinjamanLengkap) {
+    for (const rekonsiliasi of rekonsiliasiSemuaPinjaman(db)) {
+      if (rekonsiliasi.cocok) continue;
+      temuan.push({
+        kode: 'REKONSILIASI_PINJAMAN_SELISIH',
+        pesan:
+          `Rekonsiliasi pinjaman ${rekonsiliasi.pinjaman_id} tidak cocok: ` +
+          `${rekonsiliasi.pesan} ` +
+          'Angka hanya membandingkan jurnal yang tertaut ke pinjaman ini, ' +
+          'bukan seluruh saldo 2050 (utang non-LPD tidak ikut).',
+        detail: {
+          pinjaman_id: rekonsiliasi.pinjaman_id,
+          gl: rekonsiliasi.gl,
+          jadwal: rekonsiliasi.jadwal,
+          selisih: rekonsiliasi.selisih,
+        },
       });
     }
   }

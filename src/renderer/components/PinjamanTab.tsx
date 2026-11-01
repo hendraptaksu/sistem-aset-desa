@@ -3,6 +3,7 @@ import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Pinjaman, PinjamanAngsuran } from '../../core/types.js';
 import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
+import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal, tahunLokal } from '../../utils/tanggal.js';
 import { api, isPerluKonfirmasi, type ModePinjamanApi } from '../lib/api.js';
@@ -123,6 +124,10 @@ export function PinjamanTab() {
   const [mutasiBusy, setMutasiBusy] = useState(false);
   const [mutasiErr, setMutasiErr] = useState<string | null>(null);
   const [mutasiBuka, setMutasiBuka] = useState<Record<string, boolean>>({});
+  // DB-16f — rekonsiliasi 2050 vs jadwal (baca-saja).
+  const [rekonsiliasi, setRekonsiliasi] = useState<HasilRekonsiliasiPinjaman[]>([]);
+  const [rekonsiliasiBusy, setRekonsiliasiBusy] = useState(false);
+  const [rekonsiliasiErr, setRekonsiliasiErr] = useState<string | null>(null);
   const { setDirty } = useTabGuard();
 
   const kasList = useMemo(
@@ -143,6 +148,7 @@ export function PinjamanTab() {
   const cocokPokok =
     targetPokok > 0 && Number.isSafeInteger(targetPokok) && totalPokokJadwal === targetPokok;
   const batasMutasi = batasPeriodeMutasi(mutasiTahun, mutasiBulan);
+  const jumlahSelisihRekonsiliasi = rekonsiliasi.filter((r) => !r.cocok).length;
 
   useEffect(() => {
     let aktif = true;
@@ -210,6 +216,36 @@ export function PinjamanTab() {
       aktif = false;
     };
   }, [mutasiPinjamanId, mutasiTahun, mutasiBulan, list]);
+
+  useEffect(() => {
+    let aktif = true;
+    if (list.length === 0) {
+      setRekonsiliasi([]);
+      setRekonsiliasiBusy(false);
+      setRekonsiliasiErr(null);
+      return () => {
+        aktif = false;
+      };
+    }
+    setRekonsiliasiBusy(true);
+    setRekonsiliasiErr(null);
+    void (async () => {
+      try {
+        const hasil = await api.pinjamanRekonsiliasiSemua();
+        if (aktif) setRekonsiliasi(hasil);
+      } catch (e) {
+        if (aktif) {
+          setRekonsiliasi([]);
+          setRekonsiliasiErr(pesanError(e, PESAN_MUAT_GAGAL));
+        }
+      } finally {
+        if (aktif) setRekonsiliasiBusy(false);
+      }
+    })();
+    return () => {
+      aktif = false;
+    };
+  }, [list]);
 
   useEffect(() => {
     setDirty(false);
@@ -1124,6 +1160,111 @@ export function PinjamanTab() {
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold">Rekonsiliasi 2050 vs Jadwal Pinjaman</h2>
+            <p className="mt-1 max-w-3xl text-sm text-stone-600">
+              Membandingkan outstanding menurut jurnal{' '}
+              <b>2050 HUTANG LAIN-LAIN</b> yang tertaut ke pinjaman dengan{' '}
+              <b>sisa pokok awal dikurangi pokok yang dibayar</b>. Hanya jurnal
+              milik pinjaman ini yang dihitung; saldo 2050 untuk utang non-LPD
+              dan jurnal yang belum ditautkan tidak ikut dibandingkan.
+            </p>
+          </div>
+          <Badge tone={jumlahSelisihRekonsiliasi > 0 ? 'amber' : 'green'}>
+            {rekonsiliasiBusy
+              ? 'Memeriksa…'
+              : jumlahSelisihRekonsiliasi > 0
+                ? `${jumlahSelisihRekonsiliasi} selisih`
+                : 'Semua cocok'}
+          </Badge>
+        </div>
+
+        {rekonsiliasiBusy && (
+          <p className="mt-2 text-sm text-stone-500">Menghitung rekonsiliasi…</p>
+        )}
+        <ErrorBox msg={rekonsiliasiErr} />
+
+        {!rekonsiliasiBusy && rekonsiliasi.length > 0 && (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-[15px]">
+              <thead>
+                <tr className="border-b text-stone-500">
+                  <th className="py-2 pr-3">Kreditur / ID</th>
+                  <th className="py-2 pr-3 text-right">GL 2050</th>
+                  <th className="py-2 pr-3 text-right">Jadwal</th>
+                  <th className="py-2 pr-3 text-right">Selisih</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2">Keterangan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rekonsiliasi.map((r) => {
+                  const p = list.find((x) => x.id === r.pinjaman_id);
+                  return (
+                    <tr
+                      key={r.pinjaman_id}
+                      className="border-b align-top last:border-0"
+                    >
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold">
+                          {p?.kreditur ?? r.pinjaman_id}
+                        </div>
+                        <div className="text-helper font-mono text-stone-500">
+                          {r.pinjaman_id}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                        {formatRp(r.gl)}
+                      </td>
+                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                        {formatRp(r.jadwal)}
+                      </td>
+                      <td
+                        className={`py-2 pr-3 text-right whitespace-nowrap ${
+                          r.cocok ? '' : 'font-semibold text-amber-800'
+                        }`}
+                      >
+                        {formatRp(r.selisih)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <Badge tone={r.cocok ? 'green' : 'amber'}>
+                          {r.cocok ? 'Cocok' : 'Selisih'}
+                        </Badge>
+                      </td>
+                      <td className="py-2 text-sm text-stone-600">{r.pesan}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!rekonsiliasiBusy &&
+          rekonsiliasi.length === 0 &&
+          !rekonsiliasiErr && (
+            <p className="mt-2 text-sm text-stone-500">
+              Belum ada pinjaman LPD untuk direkonsiliasi.
+            </p>
+          )}
+
+        {jumlahSelisihRekonsiliasi > 0 && (
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
+            <p className="font-semibold">Ada selisih yang perlu diperiksa</p>
+            <p className="mt-1">
+              Selisih berarti outstanding menurut jurnal 2050 berbeda dengan
+              outstanding menurut jadwal. Periksa jurnal pencairan, jurnal
+              pembayaran (termasuk akun pokok dan link pembayaran), atau Saldo
+              Awal 2050. Aplikasi <b>tidak mengoreksi otomatis</b> dan
+              tidak menyediakan tombol koreksi di sini; koreksi data lama dilakukan
+              lewat jurnal koreksi/reversal oleh akuntan pendamping.
+            </p>
+          </div>
+        )}
       </Card>
 
       <Card>

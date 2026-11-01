@@ -24,6 +24,7 @@ import type {
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
 import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
+import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
 import type { HasilAuditIntegritas } from '../../db/integritas.js';
 import type { LokasiData } from '../../main/lokasiData.js';
@@ -32,6 +33,7 @@ export type {
   ArusKasHasil,
   BukuBesarHasil,
   HasilAuditIntegritas,
+  HasilRekonsiliasiPinjaman,
   LabaRugiHasil,
   ModeNeracaSaldo,
   MutasiPinjamanHasil,
@@ -181,6 +183,11 @@ export type FilterMutasiPinjamanApi = {
   /** Tanggal `YYYY-MM-DD`; default tahun berjalan bila semuanya kosong. */
   mulai?: string;
   sampai?: string;
+};
+
+/** Pilihan rekonsiliasi pinjaman (DB-16f); kosong = seluruh pinjaman. */
+export type FilterRekonsiliasiPinjamanApi = {
+  pinjamanId?: string;
 };
 
 /** Status Wizard Saldo Awal (P1-6). */
@@ -471,6 +478,17 @@ export const api = {
   /** DB-16e: kartu hutang / mutasi bulanan dari jurnal pembayaran tertaut. */
   pinjamanMutasi: (f: FilterMutasiPinjamanApi) =>
     call<MutasiPinjamanHasil>('pinjaman:mutasi', f),
+  /**
+   * DB-16f: status rekonsiliasi 2050 vs jadwal. Tanpa ID mengembalikan seluruh
+   * pinjaman; dengan ID mengembalikan satu pinjaman. Hanya membaca.
+   */
+  pinjamanRekonsiliasi: (f: FilterRekonsiliasiPinjamanApi = {}) =>
+    call<HasilRekonsiliasiPinjaman | HasilRekonsiliasiPinjaman[]>(
+      'pinjaman:rekonsiliasi',
+      f,
+    ),
+  pinjamanRekonsiliasiSemua: () =>
+    call<HasilRekonsiliasiPinjaman[]>('pinjaman:rekonsiliasi', {}),
   tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
   tutupCreate: (req: {

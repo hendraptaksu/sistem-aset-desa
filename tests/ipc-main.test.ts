@@ -191,6 +191,7 @@ const CHANNEL_IPC = [
   'pinjaman:detail',
   'pinjaman:list',
   'pinjaman:mutasi',
+  'pinjaman:rekonsiliasi',
   'pinjaman:simpan',
   'saldo-awal:posting',
   'saldo-awal:status',
@@ -202,11 +203,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 58 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 59 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(58);
+    expect(env.handlers.size).toBe(59);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(58);
+    expect(CHANNEL_IPC).toHaveLength(59);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1092,6 +1093,32 @@ describe('DB-16e — IPC mutasi pinjaman', () => {
     const tidakAda = await env.panggil('pinjaman:mutasi', {
       pinjamanId: 'pjr-tidak-ada',
       periode: '2026-03',
+    });
+    expect(tidakAda.ok).toBe(false);
+    expect(tidakAda.error).toMatch(/tidak ditemukan/i);
+  });
+});
+
+describe('DB-16f — IPC rekonsiliasi pinjaman', () => {
+  it('mengembalikan daftar kosong dan menolak ID tidak valid/tidak ada', async () => {
+    const env = buatEnv();
+
+    const semua = await env.panggil('pinjaman:rekonsiliasi', {});
+    expect(semua.ok, semua.error).toBe(true);
+    expect(semua.data).toEqual([]);
+
+    const kosong = await env.panggil('pinjaman:rekonsiliasi', { pinjamanId: ' ' });
+    expect(kosong.ok).toBe(false);
+    expect(kosong.error).toMatch(/pinjaman/i);
+
+    const tipeSalah = await env.panggil('pinjaman:rekonsiliasi', {
+      pinjamanId: 123,
+    });
+    expect(tipeSalah.ok).toBe(false);
+    expect(tipeSalah.error).toMatch(/tidak valid/i);
+
+    const tidakAda = await env.panggil('pinjaman:rekonsiliasi', {
+      pinjamanId: 'pjr-tidak-ada',
     });
     expect(tidakAda.ok).toBe(false);
     expect(tidakAda.error).toMatch(/tidak ditemukan/i);

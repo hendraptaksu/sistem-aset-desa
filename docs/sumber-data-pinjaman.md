@@ -55,3 +55,36 @@ dan kredit kas/bank. Satu angsuran dan satu jurnal hanya boleh ditautkan sekali
 - Minimal satu baris jadwal dan total pokok jadwal = sisa pokok awal.
 - Tenor (bila diisi) bilangan bulat > 0.
 - Jurnal pencairan (bila diisi) ada dan seimbang.
+
+## Rekonsiliasi 2050 vs jadwal (DB-16f)
+
+Helper baca-saja `src/core/pinjamanRekonsiliasi.ts` (murni) + adapter
+`src/db/pinjamanRekonsiliasi.ts` membandingkan dua outstanding per pinjaman.
+Tidak ada koreksi otomatis, tidak ada jurnal baru, dan tidak ada kolom saldo
+yang disimpan.
+
+| Angka | Rumus |
+|---|---|
+| `gl` pinjaman pencairan | kredit neto 2050 pada jurnal pencairan tertaut − debit neto 2050 pada seluruh jurnal pembayaran yang ditautkan `pinjaman_bayar` |
+| `gl` pinjaman berjalan | `sisa_pokok_awal` (sudah ada di Saldo Awal 2050) − debit neto 2050 pada jurnal pembayaran tertaut |
+| `jadwal` | `sisa_pokok_awal` − jumlah **pokok aktual** dari jurnal pembayaran tertaut |
+| `selisih` | `gl − jadwal`; `cocok` hanya bila tepat 0 |
+
+**Pokok aktual** diambil dari debit neto 2050 pada jurnal pembayaran. Bila
+jurnal itu tidak memuat 2050 (mis. pokok salah akun), pokok aktual dihitung
+dari sisa debit setelah bunga dan denda. Dengan begitu pembayaran yang salah
+akun membuat `jadwal` turun sementara `gl` tetap, sehingga selisihnya terlihat.
+
+Batas penting:
+
+- Perbandingan hanya memakai jurnal yang tertaut ke pinjaman ini (jurnal
+  pencairan + `pinjaman_bayar`). Saldo total akun 2050 **tidak** dipakai karena
+  akun itu juga menampung **2050 non-LPD** (utang lain).
+- Debit/kredit 2050 yang tidak tertaut — termasuk pembayaran yang lupa
+  ditautkan — tidak bisa diatribusikan ke pinjaman dan tidak masuk hitungan.
+  Link yang hilang tidak terdeteksi oleh rekonsiliasi per pinjaman ini.
+- Hasil hanya dibaca: `gl`, `jadwal`, `selisih`, `cocok`, dan `pesan`. Audit
+  integritas menambahkan temuan `REKONSILIASI_PINJAMAN_SELISIH` hanya untuk
+  pinjaman dengan `selisih != 0`; pinjaman bersih tidak menghasilkan temuan.
+  Pesan meminta operator memeriksa jurnal/Saldo Awal, bukan menulis angka
+  koreksi otomatis.

@@ -1509,3 +1509,12 @@ export const createPinjaman = buatPinjaman;
 export const getPinjamanDetail = getPinjaman;
 export const listPembayaranPinjaman = listPinjamanBayar;
 export const hitungRincianPembayaran = rincianPembayaranPinjaman;
+
+// DB-16f: re-export adapter rekonsiliasi agar pemanggil modul pinjaman cukup
+// memakai satu pintu. Implementasi tetap di `pinjamanRekonsiliasi.ts` dan
+// perhitungan murni di `core/pinjamanRekonsiliasi.ts`.
+export {
+  rekonsiliasiPinjaman,
+  rekonsiliasiSemuaPinjaman,
+} from './pinjamanRekonsiliasi.js';
+export type { HasilRekonsiliasiPinjaman } from '../core/pinjamanRekonsiliasi.js';

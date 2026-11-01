@@ -608,6 +608,44 @@ export function validasiBentukPinjamanMutasi(
 }
 
 // ---------------------------------------------------------------------------
+// Bentuk filter rekonsiliasi 2050 vs jadwal pinjaman (DB-16f)
+// ---------------------------------------------------------------------------
+
+export type BentukPinjamanRekonsiliasi = {
+  /** Kosong = seluruh pinjaman (dipakai tabel status di UI). */
+  pinjamanId?: string;
+};
+
+/**
+ * Normalisasi input `pinjaman:rekonsiliasi`.
+ *
+ * - Objek kosong/undefined = minta status seluruh pinjaman.
+ * - `pinjamanId` terisi = satu pinjaman; kepemilikan/eksistensi dicek handler.
+ * - String kosong atau tipe selain string ditolak agar UI tidak diam-diam
+ *   menampilkan status pinjaman yang salah.
+ */
+export function validasiBentukPinjamanRekonsiliasi(
+  nilai: unknown,
+): HasilBentuk<BentukPinjamanRekonsiliasi> {
+  if (nilai === undefined || nilai === null) return { ok: true, input: {} };
+  if (!objek(nilai))
+    return { ok: false, error: 'Data rekonsiliasi pinjaman tidak lengkap.' };
+
+  const mentah = nilai.pinjamanId ?? nilai.pinjaman_id;
+  if (mentah === undefined || mentah === null) return { ok: true, input: {} };
+
+  const pinjamanId = teksOpsional(mentah, 'ID pinjaman', 200);
+  if (!pinjamanId.ok) return pinjamanId;
+  if (!pinjamanId.nilai)
+    return {
+      ok: false,
+      error: 'Pinjaman yang akan direkonsiliasi tidak valid (ID kosong).',
+    };
+
+  return { ok: true, input: { pinjamanId: pinjamanId.nilai } };
+}
+
+// ---------------------------------------------------------------------------
 // Bentuk input jurnal dari renderer (P1-1)
 // ---------------------------------------------------------------------------
 

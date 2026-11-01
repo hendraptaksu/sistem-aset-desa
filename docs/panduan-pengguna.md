@@ -279,6 +279,30 @@ dan bulan (kosongkan bulan untuk satu tahun penuh; default tahun berjalan).
   tanggal link pembayaran, dan ID jurnal untuk drill-down. Semua angka dibaca
   dari baris jurnal; total bulanan/saldo **tidak disimpan** di tabel pembayaran.
 
+#### Rekonsiliasi 2050 vs jadwal pinjaman (DB-16f)
+
+Bagian **Rekonsiliasi 2050 vs Jadwal Pinjaman** di menu **Pinjaman LPD**
+menampilkan status setiap pinjaman: **Cocok** atau **Selisih**, beserta
+outstanding menurut jurnal **2050 HUTANG LAIN-LAIN**, outstanding menurut
+jadwal, dan nominal selisihnya.
+
+- Untuk pinjaman **pencairan baru**, outstanding GL dihitung dari kredit 2050
+  pada jurnal pencairan dikurangi debit 2050 pada jurnal pembayaran yang
+  tertaut. Untuk pinjaman **sudah berjalan**, saldo awalnya adalah sisa pokok
+  awal yang sudah tercatat di **Saldo Awal 2050**.
+- Outstanding jadwal dihitung dari sisa pokok awal dikurangi pokok aktual pada
+  jurnal pembayaran yang tertaut. Bila jurnal pembayaran tidak memakai akun
+  2050 (mis. pokok salah akun), selisihnya akan terlihat.
+- Perbandingan **hanya memakai jurnal yang tertaut ke pinjaman itu**. Saldo
+  2050 untuk utang non-LPD dan jurnal 2050 yang belum ditautkan tidak ikut
+  dibandingkan; link pembayaran yang hilang tidak terdeteksi oleh pemeriksaan
+  per pinjaman ini.
+- Bila muncul **Selisih**, periksa jurnal pencairan, jurnal pembayaran (akun
+  pokok dan link `pinjaman_bayar`), atau Saldo Awal 2050. Aplikasi
+  **tidak mengoreksi otomatis** dan tidak menyediakan tombol koreksi di bagian
+  ini. Koreksi data lama dilakukan lewat jurnal koreksi/reversal oleh akuntan
+  pendamping. Pinjaman yang bersih tidak menampilkan peringatan.
+
 **Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
 tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada
 di COA dan tetap terbaca di Buku Besar/Neraca/Arus Kas untuk data lama; jangan

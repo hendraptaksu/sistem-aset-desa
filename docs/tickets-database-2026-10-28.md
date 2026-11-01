@@ -2,10 +2,11 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-01 (setelah DB-16e):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **918 test / 74 file hijau**; `npm run build`
-> berhasil. Baseline DB-16d adalah 907/73. Baseline DB-16c adalah 896/72.
-> Baseline DB-16b adalah 882/71. Baseline DB-34 adalah 869/69.
+> **Baseline terakhir 2026-11-02 (setelah DB-16f):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **929 test / 75 file hijau**; `npm run build`
+> berhasil. Baseline DB-16e adalah 918/74. Baseline DB-16d adalah 907/73.
+> Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
+> Baseline DB-34 adalah 869/69.
 > Baseline DB-21 adalah 850/69; baseline DB-20 adalah 832/67.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
@@ -100,7 +101,7 @@
 | DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [x] |
 | DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [x] |
 | DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [x] |
-| DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [ ] |
+| DB-16f | P1 | S | Rekonsiliasi saldo 2050 vs jadwal pinjaman | DB-16b, DB-16d | [x] |
 | DB-17 | P1 | S | Verifikasi & dokumentasi Pindah Dana | DB-14 | [x] |
 | DB-18 | P1 | M | Panjar: field nota di `panjar_item` + form | — | [x] |
 | DB-19 | P1 | M | Panjar: validasi item vs jurnal close | DB-18 | [x] |
@@ -905,7 +906,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     file hijau** (baseline DB-16d 907/73); `npm run build` berhasil.
   - **Dependency:** DB-16b, DB-16d.
 
-- [ ] **DB-16f — Rekonsiliasi saldo 2050 vs jadwal pinjaman** · P1 · S
+- [x] **DB-16f — Rekonsiliasi saldo 2050 vs jadwal pinjaman** · P1 · S
   - **Konteks:** jika jurnal pembayaran salah akun atau saldo awal tidak cocok,
     laporan pinjaman bisa berbeda dari Neraca.
   - **Langkah:**
@@ -917,6 +918,42 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** selisih terdeteksi; tidak ada auto-koreksi; pesan jelas.
   - **Test:** `tests/pinjaman.test.ts`.
   - **Verifikasi:** typecheck + test.
+  - **Bukti 2026-11-02:** `SCHEMA_VERSION` tetap **20** (tanpa perubahan skema).
+    Helper murni baru `src/core/pinjamanRekonsiliasi.ts` +
+    `hitungRekonsiliasiPinjaman`, dan adapter baca-saja
+    `src/db/pinjamanRekonsiliasi.ts` (`rekonsiliasiPinjaman` +
+    `rekonsiliasiSemuaPinjaman`) mengembalikan
+    `{pinjaman_id, gl, jadwal, selisih, cocok, pesan}`. Rumus: pinjaman
+    pencairan memakai **kredit neto 2050 jurnal pencairan tertaut** dikurangi
+    debit neto 2050 jurnal pembayaran tertaut; pinjaman berjalan memakai
+    `sisa_pokok_awal` (sudah di Saldo Awal 2050) dikurangi pokok pembayaran.
+    Jadwal = `sisa_pokok_awal - pokok aktual` jurnal bayar tertaut; pokok aktual
+    memakai debit 2050, atau sisa debit setelah bunga/denda bila jurnal tidak
+    memuat 2050 sehingga pembayaran salah akun ikut terdeteksi. Selisih =
+    `gl - jadwal`; tidak ada INSERT/UPDATE/DELETE dan tidak ada koreksi
+    otomatis. Audit integritas menambahkan
+    **`REKONSILIASI_PINJAMAN_SELISIH`** hanya bila `selisih != 0`; pinjaman
+    bersih tidak menghasilkan temuan. Perbandingan sengaja **per pinjaman dan
+    hanya jurnal tertaut**, bukan saldo total 2050, agar utang non-LPD tidak
+    dianggap milik pinjaman; jurnal 2050 tanpa link (termasuk link pembayaran
+    yang hilang) tidak dapat diatribusikan dan menjadi batas yang didokumentasikan.
+    IPC `pinjaman:rekonsiliasi` (total **59 channel**) memakai
+    `validasiBentukPinjamanRekonsiliasi` (ID opsional; tanpa ID = semua
+    pinjaman), API `pinjamanRekonsiliasi`/`pinjamanRekonsiliasiSemua`, dan kartu
+    **Rekonsiliasi 2050 vs Jadwal Pinjaman** di `PinjamanTab` dengan status
+    cocok/selisih, nominal GL/jadwal/selisih, pesan, serta peringatan tegas
+    tanpa tombol koreksi. Test baru
+    `tests/db-16f-pinjaman-rekonsiliasi.test.ts` (10) mencakup kasus cocok,
+    saldo awal salah, pinjaman berjalan, jurnal bayar salah akun, jurnal 2050
+    tanpa link/utang non-LPD, audit finding, jumlah jurnal/data tidak berubah,
+    validasi, API/UI/dokumen. `tests/ipc-main.test.ts` menambah 1 test handler
+    dan channel 58 → 59; guard DB-31 di `tests/menu-utama.test.ts` dipersempit
+    agar tidak menolak kata “rekonsiliasi” milik pinjaman. `docs/panduan-pengguna.md`
+    dan `docs/sumber-data-pinjaman.md` memuat rumus, batas per pinjaman, dan
+    larangan koreksi otomatis. Tidak menyentuh `data/`, jurnal, atau commit.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads`
+    **929 test/75 file hijau** (baseline DB-16e 918/74); `npm run build`
+    berhasil.
   - **Dependency:** DB-16b, DB-16d.
 
 - [x] **DB-17 — Verifikasi & dokumentasi Pindah Dana** · P1 · S

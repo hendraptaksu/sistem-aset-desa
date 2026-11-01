@@ -42,7 +42,10 @@ describe('DB-31 — Rekonsiliasi Bank dihapus dari menu/UI', () => {
     expect(API).not.toContain('StatusRekonsiliasi');
     expect(API).not.toContain('InputRekonsiliasiApi');
     expect(API).not.toContain('FilterRekonsiliasiApi');
-    expect(VALIDATION).not.toContain('Rekonsiliasi');
+    // DB-16f menambahkan validasi rekonsiliasi PINJAMAN (2050 vs jadwal), bukan
+    // rekonsiliasi bank. Guard ini tetap memastikan validator bank tidak kembali.
+    expect(VALIDATION).not.toContain('validasiBentukRekonsiliasi');
+    expect(VALIDATION).not.toContain('InputRekonsiliasi');
   });
 
   it('file modul dan test rekonsiliasi bank sudah dihapus', () => {
