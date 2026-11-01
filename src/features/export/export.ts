@@ -172,7 +172,7 @@ const TABEL_WAJIB_V2 = [
 ] as const;
 
 /**
- * Tabel wajib agar file dianggap backup aplikasi ini (skema v13).
+ * Tabel wajib agar file dianggap backup aplikasi ini (skema v4–v19).
  * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
  * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan; backup lama yang
  * masih memilikinya tetap diterima dan akan dimigrasikan saat dibuka.
@@ -184,9 +184,21 @@ export const TABEL_WAJIB_RESTORE = [
 ] as const;
 
 /**
+ * DB-16b: tabel wajib untuk backup skema v20+ (pinjaman LPD). Dipisahkan dari
+ * daftar v4–v19 agar backup lama tanpa tabel pinjaman tetap bisa direstore.
+ */
+export const TABEL_WAJIB_RESTORE_V20 = [
+  ...TABEL_WAJIB_RESTORE,
+  'pinjaman',
+  'pinjaman_angsuran',
+  'pinjaman_bayar',
+] as const;
+
+/**
  * Tabel wajib untuk kandidat restore sesuai `user_version` kandidat.
  * - v2/v3: belum punya tabel panjar, jadi hanya tabel inti yang diwajibkan.
- * - v4–v12: semua tabel current wajib ada.
+ * - v4–v19: tabel akuntansi + panjar; tabel pinjaman belum ada.
+ * - v20+: tabel pinjaman LPD ikut wajib.
  * - versi tak dikenal (<2): memakai daftar current agar file asing tetap
  *   ditolak, bukan lolos karena tidak punya tabel apa pun.
  * Tabel legacy v5–v8 (pihak, jurnal_pihak, aset, anggaran, rekonsiliasi_bank,
@@ -195,7 +207,9 @@ export const TABEL_WAJIB_RESTORE = [
  */
 export function tabelWajibRestore(versi: number): readonly string[] {
   if (Number.isInteger(versi) && versi >= 2 && versi < 4) return TABEL_WAJIB_V2;
-  return TABEL_WAJIB_RESTORE;
+  if (Number.isInteger(versi) && versi >= 4 && versi < 20)
+    return TABEL_WAJIB_RESTORE;
+  return TABEL_WAJIB_RESTORE_V20;
 }
 
 export type ValidasiRestore = { valid: true } | { valid: false; error: string };

@@ -185,9 +185,34 @@ Saldo `2060` dihitung dari jurnal dan bisa diperiksa di Buku Besar atau Neraca.
 Tidak ada tabel saldo per pihak yang disimpan.
 
 `2050 HUTANG LAIN-LAIN` adalah pinjaman atau saldo lama; pembayarannya masuk
-kelompok **Pendanaan**. Pinjaman LPD akan memakai modul LPD tersendiri yang
-belum tersedia. Jangan membuat pinjaman baru lewat Jurnal Umum kecuali untuk
-koreksi oleh akuntan pendamping; saldo 2050 lama tetap terbaca di laporan.
+kelompok **Pendanaan**. Pinjaman LPD memakai modul LPD tersendiri. Lapisan
+data dan jadwalnya sudah disiapkan (DB-16b); layar wizard/form pinjaman
+menyusul pada DB-16c/DB-16d. Jangan membuat pinjaman baru lewat Jurnal Umum
+kecuali untuk koreksi oleh akuntan pendamping; saldo 2050 lama tetap terbaca
+di laporan.
+
+### 2.5a Pinjaman LPD (jadwal dan pembayaran)
+
+Pinjaman LPD dipisahkan dari **rencana** dan **realisasi**:
+
+- **Jadwal angsuran** adalah rencana dari perjanjian LPD: nomor angsuran,
+  jatuh tempo, pokok, dan bunga. Total pokok jadwal harus sama dengan sisa
+  pokok saat pinjaman mulai diinput.
+- **Jurnal adalah realisasi.** Pembayaran angsuran memakai jurnal:
+  **D 2050 HUTANG LAIN-LAIN (pokok) + D 5063 BEBAN BUNGA PINJAMAN (bunga)
+  + D beban denda bila ada / K kas/bank**. Jangan mencatat seluruh angsuran
+  ke 2050; bunga harus masuk Laba Rugi dan pokok saja yang mengurangi utang.
+- Sistem hanya menautkan jurnal pembayaran ke angsuran. Nominal pokok, bunga,
+  dan denda **tidak disimpan ulang** di tabel pembayaran; semuanya dibaca dari
+  baris jurnal agar tidak ada angka ganda.
+- **Sisa pokok pinjaman** dihitung dari `sisa pokok awal - total pokok yang
+  dibayar menurut jurnal`, bukan dari kolom saldo tersimpan. Status angsuran
+  menjadi **LUNAS** setelah jurnal pembayaran ditautkan; satu angsuran tidak
+  bisa dibayar dua kali.
+- Jika pinjaman **sudah berjalan** sebelum aplikasi dipakai, isi sisa pokok
+  dan jadwalnya tanpa membuat jurnal pencairan baru. Sisa pokok itu harus sudah
+  masuk sebagai **kredit 2050 di Saldo Awal**. Membuat jurnal pencairan baru
+  akan membuat kas dan utang menjadi dobel.
 
 **Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
 tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada

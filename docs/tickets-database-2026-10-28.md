@@ -2,9 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-01 (setelah DB-34):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **869 test / 69 file hijau**; `npm run build`
-> berhasil. Baseline DB-21 adalah 850/69. Baseline DB-20 adalah 832/67.
+> **Baseline terakhir 2026-11-01 (setelah DB-16b):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **882 test / 71 file hijau**; `npm run build`
+> berhasil. Baseline DB-34 adalah 869/69. Baseline DB-21 adalah 850/69;
+> baseline DB-20 adalah 832/67.
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
 > relevan. Verifikasi ulang sebelum mulai.
@@ -94,7 +95,7 @@
 | DB-14 | P1 | M | `akun.is_kas`/`kelompok`/`sumber` + akun bank baru | DB-13a | [x] |
 | DB-15 | P1 | S | Izinkan nonaktifkan akun bawaan (bukan hapus) | DB-14 | [x] |
 | DB-16a | P0 | S | Desain input pinjaman LPD (user input, bukan data awal) | — | [x] |
-| DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [ ] |
+| DB-16b | P1 | M | Skema `pinjaman` + jadwal angsuran + pembayaran | DB-16a, DB-03 | [x] |
 | DB-16c | P1 | M | Wizard pinjaman LPD: pencairan / saldo awal berjalan | DB-16b | [ ] |
 | DB-16d | P1 | M | Form bayar angsuran: pokok + bunga + denda | DB-16b, DB-16c | [ ] |
 | DB-16e | P1 | M | Kartu hutang / mutasi bulanan pinjaman LPD | DB-16b, DB-16d | [ ] |
@@ -713,7 +714,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     semua parameter berasal dari input user dan tervalidasi.
   - **Dependency:** —
 
-- [ ] **DB-16b — Skema `pinjaman` + jadwal angsuran + pembayaran** · P1 · M
+- [x] **DB-16b — Skema `pinjaman` + jadwal angsuran + pembayaran** · P1 · M
   - **Konteks:** 2050 saja tidak cukup untuk memisahkan pokok/bunga, jadwal,
     dan realisasi pembayaran. Jadwal adalah **rencana**; jurnal tetap sumber
     angka realisasi.
@@ -772,6 +773,25 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Test:** test baru `tests/pinjaman.test.ts` + `tests/migrasi-*.test.ts`.
   - **Verifikasi:** typecheck + test.
   - **Dependency:** DB-16a, DB-03.
+  - **Bukti 2026-11-01:** `SCHEMA_VERSION` 19 → 20. Migrasi v20 aditif dan
+    idempoten membuat tabel baru `pinjaman`, `pinjaman_angsuran`, dan
+    `pinjaman_bayar` (CHECK boleh karena tabel baru) + index, tanpa rebuild
+    tabel lama dan tanpa menyentuh `data/`/jurnal. `src/db/pinjaman.ts` berisi
+    `buatPinjaman` (pencairan baru atau sudah berjalan), validasi akun kas aktif
+    AKTIVA `is_kas=1`, akun bunga aktif BEBAN default 5063, nominal/tanggal/
+    tenor/ke/jadwal, total pokok jadwal = sisa pokok, jurnal pencairan opsional
+    (ada + seimbang; null = tidak membuat jurnal), serta simpan atomik.
+    `tautkanPembayaran`/`catatPembayaran` hanya menyimpan link jurnal +
+    angsuran; pokok/bunga/denda/kas dibaca dari baris jurnal, status angsuran
+    dan outstanding diturunkan saat membaca (tidak ada kolom saldo/nominal di
+    `pinjaman_bayar`). Test baru `tests/pinjaman.test.ts` dan
+    `tests/migrasi-v20.test.ts` (13 test; migrasi v19 → v20 menjaga jurnal/
+    akun/panjar dan kontrak tabel wajib restore), ekspektasi `SCHEMA_VERSION`
+    di seluruh test diperbarui, dan dokumen `arah-akuntansi.md`,
+    `panduan-pengguna.md`, `sumber-coa.md`, serta
+    `sumber-data-pinjaman.md` menjelaskan sumber data pinjaman.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads`
+    **882 test/71 file hijau** (baseline 869/69); `npm run build` berhasil.
 
 - [ ] **DB-16c — Wizard pinjaman LPD: pencairan / saldo awal berjalan** · P1 · M
   - **Konteks:** pinjaman mungkin sudah berjalan sebelum aplikasi dipakai.
@@ -1126,7 +1146,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
 | `panjar_item` | **Keep** | Detail per nota (nomor/tanggal/toko/nominal); bukan duplikat jika divalidasi terhadap jurnal close. |
 | `pinjaman` (baru) | **Add** | Header satu pinjaman LPD. |
 | `pinjaman_angsuran` (baru) | **Add** | Jadwal rencana pokok/bunga. |
-| `pinjaman_bayar` (baru) | **Add** | Link jurnal ↔ angsuran; nominal dari jurnal, bukan duplikat. |
+| `pinjaman_bayar` (baru) | **Add** | Link jurnal ↔ angsuran; nominal dari jurnal, bukan duplikat; tanpa kolom nominal/saldo. |
 
 Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
 (turun dari 14). `panjar_item` tetap dipakai untuk detail per nota.
@@ -1189,10 +1209,10 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
    mewajibkan tepat 2 baris. Angsuran LPD punya pokok + bunga + denda (3–4
    baris). Karena itu modul LPD terpisah memang perlu; jangan memaksa lewat
    `PihakTab`.
-6. **Desain `pinjaman_bayar` berpotensi duplikasi angka.** DB-16b menyimpan
-   pokok/bunga/denda di tabel pembayaran sekaligus di jurnal. Jurnal adalah
-   sumber kebenaran; simpan link `jurnal_id` + `angsuran_id` saja, lalu hitung
-   nominal dari baris jurnal (DB-36).
+6. **Desain `pinjaman_bayar` berpotensi duplikasi angka (diselesaikan
+   DB-16b/DB-36).** Rancangan awal menyimpan pokok/bunga/denda di tabel
+   pembayaran sekaligus di jurnal. Implementasi final hanya menyimpan link
+   `jurnal_id` + `angsuran_id`; nominal dihitung dari baris jurnal.
 7. **Panjar belum per nota.** `panjar_item` hanya menyimpan
    `kategori_baga`/nominal/`jurnal_id`; belum ada nomor nota, tanggal nota, atau
    toko. Jika client tetap butuh “rincian per nota”, DB-18/19/20 harus

@@ -103,6 +103,79 @@ export type JurnalHeaderInput = {
   created_at?: string;
 };
 
+// ---- Pinjaman LPD (DB-16b) ----
+// `pinjaman` hanya menyimpan parameter perjanjian. Jadwal adalah RENCANA;
+// realisasi pokok/bunga/denda selalu dibaca dari jurnal pembayaran yang
+// ditautkan lewat `pinjaman_bayar`. Tidak ada saldo berjalan yang disimpan.
+
+/** Status angsuran DITURUNKAN dari ada/tidaknya link `pinjaman_bayar`. */
+export type PinjamanAngsuranStatus = 'BELUM' | 'LUNAS';
+
+export type PinjamanAngsuran = {
+  id: number;
+  pinjaman_id: string;
+  ke: number;
+  jatuh_tempo: string; // YYYY-MM-DD
+  pokok: number; // sen, rencana
+  bunga: number; // sen, rencana
+  catatan: string;
+  /** Turunan: LUNAS bila ada `pinjaman_bayar.angsuran_id` yang menunjuk baris ini. */
+  status: PinjamanAngsuranStatus;
+  dibayar: boolean;
+  pinjaman_bayar_id: string | null;
+  tanggal_bayar: string | null;
+  jurnal_id: string | null;
+};
+
+export type Pinjaman = {
+  id: string;
+  kreditur: string;
+  akun_kas: string;
+  akun_bunga: string;
+  pokok_awal: number; // sen
+  /** Sisa pokok saat pinjaman mulai; sama dengan pokok_awal untuk pencairan baru. */
+  sisa_pokok_awal: number; // sen
+  tanggal_mulai: string; // YYYY-MM-DD
+  tenor_bulan: number | null;
+  /** Null = pinjaman sudah berjalan/saldo awal; tidak ada jurnal pencairan baru. */
+  jurnal_pencairan_id: string | null;
+  catatan: string;
+  created_at: string;
+  /**
+   * TURUNAN, tidak pernah disimpan:
+   * `sisa_pokok_awal - SUM(debit 2050 pada jurnal pembayaran tertaut)`.
+   */
+  outstanding?: number;
+  total_pokok_dibayar?: number;
+  total_bunga_dibayar?: number;
+  total_denda_dibayar?: number;
+  /** Jadwal rencana + status turunan, terurut `ke`. */
+  angsuran?: PinjamanAngsuran[];
+};
+
+/** Nominal pembayaran yang DIBACA dari baris jurnal, bukan kolom tersimpan. */
+export type RincianPembayaranPinjaman = {
+  pokok: number;
+  bunga: number;
+  denda: number;
+  kas_keluar: number;
+};
+
+export type PinjamanBayar = {
+  id: string;
+  pinjaman_id: string;
+  angsuran_id: number | null;
+  jurnal_id: string;
+  tanggal: string;
+  catatan: string;
+  created_at: string;
+  /** Semua nominal di bawah ini turunan dari jurnal, bukan kolom tabel. */
+  pokok: number;
+  bunga: number;
+  denda: number;
+  kas_keluar: number;
+};
+
 export type TutupBuku = {
   tahun: number;
   created_at: string; // ISO

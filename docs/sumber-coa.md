@@ -60,7 +60,8 @@ identik.
 - DB-13b menambahkan **5063 BEBAN BUNGA PINJAMAN** ke `KODE AKUN.csv` (baris
   54) dan `src/db/coa.ts`, juga **bukan** ke xlsx. Akun ini adalah akun bunga
   pinjaman LPD dan menjadi **default akun bunga untuk modul pinjaman LPD**
-  (DB-16) saat form pinjaman dibuat.
+  (DB-16). Repository pinjaman DB-16b memakainya sebagai default; layar form
+  menyusul di DB-16c/DB-16d.
 - Enam akun di atas adalah **tambahan, bukan pengganti** akun lama. Akun lama
   `5010`, `5050`, `5004`, `4008`, `4041`, dan `4005` **tetap ada dan tetap
   aktif**. Namanya sengaja diberi pembeda agar operator tidak salah pilih.

@@ -91,8 +91,8 @@ describe('DB-11 — migrasi v15', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(19);
-      expect(versi(db)).toBe(19);
+      expect(SCHEMA_VERSION).toBe(20);
+      expect(versi(db)).toBe(20);
 
       const index = objekSql(db, 'index', 'ux_akun_nama_nocase');
       expect(index?.sql).toMatch(/UNIQUE INDEX/);
@@ -135,8 +135,8 @@ describe('DB-11 — migrasi v15', () => {
       });
 
       // Migrasi berulang tidak menggandakan index/trigger.
-      expect(migrasi(db)).toBe(19);
-      expect(migrasi(db)).toBe(19);
+      expect(migrasi(db)).toBe(20);
+      expect(migrasi(db)).toBe(20);
       expect(
         db
           .prepare(
@@ -152,7 +152,7 @@ describe('DB-11 — migrasi v15', () => {
 
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(19);
+      expect(versi(db2)).toBe(20);
       expect(objekSql(db2, 'index', 'ux_akun_nama_nocase')?.name).toBe('ux_akun_nama_nocase');
       expect(getAkun(db2, '5011')?.nama).toBe('AKUN UJI DB-11');
     } finally {
@@ -176,7 +176,7 @@ describe('DB-11 — migrasi v15', () => {
         'BODY-LAMA-DB-11',
       );
 
-      expect(migrasi(db)).toBe(19);
+      expect(migrasi(db)).toBe(20);
       const sql = objekSql(db, 'trigger', 'trg_akun_validasi_insert')?.sql ?? '';
       expect(sql).not.toContain('BODY-LAMA-DB-11');
       expect(sql).toMatch(/BEFORE INSERT ON akun/);

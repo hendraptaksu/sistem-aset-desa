@@ -79,15 +79,83 @@ import {
  *          unique index `ux_panjar_jurnal_batal`. Status kolom tetap
  *          OPEN/CLOSED (CHECK lama tidak diubah); status publik DIBATALKAN
  *          diturunkan dari `jurnal_batal_id`. Jurnal serah asli tidak dihapus.
+ * - 20   = pinjaman LPD (DB-16b): tabel baru `pinjaman`,
+ *          `pinjaman_angsuran`, dan `pinjaman_bayar`. Jadwal adalah rencana;
+ *          `pinjaman_bayar` hanya menautkan jurnal + angsuran dan TIDAK
+ *          menyimpan nominal pokok/bunga/denda. Outstanding dan status lunas
+ *          dihitung dari jurnal. Migrasi aditif/idempoten, tanpa rebuild.
  */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
   'Database dibuat aplikasi versi lebih baru. Perbarui aplikasi.';
 
 /**
- * DDL dasar v2–v12. Hanya berisi tabel model baru + tabel pendukung
+ * DB-16b — tabel pinjaman LPD. Tabel baru sehingga `CHECK` boleh dipakai.
+ * Semua `CREATE ... IF NOT EXISTS` membuat DDL ini aman dijalankan ulang.
+ *
+ * Prinsip sumber angka:
+ * - `pinjaman_angsuran` hanya menyimpan RENCANA pokok/bunga.
+ * - `pinjaman_bayar` hanya menyimpan link jurnal + angsuran. Tidak ada kolom
+ *   nominal pokok/bunga/denda dan tidak ada saldo berjalan/`sisa_pokok`.
+ * - Outstanding = `sisa_pokok_awal` - debit 2050 pada jurnal pembayaran tertaut;
+ *   dihitung saat dibaca, tidak pernah dipersistenkan.
+ */
+export const DDL_PINJAMAN = `
+CREATE TABLE IF NOT EXISTS pinjaman (
+  id TEXT PRIMARY KEY,
+  kreditur TEXT NOT NULL,
+  akun_kas TEXT NOT NULL REFERENCES akun(kode),
+  akun_bunga TEXT NOT NULL REFERENCES akun(kode),
+  pokok_awal INTEGER NOT NULL CHECK (pokok_awal > 0),
+  sisa_pokok_awal INTEGER NOT NULL CHECK (sisa_pokok_awal >= 0),
+  tanggal_mulai TEXT NOT NULL,
+  tenor_bulan INTEGER NULL CHECK (tenor_bulan > 0),
+  jurnal_pencairan_id TEXT UNIQUE NULL REFERENCES jurnal(id),
+  catatan TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_tanggal ON pinjaman(tanggal_mulai);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_kreditur ON pinjaman(kreditur);
+
+CREATE TABLE IF NOT EXISTS pinjaman_angsuran (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pinjaman_id TEXT NOT NULL REFERENCES pinjaman(id) ON DELETE CASCADE,
+  ke INTEGER NOT NULL CHECK (ke > 0),
+  jatuh_tempo TEXT NOT NULL,
+  pokok INTEGER NOT NULL CHECK (pokok >= 0),
+  bunga INTEGER NOT NULL CHECK (bunga >= 0),
+  catatan TEXT NOT NULL DEFAULT '',
+  UNIQUE (pinjaman_id, ke)
+);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_pinjaman
+  ON pinjaman_angsuran(pinjaman_id);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_jatuh_tempo
+  ON pinjaman_angsuran(jatuh_tempo);
+
+CREATE TABLE IF NOT EXISTS pinjaman_bayar (
+  id TEXT PRIMARY KEY,
+  pinjaman_id TEXT NOT NULL REFERENCES pinjaman(id),
+  angsuran_id INTEGER NULL REFERENCES pinjaman_angsuran(id),
+  jurnal_id TEXT NOT NULL UNIQUE REFERENCES jurnal(id),
+  tanggal TEXT NOT NULL,
+  catatan TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_pinjaman
+  ON pinjaman_bayar(pinjaman_id);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
+  ON pinjaman_bayar(tanggal);
+-- Satu angsuran hanya boleh ditautkan ke satu pembayaran. Diperiksa juga di
+-- repository agar pesannya ramah; index ini penjaga terakhir untuk SQL mentah.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pinjaman_bayar_angsuran
+  ON pinjaman_bayar(angsuran_id)
+  WHERE angsuran_id IS NOT NULL;
+`;
+
+/**
+ * DDL dasar v2–v20. Hanya berisi tabel model baru + tabel pendukung
  * (pengaturan PIN). Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset,
  * anggaran, rekonsiliasi_bank, lampiran_jurnal) TIDAK dibuat lagi; migrasi v12
  * (DB-33) membuangnya dari DB lama.
@@ -108,6 +176,8 @@ export const PESAN_DB_VERSI_BARU =
  * langsung gagal dengan error UNIQUE tanpa pesan migrasi yang jelas.
  * Kolom pembatalan panjar v19 dan partial unique index `ux_panjar_jurnal_batal`
  * juga dibuat di `terapkanMigrasiV19()` (ALTER TABLE aditif, tanpa rebuild).
+ * Tabel pinjaman v20 dibuat oleh `DDL_PINJAMAN` (diinterpolasi di bawah) dan
+ * dipanggil ulang secara idempoten oleh `terapkanMigrasiV20()`.
  */
 export const DDL = `
 CREATE TABLE IF NOT EXISTS akun (
@@ -230,6 +300,8 @@ CREATE TABLE IF NOT EXISTS panjar_item (
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
 );
 CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
+
+${DDL_PINJAMAN}
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {
@@ -830,6 +902,16 @@ function terapkanMigrasiV19(db: Database.Database): void {
 }
 
 /**
+ * DB-16b — migrasi v20: tabel pinjaman LPD baru. DDL seluruhnya memakai
+ * `CREATE ... IF NOT EXISTS`, jadi aman dijalankan pada DB v19 (tidak ada
+ * tabel lama yang direbuild/diubah) maupun DB baru. Tidak ada data yang
+ * dihapus atau di-backfill.
+ */
+function terapkanMigrasiV20(db: Database.Database): void {
+  db.exec(DDL_PINJAMAN);
+}
+
+/**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
  * `user_version` lebih besar tidak boleh disentuh sama sekali.
@@ -856,6 +938,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v17 (detail nota panjar, aditif).
  * - Menerapkan migrasi v18 (link jurnal open/close panjar unik).
  * - Menerapkan migrasi v19 (kolom pembatalan panjar + link jurnal batal unik).
+ * - Menerapkan migrasi v20 (tabel pinjaman LPD, aditif/idempoten).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -881,6 +964,7 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV17(db);
     terapkanMigrasiV18(db);
     terapkanMigrasiV19(db);
+    terapkanMigrasiV20(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

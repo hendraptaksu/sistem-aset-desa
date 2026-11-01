@@ -182,6 +182,7 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/panduan-portable.md` — installer vs portable dan pindah laptop.
 - `docs/arah-akuntansi.md` — keputusan arah double-entry.
 - `docs/sumber-coa.md` — sumber mesin COA (CSV), arsip xlsx, dan ekstensi sistem.
+- `docs/sumber-data-pinjaman.md` — sumber data pinjaman LPD (rencana vs jurnal).
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.
 - `docs/audit-ui-2026-10-27.md` — audit UI/UX + bukti pengukuran.

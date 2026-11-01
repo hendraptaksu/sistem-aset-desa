@@ -177,6 +177,27 @@ batal untuk satu dokumen). Tabel **tidak** direbuild dan CHECK lama
   pembatalan internal memakai `rencanaReversal` + posting layer, bukan endpoint
   reversal umum.
 
+### Pinjaman LPD: rencana vs realisasi (DB-16b)
+
+Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
+
+- `pinjaman` menyimpan parameter perjanjian (kreditur, akun kas, akun bunga,
+  pokok awal, sisa pokok awal, tanggal mulai, tenor, link jurnal pencairan).
+- `pinjaman_angsuran` hanya menyimpan **rencana** pokok/bunga per jatuh tempo.
+- `pinjaman_bayar` hanya menautkan `jurnal_id` + `angsuran_id`; **tidak ada
+  kolom nominal pokok/bunga/denda** di tabel pembayaran.
+- Outstanding dihitung saat dibaca:
+  `sisa_pokok_awal - SUM(debit 2050 pada jurnal pembayaran tertaut)`.
+  Tidak ada kolom `sisa_pokok`/saldo berjalan yang disimpan.
+- Pembayaran harus memakai jurnal seimbang dengan **D 2050 (pokok)**,
+  **D akun bunga** (default `5063 BEBAN BUNGA PINJAMAN`), **D beban denda**
+  bila ada, dan **K kas/bank**. Nominal tersebut dibaca dari baris jurnal.
+- Status angsuran `LUNAS` diturunkan dari link `pinjaman_bayar.angsuran_id`;
+  satu angsuran dan satu jurnal hanya boleh ditautkan sekali.
+- `jurnal_pencairan_id = NULL` berarti pinjaman sudah berjalan: sisa pokok
+  harus sudah ada di Saldo Awal 2050 dan modul **tidak** membuat jurnal
+  pencairan baru.
+
 ## 11. Roadmap ringkas
 
 - **P0 — Pondasi:** COA ber-tipe, skema jurnal, reset DB POC + seed baru, laporan inti (Buku Besar,
