@@ -5,7 +5,8 @@
 // `core/pinjamanRekonsiliasi.ts` agar audit, IPC, dan UI memakai rumus sama.
 //
 // Batas penting: rekonsiliasi per pinjaman HANYA memakai jurnal yang tertaut
-// lewat `jurnal_pencairan_id` dan `pinjaman_bayar`. Saldo total akun 2050 juga
+// lewat `jurnal_pencairan_id` dan `pinjaman_bayar`, beserta jurnal pembaliknya.
+// Saldo total akun 2050 juga
 // berisi utang non-LPD, jadi tidak boleh dipakai sebagai pembanding. Jurnal
 // 2050 tanpa link (termasuk link pembayaran yang hilang) tidak dapat
 // diatribusikan ke pinjaman dan tidak dihitung di sini.
@@ -38,6 +39,7 @@ type RowBaris = {
 type RowPembayaran = {
   id: string;
   jurnal_id: string;
+  dibatalkan: number;
 };
 
 type RowPembayaranBaris = RowBaris & {
@@ -65,10 +67,10 @@ function barisPencairan(
     .prepare(
       `SELECT jurnal_id, akun_kode, debit, kredit
          FROM jurnal_baris
-        WHERE jurnal_id = ?
+        WHERE jurnal_id = ? OR jurnal_id IN (SELECT id FROM jurnal WHERE reversal_of = ?)
         ORDER BY id`,
     )
-    .all(jurnalId) as BarisRekonsiliasiPinjaman[];
+    .all(jurnalId, jurnalId) as BarisRekonsiliasiPinjaman[];
 }
 
 function pembayaranTertaut(
@@ -77,10 +79,11 @@ function pembayaranTertaut(
 ): PembayaranRekonsiliasiPinjaman[] {
   const kepala = db
     .prepare(
-      `SELECT id, jurnal_id
-         FROM pinjaman_bayar
-        WHERE pinjaman_id = ?
-        ORDER BY tanggal, id`,
+      `SELECT pb.id, pb.jurnal_id,
+              EXISTS(SELECT 1 FROM jurnal r WHERE r.reversal_of = pb.jurnal_id) AS dibatalkan
+         FROM pinjaman_bayar pb
+        WHERE pb.pinjaman_id = ?
+        ORDER BY pb.tanggal, pb.id`,
     )
     .all(pinjamanId) as RowPembayaran[];
   if (kepala.length === 0) return [];
@@ -92,7 +95,8 @@ function pembayaranTertaut(
     .prepare(
       `SELECT pb.id AS pembayaran_id, b.jurnal_id, b.akun_kode, b.debit, b.kredit
          FROM pinjaman_bayar pb
-         LEFT JOIN jurnal_baris b ON b.jurnal_id = pb.jurnal_id
+         LEFT JOIN jurnal j ON j.id = pb.jurnal_id OR j.reversal_of = pb.jurnal_id
+         LEFT JOIN jurnal_baris b ON b.jurnal_id = j.id
         WHERE pb.pinjaman_id = ?
         ORDER BY pb.tanggal, pb.id, b.id`,
     )
@@ -115,6 +119,7 @@ function pembayaranTertaut(
   return kepala.map((p) => ({
     id: String(p.id),
     jurnal_id: String(p.jurnal_id),
+    dibatalkan: Boolean(p.dibatalkan),
     baris: perPembayaran.get(String(p.id)) ?? [],
   }));
 }
@@ -150,6 +155,9 @@ export function rekonsiliasiPinjaman(
     akun_bunga: String(pinjaman.akun_bunga),
     akun_beban: akunBeban(db),
     akun_hutang: AKUN_HUTANG,
+    dibatalkan: jurnalPencairanId !== null && Boolean(
+      db.prepare('SELECT 1 FROM jurnal WHERE reversal_of = ?').get(jurnalPencairanId),
+    ),
   });
 }
 

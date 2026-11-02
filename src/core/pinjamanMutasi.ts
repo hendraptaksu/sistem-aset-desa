@@ -17,6 +17,7 @@
 // pernah diubah oleh realisasi.
 
 import { AKUN_HUTANG, type Coa } from '../db/coa.js';
+import { ringkasanAngsuran } from './pinjamanAngsuran.js';
 
 const POLA_BULAN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const POLA_TANGGAL = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -318,7 +319,7 @@ function rincianDariJurnal(
     if (kode === AKUN_HUTANG) pokok += debit - kredit;
     if (kode === akunBunga) bunga += debit - kredit;
     else if (petaAkun.get(kode)?.tipe === 'BEBAN') denda += debit - kredit;
-    if (petaAkun.get(kode)?.is_kas) kasKeluar += kredit;
+    if (petaAkun.get(kode)?.is_kas) kasKeluar += kredit - debit;
   }
 
   return { pokok, bunga, denda, kas_keluar: kasKeluar };
@@ -408,25 +409,29 @@ export function hitungMutasiPinjaman(
   const totalDenda = bulanan.reduce((s, b) => s + b.denda, 0);
   const totalKasKeluar = bulanan.reduce((s, b) => s + b.kas_keluar, 0);
 
-  const perAngsuran = new Map<number, RincianMutasiPembayaran>();
+  const perAngsuran = new Map<number, RincianMutasiPembayaran[]>();
   for (const p of pembayaran) {
-    if (p.angsuran_id !== null && !perAngsuran.has(p.angsuran_id))
-      perAngsuran.set(p.angsuran_id, p);
+    if (p.angsuran_id === null || p.tanggal > periode.sampai) continue;
+    const daftar = perAngsuran.get(p.angsuran_id) ?? [];
+    daftar.push(p);
+    perAngsuran.set(p.angsuran_id, daftar);
   }
 
   const jadwal: JadwalRealisasiPinjaman[] = input.jadwal
     .filter((a) => {
-      const p = perAngsuran.get(a.id);
+      const daftar = perAngsuran.get(a.id) ?? [];
       const jatuhTempoDalamPeriode =
         a.jatuh_tempo >= periode.mulai && a.jatuh_tempo <= periode.sampai;
       const dibayarDalamPeriode =
-        p !== undefined && p.tanggal >= periode.mulai && p.tanggal <= periode.sampai;
+        daftar.some((p) => p.tanggal >= periode.mulai && p.tanggal <= periode.sampai);
       return jatuhTempoDalamPeriode || dibayarDalamPeriode;
     })
     .map((a) => {
-      const p = perAngsuran.get(a.id);
-      const pokokRealisasi = p?.pokok ?? 0;
-      const bungaRealisasi = p?.bunga ?? 0;
+      const daftar = perAngsuran.get(a.id) ?? [];
+      const p = daftar.length === 1 ? daftar[0] : undefined;
+      const pokokRealisasi = daftar.reduce((s, it) => s + it.pokok, 0);
+      const bungaRealisasi = daftar.reduce((s, it) => s + it.bunga, 0);
+      const dendaRealisasi = daftar.reduce((s, it) => s + it.denda, 0);
       return {
         angsuran_id: a.id,
         ke: a.ke,
@@ -436,10 +441,10 @@ export function hitungMutasiPinjaman(
         bunga_jadwal: a.bunga,
         pokok_realisasi: pokokRealisasi,
         bunga_realisasi: bungaRealisasi,
-        denda_realisasi: p?.denda ?? 0,
+        denda_realisasi: dendaRealisasi,
         selisih_pokok: pokokRealisasi - a.pokok,
         selisih_bunga: bungaRealisasi - a.bunga,
-        dibayar: p !== undefined,
+        dibayar: ringkasanAngsuran(a, { pokok: pokokRealisasi, bunga: bungaRealisasi, denda: dendaRealisasi }).dibayar,
         pembayaran_id: p?.pembayaran_id ?? null,
         jurnal_id: p?.jurnal_id ?? null,
         no_bukti: p ? p.no_bukti : null,

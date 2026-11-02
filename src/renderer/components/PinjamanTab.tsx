@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
-import type { Pinjaman, PinjamanAngsuran } from '../../core/types.js';
+import type { Pinjaman, PinjamanAngsuran, PinjamanBayar } from '../../core/types.js';
 import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
 import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
@@ -15,6 +15,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  Modal,
   Select,
   TextArea,
   TextInput,
@@ -35,6 +36,7 @@ function barisBaru(ke: number, tanggal = ''): BarisJadwal {
 
 /** State form bayar angsuran (DB-16d). */
 type FormBayar = {
+  id: string;
   pinjaman: Pinjaman;
   angsuran: PinjamanAngsuran;
   tanggal: string;
@@ -44,6 +46,34 @@ type FormBayar = {
   denda: number;
   catatan: string;
 };
+
+type TargetPembatalan =
+  | { jenis: 'pembayaran'; pinjaman: Pinjaman; pembayaran: PinjamanBayar }
+  | { jenis: 'pencairan'; pinjaman: Pinjaman };
+
+function sisaAngsuran(a: PinjamanAngsuran): {
+  pokokDibayar: number;
+  bungaDibayar: number;
+  sisaPokok: number;
+  sisaBunga: number;
+  status: 'BELUM' | 'SEBAGIAN' | 'LUNAS';
+} {
+  const pokokDibayar = a.pokok_dibayar ?? (a.dibayar ? a.pokok : 0);
+  const bungaDibayar = a.bunga_dibayar ?? (a.dibayar ? a.bunga : 0);
+  const sisaPokok = a.sisa_pokok ?? Math.max(0, a.pokok - pokokDibayar);
+  const sisaBunga = a.sisa_bunga ?? Math.max(0, a.bunga - bungaDibayar);
+  return {
+    pokokDibayar,
+    bungaDibayar,
+    sisaPokok,
+    sisaBunga,
+    status: a.status ?? (a.dibayar ? 'LUNAS' : 'BELUM'),
+  };
+}
+
+function pinjamanDibatalkan(p: Pinjaman): boolean {
+  return p.status === 'DIBATALKAN';
+}
 
 const NAMA_BULAN_PENDEK = [
   'Jan',
@@ -110,12 +140,20 @@ export function PinjamanTab() {
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [detailId, setDetailId] = useState('');
   const [detail, setDetail] = useState<Record<string, Pinjaman>>({});
+  const [pembayaran, setPembayaran] = useState<Record<string, PinjamanBayar[]>>({});
   const [detailBusy, setDetailBusy] = useState('');
   const [bayar, setBayar] = useState<FormBayar | null>(null);
   const [bayarAlasan, setBayarAlasan] = useState('');
   const [bayarPerluKonfirmasi, setBayarPerluKonfirmasi] = useState(false);
   const [bayarErr, setBayarErr] = useState<string | null>(null);
   const [bayarBusy, setBayarBusy] = useState(false);
+  const bayarBusyRef = useRef(false);
+  const [targetPembatalan, setTargetPembatalan] = useState<TargetPembatalan | null>(null);
+  const [alasanPembatalan, setAlasanPembatalan] = useState('');
+  const [batalPerluKonfirmasi, setBatalPerluKonfirmasi] = useState(false);
+  const [batalErr, setBatalErr] = useState<string | null>(null);
+  const [batalBusy, setBatalBusy] = useState(false);
+  const batalBusyRef = useRef(false);
   // DB-16e — kartu hutang / mutasi bulanan.
   const [mutasiPinjamanId, setMutasiPinjamanId] = useState('');
   const [mutasiTahun, setMutasiTahun] = useState(String(tahunLokal()));
@@ -261,6 +299,15 @@ export function PinjamanTab() {
     }
   }
 
+  async function muatDetail(id: string): Promise<void> {
+    const [d, bayarList] = await Promise.all([
+      api.pinjamanDetail(id),
+      api.pinjamanPembayaran(id),
+    ]);
+    setDetail((prev) => ({ ...prev, [id]: d }));
+    setPembayaran((prev) => ({ ...prev, [id]: bayarList }));
+  }
+
   function resetForm(): void {
     setKreditur('');
     setPokok(0);
@@ -384,11 +431,10 @@ export function PinjamanTab() {
       return;
     }
     setDetailId(id);
-    if (detail[id]) return;
+    if (detail[id] && pembayaran[id]) return;
     setDetailBusy(id);
     try {
-      const d = await api.pinjamanDetail(id);
-      setDetail((prev) => ({ ...prev, [id]: d }));
+      await muatDetail(id);
     } catch (e) {
       setErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
@@ -397,17 +443,20 @@ export function PinjamanTab() {
   }
 
   function mulaiBayar(p: Pinjaman, a: PinjamanAngsuran): void {
+    if (pinjamanDibatalkan(p) || sisaAngsuran(a).status === 'LUNAS') return;
+    const sisa = sisaAngsuran(a);
     const akun =
       kasList.some((k) => k.kode === p.akun_kas)
         ? p.akun_kas
         : (kasList[0]?.kode ?? '');
     setBayar({
+      id: globalThis.crypto.randomUUID(),
       pinjaman: p,
       angsuran: a,
       tanggal: tanggalLokal(),
       akunKas: akun,
-      pokok: a.pokok,
-      bunga: a.bunga,
+      pokok: sisa.sisaPokok,
+      bunga: sisa.sisaBunga,
       denda: 0,
       catatan: '',
     });
@@ -434,7 +483,7 @@ export function PinjamanTab() {
   }
 
   async function simpanBayar(konfirmasi = false): Promise<void> {
-    if (!bayar || bayarBusy) return;
+    if (!bayar || bayarBusyRef.current) return;
     setBayarErr(null);
     setInfo(null);
     const { pokok, bunga, denda } = bayar;
@@ -462,18 +511,28 @@ export function PinjamanTab() {
       setBayarErr('Tanggal pembayaran wajib diisi.');
       return;
     }
+    const sisa = sisaAngsuran(bayar.angsuran);
+    if (pokok > sisa.sisaPokok) {
+      setBayarErr(
+        `Pokok tidak boleh melebihi sisa angsuran ${formatRp(sisa.sisaPokok)}.`,
+      );
+      return;
+    }
+    const bungaMelebihiSisa = bunga > sisa.sisaBunga;
     const alasan = bayarAlasan.trim();
-    if (konfirmasi && alasan.length < 5) {
+    if (konfirmasi && (bungaMelebihiSisa || bayarPerluKonfirmasi) && alasan.length < 5) {
       setBayarErr('Alasan konfirmasi wajib diisi minimal 5 karakter.');
       return;
     }
 
+    bayarBusyRef.current = true;
     setBayarBusy(true);
     const idPinjaman = bayar.pinjaman.id;
     const ke = bayar.angsuran.ke;
     try {
       const r = await api.pinjamanBayar(
         {
+          id: bayar.id,
           pinjamanId: idPinjaman,
           angsuranId: bayar.angsuran.id,
           tanggal: bayar.tanggal,
@@ -485,10 +544,12 @@ export function PinjamanTab() {
         },
         konfirmasi
           ? {
-              konfirmasiSelisih: true,
-              alasanSelisih: alasan,
-              konfirmasiPeringatan: true,
-              alasanPeringatan: alasan,
+              ...(bungaMelebihiSisa
+                ? { konfirmasiSelisih: true, alasanSelisih: alasan }
+                : {}),
+              ...(bayarPerluKonfirmasi
+                ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
+                : {}),
             }
           : {},
       );
@@ -503,8 +564,7 @@ export function PinjamanTab() {
       setDirty(false);
       await refresh();
       try {
-        const d = await api.pinjamanDetail(idPinjaman);
-        setDetail((prev) => ({ ...prev, [idPinjaman]: d }));
+        await muatDetail(idPinjaman);
       } catch {
         /* daftar sudah diperbarui; detail akan dimuat lagi saat dibuka */
       }
@@ -516,7 +576,77 @@ export function PinjamanTab() {
         setBayarErr(pesanError(e));
       }
     } finally {
+      bayarBusyRef.current = false;
       setBayarBusy(false);
+    }
+  }
+
+  function bukaPembatalan(target: TargetPembatalan): void {
+    setTargetPembatalan(target);
+    setAlasanPembatalan('');
+    setBatalPerluKonfirmasi(false);
+    setBatalErr(null);
+    setInfo(null);
+  }
+
+  async function simpanPembatalan(konfirmasi = false): Promise<void> {
+    if (!targetPembatalan || batalBusyRef.current) return;
+    const alasan = alasanPembatalan.trim();
+    setBatalErr(null);
+    if (alasan.length < 5) {
+      setBatalErr('Alasan pembatalan wajib diisi minimal 5 karakter.');
+      return;
+    }
+    batalBusyRef.current = true;
+    setBatalBusy(true);
+    const idPinjaman = targetPembatalan.pinjaman.id;
+    try {
+      if (targetPembatalan.jenis === 'pembayaran') {
+        const r = await api.pinjamanBayarBatal(
+          targetPembatalan.pembayaran.id,
+          alasan,
+          konfirmasi
+            ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
+            : {},
+        );
+        setInfo(
+          `Catatan pembayaran angsuran ${targetPembatalan.pembayaran.angsuran_id ?? 'tanpa jadwal'} ` +
+            `dibatalkan. Jurnal balik ${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
+            'jurnal dan riwayat asal tetap tersimpan. Catat ulang pembayaran yang benar bila diperlukan.',
+        );
+      } else {
+        const r = await api.pinjamanBatal(
+          idPinjaman,
+          alasan,
+          konfirmasi
+            ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
+            : {},
+        );
+        setInfo(
+          `Catatan pencairan ${r.pinjaman.kreditur} dibatalkan. Jurnal balik ` +
+            `${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
+            'jurnal dan riwayat asal tetap tersimpan.',
+        );
+      }
+      setTargetPembatalan(null);
+      setAlasanPembatalan('');
+      setBatalPerluKonfirmasi(false);
+      await refresh();
+      try {
+        await muatDetail(idPinjaman);
+      } catch {
+        /* daftar sudah diperbarui; detail dan pembayaran dimuat saat dibuka */
+      }
+    } catch (e) {
+      if (isPerluKonfirmasi(e)) {
+        setBatalPerluKonfirmasi(true);
+        setBatalErr(pesanError(e));
+      } else {
+        setBatalErr(pesanError(e));
+      }
+    } finally {
+      batalBusyRef.current = false;
+      setBatalBusy(false);
     }
   }
 
@@ -868,6 +998,15 @@ export function PinjamanTab() {
               {list.map((p) => {
                 const d = detail[p.id];
                 const jadwalTampil = d?.angsuran ?? p.angsuran ?? [];
+                const daftarBayar = pembayaran[p.id] ?? [];
+                const pembayaranAktif = daftarBayar.filter((b) => !b.dibatalkan);
+                const pinjamanBatal = pinjamanDibatalkan(p);
+                const bolehBatalPencairan =
+                  !pinjamanBatal &&
+                  Boolean(p.jurnal_pencairan_id) &&
+                  pembayaran[p.id] !== undefined &&
+                  pembayaranAktif.length === 0 &&
+                  bayar?.pinjaman.id !== p.id;
                 return (
                   <Fragment key={p.id}>
                     <tr className="border-b align-top last:border-0">
@@ -876,6 +1015,9 @@ export function PinjamanTab() {
                       </td>
                       <td className="py-2 pr-3">
                         <div className="font-semibold">{p.kreditur}</div>
+                        {pinjamanBatal && (
+                          <Badge tone="red">DIBATALKAN</Badge>
+                        )}
                         {p.catatan && (
                           <div className="text-helper text-stone-500">{p.catatan}</div>
                         )}
@@ -897,6 +1039,11 @@ export function PinjamanTab() {
                         <div className="mt-1 text-helper text-stone-500">
                           {p.jurnal_pencairan_id ?? 'tanpa jurnal pencairan'}
                         </div>
+                        {p.jurnal_batal_id && (
+                          <div className="mt-1 text-helper text-stone-500">
+                            Jurnal balik: {p.jurnal_batal_id}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2">
                         <div className="flex flex-wrap gap-1">
@@ -923,13 +1070,17 @@ export function PinjamanTab() {
                                   <th className="py-1 pr-3 text-right">Pokok</th>
                                   <th className="py-1 pr-3 text-right">Bunga</th>
                                   <th className="py-1 pr-3">Status</th>
-                                  <th className="py-1 pr-3">Jurnal bayar</th>
                                   <th className="py-1 pr-3">Catatan</th>
                                   <th className="py-1">Tindakan</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {jadwalTampil.map((a) => (
+                                {jadwalTampil.map((a) => {
+                                  const sisa = sisaAngsuran(a);
+                                  const jumlahBayar = pembayaranAktif.filter(
+                                    (b) => b.angsuran_id === a.id,
+                                  ).length;
+                                  return (
                                   <tr key={a.id ?? a.ke}>
                                     <td className="py-1 pr-3">{a.ke}</td>
                                     <td className="py-1 pr-3 whitespace-nowrap">
@@ -942,41 +1093,165 @@ export function PinjamanTab() {
                                       {formatRp(a.bunga)}
                                     </td>
                                     <td className="py-1 pr-3">
-                                      <Badge tone={a.status === 'LUNAS' ? 'green' : 'stone'}>
-                                        {a.status}
+                                      <Badge
+                                        tone={
+                                          sisa.status === 'LUNAS'
+                                            ? 'green'
+                                            : sisa.status === 'SEBAGIAN'
+                                              ? 'amber'
+                                              : 'stone'
+                                        }
+                                      >
+                                        {sisa.status}
                                       </Badge>
+                                      <div className="mt-1 text-xs text-stone-600">
+                                        <div>
+                                          Pokok dibayar {formatRp(sisa.pokokDibayar)} · sisa{' '}
+                                          {formatRp(sisa.sisaPokok)}
+                                        </div>
+                                        <div>
+                                          Bunga dibayar {formatRp(sisa.bungaDibayar)} · sisa{' '}
+                                          {formatRp(sisa.sisaBunga)}
+                                        </div>
+                                        {jumlahBayar > 0 && (
+                                          <div>{jumlahBayar} catatan pembayaran</div>
+                                        )}
+                                      </div>
                                       {a.tanggal_bayar && (
                                         <div className="mt-1 text-helper text-stone-500">
                                           {formatTanggal(a.tanggal_bayar)}
                                         </div>
                                       )}
                                     </td>
-                                    <td className="py-1 pr-3 text-xs text-stone-500">
-                                      {a.jurnal_id ?? '—'}
-                                    </td>
                                     <td className="py-1">{a.catatan || '—'}</td>
                                     <td className="py-1">
-                                      {a.dibayar ? (
+                                      {sisa.status === 'LUNAS' || pinjamanBatal ? (
                                         <span className="text-helper text-stone-500">
-                                          Sudah lunas
+                                          {pinjamanBatal ? 'Pinjaman dibatalkan' : 'Sudah lunas'}
                                         </span>
                                       ) : (
                                         <Button
                                           variant="ghost"
-                                          disabled={bayarBusy}
+                                          disabled={bayarBusy || batalBusy}
                                           onClick={() => mulaiBayar(p, a)}
                                         >
-                                          Bayar Angsuran
+                                          {sisa.status === 'SEBAGIAN' ? 'Lanjut Bayar' : 'Bayar Angsuran'}
                                         </Button>
                                       )}
                                     </td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           ) : (
                             <p className="text-stone-500">Belum ada jadwal angsuran.</p>
                           )}
+
+                          <div className="mt-4 rounded-lg border border-stone-200 bg-white p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <h3 className="font-semibold">Riwayat pembayaran</h3>
+                                <p className="text-sm text-stone-600">
+                                  Setiap pembayaran memiliki jurnal sendiri; pembatalan
+                                  menyimpan jurnal balik dan tidak menghapus riwayat.
+                                </p>
+                              </div>
+                              <Badge tone="stone">{daftarBayar.length} catatan</Badge>
+                            </div>
+                            {daftarBayar.length > 0 ? (
+                              <div className="mt-3 overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                  <thead>
+                                    <tr className="text-stone-500">
+                                      <th className="py-1 pr-3">Tanggal</th>
+                                      <th className="py-1 pr-3">Angsuran</th>
+                                      <th className="py-1 pr-3 text-right">Pokok</th>
+                                      <th className="py-1 pr-3 text-right">Bunga</th>
+                                      <th className="py-1 pr-3 text-right">Kas keluar</th>
+                                      <th className="py-1 pr-3">Status / jurnal</th>
+                                      <th className="py-1">Tindakan</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {daftarBayar.map((b) => (
+                                      <tr key={b.id} className="border-t align-top">
+                                        <td className="py-1 pr-3 whitespace-nowrap">
+                                          {formatTanggal(b.tanggal)}
+                                        </td>
+                                        <td className="py-1 pr-3">
+                                          {b.angsuran_id == null
+                                            ? 'Tanpa jadwal'
+                                            : `Ke-${jadwalTampil.find((a) => a.id === b.angsuran_id)?.ke ?? b.angsuran_id}`}
+                                        </td>
+                                        <td className="py-1 pr-3 text-right">{formatRp(b.pokok)}</td>
+                                        <td className="py-1 pr-3 text-right">{formatRp(b.bunga)}</td>
+                                        <td className="py-1 pr-3 text-right">{formatRp(b.kas_keluar)}</td>
+                                        <td className="py-1 pr-3">
+                                          {b.dibatalkan ? (
+                                            <>
+                                              <Badge tone="red">DIBATALKAN</Badge>
+                                              <div className="mt-1 text-xs text-stone-500">
+                                                Jurnal balik: {b.jurnal_batal_id ?? '—'}
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <span className="text-xs text-stone-600">
+                                              Aktif · jurnal {b.jurnal_id}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="py-1">
+                                          {!b.dibatalkan && !pinjamanBatal && (
+                                            <Button
+                                              variant="ghost"
+                                                disabled={
+                                                  batalBusy ||
+                                                  bayarBusy ||
+                                                  bayar?.pinjaman.id === p.id
+                                                }
+                                              onClick={() =>
+                                                bukaPembatalan({
+                                                  jenis: 'pembayaran',
+                                                  pinjaman: p,
+                                                  pembayaran: b,
+                                                })
+                                              }
+                                            >
+                                              Batalkan catatan pembayaran
+                                            </Button>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <p className="mt-2 text-sm text-stone-500">
+                                Belum ada pembayaran tercatat.
+                              </p>
+                            )}
+                            <div className="mt-3 border-t pt-3">
+                              {bolehBatalPencairan ? (
+                                <Button
+                                  variant="danger-outline"
+                                  disabled={batalBusy || bayarBusy}
+                                  onClick={() => bukaPembatalan({ jenis: 'pencairan', pinjaman: p })}
+                                >
+                                  Batalkan catatan pencairan
+                                </Button>
+                              ) : p.jurnal_pencairan_id && !pinjamanBatal ? (
+                                <p className="text-sm text-stone-500">
+                                  Pencairan dapat dibatalkan setelah tidak ada pembayaran aktif.
+                                </p>
+                              ) : !p.jurnal_pencairan_id ? (
+                                <p className="text-sm text-stone-500">
+                                  Pinjaman sudah berjalan tidak memiliki jurnal pencairan untuk dibatalkan.
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
 
                           {bayar && bayar.pinjaman.id === p.id && (
                             <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
@@ -986,10 +1261,10 @@ export function PinjamanTab() {
                                     Bayar angsuran ke-{bayar.angsuran.ke}
                                   </h3>
                                   <p className="mt-1 text-sm text-stone-600">
-                                    Prefill pokok dan bunga dari jadwal. Nominal boleh
-                                    diubah, tetapi bila berbeda dari jadwal wajib
-                                    dikonfirmasi dengan alasan; jadwal tidak ikut
-                                    berubah.
+                                    Form diisi dengan sisa pokok dan bunga. Anda
+                                    dapat membayar sebagian lalu melanjutkan nanti;
+                                    pokok tidak boleh melebihi sisa, dan bunga di atas
+                                    sisa memerlukan konfirmasi serta alasan.
                                   </p>
                                 </div>
                                 <Badge
@@ -1061,27 +1336,31 @@ export function PinjamanTab() {
 
                               <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
                                 <p>
-                                  Jadwal: pokok <b>{formatRp(bayar.angsuran.pokok)}</b>{' '}
+                                  Sisa saat ini: pokok{' '}
+                                  <b>{formatRp(sisaAngsuran(bayar.angsuran).sisaPokok)}</b>{' '}
+                                  · bunga{' '}
+                                  <b>{formatRp(sisaAngsuran(bayar.angsuran).sisaBunga)}</b>
+                                </p>
+                                <p className="mt-1">
+                                  Rencana awal: pokok <b>{formatRp(bayar.angsuran.pokok)}</b>{' '}
                                   · bunga <b>{formatRp(bayar.angsuran.bunga)}</b>
                                 </p>
                                 <p className="mt-1">
                                   Jurnal: <b>D 2050 pokok + D {labelAkun(p.akun_bunga)}{' '}
                                   bunga + D 5050 denda / K kas total</b>
                                 </p>
-                                {(bayar.pokok !== bayar.angsuran.pokok ||
-                                  bayar.bunga !== bayar.angsuran.bunga) && (
+                                {bayar.bunga > sisaAngsuran(bayar.angsuran).sisaBunga && (
                                   <p className="mt-1 font-semibold text-amber-800">
-                                    Nominal berbeda dari jadwal. Server akan meminta
-                                    konfirmasi dan alasan; jadwal tetap tidak berubah.
+                                    Bunga melebihi sisa yang tercatat. Konfirmasi dengan
+                                    alasan diperlukan; jadwal tidak berubah.
                                   </p>
                                 )}
                               </div>
 
                               {(bayarPerluKonfirmasi ||
-                                bayar.pokok !== bayar.angsuran.pokok ||
-                                bayar.bunga !== bayar.angsuran.bunga) && (
+                                bayar.bunga > sisaAngsuran(bayar.angsuran).sisaBunga) && (
                                 <div className="mt-3">
-                                  <Field label="Alasan selisih / konfirmasi (wajib ≥ 5 karakter)">
+                                  <Field label="Alasan konfirmasi (wajib ≥ 5 karakter)">
                                     <TextArea
                                       value={bayarAlasan}
                                       disabled={bayarBusy}
@@ -1100,7 +1379,7 @@ export function PinjamanTab() {
                                   <p className="mt-1">{bayarErr}</p>
                                   <div className="mt-2 flex flex-wrap gap-2">
                                     <Button
-                                      disabled={bayarBusy}
+                                      disabled={bayarBusy || bayarAlasan.trim().length < 5}
                                       onClick={() => void simpanBayar(true)}
                                     >
                                       Ya, bayar dengan konfirmasi
@@ -1124,7 +1403,8 @@ export function PinjamanTab() {
                                   disabled={
                                     bayarBusy ||
                                     !bayar.akunKas ||
-                                    bayar.pokok + bayar.bunga + bayar.denda <= 0
+                                    bayar.pokok + bayar.bunga + bayar.denda <= 0 ||
+                                    bayar.pokok > sisaAngsuran(bayar.angsuran).sisaPokok
                                   }
                                   onClick={() => void simpanBayar()}
                                 >
@@ -1138,8 +1418,9 @@ export function PinjamanTab() {
                                   Batal
                                 </Button>
                                 <span className="text-sm text-stone-500">
-                                  Satu angsuran hanya bisa dibayar sekali; jurnal
-                                  dibuat seimbang dan tertaut otomatis.
+                                  Pembayaran dapat dicatat beberapa kali sampai pokok
+                                  dan bunga angsuran lunas; setiap catatan membuat
+                                  jurnal seimbang tersendiri.
                                 </span>
                               </div>
                             </div>
@@ -1578,6 +1859,84 @@ export function PinjamanTab() {
           </>
         )}
       </Card>
+      {targetPembatalan && (
+        <Modal
+          judul={
+            targetPembatalan.jenis === 'pembayaran'
+              ? 'Batalkan catatan pembayaran'
+              : 'Batalkan catatan pencairan'
+          }
+          deskripsi={
+            <div className="space-y-2">
+              <p>
+                Gunakan hanya untuk membetulkan catatan yang keliru. Sistem membuat
+                jurnal balik pada tanggal jurnal asli dan menyimpan jurnal serta
+                riwayat awal.
+              </p>
+              <p>
+                Pembatalan ini bukan catatan bahwa uang benar-benar dikembalikan.
+                Bila uang memang diterima atau dibayar kembali, catat transaksi
+                sebenarnya secara terpisah.
+              </p>
+            </div>
+          }
+          onTutup={() => {
+            setTargetPembatalan(null);
+            setBatalErr(null);
+            setBatalPerluKonfirmasi(false);
+          }}
+          sibuk={batalBusy}
+          lebar="md"
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-stone-600">
+              {targetPembatalan.jenis === 'pembayaran'
+                ? `Pinjaman: ${targetPembatalan.pinjaman.kreditur}; jurnal pembayaran: ${targetPembatalan.pembayaran.jurnal_id}.`
+                : `Pinjaman: ${targetPembatalan.pinjaman.kreditur}; jurnal pencairan: ${targetPembatalan.pinjaman.jurnal_pencairan_id}.`}
+            </p>
+            <Field label="Alasan pembetulan (wajib ≥ 5 karakter)">
+              <TextArea
+                autoFocus
+                value={alasanPembatalan}
+                disabled={batalBusy}
+                placeholder="cth: pembayaran tercatat dua kali"
+                onChange={(e) => setAlasanPembatalan(e.target.value)}
+              />
+            </Field>
+            <ErrorBox msg={batalErr} />
+            {batalPerluKonfirmasi && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                Peringatan posting perlu dikonfirmasi. Alasan yang sama akan dicatat
+                sebagai alasan operator pada jurnal balik.
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="ghost"
+                disabled={batalBusy}
+                onClick={() => {
+                  setTargetPembatalan(null);
+                  setBatalErr(null);
+                  setBatalPerluKonfirmasi(false);
+                }}
+              >
+                Tutup
+              </Button>
+              <Button
+                variant="danger"
+                disabled={batalBusy || alasanPembatalan.trim().length < 5}
+                onClick={() => void simpanPembatalan(batalPerluKonfirmasi)}
+              >
+                {batalBusy
+                  ? 'Menyimpan…'
+                  : batalPerluKonfirmasi
+                    ? 'Ya, lanjut buat jurnal balik'
+                    : 'Batalkan catatan'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

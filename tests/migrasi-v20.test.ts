@@ -133,8 +133,8 @@ describe('DB-16b — migrasi v20 tabel pinjaman', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(21);
-      expect(versi(db)).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
+      expect(versi(db)).toBe(22);
       expect(namaTabel(db)).toEqual(
         expect.arrayContaining([
           'pinjaman',
@@ -202,7 +202,7 @@ describe('DB-16b — migrasi v20 tabel pinjaman', () => {
     // Idempoten: buka ulang tidak menggandakan tabel/data.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(21);
+      expect(versi(db2)).toBe(22);
       expect(
         (db2.prepare('SELECT COUNT(*) AS n FROM pinjaman').get() as { n: number }).n,
       ).toBe(1);

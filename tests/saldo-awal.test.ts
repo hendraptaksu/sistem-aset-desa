@@ -280,9 +280,10 @@ describe('P1-6 — adapter DB & status sekali pakai', () => {
       expect(lr.laba).toBe(0);
 
       const ak = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
-      expect(ak.saldoAwal).toBe(0);
+      expect(ak.saldoAwal).toBe(RP(15_000_000));
       expect(ak.saldoAkhir).toBe(RP(15_000_000)); // 1001 + 1029; 1040 bukan dompet
-      expect(ak.kenaikan).toBe(RP(15_000_000));
+      expect(ak.penyesuaianSaldoAwal).toBe(0);
+      expect(ak.kenaikan).toBe(0);
 
       const audit = listAuditLog(db, { aksi: 'SALDO-AWAL' });
       expect(audit).toHaveLength(1);

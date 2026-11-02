@@ -566,6 +566,13 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     expect(mutasi.footer?.[0]!.nilai?.[4]).toBe(ak.totalMasuk);
     expect(mutasi.footer?.[0]!.nilai?.[5]).toBe(ak.totalKeluar);
     expect(ringkasan.baris.some((r) => r.sel[0] === 'Saldo akhir')).toBe(true);
+
+    const denganPenyesuaian = arusKasPrintDoc({
+      ...ak,
+      penyesuaianSaldoAwal: RP(1_250),
+    });
+    expect(cariBarisCetak(denganPenyesuaian, 'Saldo pembukaan / penyesuaian')?.nilai?.[3])
+      .toBe(RP(1_250));
   });
 
   it('Panjar: daftar + rincian item + total numerik', () => {

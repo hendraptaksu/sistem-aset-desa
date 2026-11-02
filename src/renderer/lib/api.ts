@@ -178,6 +178,12 @@ export type OpsiBayarPinjamanApi = {
   konfirmasiTanpaSaldoAwal?: boolean;
 };
 
+/** Alasan pembatalan catatan pinjaman; opsi konfirmasi hanya untuk peringatan posting. */
+export type OpsiBatalPinjamanApi = {
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+};
+
 /** Filter kartu hutang / mutasi bulanan pinjaman LPD (DB-16e). */
 export type FilterMutasiPinjamanApi = {
   pinjamanId: string;
@@ -487,6 +493,22 @@ export const api = {
       selisih?: { pokok: number; bunga: number };
       pinjaman: Pinjaman | null;
     }>('pinjaman:bayar', input, opsi),
+  /** Pembayaran per pinjaman, termasuk catatan yang sudah dibatalkan. */
+  pinjamanPembayaran: (id: string) =>
+    call<PinjamanBayar[]>('pinjaman:pembayaran', id),
+  /** Membalik catatan pembayaran yang keliru; jurnal dan riwayat lama tetap ada. */
+  pinjamanBayarBatal: (id: string, alasan: string, opsi: OpsiBatalPinjamanApi = {}) =>
+    call<{
+      pembayaran: PinjamanBayar;
+      jurnal: Jurnal;
+      pinjaman?: Pinjaman | null;
+    }>('pinjaman:bayar-batal', { id, alasan }, opsi),
+  /** Membalik pencairan yang keliru bila belum ada pembayaran aktif. */
+  pinjamanBatal: (id: string, alasan: string, opsi: OpsiBatalPinjamanApi = {}) =>
+    call<{
+      pinjaman: Pinjaman;
+      jurnal: Jurnal;
+    }>('pinjaman:batal', { id, alasan }, opsi),
   /** DB-16e: kartu hutang / mutasi bulanan dari jurnal pembayaran tertaut. */
   pinjamanMutasi: (f: FilterMutasiPinjamanApi) =>
     call<MutasiPinjamanHasil>('pinjaman:mutasi', f),

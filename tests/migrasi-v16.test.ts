@@ -61,8 +61,8 @@ describe('DB-14 — migrasi v16 metadata akun', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(21);
-      expect(versi(db)).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
+      expect(versi(db)).toBe(22);
       expect(kolomAkun(db)).toEqual(
         expect.arrayContaining(['is_kas', 'kelompok', 'sumber']),
       );
@@ -154,7 +154,7 @@ describe('DB-14 — migrasi v16 metadata akun', () => {
 
     db = openDb(path);
     try {
-      expect(versi(db)).toBe(21);
+      expect(versi(db)).toBe(22);
       expect(getAkun(db, '1101')).toMatchObject({
         nama: 'BANK LPD BARU',
         tipe: 'AKTIVA',

@@ -1,6 +1,6 @@
 # Sumber Data Pinjaman LPD — DB-16b
 
-**Status:** berlaku sejak skema v20 (2026-11-01).
+**Status:** skema v22 (2026-11-02); tabel pinjaman diperkenalkan pada v20.
 **Prinsip:** jadwal adalah rencana; jurnal adalah realisasi. Tidak ada saldo
 berjalan atau nominal pembayaran ganda yang disimpan.
 
@@ -20,12 +20,12 @@ pencairan baru.
 
 | Angka | Rumus |
 |---|---|
-| Outstanding pokok | `sisa_pokok_awal - SUM(debit 2050 pada jurnal pinjaman_bayar)` |
-| Total pokok dibayar | `SUM(debit 2050 pada jurnal tertaut)` |
+| Outstanding pokok | saldo pencairan aktif (`sisa_pokok_awal`) − pokok pembayaran aktif; pencairan dibatalkan menjadi 0 |
+| Total pokok dibayar | `SUM(debit 2050 pada jurnal pembayaran yang belum dibatalkan)` |
 | Total bunga dibayar | `SUM(debit akun_bunga pada jurnal tertaut)` |
 | Total denda dibayar | `SUM(debit BEBAN lain pada jurnal tertaut)` |
 | Kas keluar | `SUM(kredit akun is_kas pada jurnal tertaut)` |
-| Status angsuran | `LUNAS` bila `pinjaman_bayar.angsuran_id` menunjuk baris itu |
+| Status angsuran | `BELUM` / `SEBAGIAN` / `LUNAS` berdasarkan akumulasi pokok dan bunga aktif dibanding rencana |
 
 Tidak ada kolom `sisa_pokok`, `saldo_berjalan`, atau nominal pembayaran di
 `pinjaman_bayar`. Sumber angka laporan tetap `jurnal` + `jurnal_baris`.
@@ -39,8 +39,15 @@ Tidak ada kolom `sisa_pokok`, `saldo_berjalan`, atau nominal pembayaran di
 | Pinjaman sudah berjalan | tidak ada jurnal pencairan; sisa pokok di Saldo Awal 2050 |
 
 Pembayaran wajib memakai jurnal yang sudah ada, seimbang, memuat debit 2050,
-dan kredit kas/bank. Satu angsuran dan satu jurnal hanya boleh ditautkan sekali
-(unique index + validasi repository).
+dan kredit kas/bank. Satu jurnal hanya boleh ditautkan sekali; satu angsuran
+boleh memiliki beberapa pembayaran. Cicilan ≤ sisa tidak membutuhkan konfirmasi
+selisih. Pokok melebihi sisa ditolak; bunga di atas sisa perlu alasan dan konfirmasi.
+
+Pembatalan catatan pembayaran/pencairan dilakukan melalui modul Pinjaman LPD,
+dengan alasan dan reversal pada tanggal asli. Histori tidak dihapus. Pencairan
+hanya dapat dibatalkan setelah semua catatan pembayaran aktif dibatalkan.
+Reversal dan koreksi generik jurnal tertaut pinjaman diblokir. Rekonsiliasi serta
+mutasi membaca jurnal asli dan pembaliknya agar cocok dengan GL.
 
 ## Validasi input pinjaman
 

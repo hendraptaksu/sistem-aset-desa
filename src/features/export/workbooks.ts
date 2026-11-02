@@ -697,6 +697,12 @@ export async function arusKasToWorkbook(
   selRp(saldoAwal, 2, 0);
   selRp(saldoAwal, 3, 0);
   selRp(saldoAwal, 4, ak.saldoAwal);
+  if (ak.penyesuaianSaldoAwal !== 0) {
+    const penyesuaianSaldoAwal = ws.addRow(['Saldo pembukaan / penyesuaian', null, null, null, '', '', '', '']);
+    selRp(penyesuaianSaldoAwal, 2, 0);
+    selRp(penyesuaianSaldoAwal, 3, 0);
+    selRp(penyesuaianSaldoAwal, 4, ak.penyesuaianSaldoAwal);
+  }
   const totalMasuk = ws.addRow(['Total masuk', null, null, null, '', '', '', '']);
   selRp(totalMasuk, 2, ak.totalMasuk);
   selRp(totalMasuk, 3, 0);
@@ -1176,6 +1182,9 @@ export function arusKasToHtml(ak: ArusKasHasil, kop?: KopOrganisasi): string {
     ['Pendanaan', ak.pendanaan],
     ['Transfer', ak.transfer],
   ] as const;
+  const penyesuaianSaldoAwal = ak.penyesuaianSaldoAwal !== 0
+    ? `<tr><th>Saldo pembukaan / penyesuaian</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.penyesuaianSaldoAwal)}</th></tr>`
+    : '';
   const rows = ak.rows
     .map(
       (r) =>
@@ -1200,6 +1209,7 @@ ${ringkasan
   )
   .join('')}
 <tr><th>Saldo awal</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.saldoAwal)}</th></tr>
+${penyesuaianSaldoAwal}
 <tr><th>Total masuk</th><th style="text-align:right">${formatRp(ak.totalMasuk)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.totalMasuk)}</th></tr>
 <tr><th>Total keluar</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.totalKeluar)}</th><th style="text-align:right">${formatRp(-ak.totalKeluar)}</th></tr>
 <tr><th>Kenaikan / (penurunan)</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.kenaikan)}</th></tr>

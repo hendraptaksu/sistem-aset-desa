@@ -108,8 +108,8 @@ export type JurnalHeaderInput = {
 // realisasi pokok/bunga/denda selalu dibaca dari jurnal pembayaran yang
 // ditautkan lewat `pinjaman_bayar`. Tidak ada saldo berjalan yang disimpan.
 
-/** Status angsuran DITURUNKAN dari ada/tidaknya link `pinjaman_bayar`. */
-export type PinjamanAngsuranStatus = 'BELUM' | 'LUNAS';
+/** Status angsuran diturunkan dari nominal pembayaran aktif terhadap jadwal. */
+export type PinjamanAngsuranStatus = 'BELUM' | 'SEBAGIAN' | 'LUNAS';
 
 export type PinjamanAngsuran = {
   id: number;
@@ -125,6 +125,12 @@ export type PinjamanAngsuran = {
   pinjaman_bayar_id: string | null;
   tanggal_bayar: string | null;
   jurnal_id: string | null;
+  /** Turunan pembayaran aktif; nominal tetap bersumber dari jurnal. */
+  pokok_dibayar?: number;
+  bunga_dibayar?: number;
+  sisa_pokok?: number;
+  sisa_bunga?: number;
+  jumlah_pembayaran?: number;
 };
 
 export type Pinjaman = {
@@ -151,6 +157,9 @@ export type Pinjaman = {
   total_denda_dibayar?: number;
   /** Jadwal rencana + status turunan, terurut `ke`. */
   angsuran?: PinjamanAngsuran[];
+  /** Pembatalan diturunkan dari jurnal balik pencairan, bukan saldo tersimpan. */
+  status?: 'AKTIF' | 'DIBATALKAN';
+  jurnal_batal_id?: string | null;
 };
 
 /** Nominal pembayaran yang DIBACA dari baris jurnal, bukan kolom tersimpan. */
@@ -174,6 +183,9 @@ export type PinjamanBayar = {
   bunga: number;
   denda: number;
   kas_keluar: number;
+  /** Histori asli dipertahankan ketika catatan pembayaran dibatalkan. */
+  dibatalkan?: boolean;
+  jurnal_batal_id?: string | null;
 };
 
 export type TutupBuku = {

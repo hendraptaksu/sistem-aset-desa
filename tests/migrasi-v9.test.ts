@@ -158,8 +158,8 @@ describe('AUD-23 — skema v9 & trigger integritas', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(21);
-      expect(versi(db)).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
+      expect(versi(db)).toBe(22);
 
       const indeks = indeksNoBukti(db);
       expect(indeks.map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
@@ -181,7 +181,7 @@ describe('AUD-23 — skema v9 & trigger integritas', () => {
     // Buka ulang: tidak ada trigger/index dobel.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(21);
+      expect(versi(db2)).toBe(22);
       expect(indeksNoBukti(db2).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(db2).map((t) => t.name)).toEqual([...TRIGGER_V9]);
     } finally {
@@ -347,7 +347,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v21', () => {
 
     const db = openDb(path);
     try {
-      expect(versi(db)).toBe(21);
+      expect(versi(db)).toBe(22);
       expect(indeksNoBukti(db).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(db).map((t) => t.name)).toEqual([...TRIGGER_V9]);
       expect(listJurnal(db).map((j) => j.id)).toEqual(['j-v8-2025', 'j-v8-2026']);
@@ -378,7 +378,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v21', () => {
     // Buka ulang: migrasi idempoten, trigger/index tidak dobel.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(21);
+      expect(versi(db2)).toBe(22);
       expect(indeksNoBukti(db2).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(db2)).toHaveLength(TRIGGER_V9.length);
       expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v9-2025', 'j-v8-2025', 'j-v8-2026']);
@@ -411,7 +411,7 @@ describe('AUD-23 — migrasi/restore DB v8 → v21', () => {
       if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
 
-      expect(versi(aktif)).toBe(21);
+      expect(versi(aktif)).toBe(22);
       expect(indeksNoBukti(aktif).map((i) => i.name)).toEqual(['idx_jurnal_no_bukti_tahun']);
       expect(daftarTrigger(aktif).map((t) => t.name)).toEqual([...TRIGGER_V9]);
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v8-2025', 'j-v8-2026']);

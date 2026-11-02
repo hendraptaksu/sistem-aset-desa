@@ -309,7 +309,7 @@ describe('DB-16e — mutasi bulanan dari jurnal', () => {
       bunga_realisasi: RP(150_000),
       selisih_pokok: -RP(500_000),
       selisih_bunga: RP(50_000),
-      dibayar: true,
+      dibayar: false,
       jurnal_id: 'j-bayar-2',
       no_bukti: 'B-2',
     });

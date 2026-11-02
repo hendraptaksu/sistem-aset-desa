@@ -57,6 +57,10 @@ export const PESAN_REVERSAL_PANJAR =
   'Jurnal ini terhubung ke dokumen panjar. Reversal dari Jurnal Umum diblokir ' +
   'agar status panjar tidak basi. Gunakan modul Panjar.';
 
+export const PESAN_REVERSAL_PINJAMAN =
+  'Jurnal ini terhubung ke pinjaman. Gunakan Batalkan catatan pembayaran ' +
+  'atau Batalkan catatan pencairan di menu Pinjaman LPD, lalu input ulang.';
+
 function hasilGagal(errors: string[]): HasilValidasiJurnal & { tersimpan: false } {
   return { boleh: false, errors, peringatan: [], perluKonfirmasi: false, tersimpan: false };
 }
@@ -64,6 +68,13 @@ function hasilGagal(errors: string[]): HasilValidasiJurnal & { tersimpan: false 
 /** Jurnal balik yang sudah ada untuk `id` (dipakai menolak reversal ganda). */
 function cariReversal(db: Database.Database, id: string): Pick<Jurnal, 'id'>[] {
   return listJurnal(db, { reversal_of: id });
+}
+
+/** Grup diperoleh dari jurnal asli di DB; bukan penanda dari renderer. */
+function anggotaSaldoAwal(db: Database.Database, jurnal: Jurnal): boolean {
+  return Boolean(db.prepare(
+    "SELECT 1 FROM jurnal WHERE jenis = 'SALDO_AWAL' AND grup_id = ? LIMIT 1",
+  ).get(jurnal.grup_id));
 }
 
 /**
@@ -97,6 +108,11 @@ function rencanaUntuk(
   // berhenti tanpa menyentuh jurnal/audit.
   if (terhubungPanjar(db, idAsli))
     return { boleh: false, errors: [PESAN_REVERSAL_PANJAR] };
+
+  const pinjaman = db.prepare(`SELECT 1 FROM pinjaman WHERE jurnal_pencairan_id = ?
+    UNION ALL SELECT 1 FROM pinjaman_bayar WHERE jurnal_id = ? LIMIT 1`)
+    .get(idAsli, idAsli);
+  if (pinjaman) return { boleh: false, errors: [PESAN_REVERSAL_PINJAMAN] };
 
   return rencanaReversal({
     jurnal: detail?.jurnal ?? null,
@@ -150,6 +166,7 @@ export function reverseJurnal(
     // Reversal hanya membuat jurnal balik seperti biasa.
     return postingJurnal(db, rencana.input!, {
       konfirmasiPeringatan: opsi.konfirmasiPeringatan,
+      koreksiSaldoAwal: anggotaSaldoAwal(db, detail.jurnal),
       audit: [audit],
     });
   });
@@ -217,6 +234,9 @@ export function koreksiDanIsiUlang(
   // keduanya tersimpan atomik dalam transaksi yang sama.
   const ctxBalik = buatKonteksPosting(db, rencana.input.header);
   const ctxBaru = buatKonteksPosting(db, headerBaru);
+  const koreksiSaldoAwal = anggotaSaldoAwal(db, detail.jurnal);
+  ctxBalik.koreksiSaldoAwal = koreksiSaldoAwal;
+  ctxBaru.koreksiSaldoAwal = koreksiSaldoAwal;
   const tanggalBalik = String(rencana.input.header.tanggal ?? '').trim();
   const tanggalBaru = String(headerBaru.tanggal ?? '').trim();
 

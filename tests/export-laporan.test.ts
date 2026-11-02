@@ -567,6 +567,14 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(ws.getRow(total).getCell(6).value).toBe(ak.totalKeluar / 100);
     expect(cariBaris(ws, 1, 'Saldo akhir')).toBeGreaterThan(0);
     expect(cariBaris(ws, 8, 'Transfer')).toBeGreaterThan(0);
+
+    const wbDenganPenyesuaian = await arusKasToWorkbook({
+      ...ak,
+      penyesuaianSaldoAwal: RP(1_250),
+    });
+    const wsDenganPenyesuaian = wbDenganPenyesuaian.worksheets[0]!;
+    const barisPenyesuaian = cariBaris(wsDenganPenyesuaian, 1, 'Saldo pembukaan / penyesuaian');
+    expect(wsDenganPenyesuaian.getRow(barisPenyesuaian).getCell(4).value).toBe(1_250);
   });
 
   it('Panjar: daftar + rincian item, semua nominal number', async () => {
@@ -683,6 +691,9 @@ describe('P1-10 — HTML print semua laporan', () => {
     expect(labaRugiToHtml(lr)).toContain('Total Pendapatan');
     expect(neracaHasilToHtml(n)).toContain('TOTAL PASIVA');
     expect(arusKasToHtml(ak)).toContain('TOTAL ARUS (tanpa transfer)');
+    expect(arusKasToHtml({ ...ak, penyesuaianSaldoAwal: RP(1_250) })).toContain(
+      'Saldo pembukaan / penyesuaian',
+    );
     expect(panjarToHtml(panjar, COA)).toContain('Subtotal');
 
     // Defisit: format Rupiah negatif wajib dalam kurung, bukan minus.

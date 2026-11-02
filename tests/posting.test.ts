@@ -112,6 +112,39 @@ describe('P0-4 — satu pintu posting jurnal', () => {
     }
   });
 
+  it('menolak komponen arus kas lintas kategori sebelum jurnal ditulis', () => {
+    const { db } = freshDb();
+    try {
+      const input: JurnalInput = {
+        header: header({ id: 'j-arus-ambigu', jenis: 'UMUM' }),
+        baris: [
+          { akun_kode: '1001', debit: 50_000, kredit: 0 },
+          { akun_kode: '1050', debit: 100_000, kredit: 0 },
+          { akun_kode: '2050', debit: 0, kredit: 150_000 },
+        ],
+      };
+
+      const validasi = validasiJurnalDb(db, input);
+      expect(validasi.boleh).toBe(false);
+      expect(validasi.errors.join(' ')).toMatch(/komponen arus masuk dan keluar lintas kategori/i);
+      expect(validasi.errors.join(' ')).toMatch(/jurnal terpisah/i);
+
+      const hasil = postingJurnal(db, input);
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/jurnal terpisah/i);
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS c FROM jurnal_baris').get()).toEqual({ c: 0 });
+
+      const pembukaan = validasiJurnalDb(db, {
+        header: header({ id: 'j-opening-mixed', jenis: 'SALDO_AWAL' }),
+        baris: input.baris,
+      });
+      expect(pembukaan.boleh, pembukaan.errors.join(' ')).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
   it('menolak jurnal tidak seimbang / tanggal 31 Feb dan tidak menulis baris apa pun', () => {
     const { db } = freshDb();
     try {

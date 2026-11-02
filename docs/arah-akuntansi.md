@@ -208,13 +208,16 @@ Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
 - `pinjaman_bayar` hanya menautkan `jurnal_id` + `angsuran_id`; **tidak ada
   kolom nominal pokok/bunga/denda** di tabel pembayaran.
 - Outstanding dihitung saat dibaca:
-  `sisa_pokok_awal - SUM(debit 2050 pada jurnal pembayaran tertaut)`.
+  `sisa_pokok_awal - pokok pembayaran aktif`. Pencairan yang dibatalkan
+  bersaldo pembukaan 0; riwayat reversal tetap ikut rekonsiliasi dan mutasi.
   Tidak ada kolom `sisa_pokok`/saldo berjalan yang disimpan.
 - Pembayaran harus memakai jurnal seimbang dengan **D 2050 (pokok)**,
   **D akun bunga** (default `5063 BEBAN BUNGA PINJAMAN`), **D beban denda**
   bila ada, dan **K kas/bank**. Nominal tersebut dibaca dari baris jurnal.
-- Status angsuran `LUNAS` diturunkan dari link `pinjaman_bayar.angsuran_id`;
-  satu angsuran dan satu jurnal hanya boleh ditautkan sekali.
+- Sejak v22, satu angsuran dapat menerima beberapa pembayaran. Status
+  `BELUM`/`SEBAGIAN`/`LUNAS` dihitung dari pokok dan bunga aktif; satu jurnal
+  tetap hanya dimiliki satu pembayaran. Pembatalan melalui modul pinjaman
+  menjaga histori asli dan membuat jurnal balik pada tanggal asli.
 - `jurnal_pencairan_id = NULL` berarti pinjaman sudah berjalan: sisa pokok
   harus sudah ada di Saldo Awal 2050 dan modul **tidak** membuat jurnal
   pencairan baru.

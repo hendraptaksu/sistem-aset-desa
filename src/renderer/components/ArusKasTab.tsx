@@ -187,11 +187,19 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                 {data.rows.length} baris mutasi kas
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className={`grid grid-cols-2 gap-3 ${data.penyesuaianSaldoAwal !== 0 ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-5'}`}>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo awal</div>
                 <div className="text-lg font-bold">{formatRp(data.saldoAwal)}</div>
               </div>
+              {data.penyesuaianSaldoAwal !== 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="text-sm text-amber-800">Saldo pembukaan / penyesuaian</div>
+                  <div className="text-lg font-bold text-amber-900">
+                    {formatRp(data.penyesuaianSaldoAwal)}
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total masuk</div>
                 <div className="text-lg font-bold text-emerald-700">
@@ -214,7 +222,7 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                   {formatRp(data.saldoAkhir)}
                 </div>
                 <div className="mt-1 text-helper text-emerald-800">
-                  saldo awal + kenaikan
+                  saldo awal + penyesuaian pembukaan + kenaikan
                 </div>
               </div>
             </div>

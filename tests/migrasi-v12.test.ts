@@ -350,8 +350,8 @@ describe('DB-33 — migrasi v11 → v21', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(21);
-      expect(versi(db)).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
+      expect(versi(db)).toBe(22);
       const tabel = daftarTabel(db);
       for (const wajib of TABEL_INTI) expect(tabel).toContain(wajib);
       for (const lama of TABEL_DIHAPUS_V12) {
@@ -410,9 +410,9 @@ describe('DB-33 — migrasi v11 → v21', () => {
     // Migrasi dijalankan ulang dan DB dibuka ulang: tetap v21, tanpa tabel legacy.
     const db2 = openDb(path);
     try {
-      expect(migrasi(db2)).toBe(21);
-      expect(migrasi(db2)).toBe(21);
-      expect(versi(db2)).toBe(21);
+      expect(migrasi(db2)).toBe(22);
+      expect(migrasi(db2)).toBe(22);
+      expect(versi(db2)).toBe(22);
       const tabel = daftarTabel(db2);
       for (const lama of TABEL_DIHAPUS_V12) expect(tabel).not.toContain(lama);
       expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-v11', 'j-v11-open', 'j-v11-close']);
@@ -427,7 +427,7 @@ describe('DB-33 — migrasi v11 → v21', () => {
   it('DB baru langsung v21 tanpa tabel legacy dan lolos audit', () => {
     const db = openDb(':memory:');
     try {
-      expect(versi(db)).toBe(21);
+      expect(versi(db)).toBe(22);
       const tabel = daftarTabel(db);
       for (const wajib of TABEL_INTI) expect(tabel).toContain(wajib);
       for (const lama of TABEL_DIHAPUS_V12) {

@@ -461,6 +461,102 @@ describe('P0-5 — Arus Kas metode langsung', () => {
   });
 });
 
+describe('Arus Kas — saldo pembukaan dan cutover pembukuan', () => {
+  const saldoAwal = jurnal('opening-original', '2026-07-01', 'Saldo awal kas', [
+    ['1001', RP(20_000_000), 0],
+    ['3000', 0, RP(20_000_000)],
+  ]).map((b) => ({ ...b, jenis: 'SALDO_AWAL' as const, grup_id: 'opening-chain' }));
+  const reversalSaldoAwal = jurnal('opening-reversal', '2026-07-10', 'Koreksi saldo awal', [
+    ['3000', RP(20_000_000), 0],
+    ['1001', 0, RP(20_000_000)],
+  ]).map((b) => ({ ...b, jenis: 'REVERSAL' as const, grup_id: 'opening-chain' }));
+  const penggantiSaldoAwal = jurnal('opening-replacement', '2026-07-10', 'Saldo awal yang benar', [
+    ['1001', RP(25_000_000), 0],
+    ['3000', 0, RP(25_000_000)],
+  ]).map((b) => ({ ...b, jenis: 'UMUM' as const, grup_id: 'opening-chain' }));
+  const pendapatanSesudahCutover = jurnal('opening-income', '2026-08-01', 'Pendapatan setelah cutover', [
+    ['1001', RP(1_000_000), 0],
+    ['4005', 0, RP(1_000_000)],
+  ]);
+
+  it('opening-only sebelum tanggal cutover tidak menghasilkan arus periode', () => {
+    const ak = arusKas(saldoAwal, { mulai: '2026-01-01', sampai: '2026-06-30' });
+    expect(ak.rows).toEqual([]);
+    expect(ak.totalMasuk).toBe(0);
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.saldoAwal).toBe(0);
+    expect(ak.penyesuaianSaldoAwal).toBe(0);
+    expect(ak.saldoAkhir).toBe(0);
+    expect(ak.saldoAkhir).toBe(totalKas(saldoAwal, undefined, '2026-06-30'));
+  });
+
+  it('opening-only dalam periode menjadi saldo awal, bukan penerimaan pendanaan', () => {
+    const ak = arusKas(saldoAwal, { mulai: '2026-01-01', sampai: '2026-12-31' });
+    expect(ak.rows).toEqual([]);
+    expect(ak.pendanaan.neto).toBe(0);
+    expect(ak.totalMasuk).toBe(0);
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.saldoAwal).toBe(0);
+    expect(ak.penyesuaianSaldoAwal).toBe(RP(20_000_000));
+    expect(ak.kenaikan).toBe(0);
+    expect(ak.saldoAkhir).toBe(RP(20_000_000));
+    expect(ak.saldoAkhir).toBe(totalKas(saldoAwal, undefined, '2026-12-31'));
+
+    const semuaTanggal = arusKas(saldoAwal, { sampai: '2026-12-31' });
+    expect(semuaTanggal.saldoAwal).toBe(RP(20_000_000));
+    expect(semuaTanggal.penyesuaianSaldoAwal).toBe(0);
+    expect(semuaTanggal.saldoAkhir).toBe(RP(20_000_000));
+  });
+
+  it('cutover tengah tahun memisahkan pembukaan dan aktivitas sesudahnya', () => {
+    const baris = [...saldoAwal, ...pendapatanSesudahCutover];
+    const ak = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
+    expect(ak.rows).toHaveLength(1);
+    expect(ak.rows[0]).toMatchObject({ jurnal_id: 'opening-income', kelompok: 'OPERASI', masuk: RP(1_000_000) });
+    expect(ak.saldoAwal).toBe(0);
+    expect(ak.penyesuaianSaldoAwal).toBe(RP(20_000_000));
+    expect(ak.totalMasuk).toBe(RP(1_000_000));
+    expect(ak.kenaikan).toBe(RP(1_000_000));
+    expect(ak.saldoAkhir).toBe(RP(21_000_000));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+
+    const mulaiTepatCutover = arusKas(baris, { mulai: '2026-07-01', sampai: '2026-12-31' });
+    expect(mulaiTepatCutover.saldoAwal).toBe(RP(20_000_000));
+    expect(mulaiTepatCutover.penyesuaianSaldoAwal).toBe(0);
+    expect(mulaiTepatCutover.saldoAkhir).toBe(RP(21_000_000));
+
+    const mulaiSesudahCutover = arusKas(baris, { mulai: '2026-07-02', sampai: '2026-12-31' });
+    expect(mulaiSesudahCutover.saldoAwal).toBe(RP(20_000_000));
+    expect(mulaiSesudahCutover.penyesuaianSaldoAwal).toBe(0);
+    expect(mulaiSesudahCutover.kenaikan).toBe(RP(1_000_000));
+    expect(mulaiSesudahCutover.saldoAkhir).toBe(RP(21_000_000));
+  });
+
+  it('reversal dan pengganti SALDO_AWAL satu grup tetap saldo pembukaan lintas tanggal', () => {
+    const baris = [saldoAwal, reversalSaldoAwal, penggantiSaldoAwal, pendapatanSesudahCutover].flat();
+    const sebelumKoreksi = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-07-05' });
+    expect(sebelumKoreksi.rows).toEqual([]);
+    expect(sebelumKoreksi.saldoAwal).toBe(0);
+    expect(sebelumKoreksi.penyesuaianSaldoAwal).toBe(RP(20_000_000));
+    expect(sebelumKoreksi.saldoAkhir).toBe(RP(20_000_000));
+
+    const satuTahun = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
+    expect(satuTahun.rows).toHaveLength(1);
+    expect(satuTahun.saldoAwal).toBe(0);
+    expect(satuTahun.penyesuaianSaldoAwal).toBe(RP(25_000_000));
+    expect(satuTahun.totalMasuk).toBe(RP(1_000_000));
+    expect(satuTahun.pendanaan.neto).toBe(0);
+    expect(satuTahun.saldoAkhir).toBe(RP(26_000_000));
+    expect(satuTahun.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+
+    const sesudahKoreksi = arusKas(baris, { mulai: '2026-07-11', sampai: '2026-12-31' });
+    expect(sesudahKoreksi.saldoAwal).toBe(RP(25_000_000));
+    expect(sesudahKoreksi.penyesuaianSaldoAwal).toBe(0);
+    expect(sesudahKoreksi.pendanaan.neto).toBe(0);
+    expect(sesudahKoreksi.saldoAkhir).toBe(RP(26_000_000));
+  });
+});
+
 describe('AKT-17 — pinjaman 1050 diklasifikasikan sebagai INVESTASI', () => {
   const modalAwal = jurnal('akt17-modal', '2026-01-01', 'Modal awal', [
     ['1001', RP(10_000_000), 0],
@@ -661,6 +757,180 @@ describe('AKT-20 — utang usaha 2060 OPERASI vs pinjaman 2050 PENDANAAN', () =>
     expect(ak.saldoAkhir).toBe(RP(9_700_000));
   });
 
+  it('pokok pinjaman dan bunga dalam satu pembayaran masuk ke kelompok berbeda', () => {
+    const modalSaldoAwal = jurnal('akt20-modal-pokok-bunga', '2026-01-01', 'Saldo awal', [
+      ['1001', RP(12_000_000), 0],
+      ['3000', 0, RP(12_000_000)],
+    ]).map((b) => ({ ...b, jenis: 'SALDO_AWAL' as const, grup_id: 'akt20-modal-pokok-bunga' }));
+    const baris = [
+      ...modalSaldoAwal,
+      ...jurnal('akt20-pokok-bunga', '2026-03-10', 'Bayar pokok dan bunga pinjaman', [
+        ['2050', RP(10_000_000), 0],
+        ['5063', RP(100_000), 0],
+        ['1001', 0, RP(10_100_000)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+
+    expect(ak.rows.filter((r) => r.jurnal_id === 'akt20-pokok-bunga')).toEqual([
+      expect.objectContaining({
+        akun_kode: '1001', kelompok: 'PENDANAAN', keluar: RP(10_000_000), masuk: 0,
+        lawan: ['2050'],
+      }),
+      expect.objectContaining({
+        akun_kode: '1001', kelompok: 'OPERASI', keluar: RP(100_000), masuk: 0,
+        lawan: ['5063'],
+      }),
+    ]);
+    expect(ak.saldoAwal).toBe(RP(12_000_000));
+    expect(ak.pendanaan).toMatchObject({ keluar: RP(10_000_000), neto: RP(-10_000_000) });
+    expect(ak.operasi).toMatchObject({ keluar: RP(100_000), neto: RP(-100_000) });
+    expect(ak.totalKeluar).toBe(RP(10_100_000));
+    expect(ak.kenaikan).toBe(RP(-10_100_000));
+    expect(ak.saldoAkhir).toBe(RP(1_900_000));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('membagi pokok dan bunga lintas dua dompet tanpa melampaui mutasi tiap akun', () => {
+    const opening = jurnal('akt20-modal-multi-wallet', '2026-01-01', 'Saldo awal', [
+      ['1001', RP(1_000), 0],
+      ['3000', 0, RP(1_000)],
+    ]).map((b) => ({ ...b, jenis: 'SALDO_AWAL' as const, grup_id: 'akt20-modal-multi-wallet' }));
+    const baris = [
+      ...opening,
+      ...jurnal('akt20-multi-wallet', '2026-03-10', 'Bayar pokok dan bunga dari dua dompet', [
+        ['2050', RP(100), 0],
+        ['5063', RP(10), 0],
+        ['1001', 0, RP(60)],
+        ['1029', 0, RP(50)],
+      ]),
+    ];
+    const ak = arusKas(baris, periode);
+    const keluarKas = (kode: string) =>
+      ak.rows
+        .filter((r) => r.akun_kode === kode && r.kelompok !== 'TRANSFER')
+        .reduce((jumlah, r) => jumlah + r.keluar, 0);
+
+    expect(keluarKas('1001')).toBe(RP(60));
+    expect(keluarKas('1029')).toBe(RP(50));
+    expect(ak.pendanaan.keluar).toBe(RP(100));
+    expect(ak.operasi.keluar).toBe(RP(10));
+    expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('reversal pembayaran pada tanggal berbeda membalik pokok dan bunga ke kategori asal', () => {
+    const pembukaan = jurnal('akt20-opening', '2026-01-01', 'Saldo awal', [
+      ['1001', RP(12_000_000), 0],
+      ['3000', 0, RP(12_000_000)],
+    ]).map((b) => ({ ...b, jenis: 'SALDO_AWAL' as const, grup_id: 'akt20-opening' }));
+    const pembayaran = jurnal('akt20-pembayaran-campuran', '2026-03-10', 'Bayar pokok dan bunga', [
+      ['2050', RP(10_000_000), 0],
+      ['5063', RP(100_000), 0],
+      ['1001', 0, RP(10_100_000)],
+    ]).map((b) => ({ ...b, jenis: 'BAYAR' as const, grup_id: 'akt20-pembayaran-campuran' }));
+    const balik = jurnal('akt20-balik-campuran', '2026-04-10', 'Koreksi pembayaran pinjaman', [
+      ['1001', RP(10_100_000), 0],
+      ['2050', 0, RP(10_000_000)],
+      ['5063', 0, RP(100_000)],
+    ]).map((b) => ({
+      ...b,
+      jenis: 'REVERSAL' as const,
+      grup_id: 'akt20-pembayaran-campuran',
+      reversal_of: 'akt20-pembayaran-campuran',
+    }));
+
+    const sebelumBalik = arusKas([...pembukaan, ...pembayaran, ...balik], {
+      mulai: '2026-01-01', sampai: '2026-03-31',
+    });
+    expect(sebelumBalik.pendanaan.keluar).toBe(RP(10_000_000));
+    expect(sebelumBalik.operasi.keluar).toBe(RP(100_000));
+    expect(sebelumBalik.saldoAkhir).toBe(RP(1_900_000));
+
+    const sesudahBalik = arusKas([...pembukaan, ...pembayaran, ...balik], {
+      mulai: '2026-01-01', sampai: '2026-04-30',
+    });
+    expect(sesudahBalik.rows.find((r) => r.jurnal_id === 'akt20-balik-campuran' && r.kelompok === 'PENDANAAN'))
+      .toMatchObject({ masuk: RP(10_000_000), keluar: 0 });
+    expect(sesudahBalik.rows.find((r) => r.jurnal_id === 'akt20-balik-campuran' && r.kelompok === 'OPERASI'))
+      .toMatchObject({ masuk: RP(100_000), keluar: 0 });
+    expect(sesudahBalik.pendanaan.neto).toBe(0);
+    expect(sesudahBalik.pendanaan.masuk).toBe(RP(10_000_000));
+    expect(sesudahBalik.pendanaan.keluar).toBe(RP(10_000_000));
+    expect(sesudahBalik.operasi.neto).toBe(0);
+    expect(sesudahBalik.operasi.masuk).toBe(RP(100_000));
+    expect(sesudahBalik.operasi.keluar).toBe(RP(100_000));
+    expect(sesudahBalik.saldoAkhir).toBe(RP(12_000_000));
+    expect(sesudahBalik.saldoAkhir).toBe(totalKas([...pembukaan, ...pembayaran, ...balik], undefined, '2026-04-30'));
+  });
+
+  it('membatalkan arus receipt pada tanggal asli agar tidak menghitung arus bruto palsu', () => {
+    const grup = 'akt20-receipt-dibatalkan';
+    const asli = jurnal('akt20-receipt-asli', '2026-05-10', 'Penerimaan yang dibatalkan', [
+      ['1001', RP(1_000_000), 0],
+      ['4005', 0, RP(1_000_000)],
+    ]).map((b) => ({ ...b, jenis: 'TERIMA' as const, grup_id: grup }));
+    const balik = jurnal('akt20-receipt-balik', '2026-05-10', 'Batalkan penerimaan', [
+      ['4005', RP(1_000_000), 0],
+      ['1001', 0, RP(1_000_000)],
+    ]).map((b) => ({ ...b, jenis: 'REVERSAL' as const, grup_id: grup, reversal_of: 'akt20-receipt-asli' }));
+    const ak = arusKas([...asli, ...balik], periode);
+
+    expect(ak.rows).toEqual([]);
+    expect(ak.operasi).toMatchObject({ masuk: 0, keluar: 0, neto: 0 });
+    expect(ak.totalMasuk).toBe(0);
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.saldoAkhir).toBe(0);
+  });
+
+  it('menampilkan arus jurnal pengganti saja setelah pembatalan di tanggal asli', () => {
+    const grup = 'akt20-receipt-dikoreksi';
+    const asli = jurnal('akt20-receipt-keliru', '2026-05-10', 'Penerimaan keliru', [
+      ['1001', RP(1_000_000), 0],
+      ['4005', 0, RP(1_000_000)],
+    ]).map((b) => ({ ...b, jenis: 'TERIMA' as const, grup_id: grup }));
+    const balik = jurnal('akt20-receipt-cancel', '2026-05-10', 'Batalkan penerimaan keliru', [
+      ['4005', RP(1_000_000), 0],
+      ['1001', 0, RP(1_000_000)],
+    ]).map((b) => ({ ...b, jenis: 'REVERSAL' as const, grup_id: grup, reversal_of: 'akt20-receipt-keliru' }));
+    const pengganti = jurnal('akt20-receipt-pengganti', '2026-05-10', 'Penerimaan yang benar', [
+      ['1001', RP(900_000), 0],
+      ['4005', 0, RP(900_000)],
+    ]).map((b) => ({ ...b, jenis: 'UMUM' as const, grup_id: grup }));
+    const ak = arusKas([...asli, ...balik, ...pengganti], periode);
+
+    expect(ak.rows).toHaveLength(1);
+    expect(ak.rows[0]).toMatchObject({
+      jurnal_id: 'akt20-receipt-pengganti',
+      kelompok: 'OPERASI',
+      masuk: RP(900_000),
+      keluar: 0,
+    });
+    expect(ak.operasi.masuk).toBe(RP(900_000));
+    expect(ak.totalMasuk).toBe(RP(900_000));
+  });
+
+  it('menghapus pokok dan bunga yang dibatalkan pada tanggal asal', () => {
+    const grup = 'akt20-loan-dibatalkan';
+    const asli = jurnal('akt20-loan-asli', '2026-05-11', 'Bayar pinjaman keliru', [
+      ['2050', RP(10_000_000), 0],
+      ['5063', RP(100_000), 0],
+      ['1001', 0, RP(10_100_000)],
+    ]).map((b) => ({ ...b, jenis: 'BAYAR' as const, grup_id: grup }));
+    const balik = jurnal('akt20-loan-balik', '2026-05-11', 'Batalkan pembayaran keliru', [
+      ['1001', RP(10_100_000), 0],
+      ['2050', 0, RP(10_000_000)],
+      ['5063', 0, RP(100_000)],
+    ]).map((b) => ({ ...b, jenis: 'REVERSAL' as const, grup_id: grup, reversal_of: 'akt20-loan-asli' }));
+    const ak = arusKas([...asli, ...balik], periode);
+
+    expect(ak.rows).toEqual([]);
+    expect(ak.pendanaan).toMatchObject({ masuk: 0, keluar: 0, neto: 0 });
+    expect(ak.operasi).toMatchObject({ masuk: 0, keluar: 0, neto: 0 });
+    expect(ak.totalMasuk).toBe(0);
+    expect(ak.totalKeluar).toBe(0);
+    expect(ak.saldoAkhir).toBe(0);
+  });
+
   it('jurnal reklasifikasi D 2050 / K 2060 tanpa kas tidak menghasilkan arus kas', () => {
     const baris = [
       ...modalAwal,
@@ -679,6 +949,18 @@ describe('AKT-20 — utang usaha 2060 OPERASI vs pinjaman 2050 PENDANAAN', () =>
     expect(ak.saldoAwal).toBe(0);
     expect(ak.saldoAkhir).toBe(RP(10_000_000));
     expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
+  });
+
+  it('menolak jurnal kas dengan sumber dan penggunaan lintas kategori yang ambigu', () => {
+    const baris = [
+      ...modalAwal,
+      ...jurnal('akt20-ambigu', '2026-04-10', 'Transaksi kas campuran lintas kategori', [
+        ['1001', RP(50_000), 0],
+        ['1050', RP(100_000), 0],
+        ['2050', 0, RP(150_000)],
+      ]),
+    ];
+    expect(() => arusKas(baris, periode)).toThrow(/komponen arus masuk dan keluar lintas kategori/i);
   });
 });
 
@@ -794,7 +1076,8 @@ describe('AKT-18 — transfer dan biaya pada jurnal kas gabungan', () => {
 
     // Neto: bank +100, kas +40, tunai −120 → porsi transfer = 120.
     expect(ak.transfer).toMatchObject({ masuk: RP(120), keluar: RP(120), neto: 0 });
-    expect(ak.operasi).toMatchObject({ masuk: RP(20), keluar: 0, neto: RP(20) });
+    expect(ak.operasi).toMatchObject({ masuk: RP(10), keluar: 0, neto: RP(10) });
+    expect(ak.pendanaan).toMatchObject({ masuk: RP(10), keluar: 0, neto: RP(10) });
 
     const transferRows = ak.rows.filter((r) => r.kelompok === 'TRANSFER');
     expect(transferRows).toHaveLength(3);

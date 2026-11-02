@@ -90,10 +90,13 @@ import {
  *          dengan referensi kosong; TIDAK di-backfill karena trigger
  *          append-only v11 menolak UPDATE audit_log.
  *
+ * - 22   = pembayaran sebagian: beberapa pembayaran per angsuran; jurnal_id
+ *          tetap unik. Riwayat pembatalan diturunkan dari jurnal reversal.
+ *
  * DB-30 (hygiene/ERD v2) TIDAK menaikkan versi: tidak ada DDL, rebuild, atau
  * perubahan data. Kontrak skema aktif didokumentasikan di `docs/erd-v2.md`.
  */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -163,11 +166,9 @@ CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_pinjaman
   ON pinjaman_bayar(pinjaman_id);
 CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
   ON pinjaman_bayar(tanggal);
--- Satu angsuran hanya boleh ditautkan ke satu pembayaran. Diperiksa juga di
--- repository agar pesannya ramah; index ini penjaga terakhir untuk SQL mentah.
-CREATE UNIQUE INDEX IF NOT EXISTS ux_pinjaman_bayar_angsuran
-  ON pinjaman_bayar(angsuran_id)
-  WHERE angsuran_id IS NOT NULL;
+-- Pembayaran dapat dicicil; satu jurnal tetap hanya dimiliki satu pembayaran.
+CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
+  ON pinjaman_bayar(angsuran_id);
 `;
 
 /**
@@ -1019,6 +1020,10 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV19(db);
     terapkanMigrasiV20(db);
     terapkanMigrasiV21(db);
+    // v22: lepaskan batas satu kuitansi per angsuran, tanpa mengubah histori.
+    db.exec('DROP INDEX IF EXISTS ux_pinjaman_bayar_angsuran');
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
+      ON pinjaman_bayar(angsuran_id)`);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

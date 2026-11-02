@@ -40,7 +40,7 @@ import {
 } from '../src/core/forms.js';
 import type { JurnalInput } from '../src/core/posting.js';
 import type { Jurnal, JurnalBarisInput, JurnalJenis } from '../src/core/types.js';
-import { COA } from '../src/db/coa.js';
+import { COA, KAS_KODES } from '../src/db/coa.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -388,8 +388,17 @@ describe('P0-10 — DB v2 fresh + seed dev', () => {
       expect(n.totalAset).toBe(n.totalPasiva);
 
       const ak = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
-      expect(ak.saldoAwal).toBe(0);
+      const kodeKas = new Set(KAS_KODES);
+      const saldoPembukaanSeed = baris
+        .filter((b) => b.jenis === 'SALDO_AWAL' && b.tanggal === '2026-01-01' && kodeKas.has(b.akun_kode))
+        .reduce((jumlah, b) => jumlah + b.debit - b.kredit, 0);
+      expect(saldoPembukaanSeed).toBe(RP(350_000_000));
+      expect(ak.saldoAwal).toBe(saldoPembukaanSeed);
+      expect(ak.penyesuaianSaldoAwal).toBe(0);
       expect(ak.saldoAkhir).toBeGreaterThan(0);
+      expect(ak.saldoAkhir).toBe(
+        ak.saldoAwal + ak.penyesuaianSaldoAwal + ak.kenaikan,
+      );
       expect(ak.saldoAkhir).toBe(n.totalAset - saldoAkun(baris, '1040', '2026-12-31') - saldoAkun(baris, '1050', '2026-12-31'));
     } finally {
       db.close();

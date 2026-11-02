@@ -139,13 +139,15 @@ test(
         .getByText('Nama akun 5011 diubah menjadi PENGELUARAN ARTOS BARU.')
         .waitFor({ timeout: 15_000 });
 
-      await page.getByRole('button', { name: 'Nonaktifkan' }).click();
+      await page.locator('tr').filter({ hasText: '5011' })
+        .getByRole('button', { name: 'Nonaktifkan', exact: true }).click();
       await page.getByRole('button', { name: 'Ya, nonaktifkan' }).click();
       await page
         .getByText(/dinonaktifkan\. Histori dan laporan lama tetap utuh/i)
         .waitFor({ timeout: 15_000 });
 
-      await page.getByRole('button', { name: 'Aktifkan' }).click();
+      await page.locator('tr').filter({ hasText: '5011' })
+        .getByRole('button', { name: 'Aktifkan', exact: true }).click();
       await page.getByRole('button', { name: 'Ya, aktifkan' }).click();
       await page
         .getByText(/diaktifkan kembali/i)
@@ -181,6 +183,12 @@ test(
       // dialog.
       const nav = (name) => page.getByRole('button', { name, exact: true });
       const dialogGuard = page.getByRole('dialog', { name: 'Isian belum disimpan' });
+
+      // Jurnal Umum sengaja tersembunyi dari operator sampai mode pendamping aktif.
+      await nav('Pengaturan').click();
+      await page.getByRole('button', { name: 'Aktifkan Mode lanjutan', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Aktifkan Mode lanjutan?' })
+        .getByRole('button', { name: 'Ya, aktifkan Mode lanjutan', exact: true }).click();
 
       await nav('Transaksi').click();
       await page

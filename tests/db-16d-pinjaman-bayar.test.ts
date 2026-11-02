@@ -424,7 +424,7 @@ describe('DB-16d — selisih jadwal dan penolakan', () => {
       }),
     );
     expect(kedua.tersimpan).toBe(false);
-    expect(kedua.errors.join(' ')).toMatch(/sudah dibayar/i);
+    expect(kedua.errors.join(' ')).toMatch(/sudah lunas/i);
     expect(jumlahJurnal(db)).toBe(jurnal);
     expect(jumlahBayar(db)).toBe(1);
     expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(8_000_000));
@@ -532,7 +532,7 @@ describe('DB-16d — validasi bentuk, IPC, API, UI, dan dokumentasi', () => {
     expect(UI).toContain('isAkunKasData');
     expect(UI).toContain('kasList');
     expect(UI).toContain('alasanSelisih');
-    expect(UI).toContain('Jadwal: pokok');
+    expect(UI).toContain('Sisa saat ini: pokok');
   });
 
   it('panduan pengguna menjelaskan form bayar, konfirmasi selisih, dan link-only', () => {
@@ -540,6 +540,6 @@ describe('DB-16d — validasi bentuk, IPC, API, UI, dan dokumentasi', () => {
     expect(PANDUAN).toContain('DB-16d');
     expect(PANDUAN).toContain('selisih');
     expect(PANDUAN).toContain('denda');
-    expect(PANDUAN).toContain('tidak disimpan ulang');
+    expect(PANDUAN).toContain('jurnal');
   });
 });

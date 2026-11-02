@@ -21,6 +21,7 @@ import { validasiSimpanLonggar } from './periode.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from './types.js';
 import { formatRp } from '../utils/format.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
+import { jurnalKasMemilikiKomponenAmbigu, PESAN_ARUS_KAS_AMBIGU } from './reports.js';
 
 export const JENIS_JURNAL: readonly JurnalJenis[] = [
   'UMUM',
@@ -52,6 +53,8 @@ export type AkunPosting = {
 /** Konteks DB yang dibutuhkan posting layer, sudah diambil pemanggil. */
 export type PostingContext = {
   akun: AkunPosting[];
+  /** Hanya layanan koreksi setelah memverifikasi grup saldo awal dari DB. */
+  koreksiSaldoAwal?: boolean;
   /** Tahun yang sudah ditutup. Tanggal <= 31 Des tahun terakhir butuh alasan. */
   tutupBuku?: ReadonlyArray<{ tahun: number }>;
   /** Nomor bukti yang sudah dipakai (boleh kosong). */
@@ -311,7 +314,7 @@ export function validasiJurnal(
   // ---- 3a. Jurnal campuran 2050 + 2060 (AKT-20) ----
   // Satu jurnal ber-kas tidak boleh memuat dua kelompok arus kas sekaligus.
   // Jurnal reklasifikasi D 2050 / K 2060 tanpa kas tetap diperbolehkan.
-  if (jenis !== 'SALDO_AWAL') {
+  if (jenis !== 'SALDO_AWAL' && konteks.koreksiSaldoAwal !== true) {
     const kodeSah = baris
       .map((b) => String(b?.akun_kode ?? '').trim())
       .filter((kode) => petaAkun.has(kode));
@@ -326,6 +329,21 @@ export function validasiJurnal(
           'Pisahkan pembayaran utang usaha dan pinjaman ke jurnal terpisah.',
       );
   }
+
+  // Satu bukti tidak boleh menggabungkan penerimaan dan penggunaan kas dari
+  // kategori berbeda; Arus Kas tidak dapat memasangkan nilainya dengan pasti.
+  // Tolak saat validasi supaya laporan tidak baru gagal setelah jurnal tersimpan.
+  if (
+    jenis !== 'SALDO_AWAL' &&
+    konteks.koreksiSaldoAwal !== true &&
+    jurnalKasMemilikiKomponenAmbigu(baris, daftarAkun, kasDi)
+  ) {
+    errors.push(PESAN_ARUS_KAS_AMBIGU);
+  }
+  if (konteks.koreksiSaldoAwal === true && baris.some((b) => {
+    const tipe = petaAkun.get(String(b?.akun_kode ?? '').trim())?.tipe;
+    return tipe === 'PENDAPATAN' || tipe === 'BEBAN';
+  })) errors.push('Koreksi saldo awal hanya boleh memakai akun aset, kewajiban, dan ekuitas.');
 
   // ---- 3b. Larangan jurnal penutup manual (AKT-16) ----
   // P&L dan ekuitas dalam satu jurnal adalah bentuk penutup manual: laba tahun

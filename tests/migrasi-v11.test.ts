@@ -99,8 +99,8 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(21);
-      expect(versi(db)).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
+      expect(versi(db)).toBe(22);
 
       const trigger = daftarTriggerV11(db);
       expect(trigger.map((t) => t.name)).toEqual([...TRIGGER_V11]);
@@ -122,8 +122,8 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
       ).toEqual({ n: 7 });
 
       // Migrasi dijalankan dua kali: trigger dibuat ulang, tidak dobel.
-      expect(migrasi(db)).toBe(21);
-      expect(migrasi(db)).toBe(21);
+      expect(migrasi(db)).toBe(22);
+      expect(migrasi(db)).toBe(22);
       expect(daftarTriggerV11(db).map((t) => t.name)).toEqual([...TRIGGER_V11]);
     } finally {
       db.close();
@@ -131,7 +131,7 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
 
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(21);
+      expect(versi(db2)).toBe(22);
       expect(daftarTriggerV11(db2).map((t) => t.name)).toEqual([...TRIGGER_V11]);
     } finally {
       db2.close();
@@ -186,7 +186,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v21', () => {
 
       const db = openDb(path);
       try {
-        expect(versi(db)).toBe(21);
+        expect(versi(db)).toBe(22);
         expect(daftarTriggerV11(db).map((t) => t.name)).toEqual([...TRIGGER_V11]);
 
         // Data lama tidak berubah.
@@ -208,7 +208,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v21', () => {
         );
 
         // Migrasi kedua pada DB yang sama tidak menggandakan trigger.
-        expect(migrasi(db)).toBe(21);
+        expect(migrasi(db)).toBe(22);
         expect(daftarTriggerV11(db).map((t) => t.name)).toEqual([...TRIGGER_V11]);
         expect(listAuditLog(db)).toHaveLength(1);
         expect(listTutupBuku(db)).toHaveLength(1);
@@ -219,7 +219,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v21', () => {
       // Buka ulang juga idempoten.
       const db2 = openDb(path);
       try {
-        expect(versi(db2)).toBe(21);
+        expect(versi(db2)).toBe(22);
         expect(daftarTriggerV11(db2).map((t) => t.name)).toEqual([...TRIGGER_V11]);
       } finally {
         db2.close();
@@ -247,7 +247,7 @@ describe('AKT-26 — migrasi DB v9/v10 → v21', () => {
         if (!hasil.ok) throw new Error(hasil.error);
         aktif = hasil.db;
 
-        expect(versi(aktif)).toBe(21);
+        expect(versi(aktif)).toBe(22);
         expect(daftarTriggerV11(aktif).map((t) => t.name)).toEqual([...TRIGGER_V11]);
         expect(listAuditLog(aktif).map((a) => a.id)).toEqual(['audit-lama']);
         expect(listTutupBuku(aktif).map((t) => t.tahun)).toEqual([2025]);

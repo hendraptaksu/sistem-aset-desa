@@ -45,7 +45,10 @@ import {
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
 import {
   bayarAngsuranPinjaman,
+  batalkanPembayaranPinjaman,
+  batalkanPinjaman,
   getPinjaman,
+  listPinjamanBayar,
   laporanMutasiPinjaman,
   listPinjaman,
   simpanPinjamanLpd,
@@ -106,6 +109,7 @@ import {
   validasiBentukPanjarSerah,
   validasiBentukPengaturanPembukuan,
   validasiBentukPinjamanBayar,
+  validasiBentukPembatalanPinjaman,
   validasiBentukPinjamanMutasi,
   validasiBentukPinjamanRekonsiliasi,
   validasiBentukPinjamanSimpan,
@@ -1131,6 +1135,80 @@ export function registerIpc(deps: IpcDeps): void {
         pinjaman:
           getPinjaman(deps.db(), hasil.pembayaran.pinjaman_id) ?? null,
       });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:pembayaran', (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      if (typeof id !== 'string' || !id.trim())
+        return fail('ID pinjaman wajib diisi.');
+      if (id.trim().length > 200) return fail('ID pinjaman terlalu panjang.');
+      if (!getPinjaman(deps.db(), id.trim())) return fail('Pinjaman tidak ditemukan.');
+      return ok(listPinjamanBayar(deps.db(), id.trim()));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:bayar-batal', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPembatalanPinjaman(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const hasil = batalkanPembayaranPinjaman(deps.db(), bentuk.input, {
+        konfirmasiPeringatan:
+          typeof opsi === 'object' && opsi !== null && !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+      });
+      if (!hasil.tersimpan || !hasil.pembayaran || !hasil.jurnal) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pembatalan catatan pembayaran gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+      }
+      return ok({
+        pembayaran: hasil.pembayaran,
+        jurnal: hasil.jurnal,
+        pinjaman: getPinjaman(deps.db(), hasil.pembayaran.pinjaman_id) ?? null,
+      });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:batal', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPembatalanPinjaman(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const hasil = batalkanPinjaman(deps.db(), bentuk.input, {
+        konfirmasiPeringatan:
+          typeof opsi === 'object' && opsi !== null && !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+      });
+      if (!hasil.tersimpan || !hasil.pinjaman || !hasil.jurnal) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pembatalan catatan pencairan gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+      }
+      return ok({ pinjaman: hasil.pinjaman, jurnal: hasil.jurnal });
     } catch (e) {
       return fail(pesanError(e, GAGAL_PINJAMAN));
     }

@@ -517,6 +517,14 @@ export function arusKasPrintDoc(
       [null, ak.transfer.masuk, ak.transfer.keluar, ak.transfer.neto],
     ),
     baris(['Saldo awal', formatRp(0), formatRp(0), formatRp(ak.saldoAwal)], [null, 0, 0, ak.saldoAwal], 'subtotal', true),
+    ...(ak.penyesuaianSaldoAwal !== 0
+      ? [baris(
+          ['Saldo pembukaan / penyesuaian', formatRp(0), formatRp(0), formatRp(ak.penyesuaianSaldoAwal)],
+          [null, 0, 0, ak.penyesuaianSaldoAwal],
+          'subtotal',
+          true,
+        )]
+      : []),
     baris(
       ['Total masuk', formatRp(ak.totalMasuk), formatRp(0), formatRp(ak.totalMasuk)],
       [null, ak.totalMasuk, 0, ak.totalMasuk],

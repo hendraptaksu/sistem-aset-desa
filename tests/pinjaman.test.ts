@@ -433,7 +433,7 @@ describe('DB-16b — pembayaran link-only', () => {
       tanggal: '2026-04-01',
     });
     expect(kedua.tersimpan).toBe(false);
-    expect(kedua.errors.join(' ')).toMatch(/sudah dibayar/);
+    expect(kedua.errors.join(' ')).toMatch(/sudah lunas/);
 
     // Jurnal yang sudah dipakai juga tidak boleh ditautkan lagi, walau ke
     // angsuran berbeda.

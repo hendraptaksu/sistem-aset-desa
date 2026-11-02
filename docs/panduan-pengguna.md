@@ -201,13 +201,15 @@ Pinjaman LPD dipisahkan dari **rencana** dan **realisasi**:
   **D 2050 HUTANG LAIN-LAIN (pokok) + D 5063 BEBAN BUNGA PINJAMAN (bunga)
   + D beban denda bila ada / K kas/bank**. Jangan mencatat seluruh angsuran
   ke 2050; bunga harus masuk Laba Rugi dan pokok saja yang mengurangi utang.
-- Sistem hanya menautkan jurnal pembayaran ke angsuran. Nominal pokok, bunga,
-  dan denda **tidak disimpan ulang** di tabel pembayaran; semuanya dibaca dari
-  baris jurnal agar tidak ada angka ganda.
+- Setiap pembayaran ditautkan ke angsuran dan memiliki jurnal tersendiri.
+  Riwayat beberapa pembayaran untuk satu angsuran tetap ditampilkan satu per
+  satu; nominal pokok, bunga, dan denda dibaca dari jurnal agar tidak ada angka
+  ganda.
 - **Sisa pokok pinjaman** dihitung dari `sisa pokok awal - total pokok yang
-  dibayar menurut jurnal`, bukan dari kolom saldo tersimpan. Status angsuran
-  menjadi **LUNAS** setelah jurnal pembayaran ditautkan; satu angsuran tidak
-  bisa dibayar dua kali.
+  dibayar menurut jurnal`, bukan dari kolom saldo tersimpan. Angsuran berstatus
+  **BELUM**, **SEBAGIAN**, atau **LUNAS**. Angsuran yang dibayar sebagian dapat
+  dilanjutkan; status **LUNAS** berarti seluruh sisa pokok dan bunga jadwal
+  sudah dibayar.
 - Jika pinjaman **sudah berjalan** sebelum aplikasi dipakai, isi sisa pokok
   dan jadwalnya tanpa membuat jurnal pencairan baru. Sisa pokok itu harus sudah
   masuk sebagai **kredit 2050 di Saldo Awal**. Membuat jurnal pencairan baru
@@ -239,25 +241,42 @@ lalu pilih salah satu mode:
 
 #### Langkah membayar angsuran (DB-16d)
 
-1. Buka **Lihat jadwal** pada pinjaman yang akan dibayar. Setiap angsuran yang
-   belum lunas menampilkan tombol **Bayar Angsuran**; angsuran yang sudah
-   dibayar ditandai **LUNAS** dan tidak bisa dibayar lagi.
+1. Buka **Lihat jadwal** pada pinjaman yang akan dibayar. Angsuran **BELUM**
+   menampilkan tombol **Bayar Angsuran**; angsuran **SEBAGIAN** menampilkan
+   **Lanjut Bayar**. Angsuran **LUNAS** tidak dapat dibayar lagi.
 2. Form menampilkan tanggal bayar, akun kas/bank aktif dari master akun,
-   pokok, bunga, denda, dan catatan. Pokok serta bunga otomatis terisi dari
-   jadwal; denda default 0.
+   pokok, bunga, denda, dan catatan. Pokok serta bunga otomatis terisi sebesar
+   sisa yang belum dibayar; denda default 0. Nominal yang lebih kecil boleh
+   dicatat sebagai pembayaran sebagian. Setelah tersimpan, sistem menampilkan
+   jumlah yang sudah dibayar dan sisa pokok/bunga.
 3. Periksa total. Jurnal yang dibuat server selalu seimbang:
    **D 2050 HUTANG LAIN-LAIN sebesar pokok + D akun bunga pinjaman sebesar
    bunga + D 5050 BIAYA LAIN-LAIN sebesar denda / K akun kas/bank sebesar
    total**. Komponen boleh 0, tetapi total pembayaran harus lebih dari 0.
-4. Bila pokok atau bunga yang dibayar **berbeda dari jadwal**, server menolak
-   sekali dan meminta konfirmasi. Isi alasan minimal 5 karakter, lalu pilih
-   **Ya, bayar dengan konfirmasi**. Jadwal **tidak diubah**; selisih hanya
-   tercatat pada jurnal dan audit. Jika perlu, koreksi jadwal dilakukan lewat
-   perjanjian/akuntan pendamping, bukan diam-diam saat pembayaran.
-5. Setelah tersimpan, status angsuran menjadi **LUNAS**, outstanding pinjaman
-   langsung dihitung ulang dari pengurangan pokok, dan jurnal pembayaran bisa
-   dibuka lewat **Jurnal Umum**. Nominal pembayaran tetap dibaca dari baris
-   jurnal dan **tidak disimpan ulang** di tabel pembayaran.
+4. Pokok tidak boleh melebihi sisa pokok angsuran. Bunga yang melebihi sisa
+   bunga meminta konfirmasi dan alasan minimal 5 karakter; pilih **Ya, bayar
+   dengan konfirmasi** setelah memastikan jumlahnya benar. Pembayaran pokok
+   atau bunga di bawah sisa tidak memerlukan konfirmasi. Jadwal rencana tidak
+   berubah oleh pembayaran.
+5. Setelah tersimpan, satu angsuran dapat tetap **SEBAGIAN** dan menerima
+   pembayaran berikutnya. Outstanding pinjaman dihitung ulang dari pokok yang
+   dibayar; setiap catatan pembayaran memiliki jurnal sendiri yang dapat dibuka
+   lewat **Jurnal Umum**.
+
+#### Membetulkan catatan pembayaran atau pencairan
+
+Gunakan **Batalkan catatan pembayaran** atau **Batalkan catatan pencairan**
+hanya untuk membetulkan pencatatan yang keliru. Isi alasan minimal 5 karakter.
+Sistem membuat jurnal balik pada tanggal jurnal asli, menyimpan jurnal dan
+riwayat asal, lalu menandai catatan sebagai **DIBATALKAN**. Periksa alasan dan
+konfirmasi peringatan posting bila muncul. Setelah catatan pembayaran yang salah
+dibatalkan, masukkan kembali pembayaran yang benar melalui **Bayar Angsuran**.
+
+> Pembatalan ini adalah pembetulan catatan, bukan bukti bahwa uang benar-benar
+> dikembalikan. Jika uang memang diterima atau dibayar kembali, catat transaksi
+> yang benar secara terpisah. Pencairan baru hanya dapat dibatalkan bila belum
+> ada pembayaran aktif yang terkait. Pinjaman **Sudah berjalan** tidak memiliki
+> jurnal pencairan baru untuk dibatalkan.
 
 #### Kartu hutang / mutasi bulanan (DB-16e)
 

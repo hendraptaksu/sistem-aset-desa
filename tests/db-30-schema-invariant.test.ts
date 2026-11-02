@@ -101,7 +101,7 @@ describe('DB-30 — invariant tabel aktif', () => {
   it('memakai tepat 11 tabel aktif dan tidak menghidupkan tabel lama', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
       expect(namaTabel(db)).toEqual([...TABEL_AKTIF]);
       expect(namaTabel(db)).not.toEqual(
         expect.arrayContaining([...TABEL_DIHAPUS_V12]),
@@ -122,7 +122,6 @@ describe('DB-30 — invariant tabel aktif', () => {
         ['panjar', 'ux_panjar_jurnal_open', 0],
         ['panjar', 'ux_panjar_jurnal_close', 1],
         ['panjar', 'ux_panjar_jurnal_batal', 1],
-        ['pinjaman_bayar', 'ux_pinjaman_bayar_angsuran', 1],
       ];
 
       for (const [tabel, nama, partial] of harapan) {
@@ -131,6 +130,9 @@ describe('DB-30 — invariant tabel aktif', () => {
         expect(Number(index?.unique), `${nama} harus UNIQUE`).toBe(1);
         expect(Number(index?.partial), `${nama} partial`).toBe(partial);
       }
+
+      expect(adaUniqueKolom(db, 'pinjaman_bayar', 'angsuran_id')).toBe(false);
+      expect(infoIndex(db, 'pinjaman_bayar', 'idx_pinjaman_bayar_angsuran')).toBeDefined();
 
       // Unique inline yang penting untuk link jurnal/angsuran.
       expect(adaUniqueKolom(db, 'pinjaman', 'jurnal_pencairan_id')).toBe(true);

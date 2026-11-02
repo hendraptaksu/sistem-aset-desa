@@ -188,9 +188,12 @@ const CHANNEL_IPC = [
   'pengaturan:get',
   'pengaturan:simpan',
   'pinjaman:bayar',
+  'pinjaman:bayar-batal',
+  'pinjaman:batal',
   'pinjaman:detail',
   'pinjaman:list',
   'pinjaman:mutasi',
+  'pinjaman:pembayaran',
   'pinjaman:rekonsiliasi',
   'pinjaman:simpan',
   'saldo-awal:posting',
@@ -203,11 +206,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 59 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 62 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(59);
+    expect(env.handlers.size).toBe(62);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(59);
+    expect(CHANNEL_IPC).toHaveLength(62);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1047,7 +1050,7 @@ describe('DB-16d — IPC bayar angsuran pinjaman', () => {
       bunga: angsuran[0].bunga,
     });
     expect(ganda.ok).toBe(false);
-    expect(ganda.error).toMatch(/sudah dibayar/i);
+    expect(ganda.error).toMatch(/sudah lunas/i);
 
     const selisih = await env.panggil('pinjaman:bayar', {
       pinjamanId,
@@ -1055,7 +1058,7 @@ describe('DB-16d — IPC bayar angsuran pinjaman', () => {
       tanggal: '2026-04-01',
       akunKas: '1014',
       pokok: 2_500_000,
-      bunga: 100_000,
+      bunga: 150_000,
     });
     expect(selisih.ok).toBe(false);
     expect(selisih.perluKonfirmasi).toBe(true);
@@ -1069,7 +1072,7 @@ describe('DB-16d — IPC bayar angsuran pinjaman', () => {
         tanggal: '2026-04-01',
         akunKas: '1014',
         pokok: 2_500_000,
-        bunga: 100_000,
+        bunga: 150_000,
       },
       {
         konfirmasiSelisih: true,
@@ -1080,7 +1083,7 @@ describe('DB-16d — IPC bayar angsuran pinjaman', () => {
     expect(dikonfirmasi.data.pinjaman.outstanding).toBe(4_500_000);
     expect(
       (await env.panggil('pinjaman:list')).data[0].angsuran[1].status,
-    ).toBe('LUNAS');
+    ).toBe('SEBAGIAN');
   });
 });
 
@@ -1956,5 +1959,115 @@ describe('DB-16c — IPC pinjaman LPD', () => {
     expect(akunSalah.ok).toBe(false);
     expect(akunSalah.error).toMatch(/akun kas/i);
     expect((await env.panggil('pinjaman:list')).data).toHaveLength(1);
+  });
+
+  it('DB-16g: pembayaran sebagian, pembatalan beralasan, dan pembatalan pencairan', async () => {
+    const env = buatEnv();
+    const saldo = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 10_000_000 }],
+    });
+    expect(saldo.ok, saldo.error).toBe(true);
+    const simpan = await env.panggil('pinjaman:simpan', {
+      mode: 'PENCAIRAN',
+      kreditur: 'LPD IPC Koreksi',
+      tanggal: '2026-01-02',
+      akunKas: '1014',
+      akunBunga: '5063',
+      pokok: 5_000_000,
+      angsuran: [
+        { ke: 1, jatuh_tempo: '2026-02-01', pokok: 5_000_000, bunga: 100_000 },
+      ],
+    });
+    expect(simpan.ok, simpan.error).toBe(true);
+    const p = simpan.data.pinjaman;
+    const angsuran = p.angsuran[0];
+
+    const setupPin = await env.panggil('lock:setup', '123456');
+    expect(setupPin.ok, setupPin.error).toBe(true);
+    sesi.terbuka = false;
+    const terkunci = await env.panggil('pinjaman:bayar-batal', {
+      id: 'bayar-belum-ada',
+      alasan: 'alasan cukup panjang',
+    });
+    sesi.terbuka = true;
+    expect(terkunci.ok).toBe(false);
+    expect(terkunci.error).toMatch(/terkunci/i);
+
+    const bayar = await env.panggil('pinjaman:bayar', {
+      pinjamanId: p.id,
+      angsuranId: angsuran.id,
+      tanggal: '2026-02-01',
+      akunKas: '1014',
+      pokok: 2_000_000,
+      bunga: 40_000,
+    });
+    expect(bayar.ok, bayar.error).toBe(true);
+    expect(bayar.data.pinjaman.angsuran[0]).toMatchObject({
+      status: 'SEBAGIAN',
+      dibayar: false,
+      pokok_dibayar: 2_000_000,
+      bunga_dibayar: 40_000,
+      sisa_pokok: 3_000_000,
+      sisa_bunga: 60_000,
+    });
+
+    const daftarSebelumBatal = await env.panggil('pinjaman:pembayaran', p.id);
+    expect(daftarSebelumBatal.ok, daftarSebelumBatal.error).toBe(true);
+    expect(daftarSebelumBatal.data).toHaveLength(1);
+    const pembayaran = daftarSebelumBatal.data[0];
+
+    const alasanKosong = await env.panggil('pinjaman:bayar-batal', {
+      id: pembayaran.id,
+      alasan: '   ',
+    });
+    expect(alasanKosong.ok).toBe(false);
+    expect(alasanKosong.error).toMatch(/alasan.*minimal 5/i);
+
+    const belumBolehBatalPencairan = await env.panggil('pinjaman:batal', {
+      id: p.id,
+      alasan: 'pencatatan keliru',
+    });
+    expect(belumBolehBatalPencairan.ok).toBe(false);
+    expect(belumBolehBatalPencairan.error).toMatch(/pembayaran.*aktif/i);
+
+    const batalBayar = await env.panggil('pinjaman:bayar-batal', {
+      id: pembayaran.id,
+      alasan: 'salah input pembayaran',
+      propertiTidakDikenal: 'harus diabaikan',
+    });
+    expect(batalBayar.ok, batalBayar.error).toBe(true);
+    expect(batalBayar.data.pembayaran).toMatchObject({
+      id: pembayaran.id,
+      dibatalkan: true,
+      jurnal_batal_id: batalBayar.data.jurnal.id,
+    });
+    expect(
+      env.db()
+        .prepare('SELECT COUNT(*) AS n FROM jurnal WHERE id = ?')
+        .get(pembayaran.jurnal_id),
+    ).toMatchObject({ n: 1 });
+
+    const sesudahBatalBayar = await env.panggil('pinjaman:detail', p.id);
+    expect(sesudahBatalBayar.data.angsuran[0]).toMatchObject({
+      status: 'BELUM',
+      dibayar: false,
+      sisa_pokok: 5_000_000,
+      sisa_bunga: 100_000,
+    });
+    const daftarSesudahBatal = await env.panggil('pinjaman:pembayaran', p.id);
+    expect(daftarSesudahBatal.data[0].dibatalkan).toBe(true);
+
+    const batalPencairan = await env.panggil('pinjaman:batal', {
+      id: p.id,
+      alasan: 'pencatatan pencairan keliru',
+    });
+    expect(batalPencairan.ok, batalPencairan.error).toBe(true);
+    expect(batalPencairan.data.pinjaman).toMatchObject({
+      id: p.id,
+      status: 'DIBATALKAN',
+      jurnal_batal_id: batalPencairan.data.jurnal.id,
+      outstanding: 0,
+    });
   });
 });

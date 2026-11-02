@@ -7,7 +7,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "smoke": "npm run build && npm run test:e2e",
-    "test:e2e": "node --test e2e/smoke.test.mjs",
+    "test:e2e": "node --test --test-concurrency=1 e2e/smoke.test.mjs e2e/pinjaman.test.mjs",
     "test:ui-audit": "node --test e2e/ui-audit.test.mjs",
     "audit:ui": "npm run build && npm run test:ui-audit",
     "dev": "electron-vite dev",

@@ -1,6 +1,6 @@
 # ERD v2 — Skema Aktif Keuangan Pura Dalem Puri
 
-**Status:** aktif, ditulis 2026-11-02 dari skema `SCHEMA_VERSION = 21`.
+**Status:** aktif, ditulis 2026-11-02 dari skema `SCHEMA_VERSION = 22`.
 **Sumber kebenaran dokumen ini:** DDL di `src/db/database.ts` dan database baru
 hasil `openDb(':memory:')` (bukan database produksi/dev).
 **Cakupan:** 11 tabel aktif — `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`,
@@ -32,8 +32,8 @@ di sini.
 6. **`pinjaman_angsuran` adalah rencana; jurnal adalah realisasi.**
    `pinjaman_bayar` hanya menautkan `jurnal_id` + `angsuran_id`; nominal
    pokok/bunga/denda dibaca dari baris jurnal. Outstanding =
-   `sisa_pokok_awal - SUM(debit 2050 pada jurnal pembayaran tertaut)` dan tidak
-   pernah disimpan sebagai saldo berjalan.
+   `sisa_pokok_awal - pokok pembayaran aktif` (pencairan dibatalkan bersaldo
+   pembukaan 0) dan tidak pernah disimpan sebagai saldo berjalan.
 7. **`akun.nama` unik tanpa membedakan huruf besar/kecil** lewat unique index
    `ux_akun_nama_nocase` (DB-11). Constraint ini tidak diduplikasi di tempat
    lain; trigger akun hanya memvalidasi bentuk kode/nama/tipe/posisi/aktif.
@@ -295,8 +295,9 @@ untuk `jurnal_pencairan_id`.
 
 ### `pinjaman_angsuran`
 
-Rencana jadwal angsuran. Bukan realisasi; status lunas diturunkan dari
-`pinjaman_bayar.angsuran_id`. Tabel ini berasal dari v20 dan belum `STRICT`.
+Rencana jadwal angsuran. Bukan realisasi; status BELUM/SEBAGIAN/LUNAS dihitung
+dari akumulasi nominal jurnal pembayaran aktif yang tertaut ke angsuran.
+Tabel ini berasal dari v20 dan belum `STRICT`.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
@@ -322,14 +323,14 @@ maupun saldo berjalan. Tabel ini berasal dari v20 dan belum `STRICT`.
 |---|---|---|---|---|
 | `id` | TEXT | tidak efektif | — | PRIMARY KEY |
 | `pinjaman_id` | TEXT | tidak | — | FK `pinjaman(id)` |
-| `angsuran_id` | INTEGER | ya | — | FK `pinjaman_angsuran(id)`; UNIQUE bila tidak NULL |
+| `angsuran_id` | INTEGER | ya | — | FK `pinjaman_angsuran(id)`; beberapa pembayaran diperbolehkan |
 | `jurnal_id` | TEXT | tidak | — | UNIQUE; FK `jurnal(id)` |
 | `tanggal` | TEXT | tidak | — | tanggal pembayaran |
 | `catatan` | TEXT | tidak | `''` | — |
 | `created_at` | TEXT | tidak | — | ISO dari aplikasi; warisan v20 tanpa default DB |
 
 **Index:** `idx_pinjaman_bayar_pinjaman`, `idx_pinjaman_bayar_tanggal`,
-`ux_pinjaman_bayar_angsuran` (UNIQUE partial); autoindex UNIQUE `jurnal_id`.
+`idx_pinjaman_bayar_angsuran` (non-unique); autoindex UNIQUE `jurnal_id`.
 **Relasi:** anak `pinjaman`, `pinjaman_angsuran`, dan `jurnal`.
 **Tidak ada:** kolom `pokok`, `bunga`, `denda`, `nominal`, `sisa_pokok`, atau
 `running_balance`; semua nominal dibaca dari `jurnal_baris`.
@@ -340,8 +341,7 @@ maupun saldo berjalan. Tabel ini berasal dari v20 dan belum `STRICT`.
   atau didokumentasikan sebagai tabel aktif.
 - Unique index yang diharapkan ada dan unik: `ux_jurnal_saldo_awal`,
   `ux_jurnal_reversal`, `ux_akun_nama_nocase`, `ux_panjar_jurnal_open`,
-  `ux_panjar_jurnal_close`, `ux_panjar_jurnal_batal`, dan
-  `ux_pinjaman_bayar_angsuran`; unique inline `pinjaman.jurnal_pencairan_id`,
+  `ux_panjar_jurnal_close`, dan `ux_panjar_jurnal_batal`; unique inline `pinjaman.jurnal_pencairan_id`,
   `pinjaman_bayar.jurnal_id`, serta `(pinjaman_id, ke)` pada
   `pinjaman_angsuran`.
 - `created_at` ada di `jurnal`, `tutup_buku`, `panjar`, `pinjaman`, dan
@@ -356,9 +356,9 @@ maupun saldo berjalan. Tabel ini berasal dari v20 dan belum `STRICT`.
 
 ## Catatan migrasi
 
-- Skema aktif tetap **v21**; DB-30 tidak menaikkan `SCHEMA_VERSION` dan tidak
-  melakukan DDL/rebuild apa pun.
-- DB lama dibuka lewat migrasi idempoten v2–v21. Tabel modul yang sudah dihapus
+- Skema aktif **v22**: index unik per angsuran dilepas untuk pembayaran sebagian.
+  Data/jurnal tidak dibuang atau direbuild.
+- DB lama dibuka lewat migrasi idempoten v2–v22. Tabel modul yang sudah dihapus
   dibuang hanya oleh migrasi v12 yang eksplisit; tabel akuntansi inti dan
   panjar tidak pernah dibuang berdasarkan bentuk kolom.
 - `akun.nama` unik NOCASE dipasang oleh migrasi v15 (DB-11), bukan diduplikasi

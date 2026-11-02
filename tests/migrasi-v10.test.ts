@@ -107,8 +107,8 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(21);
-      expect(versi(db)).toBe(21);
+      expect(SCHEMA_VERSION).toBe(22);
+      expect(versi(db)).toBe(22);
       expect(getAkun(db, AKUN_HUTANG_USAHA)).toMatchObject({
         kode: '2060',
         nama: 'HUTANG USAHA',
@@ -133,7 +133,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
     // Buka ulang: idempoten, akun 2060 tidak tergandakan.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(21);
+      expect(versi(db2)).toBe(22);
       expect(
         db2.prepare("SELECT COUNT(*) AS n FROM akun WHERE kode = '2060'").get(),
       ).toEqual({ n: 1 });
@@ -164,7 +164,7 @@ describe('AKT-20 — migrasi kontrak COA v10 (2060)', () => {
       if (!hasil.ok) throw new Error(hasil.error);
       aktif = hasil.db;
 
-      expect(versi(aktif)).toBe(21);
+      expect(versi(aktif)).toBe(22);
       expect(getAkun(aktif, AKUN_HUTANG_USAHA)?.nama).toBe('HUTANG USAHA');
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['j-v9-awal', 'j-v9-hutang']);
       expect(

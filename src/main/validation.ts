@@ -536,6 +536,24 @@ export function validasiBentukPinjamanBayar(
   };
 }
 
+export type BentukPembatalanPinjaman = { id: string; alasan: string };
+
+/** Normalisasi pembatalan catatan pinjaman; alasan wajib agar koreksi terlacak. */
+export function validasiBentukPembatalanPinjaman(
+  nilai: unknown,
+): HasilBentuk<BentukPembatalanPinjaman> {
+  if (!objek(nilai))
+    return { ok: false, error: 'Data pembatalan catatan pinjaman tidak lengkap.' };
+  const id = teksOpsional(nilai.id, 'ID catatan pinjaman', 200);
+  if (!id.ok) return id;
+  if (!id.nilai) return { ok: false, error: 'Catatan pinjaman yang dibatalkan wajib dipilih.' };
+  const alasan = teksOpsional(nilai.alasan, 'Alasan pembatalan', 1000);
+  if (!alasan.ok) return alasan;
+  if (alasan.nilai.length < 5)
+    return { ok: false, error: 'Alasan pembatalan wajib diisi minimal 5 karakter.' };
+  return { ok: true, input: { id: id.nilai, alasan: alasan.nilai } };
+}
+
 // ---------------------------------------------------------------------------
 // Bentuk filter kartu hutang / mutasi pinjaman LPD (DB-16e)
 // ---------------------------------------------------------------------------

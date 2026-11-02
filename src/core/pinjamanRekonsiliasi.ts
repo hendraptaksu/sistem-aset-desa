@@ -42,6 +42,7 @@ export type PembayaranRekonsiliasiPinjaman = {
   id: string;
   jurnal_id: string;
   baris: readonly BarisRekonsiliasiPinjaman[];
+  dibatalkan?: boolean;
 };
 
 export type PinjamanRekonsiliasiInput = {
@@ -59,6 +60,7 @@ export type PinjamanRekonsiliasiInput = {
   akun_beban: ReadonlySet<string>;
   /** Default 2050 HUTANG LAIN-LAIN; bisa di-override untuk test. */
   akun_hutang?: string;
+  dibatalkan?: boolean;
 };
 
 export type HasilRekonsiliasiPinjaman = {
@@ -142,12 +144,12 @@ export function hitungRekonsiliasiPinjaman(
   const pembayaranPokok = input.pembayaran.reduce(
     (total, p) =>
       total +
-      pokokAktualPembayaran(
+      (p.dibatalkan ? 0 : pokokAktualPembayaran(
         p.baris,
         input.akun_bunga,
         input.akun_beban,
         akunHutang,
-      ),
+      )),
     0,
   );
 
@@ -159,7 +161,7 @@ export function hitungRekonsiliasiPinjaman(
     : sisaPokokAwal;
 
   const gl = glAwal + pembayaran2050;
-  const jadwal = sisaPokokAwal - pembayaranPokok;
+  const jadwal = (input.dibatalkan ? 0 : sisaPokokAwal) - pembayaranPokok;
   const selisih = gl - jadwal;
   const cocok = selisih === 0;
 

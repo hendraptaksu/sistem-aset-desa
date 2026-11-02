@@ -22,6 +22,8 @@ import type { AuditLog, Jurnal, JurnalBarisInput } from '../core/types.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 
 export type OpsiPosting = {
+  /** Internal: layanan koreksi telah memverifikasi asal grup saldo pembukaan. */
+  koreksiSaldoAwal?: boolean;
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
   konfirmasiPeringatan?: boolean;
   /** AKT-06: alasan operator melanjutkan meski ada peringatan. */
@@ -183,9 +185,12 @@ export function validasiJurnalDb(
   db: Database.Database,
   input: JurnalInput | null | undefined,
   /** AKT-14: override tanggal acuan agar test tidak bergantung tanggal mesin. */
-  opsi: Pick<OpsiPosting, 'sekarang'> = {},
+  opsi: Pick<OpsiPosting, 'sekarang' | 'koreksiSaldoAwal'> = {},
 ): HasilValidasiJurnal {
-  return validasiJurnal(input, buatKonteksPosting(db, input?.header, opsi.sekarang));
+  return validasiJurnal(input, {
+    ...buatKonteksPosting(db, input?.header, opsi.sekarang),
+    koreksiSaldoAwal: opsi.koreksiSaldoAwal === true,
+  });
 }
 
 /** Alasan konfirmasi peringatan yang sudah dinormalisasi (trim). */
@@ -226,7 +231,10 @@ function postingJurnalInti(
   opsi: OpsiPosting,
   buatAudit: BuatAuditJurnal,
 ): HasilPosting {
-  const hasil = validasiJurnalDb(db, input, { sekarang: opsi.sekarang });
+  const hasil = validasiJurnalDb(db, input, {
+    sekarang: opsi.sekarang,
+    koreksiSaldoAwal: opsi.koreksiSaldoAwal === true,
+  });
   if (hasil.errors.length > 0) return { ...hasil, tersimpan: false };
   if (!input || !input.header || !Array.isArray(input.baris)) {
     // Jaring pengaman AKT-29: validator sudah menolak bentuk ini; jangan pernah
