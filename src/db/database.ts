@@ -89,6 +89,9 @@ import {
  *          `idx_audit_ref(ref_type, ref_id)`. Baris audit lama tetap sah
  *          dengan referensi kosong; TIDAK di-backfill karena trigger
  *          append-only v11 menolak UPDATE audit_log.
+ *
+ * DB-30 (hygiene/ERD v2) TIDAK menaikkan versi: tidak ada DDL, rebuild, atau
+ * perubahan data. Kontrak skema aktif didokumentasikan di `docs/erd-v2.md`.
  */
 export const SCHEMA_VERSION = 21;
 
@@ -106,6 +109,14 @@ export const PESAN_DB_VERSI_BARU =
  *   nominal pokok/bunga/denda dan tidak ada saldo berjalan/`sisa_pokok`.
  * - Outstanding = `sisa_pokok_awal` - debit 2050 pada jurnal pembayaran tertaut;
  *   dihitung saat dibaca, tidak pernah dipersistenkan.
+ *
+ * DB-30 — kebijakan tabel baru: tabel yang dibuat SETELAH DB-30 wajib memakai
+ * `STRICT` dan memberi `DEFAULT` eksplisit untuk kolom waktu (`created_at`
+ * default ISO). Tabel pinjaman di bawah dibuat pada v20, SEBELUM kebijakan
+ * itu, dan sengaja TIDAK direbuild/diubah karena data bisa sudah ada; rebuild
+ * hanya boleh lewat ticket migrasi terpisah + kenaikan `SCHEMA_VERSION`.
+ * Jangan menyalin DDL non-STRICT/tanpa default `created_at` ini untuk tabel
+ * baru. Dokumen kontrak: `docs/erd-v2.md`.
  */
 export const DDL_PINJAMAN = `
 CREATE TABLE IF NOT EXISTS pinjaman (

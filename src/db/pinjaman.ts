@@ -7,6 +7,11 @@
 // - Outstanding = sisa_pokok_awal - SUM(debit 2050 pada jurnal bayar tertaut),
 //   dihitung saat membaca dan tidak pernah disimpan sebagai kolom.
 //
+// DB-30: tabel pinjaman* dibuat pada v20, sebelum kebijakan STRICT/DEFAULT
+// untuk tabel baru. Jangan merebuild tabel ini hanya untuk menambah STRICT
+// atau default `created_at`; itu memerlukan ticket migrasi terpisah +
+// kenaikan SCHEMA_VERSION. Kontrak skema: `docs/erd-v2.md`.
+//
 // `buatPinjaman` hanya menyimpan parameter + jadwal. Jurnal pencairan dibuat
 // oleh `simpanPinjamanLpd` (mode PENCAIRAN) dalam transaksi yang sama. Mode
 // "sudah berjalan" memakai `jurnal_pencairan_id = null`; sisa pokok dianggap

@@ -131,6 +131,10 @@ dev seed baru dibuat di atas jurnal v2.
 
 - Skema v2 membuat tabel baru; tabel single-entry lama (`transaksi`/`coa`) dibersihkan dari DB asli
   v0–v2 oleh migrasi eksplisit. `panjar`/`panjar_item`/`tutup_buku` dipertahankan.
+- Kontrak skema aktif (11 tabel, relasi, index, trigger, dan aturan sumber
+  angka) ada di `docs/erd-v2.md`. Tabel baru setelah DB-30 wajib `STRICT`
+  dengan `DEFAULT` eksplisit; tabel pinjaman warisan v20 tidak direbuild tanpa
+  ticket migrasi terpisah.
 - DB dev lama (`data/pura-dev.db`) dan file backup dev boleh dihapus kapan saja.
 - `seed-dev` baru menghasilkan contoh jurnal yang seimbang (deterministik) untuk uji laporan.
 - Backup/restore tetap aman karena nanti dipakai untuk data nyata: `VACUUM INTO`, validasi integritas,

@@ -15,7 +15,7 @@ angka turunan yang disimpan mati.
 > satunya salinan catatan keuangan nyata. Sebelum produksi, selesaikan AUD-01
 > (repo/akun/kode instalasi nyata — manual pemilik), uji backup/restore di mesin
 > target, dan amankan file data di level sistem operasi. Lihat
-> `docs/tickets-audit-2026-10-23.md`.
+> `docs/tickets-audit-akuntansi-2026-10-27.md`.
 
 > **PIN bukan enkripsi.** PIN 6 digit adalah kunci akses aplikasi (hash scrypt +
 > salt), bukan kunci enkripsi database. Siapa pun yang memegang file `pura.db`
@@ -71,7 +71,7 @@ angka turunan yang disimpan mati.
                 │                               │
 ┌───────────────▼──────────────┐  ┌─────────────▼─────────────────────┐
 │ src/core/* — logika murni    │  │ src/db/* — akses SQLite           │
-│ forms, posting, reports,     │  │ database.ts (DDL + migrasi v9),   │
+│ forms, posting, reports,     │  │ database.ts (DDL + migrasi 2–21), │
 │ reversal, periode, pin,      │  │ repository, jurnal, panjar,       │
 │ tutup, pengaturan            │  │ laporan, seed-dev                 │
 └──────────────────────────────┘  └─────────────┬─────────────────────┘
@@ -93,17 +93,23 @@ Prinsip yang dijaga:
    dari jurnal, bukan dari tabel saldo/laba tersimpan.
 3. **Logika akuntansi murni** ada di `src/core/` supaya mudah diuji tanpa
    Electron. Lapisan `src/db/` mengurus SQL; `src/main/` mengurus IPC/OS.
-4. **Skema v15** (lihat `SCHEMA_VERSION` di `src/db/database.ts`). Tabel
-   single-entry lama (`transaksi`/`coa`) hanya dibersihkan dari DB asli v0–v2;
-   tabel modul yang sudah dihapus dibuang oleh migrasi v12 idempoten.
+4. **Skema v21** (lihat `SCHEMA_VERSION` di `src/db/database.ts`; kontrak
+   lengkap di `docs/erd-v2.md`). Ada 11 tabel aktif: `akun`, `jurnal`,
+   `jurnal_baris`, `tutup_buku`, `audit_log`, `pengaturan`, `panjar`,
+   `panjar_item`, `pinjaman`, `pinjaman_angsuran`, dan `pinjaman_bayar`.
+   Tabel single-entry lama (`transaksi`/`coa`) hanya dibersihkan dari DB asli
+   v0–v2; tabel modul yang sudah dihapus dibuang oleh migrasi v12 idempoten.
    `panjar`, `panjar_item`, dan `tutup_buku` tidak pernah dibuang berdasarkan
    bentuk kolom. Backup pra-upgrade (`pre-upgrade-*.db`) dibuat untuk setiap
    kenaikan versi sebelum migrasi berjalan. Sejak v13 hanya boleh ada satu
    jurnal `SALDO_AWAL`; sejak v14 satu jurnal hanya boleh punya satu reversal
    dan DB menolak insert dengan jenis/tanggal tidak valid; sejak v15 nama akun
    unik tanpa membedakan huruf besar/kecil dan trigger menolak akun dengan
-   kode/nama/tipe/posisi/aktif tidak valid. Migrasi berhenti tanpa mengubah
-   data bila DB lama berisi duplikat.
+   kode/nama/tipe/posisi/aktif tidak valid; v20 menambah tabel pinjaman LPD;
+   v21 menambah referensi audit terstruktur. Migrasi berhenti tanpa mengubah
+   data bila DB lama berisi duplikat. Tabel baru setelah DB-30 wajib `STRICT`
+   dengan `DEFAULT` eksplisit (termasuk `created_at` ISO); tabel pinjaman
+   adalah warisan v20 dan tidak direbuild tanpa ticket migrasi terpisah.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
    di mesin yang sama.
 
@@ -156,11 +162,14 @@ Rincian ada di `docs/panduan-portable.md`.
   laptop (flashdisk/Drive) secara rutin.
 - **Migrasi skema.** Saat database lama dibuka, aplikasi membuat
   `pre-upgrade-*.db` di folder `backups` lebih dulu, lalu menjalankan migrasi
-  idempoten. Skema v15 membuang tabel modul yang sudah dihapus pada v12,
+  idempoten. Skema v21 membuang tabel modul yang sudah dihapus pada v12,
   menegakkan satu jurnal saldo awal (v13), satu reversal per jurnal dan validasi
-  jenis/tanggal insert jurnal (v14), serta unique nama akun dan validasi
-  kode/nama/tipe/posisi/aktif akun (v15); `jurnal`, `jurnal_baris`, `panjar`,
-  `panjar_item`, `tutup_buku`, `audit_log`, dan `pengaturan` tidak ikut dibuang.
+  jenis/tanggal insert jurnal (v14), unique nama akun dan validasi
+  kode/nama/tipe/posisi/aktif akun (v15), menambah metadata akun (v16), detail
+  nota panjar (v17), link jurnal panjar (v18), pembatalan panjar (v19), tabel
+  pinjaman LPD (v20), dan referensi audit terstruktur (v21); `jurnal`,
+  `jurnal_baris`, `panjar`, `panjar_item`, `tutup_buku`, `audit_log`, dan
+  `pengaturan` tidak ikut dibuang.
 
 ---
 
@@ -187,11 +196,12 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/arah-akuntansi.md` — keputusan arah double-entry.
 - `docs/sumber-coa.md` — sumber mesin COA (CSV), arsip xlsx, dan ekstensi sistem.
 - `docs/sumber-data-pinjaman.md` — sumber data pinjaman LPD (rencana vs jurnal).
+- `docs/erd-v2.md` — ERD skema aktif v21: tabel, kolom, relasi, index, trigger,
+  dan aturan sumber angka.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.
 - `docs/audit-ui-2026-10-27.md` — audit UI/UX + bukti pengukuran.
 - `docs/tickets-ui-2026-10-27.md` — ticket perbaikan UI untuk AI agent.
-- `docs/tickets-audit-2026-10-23.md` — daftar pekerjaan hardening.
-- `docs/erd-v1-arsip.md` — **arsip** ERD v1.2.0 (single-entry), bukan acuan aktif.
+- `docs/tickets-audit-akuntansi-2026-10-27.md` — daftar pekerjaan audit/hardening.
 
 Lisensi: ISC.

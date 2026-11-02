@@ -2,10 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-02 (setelah DB-29):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **957 test / 79 file hijau**; `npm run build`
-> berhasil. Baseline DB-28 adalah 948/78. Baseline DB-27 adalah 943/77.
-> Baseline DB-26 adalah 936/76.
+> **Baseline terakhir 2026-11-02 (setelah DB-30):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **967 test / 81 file hijau**; `npm run build`
+> berhasil. Baseline DB-29 adalah 957/79. Baseline DB-28 adalah 948/78.
+> Baseline DB-27 adalah 943/77. Baseline DB-26 adalah 936/76.
 > Baseline DB-16f adalah 929/75.
 > Baseline DB-16e adalah 918/74.
 > Baseline DB-16d adalah 907/73.
@@ -120,7 +120,7 @@
 | DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [x] |
 | DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [x] |
 | DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [x] |
-| DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
+| DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [x] |
 | DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
 | DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [x] |
 | DB-33 | P0 | M | Migrasi v12: drop tabel yang disetujui + guard/backup | DB-23a, DB-23b, DB-24, DB-25, DB-31, DB-32, DB-37 | [x] |
@@ -1288,11 +1288,35 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     `Jenis` → `Filter jenis` (sudah berubah sejak DB-03) agar e2e dapat berjalan;
     tidak ada perubahan perilaku aplikasi.
 
-- [ ] **DB-30 — STRICT/created_at/unique name + ERD v2** · P2 · M
+- [x] **DB-30 — STRICT/created_at/unique name + ERD v2** · P2 · M
   - Pertimbangkan tabel `STRICT` untuk tabel baru; tambah `DEFAULT` untuk
     `created_at`; unique `akun.nama` (sudah di DB-11); tulis
     `docs/erd-v2.md` dari skema aktif.
   - Jangan rebuild tabel lama tanpa ticket terpisah.
+  - **Bukti 2026-11-02:** `docs/erd-v2.md` mendokumentasikan skema aktif v21
+    (11 tabel: `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`, `audit_log`,
+    `pengaturan`, `panjar`, `panjar_item`, `pinjaman`, `pinjaman_angsuran`,
+    `pinjaman_bayar`) lengkap dengan kolom/tipe/PK/FK/UNIQUE/CHECK, index,
+    trigger, diagram relasi Mermaid, aturan sumber angka (jurnal/jurnal_baris
+    satu-satunya sumber angka; tanpa saldo tersimpan; panjar header vs turunan;
+    pinjaman rencana vs realisasi), dan kebijakan `STRICT`/`DEFAULT`.
+    `tests/erd-v2.test.ts` (5 test) membandingkan heading tabel + kolom ERD
+    dengan `sqlite_master`/`table_info` DB baru, memastikan tidak ada tabel
+    aktif yang lupa didokumentasikan/tabel lama yang dihidupkan, dan mengunci
+    versi skema. `tests/db-30-schema-invariant.test.ts` (5 test) menjaga tepat
+    11 tabel aktif, unique index saldo awal/reversal/`akun.nama` NOCASE/link
+    panjar/pembayaran pinjaman, kolom `created_at` pada jurnal/tutup buku/
+    panjar/pinjaman/pinjaman_bayar (`audit_log` memakai `tanggal`; tabel
+    `pinjaman_angsuran` tidak punya `created_at`), serta tidak adanya kolom
+    saldo berjalan/nominal ganda di tabel pinjaman. Audit STRICT: tabel
+    `pinjaman*` dibuat v20 dan **tidak direbuild/diubah**; kebijakan tabel baru
+    (`STRICT` + `DEFAULT` eksplisit, `created_at` ISO) dicatat di
+    `src/db/database.ts`, `src/db/pinjaman.ts`, README, `docs/arah-akuntansi.md`,
+    dan ERD. `akun.nama` unique NOCASE tetap satu implementasi (index DB-11).
+    `SCHEMA_VERSION` tetap **21**; tidak ada DDL, rebuild, perubahan `data/`,
+    jurnal, atau commit. `npm run typecheck` bersih;
+    `npx vitest run --pool=threads` **967 test/81 file hijau** (baseline DB-29
+    957/79); `npm run build` berhasil.
 
 ---
 
