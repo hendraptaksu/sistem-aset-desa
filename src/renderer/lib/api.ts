@@ -201,7 +201,11 @@ export type StatusSaldoAwal = {
 };
 
 /** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
-export type TutupBukuTampil = TutupBuku & { laba: number };
+export type TutupBukuTampil = TutupBuku & {
+  laba: number;
+  /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
+  catatanTahunPertama?: string;
+};
 
 export type TutupPreviewData = {
   tahun: number;
@@ -218,6 +222,8 @@ export type TutupPreviewData = {
   batasTahun: number;
   /** Temuan audit integritas (kode + pesan); kosong berarti lolos audit. */
   temuanIntegritas: TemuanIntegritasTampil[];
+  /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
+  catatanTahunPertama?: string;
 };
 
 export type TemuanIntegritasTampil = {

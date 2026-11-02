@@ -60,6 +60,23 @@ Inilah yang membuat akuntan percaya: setiap angka di laporan bisa ditelusuri ke 
 9. **Tetap offline**, satu file SQLite, tanpa server/cloud.
 10. **Setiap jurnal punya nomor bukti dan jejak audit** (kapan dibuat, koreksi apa, alasannya apa).
 
+### Mulai pembukuan di tengah tahun (cut-over, DB-38)
+
+Tahun buku tetap **Januari–Desember**; tidak ada setting tahun fiskal. Bila
+pembukuan nyata dimulai pada tanggal lain (mis. `2026-07-01`):
+
+- Isi **tanggal mulai pembukuan** dan **Saldo Awal** aset/kewajiban per tanggal
+  itu; selisih menjadi `3000 MODAL`. Saldo awal tidak boleh memuat akun
+  PENDAPATAN/BEBAN.
+- Jangan mencatat transaksi P&L sebelum cut-over. Hasil usaha sebelum cut-over
+  sudah tercermin pada ekuitas/modal awal, bukan Laba Rugi tahun berjalan.
+- Tahun pertama adalah **tahun pertama (parsial)**. `labaTahun()`/Laba Rugi hanya
+  berisi transaksi sejak cut-over sampai 31 Desember; Neraca tetap seimbang
+  karena saldo awal + laba parsial masuk ekuitas.
+- `tutupBuku(2026)` boleh dijalankan pada 2027. Laba yang dikunci adalah laba
+  parsial; **tidak ada jurnal penutup** yang dibuat (AKT-16). `3001`/`3002`
+  tetap tidak diposting.
+
 ## 4. Yang berubah
 
 | Sebelum overhaul (v1.2.0) | Arah baru |

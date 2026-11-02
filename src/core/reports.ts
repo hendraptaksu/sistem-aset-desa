@@ -73,6 +73,36 @@ function resolveAkun(akun: string | Coa, daftar: readonly Coa[]): Coa {
 const dalamRentang = (tanggal: string, mulai?: string, sampai?: string): boolean =>
   (!mulai || tanggal >= mulai) && (!sampai || tanggal <= sampai);
 
+/**
+ * Tanggal cut-over per tahun, diambil dari jurnal SALDO_AWAL. Bila pembukuan
+ * dimulai di tengah tahun, P&L sebelum tanggal saldo awal bukan laba tahun
+ * berjalan: hasil usaha pra-cut-over sudah masuk ekuitas/modal awal (DB-38).
+ */
+function petaCutoverSaldoAwal(
+  baris: readonly BarisJurnalSumber[],
+): Map<number, string> {
+  const peta = new Map<number, string>();
+  for (const b of baris) {
+    if (b.jenis !== 'SALDO_AWAL') continue;
+    const m = /^(\d{4})-\d{2}-\d{2}$/.exec(String(b.tanggal ?? ''));
+    if (!m) continue;
+    const tahun = Number(m[1]);
+    const ada = peta.get(tahun);
+    if (!ada || b.tanggal < ada) peta.set(tahun, b.tanggal);
+  }
+  return peta;
+}
+
+/** Baris P&L pada/ setelah cut-over tahunnya (selain filter rentang). */
+function setelahCutoverTahun(
+  tanggal: string,
+  cutover: ReadonlyMap<number, string>,
+): boolean {
+  const tahun = Number(String(tanggal).slice(0, 4));
+  const mulai = cutover.get(tahun);
+  return !mulai || tanggal >= mulai;
+}
+
 /** Saldo bertanda normal: positif = sesuai posisi normal akun. */
 function saldoNormal(
   baris: readonly BarisJurnalSumber[],
@@ -372,6 +402,11 @@ export type NeracaSaldoPeriodeHasil = {
   totalPendapatan: number;
   /** Total beban hanya dalam `mulai..sampai`. */
   totalBeban: number;
+  /**
+   * Catatan adapter DB bila periode ini adalah tahun pertama pembukuan yang
+   * dimulai di tengah tahun (DB-38). Fungsi murni tidak mengisinya.
+   */
+  catatanTahunPertama?: string;
 };
 
 /** Mode tampilan/export Neraca Saldo (AUD-21b). */
@@ -427,12 +462,17 @@ export function neracaSaldoPeriode(
   const debit = new Map<string, number>();
   const kredit = new Map<string, number>();
   const adaMutasi = new Set<string>();
+  const cutover = petaCutoverSaldoAwal(baris);
   for (const b of baris) {
     if (b.tanggal > sampai) continue;
     const a = peta.get(b.akun_kode)!;
     // Akun P&L hanya periode berjalan; saldo P&L lama sudah diwakili baris
     // sintetis laba ditahan. Akun neraca tetap kumulatif.
-    if ((a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN') && b.tanggal < mulai) continue;
+    if (a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN') {
+      if (b.tanggal < mulai) continue;
+      // DB-38: P&L sebelum cut-over tahun pertama bukan laba berjalan.
+      if (!setelahCutoverTahun(b.tanggal, cutover)) continue;
+    }
     debit.set(b.akun_kode, (debit.get(b.akun_kode) ?? 0) + b.debit);
     kredit.set(b.akun_kode, (kredit.get(b.akun_kode) ?? 0) + b.kredit);
     adaMutasi.add(b.akun_kode);
@@ -536,6 +576,11 @@ export type LabaRugiHasil = {
   laba: number;
   labaBersih: number;
   defisit: boolean;
+  /**
+   * Catatan adapter DB bila periode ini adalah tahun pertama pembukuan yang
+   * dimulai di tengah tahun (DB-38). Fungsi murni tidak mengisinya.
+   */
+  catatanTahunPertama?: string;
 };
 
 /**
@@ -553,13 +598,14 @@ export function labaRugi(
   const beban: LabaRugiBaris[] = [];
   let totalPendapatan = 0;
   let totalBeban = 0;
+  const cutover = petaCutoverSaldoAwal(baris);
+  const barisPeriode = baris.filter(
+    (b) => dalamRentang(b.tanggal, mulai, sampai) && setelahCutoverTahun(b.tanggal, cutover),
+  );
 
   for (const a of [...daftarAkun].sort((x, y) => x.kode.localeCompare(y.kode))) {
     if (a.tipe !== 'PENDAPATAN' && a.tipe !== 'BEBAN') continue;
-    const nominal = saldoNormal(
-      baris.filter((b) => dalamRentang(b.tanggal, mulai, sampai)),
-      a,
-    );
+    const nominal = saldoNormal(barisPeriode, a);
     if (a.tipe === 'PENDAPATAN') {
       pendapatan.push({ kode: a.kode, nama: a.nama, nominal });
       totalPendapatan += nominal;
@@ -583,7 +629,11 @@ export function labaRugi(
   };
 }
 
-/** Laba satu tahun kalender (1 Jan – 31 Des), dari jurnal. */
+/**
+ * Laba satu tahun kalender (1 Jan – 31 Des), dari jurnal. Bila ada jurnal
+ * SALDO_AWAL bertanggal tengah tahun, P&L sebelum tanggal cut-over tersebut
+ * tidak dihitung (tahun pertama parsial, DB-38).
+ */
 export function labaTahun(
   baris: readonly BarisJurnalSumber[],
   tahun: number,
@@ -640,6 +690,11 @@ export type NeracaHasil = {
   /** Alias istilah lama agar pemanggil UI lama tetap kompatibel. */
   aktiva: number;
   pasiva: number;
+  /**
+   * Catatan adapter DB bila cut-off berada di tahun pertama pembukuan yang
+   * dimulai di tengah tahun (DB-38). Fungsi murni tidak mengisinya.
+   */
+  catatanTahunPertama?: string;
 };
 
 /**

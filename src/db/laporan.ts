@@ -5,6 +5,7 @@
 import type Database from 'better-sqlite3';
 import {
   getJurnalDetail,
+  getPengaturanPembukuan,
   listAkun,
   listJurnalLengkap,
   listTutupBuku,
@@ -27,6 +28,7 @@ import {
   type NeracaHasil,
   type NeracaSaldoModeHasil,
 } from '../core/reports.js';
+import { catatanTahunPertamaParsial } from '../core/pengaturan.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 
 export type FilterBarisJurnal = {
@@ -190,10 +192,12 @@ export function laporanNeracaSaldo(
 
   const akhir = sampai ?? tanggalLokal();
   const mulai = `${akhir.slice(0, 4)}-01-01`;
-  return {
-    ...neracaSaldoPeriode(baris, { mulai, sampai: akhir, daftarAkun }),
-    mode: 'tahun',
-  };
+  const hasil = neracaSaldoPeriode(baris, { mulai, sampai: akhir, daftarAkun });
+  return denganCatatanTahunPertama(
+    db,
+    { ...hasil, mode: 'tahun' as const },
+    tahunPertamaDalamRentang(db, mulai, akhir),
+  );
 }
 
 /**
@@ -243,6 +247,45 @@ export type FilterPeriodeLaporanDb = {
 };
 
 /**
+ * DB-38: catatan tahun pertama parsial hanya relevan bila rentang laporan
+ * menyentuh tahun pembukuan pertama (bukan untuk tahun-tahun berikutnya).
+ */
+function tahunPertamaDalamRentang(
+  db: Database.Database,
+  mulai?: string,
+  sampai?: string,
+): number | null {
+  const tanggalMulai = getPengaturanPembukuan(db).tanggalMulaiPembukuan;
+  if (!tanggalMulai) return null;
+  const tahun = Number(tanggalMulai.slice(0, 4));
+  if (!Number.isInteger(tahun)) return null;
+  const tahunDari = (tanggal?: string): number | null => {
+    const teks = String(tanggal ?? '').trim();
+    if (!teks) return null;
+    const angka = Number(teks.slice(0, 4));
+    return Number.isInteger(angka) ? angka : null;
+  };
+  const tahunMulai = tahunDari(mulai);
+  const tahunSampai = tahunDari(sampai);
+  if (tahunMulai !== null && tahun < tahunMulai) return null;
+  if (tahunSampai !== null && tahun > tahunSampai) return null;
+  return catatanTahunPertamaParsial(tanggalMulai, tahun) ? tahun : null;
+}
+
+function denganCatatanTahunPertama<T extends { catatanTahunPertama?: string }>(
+  db: Database.Database,
+  hasil: T,
+  tahun: number | null,
+): T {
+  if (tahun === null) return hasil;
+  const catatan = catatanTahunPertamaParsial(
+    getPengaturanPembukuan(db).tanggalMulaiPembukuan,
+    tahun,
+  );
+  return catatan ? { ...hasil, catatanTahunPertama: catatan } : hasil;
+}
+
+/**
  * Laba Rugi periode. Adapter hanya mengambil baris jurnal; seluruh
  * perhitungan (termasuk akun bernominal nol) diserahkan ke `labaRugi` murni.
  */
@@ -250,10 +293,15 @@ export function laporanLabaRugi(
   db: Database.Database,
   filter: FilterPeriodeLaporanDb = {},
 ): LabaRugiHasil {
-  return labaRugi(
+  const hasil = labaRugi(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     filter,
     listAkun(db),
+  );
+  return denganCatatanTahunPertama(
+    db,
+    hasil,
+    tahunPertamaDalamRentang(db, filter.mulai, filter.sampai),
   );
 }
 
@@ -266,13 +314,24 @@ export function laporanNeraca(
   db: Database.Database,
   cutoff: string,
 ): NeracaHasil {
-  return neraca(
+  const hasil = neraca(
     listBarisJurnal(db, { sampai: cutoff }),
     {
       cutoff,
       tutup: listTutupBuku(db),
     },
     listAkun(db),
+  );
+  const tahun = Number(cutoff.slice(0, 4));
+  return denganCatatanTahunPertama(
+    db,
+    hasil,
+    catatanTahunPertamaParsial(
+      getPengaturanPembukuan(db).tanggalMulaiPembukuan,
+      tahun,
+    )
+      ? tahun
+      : null,
   );
 }
 

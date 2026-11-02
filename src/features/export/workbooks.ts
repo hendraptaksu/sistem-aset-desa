@@ -551,6 +551,12 @@ export async function labaRugiToWorkbook(
 
   const header = ws.addRow(['Kode', 'Uraian', 'Nominal', '%']);
   styleHeader(header);
+  if (lr.catatanTahunPertama) {
+    const catatan = ws.addRow([lr.catatanTahunPertama]);
+    catatan.font = { italic: true };
+    catatan.alignment = { wrapText: true };
+    ws.mergeCells(catatan.number, 1, catatan.number, 4);
+  }
 
   const pendapatan = lr.pendapatan.filter((b) => b.nominal !== 0);
   const beban = lr.beban.filter((b) => b.nominal !== 0);
@@ -608,6 +614,12 @@ export async function neracaHasilToWorkbook(
 
   const header = ws.addRow(['Kode', 'Uraian', 'Nominal']);
   styleHeader(header);
+  if (n.catatanTahunPertama) {
+    const catatan = ws.addRow([n.catatanTahunPertama]);
+    catatan.font = { italic: true };
+    catatan.alignment = { wrapText: true };
+    ws.mergeCells(catatan.number, 1, catatan.number, 3);
+  }
 
   const tulisBagian = (judul: string, rows: { kode: string; nama: string; saldo: number }[]): void => {
     ws.addRow(['', judul, null]);
@@ -1108,6 +1120,7 @@ export function labaRugiToHtml(lr: LabaRugiHasil, kop?: KopOrganisasi): string {
   const pendapatan = lr.pendapatan.filter((b) => b.nominal !== 0);
   const beban = lr.beban.filter((b) => b.nominal !== 0);
   return `${kopHtml('LABA RUGI', kopPeriodeEfektif(lr.mulai, lr.sampai), kop)}
+${lr.catatanTahunPertama ? `<p><i>${esc(lr.catatanTahunPertama)}</i></p>` : ''}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th><th>%</th></tr></thead>
 <tbody>
@@ -1134,6 +1147,7 @@ export function neracaHasilToHtml(n: NeracaHasil, kop?: KopOrganisasi): string {
   const kewajiban = n.kewajiban.filter((a) => a.saldo !== 0);
   const ekuitas = n.ekuitas.filter((a) => a.saldo !== 0);
   return `${kopHtml('NERACA', `${kopPeriodeCutoff(n.cutoff)} — ${statusText}`, kop)}
+${n.catatanTahunPertama ? `<p><i>${esc(n.catatanTahunPertama)}</i></p>` : ''}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th></tr></thead>
 <tbody>

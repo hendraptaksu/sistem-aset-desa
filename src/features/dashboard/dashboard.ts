@@ -13,7 +13,10 @@ import {
   kodeLpdDariDaftarAkun,
   type Coa,
 } from '../../db/coa.js';
-import { rentangTahunBuku } from '../../core/pengaturan.js';
+import {
+  catatanTahunPertamaParsial,
+  rentangTahunBuku,
+} from '../../core/pengaturan.js';
 import { formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import {
@@ -52,6 +55,8 @@ export type DashboardLabaRugi = {
   laba: number;
   defisit: boolean;
   badge: 'SURPLUS' | 'DEFISIT';
+  /** DB-38: catatan bila tahun berjalan adalah tahun pertama parsial. */
+  catatanTahunPertama?: string;
 };
 
 export type DashboardNeracaSaldo = {
@@ -110,6 +115,8 @@ export type DashboardOpsi = {
   sekarang?: string;
   /** Master akun dari DB (termasuk akun tambahan); default COA statis. */
   daftarAkun?: readonly Coa[];
+  /** DB-38: tanggal mulai pembukuan untuk label tahun pertama parsial. */
+  tanggalMulaiPembukuan?: string;
 };
 
 function bulanDalamTahun(iso: string): number {
@@ -285,6 +292,9 @@ export function buildDashboardJurnal(
 
   const rentang = rentangLabaBerjalan(cutoff, opsi.awalTahunBuku ?? 1);
   const lr = labaRugi(baris, { mulai: rentang.mulai, sampai: rentang.sampai }, coa);
+  const catatanTahunPertama =
+    catatanTahunPertamaParsial(opsi.tanggalMulaiPembukuan, rentang.tahunBuku) ??
+    undefined;
   const labaRugiBerjalan: DashboardLabaRugi = {
     ...rentang,
     totalPendapatan: lr.totalPendapatan,
@@ -292,6 +302,7 @@ export function buildDashboardJurnal(
     laba: lr.laba,
     defisit: lr.defisit,
     badge: lr.defisit ? 'DEFISIT' : 'SURPLUS',
+    ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
   };
 
   const ns = hitungNeracaSaldo(baris, cutoff, coa);

@@ -18,6 +18,7 @@ import {
   type HasilValidasiTutup,
 } from '../core/tutup.js';
 import { labaTahun } from '../core/reports.js';
+import { catatanTahunPertamaParsial } from '../core/pengaturan.js';
 import type { TutupBuku } from '../core/types.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 import {
@@ -26,7 +27,12 @@ import {
   type Temuan,
 } from './integritas.js';
 import { listBarisJurnal } from './laporan.js';
-import { insertAuditLog, insertTutupBuku, listTutupBuku } from './repository.js';
+import {
+  getPengaturanPembukuan,
+  insertAuditLog,
+  insertTutupBuku,
+  listTutupBuku,
+} from './repository.js';
 
 export type TutupPreview = HasilValidasiTutup & {
   tahun: number;
@@ -39,6 +45,8 @@ export type TutupPreview = HasilValidasiTutup & {
   sudahDitutup: boolean;
   /** Temuan audit integritas; kosong berarti DB lolos audit. */
   temuanIntegritas: Temuan[];
+  /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
+  catatanTahunPertama?: string;
 };
 
 export type OpsiTutupBuku = {
@@ -57,6 +65,8 @@ export type HasilTutupBuku = HasilValidasiTutup & {
   data?: TutupBuku;
   /** Temuan audit integritas; kosong berarti DB lolos audit. */
   temuanIntegritas: Temuan[];
+  /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
+  catatanTahunPertama?: string;
 };
 
 const hariIni = (): string => tanggalLokal();
@@ -110,6 +120,20 @@ function hitungLabaDitahan(
   );
 }
 
+/** DB-38: catatan tahun pertama parsial untuk tahun yang sedang dipreview. */
+function catatanTahunPertama(
+  db: Database.Database,
+  tahun: number,
+): string | undefined {
+  if (!Number.isInteger(tahun)) return undefined;
+  return (
+    catatanTahunPertamaParsial(
+      getPengaturanPembukuan(db).tanggalMulaiPembukuan,
+      tahun,
+    ) ?? undefined
+  );
+}
+
 /**
  * Pratinjau tutup buku tanpa menulis apa pun. Selalu mengembalikan hasil
  * validasi (bukan melempar error) agar UI bisa menampilkan pesan yang jelas.
@@ -132,6 +156,7 @@ export function previewTutupBuku(
 
   const tahunSesudah = new Set(tahunTutupTerurut(daftar));
   if (Number.isInteger(angka)) tahunSesudah.add(angka);
+  const catatanParsial = catatanTahunPertama(db, angka);
 
   return {
     ...validasi,
@@ -140,6 +165,7 @@ export function previewTutupBuku(
     labaDitahanSekarang: hitungLabaDitahan(baris, daftar),
     labaDitahanSesudah: hitungLabaDitahan(baris, [...tahunSesudah].map((t) => ({ tahun: t }))),
     sudahDitutup,
+    ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
   };
 }
 
@@ -168,6 +194,7 @@ export function tutupBuku(
   const baris = listBarisJurnal(db);
   const laba = Number.isInteger(angka) ? labaTahun(baris, angka) : 0;
   const labaDitahanSekarang = hitungLabaDitahan(baris, daftar);
+  const catatanParsial = catatanTahunPertama(db, angka);
 
   if (!validasi.boleh) {
     return {
@@ -175,6 +202,7 @@ export function tutupBuku(
       tersimpan: false,
       laba,
       labaDitahan: labaDitahanSekarang,
+      ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
     };
   }
 
@@ -211,5 +239,6 @@ export function tutupBuku(
     laba,
     labaDitahan: hitungLabaDitahan(baris, sesudah),
     data,
+    ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
   };
 }

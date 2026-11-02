@@ -347,7 +347,43 @@ Tanggal balik boleh diubah secara eksplisit, termasuk ke tahun berbeda; aplikasi
 tidak memblokir, tetapi menampilkan peringatan kuning bila tanggal balik dan
 tanggal pengganti jatuh di tahun berbeda. Baca peringatan itu sebelum melanjutkan.
 
-### 2.7 Daftar Akun (tambah/ubah/nonaktifkan akun)
+### 2.7 Mulai pembukuan di tengah tahun (cut-over)
+
+Tahun buku tetap **Januari–Desember**. Bila pura mulai memakai aplikasi pada
+1 Juli 2026, jangan membuat tahun buku fiskal Juli–Juni dan jangan memasukkan
+transaksi pendapatan/beban Januari–Juni 2026. Cut-over hanya membutuhkan dua hal:
+
+1. **Tanggal mulai pembukuan** = tanggal cut-over, misalnya `2026-07-01`.
+2. **Saldo awal aset, kewajiban, dan ekuitas** per tanggal itu. Selisih otomatis
+   menjadi `3000 MODAL`, jadi operator tidak perlu menghitung debit/kredit.
+
+Saldo awal **hanya berisi akun neraca** (kas/bank, panjar, aset lain, dan
+hutang). Jangan memasukkan akun pendapatan `4xxx` atau beban `5xxx` ke Saldo
+Awal. Laba sebelum cut-over tidak boleh dicatat sebagai pendapatan/beban 2026;
+hasil usaha sebelum cut-over sudah menjadi bagian ekuitas/modal awal. Setelah
+cut-over, catat pendapatan dan beban mulai tanggal tersebut lewat form harian.
+
+**Contoh jurnal saldo awal per 2026-07-01:**
+
+| Akun | Debit | Kredit |
+|---|---:|---:|
+| `1001 KAS` | Rp 25.000.000 | — |
+| `1029 BANK` (contoh) | Rp 75.000.000 | — |
+| `2050 HUTANG LAIN-LAIN` | — | Rp 20.000.000 |
+| `3000 MODAL` (selisih) | — | Rp 80.000.000 |
+| **Total** | **Rp 100.000.000** | **Rp 100.000.000** |
+
+Laba 2026 adalah **tahun pertama (parsial)**: hanya transaksi
+`2026-07-01` s/d `2026-12-31`. Ini **normal, bukan error**. Laba tersebut juga
+yang akan terlihat saat **Kunci Periode 2026** dilakukan pada 2027. Kunci
+periode tetap tidak membuat jurnal penutup dan tidak memindahkan P&L ke modal.
+
+> Bila aplikasi sudah terlanjur memakai tanggal mulai 1 Januari, jangan
+> mengubahnya menjadi tanggal setelah jurnal pertama. Untuk data yang sudah
+> berjalan, mulai tengah tahun hanya dilakukan pada database baru sebelum ada
+> jurnal, lalu isi Saldo Awal.
+
+### 2.8 Daftar Akun (tambah/ubah/nonaktifkan akun)
 
 Menu **Daftar Akun** menampilkan seluruh COA yang dipakai aplikasi. Di sini
 operator dapat mengelola akun **Beban**, **Pendapatan**, atau **Kas/Bank/LPD**
@@ -479,6 +515,11 @@ dibuat sebagai berkas terpisah di folder `backups`.
 Setelah kunci periode, tanggal pada tahun tersebut terkunci. Koreksi masih boleh,
 tetapi wajib memberi **alasan** dan tercatat di **Riwayat Audit**. Mengunci ulang
 tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.
+
+Bila pembukuan dimulai di tengah tahun (mis. `2026-07-01`), tahun itu adalah
+**tahun pertama (parsial)**. Laba yang ditampilkan dan dikunci hanya laba sejak
+tanggal mulai sampai 31 Desember, dan itu memang benar. Tidak ada jurnal penutup
+yang dibuat untuk tahun parsial ini.
 
 ---
 

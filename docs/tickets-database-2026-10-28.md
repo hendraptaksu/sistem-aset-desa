@@ -128,7 +128,7 @@
 | DB-35 | P0 | S | Baseline dokumen/test hijau | — | [x] |
 | DB-36 | P1 | S | LPD: pembayaran link-only, tanpa duplikasi nominal | DB-16b | [x] |
 | DB-37 | P1 | M | Hapus modul Lampiran (UI/API/backup/test) | DB-02 | [x] |
-| DB-38 | P1 | S | Migrasi tengah tahun: saldo awal + laba periode pertama | — | [ ] |
+| DB-38 | P1 | S | Migrasi tengah tahun: saldo awal + laba periode pertama | — | [x] |
 
 **Backlog P2 yang belum dipecah detail:** rebuild `grup_id` → `koreksi_dari`,
 `posisi_normal` generated/drop, agregasi SQL jika data membesar. Rekonsiliasi
@@ -1762,7 +1762,7 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     `npm test` **676 test/54 file hijau**, dan `npm run build` berhasil.
   - **Dependency:** DB-02.
 
-- [ ] **DB-38 — Migrasi tengah tahun: saldo awal + laba periode pertama** · P1 · S
+- [x] **DB-38 — Migrasi tengah tahun: saldo awal + laba periode pertama** · P1 · S
   - **Konteks:** client mungkin pindah dari sistem lama di pertengahan tahun.
     Aplikasi sudah punya `tanggal mulai pembukuan`, tetapi perilaku laba tahun
     pertama (sebagian tahun) harus diuji dan didokumentasikan agar tidak
@@ -1784,6 +1784,17 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
     benar, Neraca balance, dan alur terdokumentasi.
   - **Test:** `tests/saldo-awal.test.ts` + test laporan tahun parsial.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-11-02:** `labaRugi()`/`labaTahun()` memakai tanggal jurnal
+    `SALDO_AWAL` di tahun yang sama sebagai cut-over, sehingga P&L sebelum
+    tanggal itu tidak masuk laba tahun pertama; `neraca` dan Neraca Saldo
+    periode ikut aturan yang sama. `tests/db-38-tengah-tahun.test.ts`
+    (8 test) mencakup saldo awal 2026-07-01, laba Jul–Des 2026 Rp 20.000.000,
+    Neraca 2026-12-31 seimbang, jurnal 2027 terpisah, `tutupBuku(2026)` pada
+    2027 dengan laba parsial tanpa jurnal penutup, catatan “tahun pertama
+    (parsial)”, serta dokumen cut-over. `docs/panduan-pengguna.md` §2.7,
+    `docs/panduan-pemeriksaan.md` §5, dan `docs/arah-akuntansi.md` diperbarui.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads` **976 test /
+    82 file hijau**; `npm run build` berhasil.
   - **Dependency:** —.
 
 ---

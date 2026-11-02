@@ -15,7 +15,6 @@ import { ExportActions } from './ExportActions.js';
 import { JurnalAkunModal } from './JurnalAkunModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-
 type AkunDipilih = { kode: string; nama: string };
 
 /**
@@ -50,6 +49,34 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
       aktif = false;
     };
   }, []);
+
+  // DB-38: bila pembukuan dimulai di tengah tahun, default Laba Rugi tahun
+  // pertama dimulai pada tanggal cut-over, bukan 1 Januari. Filter yang sudah
+  // diubah operator tidak ditimpa.
+  useEffect(() => {
+    let aktif = true;
+    api
+      .pengaturanGet()
+      .then((p) => {
+        if (!aktif) return;
+        const tanggalMulai = p.tanggalMulaiPembukuan;
+        const tahun = periodeAwal.mulai.slice(0, 4);
+        if (
+          tanggalMulai &&
+          tanggalMulai.startsWith(`${tahun}-`) &&
+          tanggalMulai > periodeAwal.mulai &&
+          tanggalMulai <= periodeAwal.sampai
+        ) {
+          setMulai((sebelum) => (sebelum === periodeAwal.mulai ? tanggalMulai : sebelum));
+        }
+      })
+      .catch(() => {
+        // Pengaturan gagal dimuat: tetap pakai periode berjalan 1 Januari.
+      });
+    return () => {
+      aktif = false;
+    };
+  }, [periodeAwal.mulai, periodeAwal.sampai]);
 
   useEffect(() => {
     let aktif = true;
@@ -98,6 +125,15 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
           </div>
           <Badge tone="green">Dihitung dari jurnal</Badge>
         </div>
+
+        {data?.catatanTahunPertama && (
+          <p
+            className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900"
+            data-testid="catatan-tahun-pertama"
+          >
+            {data.catatanTahunPertama}
+          </p>
+        )}
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
           <Field label="Dari tanggal">

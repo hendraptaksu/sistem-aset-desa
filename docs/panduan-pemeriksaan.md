@@ -156,8 +156,13 @@ Yang diperiksa:
 ## 5. Laba Rugi
 
 Buka **Laba Rugi**, pilih periode. Awal tahun buku dikunci ke **Januari (tahun
-kalender)**; tahun buku fiskal (mis. mulai Juli) **belum didukung**. Karena itu
-semua laporan memakai rentang Januari–Desember, bukan tahun fiskal.
+kalender)**; tahun buku fiskal (mis. Juli–Juni) **belum didukung**. Namun
+pembukuan boleh **dimulai di tengah tahun** dengan tanggal mulai + Saldo Awal
+(lihat panduan pengguna §2.7). Pada kasus itu, tahun pertama adalah **tahun
+pertama (parsial)**: Laba Rugi hanya memuat transaksi sejak tanggal cut-over
+sampai 31 Desember. Laba sebelum cut-over sudah masuk ekuitas awal dan tidak
+boleh dicatat sebagai P&L tahun berjalan. Karena itu semua laporan tetap memakai
+rentang Januari–Desember, bukan tahun fiskal.
 
 - **Pendapatan** = total kredit akun pendapatan (posisi normal kredit).
 - **Beban** = total debit akun beban (posisi normal debit).

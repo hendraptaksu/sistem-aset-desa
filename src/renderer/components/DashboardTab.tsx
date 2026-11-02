@@ -317,6 +317,14 @@ export function DashboardTab({
                   {data.labaRugiBerjalan.badge}
                 </Badge>
               </div>
+              {data.labaRugiBerjalan.catatanTahunPertama && (
+                <p
+                  className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                  data-testid="catatan-tahun-pertama-dashboard"
+                >
+                  {data.labaRugiBerjalan.catatanTahunPertama}
+                </p>
+              )}
               <p
                 className={
                   data.labaRugiBerjalan.defisit

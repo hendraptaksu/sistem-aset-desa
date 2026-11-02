@@ -257,6 +257,44 @@ export function rentangTahunBuku(
 }
 
 /**
+ * Label tahun pertama yang tidak penuh karena pembukuan dimulai di tengah
+ * tahun. Tahun buku tetap Januari–Desember; ini hanya penanda periode parsial.
+ */
+export const LABEL_TAHUN_PERTAMA_PARSIAL = 'tahun pertama (parsial)';
+
+/**
+ * Apakah `tahun` adalah tahun pertama pembukuan yang dimulai setelah 1 Januari?
+ * Contoh: tanggal mulai 2026-07-01 → true untuk 2026, false untuk 2027.
+ */
+export function tahunPertamaParsial(
+  tanggalMulai: string | null | undefined,
+  tahun: number,
+): boolean {
+  if (!Number.isInteger(tahun)) return false;
+  const teks = String(tanggalMulai ?? '').trim();
+  if (!tanggalKalenderValid(teks)) return false;
+  return Number(teks.slice(0, 4)) === tahun && teks > `${tahun}-01-01`;
+}
+
+/**
+ * Catatan siap tampil untuk laporan tahun pertama parsial; null bila tahun
+ * tersebut bukan tahun pertama atau pembukuan memang dimulai 1 Januari.
+ */
+export function catatanTahunPertamaParsial(
+  tanggalMulai: string | null | undefined,
+  tahun: number,
+): string | null {
+  if (!tahunPertamaParsial(tanggalMulai, tahun)) return null;
+  const tanggal = String(tanggalMulai).trim();
+  return (
+    `Ini ${LABEL_TAHUN_PERTAMA_PARSIAL}: pembukuan dimulai ${tanggal}, ` +
+    `sehingga laba tahun ${tahun} hanya mencakup transaksi sejak tanggal ` +
+    'tersebut. Laba sebelum cut-over sudah masuk saldo awal/ekuitas, bukan ' +
+    `Laba Rugi ${tahun}.`
+  );
+}
+
+/**
  * Tanggal mulai pembukuan yang dipakai sebagai batas bawah default filter/kop.
  * Bila belum diisi, pakai tanggal hari ini (bukan memaksa menolak jurnal lama).
  */

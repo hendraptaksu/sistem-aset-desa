@@ -82,7 +82,10 @@ import {
 } from '../features/export/backupLengkap.js';
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
-import { pengaturanPublik } from '../core/pengaturan.js';
+import {
+  catatanTahunPertamaParsial,
+  pengaturanPublik,
+} from '../core/pengaturan.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
 import {
   PESAN_SIMPAN_GAGAL,
@@ -1179,11 +1182,18 @@ export function registerIpc(deps: IpcDeps): void {
     if (k) return fail(k);
     // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
     const baris = listBarisJurnal(deps.db());
+    const tanggalMulai = getPengaturanPembukuan(deps.db()).tanggalMulaiPembukuan;
     return ok(
-      listTutupBuku(deps.db()).map((t) => ({
-        ...t,
-        laba: labaTahunJurnal(baris, Number(t.tahun)),
-      })),
+      listTutupBuku(deps.db()).map((t) => {
+        const tahun = Number(t.tahun);
+        const catatanTahunPertama =
+          catatanTahunPertamaParsial(tanggalMulai, tahun) ?? undefined;
+        return {
+          ...t,
+          laba: labaTahunJurnal(baris, tahun),
+          ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
+        };
+      }),
     );
   });
   // P0-9: riwayat audit lengkap + filter tervalidasi (aksi/tanggal/pagination).
@@ -1335,6 +1345,7 @@ export function registerIpc(deps: IpcDeps): void {
           // Batas tutup buku mengikuti hari ini, bukan cut-off pelaporan.
           sekarang: tanggalSekarang(),
           daftarAkun: listAkun(deps.db()),
+          tanggalMulaiPembukuan: pengaturan.tanggalMulaiPembukuan,
         },
       );
       const dirBackup = deps.lokasiData().backupsDir;

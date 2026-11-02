@@ -410,7 +410,12 @@ export function labaRugiPrintDoc(
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
     ...opsiKop(opts.kop),
     orientasi: 'portrait',
-    blok: [{ jenis: 'tabel', tabel }],
+    blok: [
+      ...(lr.catatanTahunPertama
+        ? [{ jenis: 'paragraf' as const, teks: lr.catatanTahunPertama }]
+        : []),
+      { jenis: 'tabel', tabel },
+    ],
   };
 }
 
@@ -480,7 +485,12 @@ export function neracaPrintDoc(
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
     ...opsiKop(opts.kop),
     orientasi: 'portrait',
-    blok: [{ jenis: 'tabel', tabel }],
+    blok: [
+      ...(n.catatanTahunPertama
+        ? [{ jenis: 'paragraf' as const, teks: n.catatanTahunPertama }]
+        : []),
+      { jenis: 'tabel', tabel },
+    ],
   };
 }
 
