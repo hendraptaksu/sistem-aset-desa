@@ -47,6 +47,16 @@ const OPSI_AKSI = [
 
 const OPSI_LIMIT = [10, 25, 50, 100] as const;
 
+/** DB-27: jenis referensi audit yang ditulis aplikasi. */
+const OPSI_REF = [
+  { value: '', label: 'Semua referensi' },
+  { value: 'jurnal', label: 'Jurnal' },
+  { value: 'panjar', label: 'Panjar' },
+  { value: 'pinjaman', label: 'Pinjaman LPD' },
+  { value: 'tutup_buku', label: 'Tutup buku' },
+  { value: 'akun', label: 'Akun COA' },
+] as const;
+
 /**
  * Field awal tahun buku sengaja tidak berupa pilihan 1–12: sampai tahun buku
  * fiskal didukung penuh, semua laporan memakai Januari–Desember (AUD-20).
@@ -244,6 +254,8 @@ export function PengaturanTab({
   const [auditErr, setAuditErr] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [fAksi, setFAksi] = useState('');
+  const [fRefType, setFRefType] = useState('');
+  const [fRefId, setFRefId] = useState('');
   const [fMulai, setFMulai] = useState('');
   const [fSampai, setFSampai] = useState('');
   const [limit, setLimit] = useState<number>(25);
@@ -258,6 +270,8 @@ export function PengaturanTab({
     try {
       const r = await api.auditList({
         aksi: fAksi || undefined,
+        ref_type: fRefType || undefined,
+        ref_id: fRefId || undefined,
         mulai: fMulai || undefined,
         sampai: fSampai || undefined,
         limit,
@@ -276,7 +290,7 @@ export function PengaturanTab({
     void muatAudit();
     // Filter & pagination adalah satu-satunya pemicu muat ulang.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fAksi, fMulai, fSampai, limit, offset]);
+  }, [fAksi, fRefType, fRefId, fMulai, fSampai, limit, offset]);
 
   function terapkanPembukuan(p: PengaturanPembukuan): void {
     setEntitas(p.namaEntitas);
@@ -715,6 +729,29 @@ export function PengaturanTab({
               ))}
             </Select>
           </Field>
+          <Field label="Jenis referensi">
+            <Select
+              value={fRefType}
+              onChange={(e) => {
+                setFRefType(e.target.value);
+                setOffset(0);
+              }}
+            >
+              {OPSI_REF.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="ID referensi">
+            <TextInput
+              value={fRefId}
+              placeholder="mis. j-... atau p-..."
+              onChange={(e) => {
+                setFRefId(e.target.value);
+                setOffset(0);
+              }}
+            />
+          </Field>
           <Field label="Dari tanggal">
             <TextInput
               type="date"
@@ -816,6 +853,14 @@ export function PengaturanTab({
         <DetailModal title="Detail audit" onClose={() => setDetail(null)}>
           <Baris label="Waktu" value={formatWaktuAudit(detail.tanggal)} />
           <Baris label="Aksi" value={formatAksiAudit(detail.aksi)} />
+          <Baris
+            label="Referensi"
+            value={
+              detail.ref_type || detail.ref_id
+                ? `${detail.ref_type || '-'} / ${detail.ref_id || '-'}`
+                : '-'
+            }
+          />
           <Baris label="Alasan" value={detail.alasan || '-'} />
           <div>
             <p className="text-stone-500">Sebelum</p>

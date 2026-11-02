@@ -197,6 +197,7 @@ export function tutupBuku(
     alasan,
     lama ?? undefined,
     data,
+    { ref_type: 'tutup_buku', ref_id: String(angka) },
   );
 
   const simpan = db.transaction(() => {

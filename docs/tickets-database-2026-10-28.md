@@ -2,9 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-02 (setelah DB-26):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **936 test / 76 file hijau**; `npm run build`
-> berhasil. Baseline DB-16f adalah 929/75. Baseline DB-16e adalah 918/74.
+> **Baseline terakhir 2026-11-02 (setelah DB-27):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **943 test / 77 file hijau**; `npm run build`
+> berhasil. Baseline DB-26 adalah 936/76. Baseline DB-16f adalah 929/75.
+> Baseline DB-16e adalah 918/74.
 > Baseline DB-16d adalah 907/73.
 > Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
 > Baseline DB-34 adalah 869/69.
@@ -114,7 +115,7 @@
 | DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [x] |
 | DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [x] |
 | DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [x] |
-| DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [ ] |
+| DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [x] |
 | DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [ ] |
 | DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [ ] |
 | DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
@@ -1200,11 +1201,33 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
 
 ## Fase 3 — P2 kebersihan
 
-- [ ] **DB-27 — Audit log: `ref_type`/`ref_id`** · P2 · S
+- [x] **DB-27 — Audit log: `ref_type`/`ref_id`** · P2 · S
   - Tambah kolom `ref_type`/`ref_id` (ALTER), isi untuk aksi baru, update
     `catatAudit`; query riwayat per jurnal tanpa `LIKE`.
   - Append-only/tutup buku adalah AKT-26; jangan duplikasi.
   - Test: audit jurnal/panjar bisa difilter berdasarkan ref.
+  - **Bukti 2026-11-02:** `SCHEMA_VERSION` naik **20 → 21**. Migrasi v21
+    idempoten menambah `audit_log.ref_type`/`ref_id` (`TEXT NOT NULL DEFAULT ''`)
+    dan index `idx_audit_ref(ref_type, ref_id)`; kolom juga ada di DDL dasar
+    untuk DB baru. Baris audit legacy **tidak di-backfill** karena trigger
+    append-only v11 menolak UPDATE `audit_log`; referensi kosong tetap tampil
+    dan difilter. `AuditLog`, `OpsiAuditLog`, `InputAudit`, `catatAudit`,
+    `insertAuditLog`, dan row mapping memakai field opsional/default `''`.
+    Referensi diisi atomik bersama aksi: jurnal posting/saldo awal/reversal
+    (`jurnal` + ID jurnal; reversal/koreksi memakai ID asli), panjar
+    open/close/batal (`panjar` + ID panjar), tutup/tutup ulang (`tutup_buku` +
+    tahun), pinjaman create/pencairan/bayar (`pinjaman` + ID pinjaman), dan akun
+    tambah/ubah/aktif (`akun` + kode). `AuditFilter` + IPC `audit:list` +
+    `AuditFilterApi` + UI Pengaturan punya filter jenis/ID referensi exact yang
+    bisa digabung tanggal/pagination; detail audit menampilkan referensi.
+    Test baru `tests/db-27-audit-ref.test.ts` (7 test) mencakup seluruh ref aksi,
+    filter exact/date/pagination, baris legacy, migrasi v20→v21, dan
+    append-only; assertion ref akun lewat IPC ditambahkan di
+    `tests/ipc-main.test.ts`. Ekspektasi versi di test lama diperbarui ke 21.
+    `docs/panduan-pemeriksaan.md` menjelaskan filter referensi.
+    `npm run typecheck` bersih; `npx vitest run --pool=threads` **943 test/77
+    file hijau** (baseline DB-26 936/76); `npm run build` berhasil.
+  - **Catatan:** tidak ada perubahan jurnal, skema lain, atau `data/`.
 
 - [ ] **DB-28 — Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI** · P2 · S
   - Hapus field dari tipe/UI/pengaturan; kolom DB boleh tetap sampai migrasi

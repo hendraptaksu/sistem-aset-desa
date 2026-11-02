@@ -820,12 +820,16 @@ export function simpanPinjamanLpd(
         aksi: `PINJAMAN-CREATE ${pinjaman.id}`,
         alasan: `Buat pinjaman LPD ${pinjaman.kreditur}`,
         baru: { pinjaman, jurnal },
+        ref_type: 'pinjaman',
+        ref_id: pinjaman.id,
       });
       if (mode === 'PENCAIRAN' && jurnal) {
         catatAudit(db, {
           aksi: `PINJAMAN-PENCAIRAN ${pinjaman.id}`,
           alasan: `Pencairan pinjaman LPD ${pinjaman.kreditur}`,
           baru: { pinjaman_id: pinjaman.id, jurnal },
+          ref_type: 'pinjaman',
+          ref_id: pinjaman.id,
         });
       }
 
@@ -1457,6 +1461,8 @@ export function bayarAngsuranPinjaman(
           total: totalBayar,
           ...(alasanSelisih ? { alasanSelisih } : {}),
         },
+        ref_type: 'pinjaman',
+        ref_id: p.id,
       });
 
       return {

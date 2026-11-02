@@ -198,4 +198,11 @@ export type AuditLog = {
   data_lama_json: string;
   /** JSON kondisi sesudah operasi ('' = tidak ada data baru). */
   data_baru_json: string;
+  /**
+   * DB-27: jenis objek yang dirujuk audit (mis. 'jurnal', 'panjar',
+   * 'pinjaman', 'tutup_buku', 'akun'). '' = baris legacy tanpa referensi.
+   */
+  ref_type?: string;
+  /** ID objek yang dirujuk; '' bila tidak ada. */
+  ref_id?: string;
 };

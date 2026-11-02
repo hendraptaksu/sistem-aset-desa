@@ -99,8 +99,8 @@ describe('DB-21 — migrasi v19 pembatalan panjar', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(20);
-      expect(versi(db)).toBe(20);
+      expect(SCHEMA_VERSION).toBe(21);
+      expect(versi(db)).toBe(21);
       const kolom = (db.pragma('table_info(panjar)') as { name: string }[]).map(
         (k) => k.name,
       );
@@ -160,7 +160,7 @@ describe('DB-21 — migrasi v19 pembatalan panjar', () => {
     // Migrasi idempoten: buka ulang tidak menambah kolom ganda / menghapus data.
     const db2 = openDb(path);
     try {
-      expect(versi(db2)).toBe(20);
+      expect(versi(db2)).toBe(21);
       expect(getPanjar(db2, 'p-lama')?.status).toBe('DIBATALKAN');
       expect(
         (db2.prepare('SELECT COUNT(*) AS n FROM panjar').get() as { n: number }).n,

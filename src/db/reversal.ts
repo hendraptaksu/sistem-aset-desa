@@ -142,6 +142,7 @@ export function reverseJurnal(
       baris: rencana.input.baris,
       reversal_id: rencana.input.header.id,
     },
+    { ref_type: 'jurnal', ref_id: id },
   );
 
   const simpan = db.transaction(() => {
@@ -260,12 +261,14 @@ export function koreksiDanIsiUlang(
       baris: rencana.input.baris,
       reversal_id: rencana.input.header.id,
     },
+    { ref_type: 'jurnal', ref_id: id },
   );
   const auditBaru = buatAuditLog(
     `KOREKSI-ISI-ULANG ${id}`,
     alasan.trim(),
     { jurnal: detail.jurnal, baris: detail.baris },
     { jurnal: headerBaru, baris: baru.baris },
+    { ref_type: 'jurnal', ref_id: id },
   );
 
   // Bila operator mengisi nomor pengganti tetapi membiarkan nomor balik

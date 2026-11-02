@@ -229,6 +229,8 @@ export function tambahAkun(db: Database.Database, input: AkunBaruInput): AkunDb 
       aksi: `AKUN-TAMBAH ${bersih.kode}`,
       alasan: 'Tambah akun COA',
       baru,
+      ref_type: 'akun',
+      ref_id: bersih.kode,
     });
   });
   simpan();
@@ -308,6 +310,8 @@ export function ubahNamaAkun(
       alasan: 'Ubah nama akun',
       lama,
       baru,
+      ref_type: 'akun',
+      ref_id: lama.kode,
     });
   });
   simpan();
@@ -355,6 +359,8 @@ export function setAkunAktif(
       alasan: alasanAudit,
       lama,
       baru,
+      ref_type: 'akun',
+      ref_id: lama.kode,
     });
   });
   simpan();
@@ -846,12 +852,15 @@ const rowToAuditLog = (r: Record<string, unknown>): AuditLog => ({
   alasan: String(r.alasan ?? ''),
   data_lama_json: String(r.data_lama_json ?? ''),
   data_baru_json: String(r.data_baru_json ?? ''),
+  ref_type: String(r.ref_type ?? ''),
+  ref_id: String(r.ref_id ?? ''),
 });
 
 export function insertAuditLog(db: Database.Database, a: AuditLog): void {
   db.prepare(
-    `INSERT INTO audit_log (id, tanggal, aksi, alasan, data_lama_json, data_baru_json)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit_log
+       (id, tanggal, aksi, alasan, data_lama_json, data_baru_json, ref_type, ref_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     a.id,
     a.tanggal,
@@ -859,6 +868,8 @@ export function insertAuditLog(db: Database.Database, a: AuditLog): void {
     a.alasan,
     a.data_lama_json ?? '',
     a.data_baru_json ?? '',
+    a.ref_type ?? '',
+    a.ref_id ?? '',
   );
 }
 
@@ -871,6 +882,9 @@ export type InputAudit = {
   baru?: unknown;
   id?: string;
   tanggal?: string;
+  /** DB-27: referensi objek terstruktur (default ''). */
+  ref_type?: string;
+  ref_id?: string;
 };
 
 /**
@@ -884,7 +898,12 @@ export function catatAudit(db: Database.Database, input: InputAudit): AuditLog {
     String(input.alasan ?? ''),
     input.lama,
     input.baru,
-    { id: input.id, tanggal: input.tanggal },
+    {
+      id: input.id,
+      tanggal: input.tanggal,
+      ref_type: input.ref_type,
+      ref_id: input.ref_id,
+    },
   );
   insertAuditLog(db, row);
   return row;
@@ -893,6 +912,12 @@ export function catatAudit(db: Database.Database, input: InputAudit): AuditLog {
 /** Filter riwayat audit; `aksi` dicocokkan persis atau sebagai awalan. */
 export type AuditFilter = {
   aksi?: string;
+  /**
+   * DB-27: jenis & ID objek yang dirujuk (mis. 'jurnal' + 'j-1').
+   * Dicocokkan persis; kosong = tidak memfilter.
+   */
+  ref_type?: string;
+  ref_id?: string;
   /** Tanggal lokal WITA awal `YYYY-MM-DD` (inklusif). */
   mulai?: string;
   /** Tanggal lokal WITA akhir `YYYY-MM-DD` (inklusif). */
@@ -910,6 +935,17 @@ function auditWhere(f: AuditFilter): { sql: string; params: unknown[] } {
     const escaped = aksi.replace(/[\\%_]/g, '\\$&');
     where.push("(aksi = ? OR aksi LIKE ? ESCAPE '\\')");
     params.push(aksi, `${escaped}%`);
+  }
+  // DB-27: filter referensi memakai kolom terstruktur, bukan LIKE pada aksi.
+  const refType = String(f.ref_type ?? '').trim();
+  if (refType) {
+    where.push('ref_type = ?');
+    params.push(refType);
+  }
+  const refId = String(f.ref_id ?? '').trim();
+  if (refId) {
+    where.push('ref_id = ?');
+    params.push(refId);
   }
   // `tanggal` tersimpan ISO UTC; batas filter dikonversi dari tanggal lokal
   // agar audit pagi WITA tidak jatuh ke tanggal UTC hari sebelumnya.

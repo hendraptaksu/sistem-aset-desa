@@ -441,6 +441,23 @@ describe('DB-15 — nonaktifkan akun bawaan lewat IPC', () => {
       ),
     ).toBe(true);
 
+    // DB-27: filter referensi terstruktur ikut terekspos lewat IPC.
+    const auditRef = await env.panggil('audit:list', {
+      ref_type: 'akun',
+      ref_id: '5010',
+    });
+    expect(auditRef.ok, auditRef.error).toBe(true);
+    expect(auditRef.data.rows).toHaveLength(2);
+    expect(
+      auditRef.data.rows.every(
+        (a: { ref_type: string; ref_id: string }) =>
+          a.ref_type === 'akun' && a.ref_id === '5010',
+      ),
+    ).toBe(true);
+    expect(
+      auditRef.data.rows.map((a: { aksi: string }) => a.aksi).sort(),
+    ).toEqual(['AKUN-AKTIF 5010', 'AKUN-NONAKTIF 5010']);
+
     const statusSalah = await env.panggil('akun:set-aktif', '5010', 'false');
     expect(statusSalah.ok).toBe(false);
     expect(statusSalah.error).toMatch(/true\/false/i);

@@ -262,6 +262,7 @@ export function serahkanPanjar(
     String(input.alasan ?? '').trim(),
     undefined,
     { panjar, jurnal: jurnalInput.header, baris: jurnalInput.baris },
+    { ref_type: 'panjar', ref_id: id },
   );
 
   try {
@@ -456,6 +457,7 @@ export function closePanjarV2(
         : {}),
       ...(alasanPeringatan ? { alasanPeringatan } : {}),
     },
+    { ref_type: 'panjar', ref_id: id },
   );
 
   try {
@@ -631,6 +633,7 @@ export function batalPanjarV2(
       jurnal_batal_id: jurnalBatalId,
       reversal_of: jurnalOpenId,
     },
+    { ref_type: 'panjar', ref_id: id },
   );
 
   try {

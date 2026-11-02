@@ -288,7 +288,19 @@ yang ditutup, bukan dari jurnal buatan operator.
 Buka **Pengaturan → Riwayat Audit**.
 
 - Filter berdasarkan aksi, tanggal, dan jumlah baris per halaman.
-- Klik **Lihat** untuk melihat data sebelum/sesudah.
+- Filter **Jenis referensi** + **ID referensi** mencari jejak satu objek tanpa
+  menebak teks aksi:
+  - `jurnal` + ID jurnal: pembuatan jurnal, saldo awal, reversal, dan koreksi
+    isi ulang untuk jurnal tersebut;
+  - `panjar` + ID panjar: serah, close, dan pembatalan dokumen panjar;
+  - `pinjaman` + ID pinjaman: pembuatan, pencairan, dan pembayaran angsuran;
+  - `tutup_buku` + tahun (mis. `2026`): tutup dan tutup ulang tahun itu;
+  - `akun` + kode 4 digit: tambah, ubah nama, aktif/nonaktif akun.
+- Referensi dicocokkan **persis** (ID `j-1` tidak ikut mengambil `j-10`), dan
+  tetap bisa digabung dengan filter tanggal serta pagination.
+- Baris audit lama dari sebelum fitur referensi tetap tampil; kolom
+  referensinya kosong dan tidak diubah karena audit bersifat append-only.
+- Klik **Lihat** untuk melihat data sebelum/sesudah dan referensi objek.
 - Aksi penting yang harus muncul: pembuatan jurnal, `REVERSAL`,
   `KOREKSI-ISI-ULANG`, `TUTUP`/`TUTUP-ULANG`, `SALDO-AWAL`, `PANJAR`/
   `PANJAR-BATAL`, `BACKUP`/`RESTORE`, dan perubahan `PENGATURAN`.

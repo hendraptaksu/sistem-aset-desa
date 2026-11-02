@@ -115,6 +115,9 @@ export type OpsiPostingApi = {
 /** Filter riwayat audit (P0-9). Tanggal YYYY-MM-DD, inklusif. */
 export type AuditFilterApi = {
   aksi?: string;
+  /** DB-27: referensi objek terstruktur. */
+  ref_type?: string;
+  ref_id?: string;
   mulai?: string;
   sampai?: string;
   limit?: number;

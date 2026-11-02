@@ -1202,6 +1202,15 @@ export function registerIpc(deps: IpcDeps): void {
         typeof f?.aksi === 'string' && f.aksi.trim()
           ? f.aksi.trim().slice(0, 120)
           : undefined;
+      // DB-27: referensi terstruktur; nilai kosong berarti tidak memfilter.
+      const ref_type =
+        typeof f?.ref_type === 'string' && f.ref_type.trim()
+          ? f.ref_type.trim().slice(0, 40)
+          : undefined;
+      const ref_id =
+        typeof f?.ref_id === 'string' && f.ref_id.trim()
+          ? f.ref_id.trim().slice(0, 120)
+          : undefined;
       const angka = (v: unknown, bawaan: number): number => {
         if (v === undefined || v === null || v === '') return bawaan;
         const n = Number(v);
@@ -1209,7 +1218,17 @@ export function registerIpc(deps: IpcDeps): void {
       };
       const limit = Math.min(500, Math.max(1, Math.trunc(angka(f?.limit, 50))));
       const offset = Math.max(0, Math.trunc(angka(f?.offset, 0)));
-      return ok(listAuditLogPage(deps.db(), { aksi, mulai, sampai, limit, offset }));
+      return ok(
+        listAuditLogPage(deps.db(), {
+          aksi,
+          ref_type,
+          ref_id,
+          mulai,
+          sampai,
+          limit,
+          offset,
+        }),
+      );
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }

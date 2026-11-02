@@ -322,10 +322,10 @@ describe('DB-06 — DROP tidak lagi diputuskan dari bentuk kolom', () => {
     const sumber = readFileSync(join(process.cwd(), 'src/db/database.ts'), 'utf8');
     expect(sumber).not.toContain('buangTabelLama');
 
-    // Pemakaian bentuk kolom hanya untuk ALTER TABLE aditif: audit_log (P0-9),
-    // akun (DB-14), panjar_item (DB-18), dan guard index link panjar DB-20/21
-    // (tabel panjar bentuk lama tidak direbuild). Tidak boleh ada panggilan
-    // shape-check untuk tabel lain.
+    // Pemakaian bentuk kolom hanya untuk ALTER TABLE aditif: audit_log (P0-9
+    // dan DB-27), akun (DB-14), panjar_item (DB-18), dan guard index link
+    // panjar DB-20/21 (tabel panjar bentuk lama tidak direbuild). Tidak boleh
+    // ada panggilan shape-check untuk tabel lain.
     const panggilanKolom = [...sumber.matchAll(/kolomTabel\(db,\s*'([^']+)'\)/g)].map(
       (m) => m[1],
     );
@@ -334,6 +334,7 @@ describe('DB-06 — DROP tidak lagi diputuskan dari bentuk kolom', () => {
       'panjar_item',
       'panjar',
       'panjar',
+      'audit_log',
       'audit_log',
     ]);
     expect(sumber.match(/table_info\(/g) ?? []).toHaveLength(1);

@@ -84,8 +84,13 @@ import {
  *          `pinjaman_bayar` hanya menautkan jurnal + angsuran dan TIDAK
  *          menyimpan nominal pokok/bunga/denda. Outstanding dan status lunas
  *          dihitung dari jurnal. Migrasi aditif/idempoten, tanpa rebuild.
+ * - 21   = referensi audit terstruktur (DB-27): kolom aditif
+ *          `audit_log.ref_type`/`ref_id` (default '') + index
+ *          `idx_audit_ref(ref_type, ref_id)`. Baris audit lama tetap sah
+ *          dengan referensi kosong; TIDAK di-backfill karena trigger
+ *          append-only v11 menolak UPDATE audit_log.
  */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -234,13 +239,20 @@ CREATE TABLE IF NOT EXISTS tutup_buku (
 );
 
 -- Audit log lengkap (P0-9): alasan + kondisi sebelum/sesudah dalam JSON.
+-- DB-27: ref_type/ref_id menunjuk objek terkait secara terstruktur
+-- (mis. 'jurnal' + id) sehingga riwayat tidak perlu LIKE pada aksi.
+-- Baris lama boleh kosong. Index ref dibuat oleh terapkanMigrasiV21 agar DB
+-- v20 yang belum punya kolom tetap bisa dibuka (DDL dasar tidak boleh
+-- mereferensikan kolom yang belum di-ALTER).
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
   tanggal TEXT NOT NULL,
   aksi TEXT NOT NULL,
   alasan TEXT NOT NULL,
   data_lama_json TEXT NOT NULL DEFAULT '',
-  data_baru_json TEXT NOT NULL DEFAULT ''
+  data_baru_json TEXT NOT NULL DEFAULT '',
+  ref_type TEXT NOT NULL DEFAULT '',
+  ref_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
 CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
@@ -912,6 +924,35 @@ function terapkanMigrasiV20(db: Database.Database): void {
 }
 
 /**
+ * DB-27 — referensi audit terstruktur v21 (aditif, tanpa rebuild).
+ *
+ * `audit_log` sudah ada sejak v2 dan AKT-26 memasang trigger append-only pada
+ * v11. Kolom baru diberi default `''` sehingga baris lama tetap sah dan tidak
+ * perlu diubah. Backfill baris legacy sengaja TIDAK dilakukan: satu-satunya
+ * cara mengisinya adalah UPDATE, sedangkan trigger `trg_audit_log_immutable_update`
+ * menolak UPDATE audit_log. Menghapus trigger sementara demi backfill akan
+ * melemahkan jaminan append-only, jadi referensi lama dibiarkan kosong dan
+ * tetap tampil di daftar audit.
+ *
+ * Index dibuat di sini (bukan DDL dasar) karena DB v20 belum punya kolomnya
+ * saat `db.exec(DDL)` berjalan. Idempoten: kolom diperiksa dari `table_info`
+ * dan index memakai `IF NOT EXISTS`.
+ */
+function terapkanMigrasiV21(db: Database.Database): void {
+  const kolom = new Set(kolomTabel(db, 'audit_log'));
+
+  if (!kolom.has('ref_type'))
+    db.exec("ALTER TABLE audit_log ADD COLUMN ref_type TEXT NOT NULL DEFAULT ''");
+  if (!kolom.has('ref_id'))
+    db.exec("ALTER TABLE audit_log ADD COLUMN ref_id TEXT NOT NULL DEFAULT ''");
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_audit_ref
+      ON audit_log(ref_type, ref_id);
+  `);
+}
+
+/**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
  * `user_version` lebih besar tidak boleh disentuh sama sekali.
@@ -939,6 +980,7 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v18 (link jurnal open/close panjar unik).
  * - Menerapkan migrasi v19 (kolom pembatalan panjar + link jurnal batal unik).
  * - Menerapkan migrasi v20 (tabel pinjaman LPD, aditif/idempoten).
+ * - Menerapkan migrasi v21 (referensi audit terstruktur, aditif/idempoten).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
@@ -965,6 +1007,7 @@ export function migrasi(db: Database.Database): number {
     terapkanMigrasiV18(db);
     terapkanMigrasiV19(db);
     terapkanMigrasiV20(db);
+    terapkanMigrasiV21(db);
     if (versiAwal < SCHEMA_VERSION) {
       db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

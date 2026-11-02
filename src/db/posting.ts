@@ -298,6 +298,7 @@ export function postingJurnal(
       String(input.alasan ?? '').trim(),
       undefined,
       dataAuditJurnal(jurnal, input.baris, hasil.peringatan, opsi),
+      { ref_type: 'jurnal', ref_id: jurnal.id },
     ),
   );
 }
@@ -326,6 +327,7 @@ export function postingSaldoAwal(
       String(input?.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
       undefined,
       dataAuditJurnal(jurnal, input?.baris ?? [], hasil.peringatan, opsi),
+      { ref_type: 'jurnal', ref_id: jurnal.id },
     ),
   );
 }
