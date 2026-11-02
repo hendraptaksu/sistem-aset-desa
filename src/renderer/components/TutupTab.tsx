@@ -68,7 +68,7 @@ export function TutupTab() {
           return;
         }
         if (!r.boleh && !r.perluKonfirmasi) {
-          setErr(pesanValidasi(r.errors) || 'Tahun belum bisa ditutup.');
+          setErr(pesanValidasi(r.errors) || 'Tahun belum bisa dikunci.');
           setStep(1);
           return;
         }
@@ -104,7 +104,7 @@ export function TutupTab() {
           konfirmasiTimpak: preview?.sudahDitutup === true,
         });
         setInfo(
-          `Tahun ${r.tahun} ${r.aksi === 'TUTUP-ULANG' ? 'ditutup ulang' : 'ditutup'}. ` +
+          `Tahun ${r.tahun} ${r.aksi === 'TUTUP-ULANG' ? 'dikunci ulang' : 'dikunci'}. ` +
             `Laba ${formatRp(r.laba)}. Laba ditahan ${formatRp(r.labaDitahan)}. ` +
             'Backup otomatis sudah dibuat.',
         );
@@ -123,12 +123,12 @@ export function TutupTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <h1 className="mb-3 text-lg font-bold">Tutup Buku (wizard)</h1>
+        <h1 className="mb-3 text-lg font-bold">Kunci Periode</h1>
         <ErrorBox msg={err} />
         {preview && (preview.temuanIntegritas?.length ?? 0) > 0 && (
           <div className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-800">
             <p className="font-semibold">
-              Audit integritas akuntansi gagal. Tutup buku diblokir sampai data diperbaiki.
+              Audit integritas akuntansi gagal. Kunci periode diblokir sampai data diperbaiki.
             </p>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
               {preview.temuanIntegritas.map((t, i) => (
@@ -142,12 +142,13 @@ export function TutupTab() {
         {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
         <p className="mb-3 text-sm text-stone-600">
           Langkah {step}/3: {step === 1 ? 'Preview laba' : step === 2 ? 'Auto-backup .db' : 'Konfirmasi'}.
-          Tutup buku hanya mengunci periode dan menyimpan catatan — laba selalu dihitung ulang dari jurnal.
+          Kunci periode hanya menandai tahun selesai dan mengunci tanggalnya — laba selalu dihitung ulang dari jurnal.
+          Ini bukan jurnal penutup: tidak ada jurnal yang dibuat atau dipindahkan ke ekuitas.
           Tahun yang sudah selesai bisa dikoreksi dengan alasan, dan tercatat otomatis.
         </p>
         <p className="mb-3 text-sm text-stone-600">
-          Tahun yang boleh ditutup: <b>≤ {TAHUN_TERAKHIR_BOLEH_DITUTUP}</b>. Tahun berjalan
-          ({TAHUN_BERJALAN}) dan tahun berikutnya belum boleh ditutup.
+          Tahun yang boleh dikunci: <b>≤ {TAHUN_TERAKHIR_BOLEH_DITUTUP}</b>. Tahun berjalan
+          ({TAHUN_BERJALAN}) dan tahun berikutnya belum boleh dikunci.
         </p>
 
         {step === 1 && (
@@ -178,11 +179,11 @@ export function TutupTab() {
               Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>
             </p>
             <p className="text-[15px]">
-              Laba ditahan setelah tutup: <b>{formatRp(preview.labaDitahanSesudah)}</b>
+              Laba ditahan setelah dikunci: <b>{formatRp(preview.labaDitahanSesudah)}</b>
             </p>
             {preview.sudahDitutup && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800">
-                Tahun {preview.tahun} sudah pernah ditutup. Melanjutkan akan memperbarui
+                Tahun {preview.tahun} sudah pernah dikunci. Melanjutkan akan memperbarui
                 catatan dan tetap tercatat di audit sebagai <b>TUTUP-ULANG</b>.
               </div>
             )}
@@ -204,16 +205,16 @@ export function TutupTab() {
               <br />
               <span className="text-stone-600">Backup otomatis sudah dibuat.</span>
             </p>
-            <Field label="Catatan tutup buku (opsional)">
+            <Field label="Catatan kunci periode (opsional)">
               <TextInput
                 value={catatan}
                 onChange={(e) => setCatatan(e.target.value)}
-                placeholder="Contoh: tutup tahun 2025, data sudah diperiksa akuntan"
+                placeholder="Contoh: kunci periode 2025, data sudah diperiksa akuntan"
               />
             </Field>
             {preview.sudahDitutup && (
               <p className="text-sm text-amber-700">
-                Tahun ini akan ditutup ulang (TUTUP-ULANG).
+                Tahun ini akan dikunci ulang (TUTUP-ULANG).
               </p>
             )}
             <div className="flex gap-2">
@@ -221,7 +222,7 @@ export function TutupTab() {
                 Kembali
               </Button>
               <Button disabled={sibuk} onClick={() => setKonfirmasiOpen(true)}>
-                {preview.sudahDitutup ? 'Konfirmasi tutup ulang' : 'Konfirmasi tutup buku'}
+                {preview.sudahDitutup ? 'Konfirmasi kunci ulang' : 'Konfirmasi kunci periode'}
               </Button>
             </div>
           </div>
@@ -229,10 +230,10 @@ export function TutupTab() {
       </Card>
 
       <Card>
-        <h3 className="mb-2 font-bold">Riwayat tutup buku</h3>
+        <h3 className="mb-2 font-bold">Riwayat kunci periode</h3>
         <p className="mb-2 text-sm text-stone-600">
           Laba di kolom riwayat dihitung ulang dari jurnal, jadi tetap benar walau ada koreksi
-          setelah tutup buku.
+          setelah periode dikunci.
         </p>
         <table className="w-full text-left text-[15px]">
           <thead>
@@ -251,7 +252,7 @@ export function TutupTab() {
               </tr>
             ))}
             {list.length === 0 && (
-              <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum pernah tutup buku.</td></tr>
+              <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum pernah ada periode dikunci.</td></tr>
             )}
           </tbody>
         </table>
@@ -261,8 +262,8 @@ export function TutupTab() {
         <KonfirmasiModal
           judul={
             preview.sudahDitutup
-              ? `Tutup ulang tahun ${preview.tahun}?`
-              : `Tutup buku tahun ${preview.tahun}?`
+              ? `Kunci ulang tahun ${preview.tahun}?`
+              : `Kunci periode tahun ${preview.tahun}?`
           }
           deskripsi={
             <>
@@ -270,7 +271,7 @@ export function TutupTab() {
                 Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>.
               </p>
               <p>
-                Laba ditahan setelah tutup:{' '}
+                Laba ditahan setelah dikunci:{' '}
                 <b>{formatRp(preview.labaDitahanSesudah)}</b>.
               </p>
               <p className="text-sm text-stone-600">
@@ -279,13 +280,13 @@ export function TutupTab() {
               </p>
               {preview.sudahDitutup && (
                 <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-                  Tahun ini sudah pernah ditutup. Melanjutkan akan mencatat{' '}
+                  Tahun ini sudah pernah dikunci. Melanjutkan akan mencatat{' '}
                   <b>TUTUP-ULANG</b>.
                 </p>
               )}
             </>
           }
-          labelYa={preview.sudahDitutup ? 'Ya, tutup ulang' : 'Ya, tutup buku'}
+          labelYa={preview.sudahDitutup ? 'Ya, kunci ulang' : 'Ya, kunci periode'}
           sibuk={sibuk}
           onBatal={() => setKonfirmasiOpen(false)}
           onKonfirmasi={() => void konfirmasi()}

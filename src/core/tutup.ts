@@ -93,12 +93,12 @@ export function validasiTutupBuku(
   const angka = Number(tahun);
 
   if (!Number.isInteger(angka)) {
-    errors.push('Tahun tutup buku harus bilangan bulat.');
+    errors.push('Tahun kunci periode harus bilangan bulat.');
   } else if (angka < 1900 || angka > 9999) {
-    errors.push('Tahun tutup buku tidak valid.');
+    errors.push('Tahun kunci periode tidak valid.');
   } else if (angka > batasTahun) {
     errors.push(
-      `Tutup buku hanya untuk tahun yang sudah selesai (maksimal ${batasTahun}). Tahun ${angka} belum selesai.`,
+      `Kunci periode hanya untuk tahun yang sudah selesai (maksimal ${batasTahun}). Tahun ${angka} belum selesai.`,
     );
   }
 
@@ -114,7 +114,7 @@ export function validasiTutupBuku(
       }
     } else if (tahunTerakhir !== null && angka < tahunTerakhir) {
       errors.push(
-        `Tutup buku harus berurutan menaik. Tahun ${tahunTerakhir} sudah ditutup; tahun ${angka} sudah lewat.`,
+        `Kunci periode harus berurutan menaik. Tahun ${tahunTerakhir} sudah ditutup; tahun ${angka} sudah lewat.`,
       );
     } else {
       const belumDitutup = tahunJurnalTerurut(ctx.tahunAdaJurnal).filter(
@@ -123,7 +123,7 @@ export function validasiTutupBuku(
       if (belumDitutup.length > 0) {
         const daftarTahun = belumDitutup.join(', ');
         errors.push(
-          `Tutup buku harus berurutan. Tahun ${daftarTahun} memiliki jurnal tetapi belum ditutup; tutup tahun tersebut lebih dulu sebelum ${angka}.`,
+          `Kunci periode harus berurutan. Tahun ${daftarTahun} memiliki jurnal tetapi belum ditutup; kunci tahun tersebut lebih dulu sebelum ${angka}.`,
         );
       }
     }

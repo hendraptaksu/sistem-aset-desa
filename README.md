@@ -35,7 +35,10 @@ angka turunan yang disimpan mati.
   input baru tanpa menghapus histori; rename/hapus dan empat akun sistem
   `3000/1040/1050/2050` tetap terkunci.
 - Akuntan pendamping dapat memakai **Jurnal Umum** multi-baris untuk koreksi
-  dan jurnal yang tidak cocok dengan form terpandu.
+  dan jurnal yang tidak cocok dengan form terpandu. Menu ini hanya tampil
+  setelah **Mode lanjutan** diaktifkan di Pengaturan.
+- **Kunci Periode** menandai tahun yang sudah selesai dan mengunci tanggalnya;
+  ini bukan jurnal penutup dan laba tetap dihitung ulang dari jurnal.
 - Koreksi tidak pernah mengedit/menghapus jurnal lama: selalu **jurnal balik
   (reversal) + alasan**, dengan jejak audit.
 - Laporan: Buku Besar, Neraca Saldo (tahun berjalan/kumulatif), Laba Rugi,
@@ -52,8 +55,9 @@ angka turunan yang disimpan mati.
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Renderer (Chromium) — React 19 + Tailwind                           │
-│ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Jurnal,            │
-│ laporan, dan Pengaturan                                             │
+│ Tab: Dashboard, Transaksi, Daftar Akun, Panjar, Pinjaman LPD,      │
+│ laporan, Kunci Periode, dan Pengaturan; Jurnal Umum hanya tampil    │
+│ saat Mode lanjutan aktif.                                           │
 │ Tidak pernah menyentuh SQLite; semua lewat window.api.invoke()      │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ IPC (preload CJS, contextBridge)

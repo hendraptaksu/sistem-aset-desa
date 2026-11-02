@@ -87,11 +87,15 @@ describe('DB-26 — Mode lanjutan: default, persistensi, dan menu', () => {
     const data = APP.slice(APP.indexOf("id: 'data'"), APP.indexOf('];', APP.indexOf("id: 'data'")));
     expect(harian).not.toContain("'jurnal'");
     expect(data).toContain("'jurnal'");
+    expect(data).toContain("'tutup'");
     // Menu dirender lewat filter Mode lanjutan, bukan daftar mentah.
     expect(APP).toContain('menuTerlihat(id, modeLanjutan)');
     expect(APP).toContain('tabSetelahModeLanjutan(tab, modeLanjutan)');
     expect(APP).toContain('simpanModeLanjutan(aktif)');
     expect(APP).toContain('modeLanjutan={modeLanjutan}');
+    // DB-29: label operator memakai Kunci Periode, bukan Tutup Buku.
+    expect(APP).toContain("label: 'Kunci Periode'");
+    expect(APP).not.toContain("label: 'Tutup Buku'");
   });
 
   it('dashboard tidak menawarkan pintasan Jurnal Umum saat mode mati', () => {
@@ -103,9 +107,10 @@ describe('DB-26 — Mode lanjutan: default, persistensi, dan menu', () => {
       }),
     );
     // Data belum termuat di SSR, jadi pintasan hanya bisa diperiksa dari sumber:
-    // kedua tombol Jurnal Umum dibungkus kondisi modeLanjutan.
-    expect((DASHBOARD.match(/onBukaTab\('jurnal'\)/g) ?? []).length).toBe(2);
-    expect((DASHBOARD.match(/modeLanjutan &&/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // tombol Jurnal Umum dibungkus kondisi modeLanjutan. DB-29 menghapus
+    // pintasan ganda; tombol tersisa ada di kartu Jurnal Terakhir.
+    expect((DASHBOARD.match(/onBukaTab\('jurnal'\)/g) ?? []).length).toBe(1);
+    expect((DASHBOARD.match(/modeLanjutan &&/g) ?? []).length).toBeGreaterThanOrEqual(1);
     expect(html).not.toContain('>Jurnal Umum</button>');
     expect(tujuan).toEqual([]);
   });

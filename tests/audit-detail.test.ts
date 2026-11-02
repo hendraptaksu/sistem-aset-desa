@@ -230,9 +230,9 @@ describe('T12 formatAksiAudit', () => {
     );
   });
 
-  it('TUTUP / TUTUP-ULANG → label tutup buku', () => {
-    expect(formatAksiAudit('TUTUP 2025')).toBe('Tutup buku');
-    expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Tutup buku (ulang)');
+  it('TUTUP / TUTUP-ULANG → label Kunci periode', () => {
+    expect(formatAksiAudit('TUTUP 2025')).toBe('Kunci periode');
+    expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Kunci periode (ulang)');
   });
 
   it('aksi P0-9 memakai label ramah', () => {

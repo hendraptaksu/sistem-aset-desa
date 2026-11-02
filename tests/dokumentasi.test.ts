@@ -74,7 +74,7 @@ describe('P2-8 — panduan pengguna', () => {
       'Panjar',
       'Utang Usaha',
       'Jurnal Umum',
-      'Tutup buku',
+      'Kunci periode',
       'ganti laptop',
       'PIN',
       'kas minus',
@@ -115,7 +115,7 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
       'Neraca',
       'Arus Kas',
       'reversal',
-      'tutup buku',
+      'kunci periode',
       'audit',
       'bukan enkripsi',
       'Debit',
@@ -186,7 +186,7 @@ describe('P2-8 — panduan pemeriksaan akuntan', () => {
   });
 });
 
-describe('AKT-27 — dokumentasi akun legacy, tutup buku, dan reversal', () => {
+describe('AKT-27 — dokumentasi akun legacy, kunci periode, dan reversal', () => {
   it('menjelaskan 3001/3002 sebagai akun legacy tanpa angka turunan v2', () => {
     expect(PEMERIKSAAN).toContain('3001 SALDO KUMULATIF');
     expect(PEMERIKSAAN).toContain('3002 SALDO BERJALAN');
@@ -197,7 +197,7 @@ describe('AKT-27 — dokumentasi akun legacy, tutup buku, dan reversal', () => {
     expect(PEMERIKSAAN).not.toMatch(/Nilai(nya)? dihitung dari tutup buku dan surplus/i);
   });
 
-  it('menegaskan tutup buku bukan jurnal penutup manual', () => {
+  it('menegaskan kunci periode bukan jurnal penutup manual', () => {
     for (const dokumen of [PEMERIKSAAN, PENGGUNA, ARAH]) {
       expect(dokumen).toMatch(/jurnal penutup manual/i);
       expect(dokumen).toMatch(/tidak membuat jurnal penutup/i);

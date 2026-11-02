@@ -448,35 +448,36 @@ atau memperbarui COA bawaan.
 3. Buat **Backup Lengkap** dalam satu folder bertanggal,
    misalnya `backup-2026-10-31`. Ini jalur utama; jangan mengandalkan satu file
    **Backup Export .db** kecuali diminta pendamping.
-4. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
-   bulanan. Tidak ada tutup buku bulanan di aplikasi ini.
+4. Catatan: **kunci periode hanya untuk tahun yang sudah selesai**, bukan
+   penutupan bulanan. Tidak ada penutupan bulanan di aplikasi ini.
 
 ---
 
-## 4. Tutup buku tahunan
+## 4. Kunci periode tahunan
 
-Tutup buku adalah **penanda + kunci periode + catatan**, bukan menyimpan angka
-laba. Laba dan laba ditahan selalu dihitung ulang dari jurnal.
+Kunci periode adalah **penanda tahun selesai + kunci tanggal + catatan**. Ini
+bukan jurnal penutup dan bukan tempat menyimpan angka laba: laba dan laba
+ditahan selalu dihitung ulang dari jurnal.
 
-Tutup buku **tidak membuat jurnal penutup** dan tidak memindahkan
+Kunci periode **tidak membuat jurnal penutup** dan tidak memindahkan
 pendapatan/beban ke modal. Jangan membuat jurnal penutup manual; aplikasi menolak
 jurnal yang mencampur akun pendapatan/beban dengan ekuitas dalam satu jurnal
 (kecuali jurnal **Saldo Awal** dari wizard).
 
 1. Pastikan laporan tahun tersebut sudah diperiksa dan **Neraca Saldo seimbang**.
-2. Buka menu **Tutup Buku**.
-3. Isi **Tahun** yang akan ditutup. Hanya tahun yang sudah selesai yang boleh
+2. Buka menu **Kunci Periode**.
+3. Isi **Tahun** yang akan dikunci. Hanya tahun yang sudah selesai yang boleh
    (mis. pada 2026 hanya sampai 2025). Tahun berjalan ditolak.
 4. Tekan **Preview laba**, periksa laba dan laba ditahan.
 5. Tekan **Backup otomatis & lanjut** — sistem membuat backup `.db` lebih dulu.
-6. Isi catatan (opsional), lalu **Konfirmasi tutup buku**.
+6. Isi catatan (opsional), lalu **Konfirmasi kunci periode**.
 
-Riwayat tutup buku menampilkan **tahun**, **laba yang dihitung ulang**, dan
+Riwayat kunci periode menampilkan **tahun**, **laba yang dihitung ulang**, dan
 **catatan**. Lokasi file backup tidak disimpan di riwayat; backup otomatis tetap
 dibuat sebagai berkas terpisah di folder `backups`.
 
-Setelah tutup buku, tanggal pada tahun tersebut terkunci. Koreksi masih boleh,
-tetapi wajib memberi **alasan** dan tercatat di **Riwayat Audit**. Menutup ulang
+Setelah kunci periode, tanggal pada tahun tersebut terkunci. Koreksi masih boleh,
+tetapi wajib memberi **alasan** dan tercatat di **Riwayat Audit**. Mengunci ulang
 tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.
 
 ---
@@ -586,12 +587,12 @@ menyalin file `.exe`.
 | **Kas akan minus** | Transaksi membuat saldo kas/bank di akun itu negatif (kas minus). | Periksa saldo awal dan tanggal. Bila memang benar (kas belum tercatat), isi alasan minimal 5 karakter lalu konfirmasi; bila ragu, jangan simpan. |
 | **Periode sudah ditutup** | Tanggal transaksi berada di tahun yang sudah ditutup. | Bila koreksi memang perlu, isi **alasan** minimal 5 karakter. Koreksi tercatat di audit. |
 | **Nomor bukti sudah dipakai** | Nomor `JU-...` sudah ada. | Ganti nomor atau kosongkan agar sistem membuat nomor berikutnya. |
-| **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan tutup buku. Periksa Jurnal Umum dan hubungi pendamping. |
+| **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan kunci periode. Periksa Jurnal Umum dan hubungi pendamping. |
 | **Aplikasi terkunci** | Sesi PIN habis karena idle. | Masukkan PIN kembali. |
 | **Terlalu banyak salah** | PIN salah 5 kali. | Tunggu 60 detik, lalu coba lagi dengan hati-hati. |
 | **Backup gagal** | Media penyimpanan penuh/tidak bisa ditulis. | Ganti lokasi simpan, pastikan flashdisk tidak dikunci, coba lagi. |
 | **Database dibuat versi lebih baru** | File backup berasal dari aplikasi versi lebih baru. | Perbarui aplikasi di laptop ini, jangan memaksa restore. |
-| **Tahun belum boleh ditutup** | Tutup buku hanya untuk tahun yang sudah selesai. | Tutup tahun lalu lebih dulu; tahun berjalan jangan ditutup. |
+| **Tahun belum boleh dikunci** | Kunci periode hanya untuk tahun yang sudah selesai. | Kunci tahun lalu lebih dulu; tahun berjalan jangan dikunci. |
 
 ---
 

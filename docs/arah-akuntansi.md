@@ -42,17 +42,17 @@ Inilah yang membuat akuntan percaya: setiap angka di laporan bisa ditelusuri ke 
 ## 3. Prinsip yang dikunci
 
 1. **Jurnal adalah satu-satunya sumber kebenaran.** Tabel `jurnal` (kepala) + `jurnal_baris` (debit/kredit
-   per akun). Tidak ada tabel saldo, tidak ada laba tersimpan. **Tutup buku tidak membuat jurnal penutup**;
+   per akun). Tidak ada tabel saldo, tidak ada laba tersimpan. **Kunci periode tidak membuat jurnal penutup**;
    jurnal penutup manual yang mencampur PENDAPATAN/BEBAN dengan EKUITAS ditolak, kecuali jurnal
    **SALDO_AWAL** dari wizard Saldo Awal. Akun legacy `3001`/`3002` hanya-baca: tidak dapat diposting dan
-   tidak dihitung ulang dari tutup buku/surplus.
+   tidak dihitung ulang dari kunci periode/surplus.
 2. **Setiap jurnal seimbang**: minimal 2 baris, minimal satu sisi > 0 per baris, total debit = total kredit.
 3. **Koreksi = jurnal balik (reversal) + alasan.** Tidak pernah edit/hapus jurnal yang sudah tersimpan.
 4. **Semua laporan dihitung ulang dari jurnal setiap dibuka.** Boleh lambat, tidak boleh basi.
    Tidak ada cache angka turunan. Ini yang menjamin Neraca selalu balance.
 5. **Akun kas/bank tidak boleh minus.** Kalau transaksi membuat minus → peringatan + konfirmasi + alasan
    (bukan blokir keras, karena kas bisa saja belum tercatat).
-6. **Periode dikunci lewat tutup buku.** Koreksi di periode terkunci wajib alasan dan tercatat di audit.
+6. **Periode dikunci lewat menu Kunci Periode.** Koreksi di periode terkunci wajib alasan dan tercatat di audit.
 7. **UI dua level**: form terpandu untuk transaksi harian (operator awam pun aman), mode **Jurnal Umum**
    untuk akuntan. Keduanya menghasilkan jurnal yang sama.
 8. **POC = bebas merombak.** Tidak ada kewajiban kompatibilitas dengan data/skema lama; DB POC lama
@@ -67,7 +67,7 @@ Inilah yang membuat akuntan percaya: setiap angka di laporan bisa ditelusuri ke 
 | `transaksi` (masuk/keluar + kategori) | `jurnal` + `jurnal_baris` (debit/kredit per akun) |
 | Kategori = campuran akun kas & akun lawan | Semua sisi adalah **akun COA** ber-tipe |
 | `PANJAR` kategori sistem tersembunyi | Akun aset **1040 Uang Panjar (Kas di Muka)** |
-| `tutup_buku.laba` sumber angka Neraca | Laba dihitung dari jurnal; tutup buku hanya kunci + catatan |
+| `tutup_buku.laba` sumber angka Neraca | Laba dihitung dari jurnal; kunci periode hanya kunci + catatan |
 | Hanya 1 bentuk input | Form terpandu + Jurnal Umum |
 | Neraca dihitung ad-hoc | Neraca Saldo, Buku Besar, Laba Rugi, Neraca — semua dari jurnal |
 | Tidak ada koreksi | Jurnal balik + audit |
@@ -104,7 +104,7 @@ dev seed baru dibuat di atas jurnal v2.
 3. Setiap laporan bisa ditelusuri ke jurnal + nomor bukti.
 4. Koreksi tidak pernah menghapus sejarah.
 5. Backup/restore tidak boleh kehilangan transaksi (VACUUM INTO + cek integritas).
-6. Koreksi setelah tutup buku **tidak** membuat selisih (karena tidak ada angka turunan tersimpan).
+6. Koreksi setelah kunci periode **tidak** membuat selisih (karena tidak ada angka turunan tersimpan).
 7. Test tetap hijau: `npm run typecheck` + `npm test` sebelum setiap commit.
 
 ## 8. Peran pengguna (hasil keputusan K1)
@@ -201,7 +201,7 @@ Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
 ## 11. Roadmap ringkas
 
 - **P0 — Pondasi:** COA ber-tipe, skema jurnal, reset DB POC + seed baru, laporan inti (Buku Besar,
-  Neraca Saldo, Laba Rugi, Neraca, Arus Kas), posting layer, reversal, tutup buku, backup/restore aman, audit.
+  Neraca Saldo, Laba Rugi, Neraca, Arus Kas), posting layer, reversal, kunci periode, backup/restore aman, audit.
 - **P1 — Pengalaman pengguna:** form terpandu (operator awam), Jurnal Umum (akuntan pendamping),
   drill-down, export/print semua laporan, template cetak resmi, nomor bukti `JU`, pengaturan, dashboard.
 - **P2 — Lanjutan:** test integrasi dan dokumentasi.

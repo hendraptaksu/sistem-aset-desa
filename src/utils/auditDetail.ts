@@ -239,8 +239,8 @@ export function formatAksiAudit(aksi: string): string {
   const a = String(aksi ?? '');
 
   // Aksi spesifik harus dicek sebelum label generiknya.
-  if (a.startsWith('TUTUP-ULANG')) return 'Tutup buku (ulang)';
-  if (a.startsWith('TUTUP ')) return 'Tutup buku';
+  if (a.startsWith('TUTUP-ULANG')) return 'Kunci periode (ulang)';
+  if (a.startsWith('TUTUP ')) return 'Kunci periode';
   if (a.startsWith('KOREKSI-ISI-ULANG')) return 'Koreksi & isi ulang jurnal';
   if (a.startsWith('REVERSAL')) return 'Koreksi jurnal (balik)';
   if (a.startsWith('CREATE t-')) return 'Tambah transaksi BKU';

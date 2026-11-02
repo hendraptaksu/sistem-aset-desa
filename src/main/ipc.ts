@@ -262,7 +262,7 @@ export function registerIpc(deps: IpcDeps): void {
   const GAGAL_PINJAMAN =
     'Terjadi kesalahan saat menyimpan pinjaman LPD. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_TUTUP =
-    'Terjadi kesalahan saat memproses tutup buku. Coba lagi; bila tetap gagal, hubungi pendamping.';
+    'Terjadi kesalahan saat memproses kunci periode. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_BACKUP = 'Gagal membuat cadangan. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_RESTORE =
@@ -1287,7 +1287,7 @@ export function registerIpc(deps: IpcDeps): void {
           return fail(
             pesanValidasi(hasil.errors) ||
               pesanValidasi(hasil.peringatan) ||
-              'Tutup buku gagal disimpan.',
+              'Kunci periode gagal disimpan.',
             false,
             hasil.perluKonfirmasi,
           );
@@ -1475,7 +1475,7 @@ export function registerIpc(deps: IpcDeps): void {
       backupVacuumInto(deps.db(), dest);
       catatAudit(deps.db(), {
         aksi: 'BACKUP-AUTO',
-        alasan: `Backup otomatis sebelum tutup buku ${n}`,
+        alasan: `Backup otomatis sebelum kunci periode ${n}`,
         baru: { path: dest, jenis: 'tutup-buku', tahun: n },
       });
       deps.log?.info(`Backup otomatis tutup buku ${n} dibuat: ${basename(dest)}`);

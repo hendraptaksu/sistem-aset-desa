@@ -268,14 +268,6 @@ export function DashboardTab({
               >
                 Bayar Utang
               </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
-                Tutup Buku
-              </Button>
-              {modeLanjutan && (
-                <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
-                  Jurnal Umum
-                </Button>
-              )}
             </div>
           </Card>
 
@@ -378,7 +370,7 @@ export function DashboardTab({
                 )}
               </dl>
               <p className="mt-2 text-sm text-stone-600">
-                Bila selisih, jangan tutup buku. Periksa Jurnal Umum terlebih dahulu.
+                Bila selisih, jangan kunci periode. Periksa Jurnal Umum terlebih dahulu.
               </p>
             </Card>
 
@@ -390,13 +382,13 @@ export function DashboardTab({
                 </div>
                 <Badge tone={data.periode.tahunTerakhirDitutup ? 'amber' : 'stone'}>
                   {data.periode.tahunTerakhirDitutup
-                    ? `Tutup ${data.periode.tahunTerakhirDitutup}`
-                    : 'Belum tutup'}
+                    ? `Tahun ${data.periode.tahunTerakhirDitutup} terkunci`
+                    : 'Belum dikunci'}
                 </Badge>
               </div>
               <dl className="mt-3 space-y-2 text-[15px]">
                 <div className="flex justify-between gap-3 border-b pb-2">
-                  <dt className="text-stone-600">Tahun terakhir ditutup</dt>
+                  <dt className="text-stone-600">Tahun terakhir dikunci</dt>
                   <dd className="font-semibold">
                     {data.periode.tahunTerakhirDitutup ?? 'Belum ada'}
                   </dd>
@@ -410,7 +402,7 @@ export function DashboardTab({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-stone-600">Boleh ditutup s/d</dt>
+                  <dt className="text-stone-600">Boleh dikunci s/d</dt>
                   <dd className="font-semibold">{data.periode.batasTahun}</dd>
                 </div>
               </dl>
@@ -420,7 +412,7 @@ export function DashboardTab({
                   disabled={sibuk}
                   onClick={() => onBukaTab('tutup')}
                 >
-                  Buka Tutup Buku
+                  Buka Kunci Periode
                 </Button>
               </div>
             </Card>

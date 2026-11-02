@@ -706,7 +706,7 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
   it('menampilkan status sibuk dan menonaktifkan tombol aksi serta X', () => {
     const html = renderToStaticMarkup(
       createElement(KonfirmasiModal, {
-        judul: 'Tutup buku?',
+        judul: 'Kunci periode?',
         deskripsi: 'Periode akan dikunci.',
         sibuk: true,
         onBatal: () => {},

@@ -93,7 +93,7 @@ function validasiDenganIntegritas(
     perluKonfirmasi: false,
     errors: [
       ...validasi.errors,
-      `Audit integritas akuntansi gagal. ${audit.ringkasan} Tutup buku diblokir sampai data diperbaiki.`,
+      `Audit integritas akuntansi gagal. ${audit.ringkasan} Kunci periode diblokir sampai data diperbaiki.`,
       ...audit.temuan.map((t) => `[${t.kode}] ${t.pesan}`),
     ],
     temuanIntegritas: audit.temuan,
@@ -188,8 +188,8 @@ export function tutupBuku(
   const alasan =
     catatan ||
     (validasi.aksi === 'TUTUP-ULANG'
-      ? `Tutup ulang tahun ${angka}`
-      : `Tutup buku tahun ${angka}`);
+      ? `Kunci ulang tahun ${angka}`
+      : `Kunci periode tahun ${angka}`);
   const audit = buatAuditLog(
     `${validasi.aksi} ${angka}`,
     alasan,

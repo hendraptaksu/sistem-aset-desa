@@ -67,7 +67,7 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
   { id: 'arus-kas', label: 'Arus Kas', Icon: Banknote },
-  { id: 'tutup', label: 'Tutup Buku', Icon: Lock },
+  { id: 'tutup', label: 'Kunci Periode', Icon: Lock },
   { id: 'pengaturan', label: 'Pengaturan', Icon: Settings },
 ];
 
@@ -116,11 +116,9 @@ const GRUP_DARI_TAB: Partial<Record<TabId, GrupId>> = Object.fromEntries(
   GRUP_MENU.flatMap((g) => g.item.map((id) => [id, g.id] as const)),
 );
 
-const BUKA_AWAL: Record<GrupId, boolean> = {
-  harian: GRUP_MENU[0].defaultTerbuka,
-  laporan: GRUP_MENU[1].defaultTerbuka,
-  data: GRUP_MENU[2].defaultTerbuka,
-};
+const BUKA_AWAL = Object.fromEntries(
+  GRUP_MENU.map((grup) => [grup.id, grup.defaultTerbuka]),
+) as Record<GrupId, boolean>;
 
 // UI-05: status lipat sidebar disimpan per profil. Nilai hanya ditulis saat
 // pengguna menekan tombol lipat, sehingga default otomatis tidak menimpa

@@ -25,7 +25,7 @@ lama, melainkan membuat jurnal balik.
 4. **Laba Rugi** — pendapatan dan beban periode.
 5. **Neraca** — aset = kewajiban + ekuitas; cek laba berjalan & laba ditahan.
 6. **Arus Kas** — mutasi kas/bank metode langsung.
-7. **Riwayat Audit** — periksa koreksi, tutup buku, backup/restore, perubahan
+7. **Riwayat Audit** — periksa koreksi, kunci periode, backup/restore, perubahan
    pengaturan.
 
 Semua layar laporan bisa **drill-down**: klik baris/akun → daftar jurnal → detail
@@ -113,7 +113,7 @@ Akun yang paling sering diperiksa:
 - `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun **legacy** yang hanya
   ditampilkan untuk membaca data lama. Keduanya **tidak dapat diposting** lewat
   Jurnal Umum, form terpandu, maupun Saldo Awal. Sistem v2 **tidak
-  menghitung** saldo akun ini dari tutup buku atau surplus periode dan **tidak
+  menghitung** saldo akun ini dari kunci periode atau surplus periode dan **tidak
   menulis** ke akun ini; saldo yang tampil hanyalah akumulasi baris jurnal lama
   yang sudah ada di database. Bila tidak ada data lama, saldonya nol dan itu
   normal.
@@ -137,7 +137,7 @@ Buka **Neraca Saldo**, pilih cut-off, lalu pilih mode:
   berjalan.
 
 **Aturan mutlak:** total debit = total kredit; **selisih harus 0**. Bila ada
-selisih, jangan tutup buku dan jangan membuat laporan resmi. Cari jurnal yang
+selisih, jangan kunci periode dan jangan membuat laporan resmi. Cari jurnal yang
 tidak seimbang di Jurnal Umum, atau hubungi pengembang bila sistem sendiri yang
 menghasilkan selisih (seharusnya tidak terjadi karena posting layer menolak
 jurnal tidak seimbang).
@@ -185,10 +185,10 @@ Buka **Neraca** dan pilih cut-off.
 - **Kewajiban** = saldo akun KEWAJIBAN (mis. `2050` pinjaman dan `2060` utang usaha).
 - **Ekuitas** = modal + laba ditahan + laba berjalan (dihitung dari jurnal).
 - **Aset = Kewajiban + Ekuitas**. Bila tidak sama, lihat status **Neraca Saldo**
-  dan jangan tutup buku.
+  dan jangan kunci periode.
 - **Laba ditahan** = akumulasi laba tahun-tahun yang sudah ditutup. Laba tahun
   berjalan terpisah sampai tahun itu ditutup.
-- Bila ada koreksi setelah tutup buku, Neraca tahun berikutnya harus tetap
+- Bila ada koreksi setelah kunci periode, Neraca tahun berikutnya harus tetap
   seimbang; ini perilaku yang diuji (bukan bug).
 
 Periksa juga bahwa **modal tidak berubah** hanya karena ada beban atau
@@ -249,7 +249,7 @@ Aturan penting:
   tidak ada jurnal yang dihapus. Audit `PANJAR-BATAL` mencatat alasan dan link
   `jurnal_batal_id`.
 - Koreksi di periode yang sudah ditutup wajib alasan dan tercatat di audit.
-- Koreksi setelah tutup buku tidak boleh membuat Neraca selisih.
+- Koreksi setelah kunci periode tidak boleh membuat Neraca selisih.
 
 **Peringatan dan alasan.** Peringatan seperti kas/bank akan minus atau realisasi
 panjar melebihi panjar tidak memblokir penyimpanan, tetapi wajib dikonfirmasi.
@@ -259,29 +259,29 @@ Riwayat Audit. Alasan koreksi jurnal juga wajib minimal 5 karakter.
 
 ---
 
-## 9. Tutup buku
+## 9. Kunci periode
 
 1. Pastikan **Neraca Saldo seimbang** dan laporan tahun tersebut sudah diperiksa.
-2. Buka **Tutup Buku**.
-3. Hanya tahun yang sudah selesai boleh ditutup (mis. pada 2026 maksimal 2025).
+2. Buka **Kunci Periode**.
+3. Hanya tahun yang sudah selesai boleh dikunci (mis. pada 2026 maksimal 2025).
    Tahun berjalan ditolak.
 4. Tekan **Preview laba**, periksa laba dan laba ditahan.
 5. **Backup otomatis & lanjut** akan membuat backup `.db` sebelum kunci.
 6. Isi catatan pemeriksaan (opsional), lalu konfirmasi.
 
-Tutup buku hanya menyimpan penanda tahun, waktu, dan catatan. Path/lokasi file
-backup tidak disimpan di riwayat tutup buku; backup otomatis tetap dibuat
+Kunci periode hanya menyimpan penanda tahun, waktu, dan catatan. Path/lokasi file
+backup tidak disimpan di riwayat kunci periode; backup otomatis tetap dibuat
 sebagai berkas terpisah di folder `backups`. **Laba tidak disimpan sebagai
 sumber angka.** Menutup ulang tahun yang sama tercatat sebagai `TUTUP-ULANG`.
-Setelah tutup, koreksi masih boleh dengan alasan.
+Setelah dikunci, koreksi masih boleh dengan alasan.
 
-Tutup buku **tidak membuat jurnal penutup** dan tidak memindahkan saldo
+Kunci periode **tidak membuat jurnal penutup** dan tidak memindahkan saldo
 PENDAPATAN/BEBAN ke akun ekuitas. Jangan membuat jurnal penutup manual: sistem
 menolak jurnal yang mencampur akun PENDAPATAN/BEBAN dengan EKUITAS dalam satu
 jurnal (termasuk `3000 MODAL`; `3001`/`3002` juga tidak dapat diposting).
 Pengecualian hanya jurnal **Saldo Awal** dari wizard Saldo Awal. Laba tahun
 berjalan tetap dihitung dari jurnal; laba ditahan bertambah dari daftar tahun
-yang ditutup, bukan dari jurnal buatan operator.
+yang dikunci, bukan dari jurnal buatan operator.
 
 ---
 
@@ -334,7 +334,7 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 | **Neraca Saldo** | Daftar saldo semua akun pada tanggal tertentu; total debit harus sama dengan total kredit. |
 | **Buku Besar** | Riwayat mutasi per akun beserta saldo berjalan. |
 | **Reversal** | Jurnal balik yang menetralkan jurnal salah; jurnal asli tetap tersimpan. |
-| **Tutup buku** | Mengunci periode tahun yang sudah selesai dan mencatat pemeriksaan; bukan menyimpan laba. |
+| **Kunci periode** | Mengunci periode tahun yang sudah selesai dan mencatat pemeriksaan; bukan menyimpan laba. |
 
 ---
 
@@ -349,6 +349,6 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 - [ ] Laba Rugi cocok dengan Buku Besar pendapatan/beban.
 - [ ] Neraca: aset = kewajiban + ekuitas.
 - [ ] Arus Kas cocok dengan mutasi kas/bank.
-- [ ] Audit: koreksi dan tutup buku punya alasan.
+- [ ] Audit: koreksi dan kunci periode punya alasan.
 - [ ] Backup Lengkap (`pura.db` + `manifest.json`) atau Backup Export `.db`
       sudah dibuat.

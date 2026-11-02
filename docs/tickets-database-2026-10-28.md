@@ -2,9 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-02 (setelah DB-28):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **948 test / 78 file hijau**; `npm run build`
-> berhasil. Baseline DB-27 adalah 943/77. Baseline DB-26 adalah 936/76.
+> **Baseline terakhir 2026-11-02 (setelah DB-29):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **957 test / 79 file hijau**; `npm run build`
+> berhasil. Baseline DB-28 adalah 948/78. Baseline DB-27 adalah 943/77.
+> Baseline DB-26 adalah 936/76.
 > Baseline DB-16f adalah 929/75.
 > Baseline DB-16e adalah 918/74.
 > Baseline DB-16d adalah 907/73.
@@ -118,7 +119,7 @@
 | DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [x] |
 | DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [x] |
 | DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [x] |
-| DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [ ] |
+| DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [x] |
 | DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
 | DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
 | DB-32 | P1 | M | Hapus modul Inventaris Aset (UI/API/test) | — | [x] |
@@ -1254,11 +1255,38 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Catatan:** tidak ada perubahan skema/`SCHEMA_VERSION`, jurnal, laporan,
     `data/`, atau commit.
 
-- [ ] **DB-29 — Kurangi tab sidebar & rename “Tutup Buku”** · P2 · S
+- [x] **DB-29 — Kurangi tab sidebar & rename “Tutup Buku”** · P2 · S
   - Setelah DB-24/25/26/23: rapikan `TABS`/`GRUP_MENU`, hapus tab yang
     disembunyikan, rename “Tutup Buku” menjadi “Kunci Periode” atau beri
     penjelasan bahwa ini penanda + kunci, bukan jurnal penutup.
   - Update test menu + panduan.
+  - **Bukti 2026-11-02:** `TABS` kini hanya memuat 14 tab fungsional
+    (Dashboard, Transaksi, Daftar Akun, Jurnal Umum, Buku Besar, Neraca Saldo,
+    Buku Panjar, Pinjaman LPD, Buku Pembantu, Laba Rugi, Neraca, Arus Kas,
+    Kunci Periode, Pengaturan); tidak ada tab/import modul yang sudah dihapus.
+    Grup **Laporan** tetap default tertutup, **Data & Sistem** berisi Akun,
+    Kunci Periode, dan Jurnal Umum, sementara Jurnal Umum tetap disaring
+    `menuTerlihat` sampai Mode lanjutan aktif; efek `tabSetelahModeLanjutan`
+    memindahkan tab Jurnal ke Dashboard saat mode dimatikan. Pintasan ganda
+    Dashboard ke Kunci Periode/Jurnal dihapus; masing-masing tersisa satu pintasan
+    kontekstual. Label tab, heading/riwayat/modal `TutupTab`, dashboard, filter
+    audit, dan label riwayat audit memakai **Kunci Periode**; penjelasan baru
+    menegaskan ini penanda + kunci tanggal, bukan jurnal penutup, dan laba tetap
+    dihitung ulang dari jurnal. ID tab `tutup`, route, tabel `tutup_buku`, dan
+    aksi audit `TUTUP`/`TUTUP-ULANG` tidak berubah. README, panduan pengguna,
+    panduan pemeriksaan, dan arah akuntansi diselaraskan; `e2e/ui-audit.test.mjs`
+    memakai 14 tab saat ini, label Kunci Periode, dan mengaktifkan Mode lanjutan
+    setelah memastikan Jurnal Umum tersembunyi default. Test baru
+    `tests/db-29-sidebar-kunci-periode.test.ts` (9 test) menjaga daftar tab,
+    grup menu, fallback mode lanjutan, penjelasan UI, label audit, dokumentasi,
+    dan daftar tab e2e; test menu/DB-26/dokumentasi/audit-detail/forms-ui
+    disesuaikan. `npm run typecheck` bersih; `npx vitest run --pool=threads`
+    **957 test/79 file hijau** (baseline DB-28 948/78); `npm run build` berhasil;
+    `npm run test:ui-audit` **3/3 ukuran lulus (14 tab)**.
+  - **Catatan:** tidak ada perubahan skema/`SCHEMA_VERSION`, jurnal, laporan,
+    `data/`, atau commit. Audit UI juga memperbaiki selector test lama
+    `Jenis` → `Filter jenis` (sudah berubah sejak DB-03) agar e2e dapat berjalan;
+    tidak ada perubahan perilaku aplikasi.
 
 - [ ] **DB-30 — STRICT/created_at/unique name + ERD v2** · P2 · M
   - Pertimbangkan tabel `STRICT` untuk tabel baru; tambah `DEFAULT` untuk

@@ -567,7 +567,7 @@ export function LockModal({
   return (
     <Modal
       judul="Periode sudah ditutup"
-      deskripsi="Tanggal ini masuk tahun yang sudah tutup buku. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
+      deskripsi="Tanggal ini masuk tahun yang sudah dikunci lewat Kunci Periode. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
       onTutup={onCancel}
       lebar="md"
     >

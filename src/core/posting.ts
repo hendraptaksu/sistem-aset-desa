@@ -89,7 +89,7 @@ export const PESAN_INPUT_JURNAL_TIDAK_VALID =
 
 /** AKT-16: pesan penolakan jurnal penutup manual (P&L dicampur ekuitas). */
 export const PESAN_JURNAL_PENUTUP_MANUAL =
-  'Jurnal penutup manual tidak didukung. Tutup buku hanya penanda; gunakan menu Tutup Buku. Untuk pembayaran beban oleh pemilik, buat dua jurnal: beban/kas lalu kas/modal.';
+  'Jurnal penutup manual tidak didukung. Kunci periode hanya penanda; gunakan menu Kunci Periode. Untuk pembayaran beban oleh pemilik, buat dua jurnal: beban/kas lalu kas/modal.';
 
 export type JurnalInput = {
   header: JurnalHeaderInput;

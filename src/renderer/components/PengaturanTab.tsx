@@ -35,7 +35,7 @@ const OPSI_AKSI = [
   { value: 'CREATE', label: 'Tambah jurnal / transaksi' },
   { value: 'REVERSAL', label: 'Koreksi jurnal (balik)' },
   { value: 'KOREKSI-ISI-ULANG', label: 'Koreksi & isi ulang' },
-  { value: 'TUTUP', label: 'Tutup buku' },
+  { value: 'TUTUP', label: 'Kunci periode' },
   { value: 'SALDO-AWAL', label: 'Saldo awal' },
   { value: 'PANJAR', label: 'Panjar' },
   { value: 'BACKUP', label: 'Backup' },
@@ -51,7 +51,7 @@ const OPSI_REF = [
   { value: 'jurnal', label: 'Jurnal' },
   { value: 'panjar', label: 'Panjar' },
   { value: 'pinjaman', label: 'Pinjaman LPD' },
-  { value: 'tutup_buku', label: 'Tutup buku' },
+  { value: 'tutup_buku', label: 'Kunci periode' },
   { value: 'akun', label: 'Akun COA' },
 ] as const;
 
@@ -668,7 +668,7 @@ export function PengaturanTab({
       <Card>
         <h2 className="mb-1 text-lg font-bold">Riwayat Audit</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Semua perubahan penting tercatat: jurnal, koreksi, tutup buku, backup/restore,
+          Semua perubahan penting tercatat: jurnal, koreksi, kunci periode, backup/restore,
           panjar, dan pengaturan. Data sebelum/sesudah bisa dibuka per baris.
         </p>
 

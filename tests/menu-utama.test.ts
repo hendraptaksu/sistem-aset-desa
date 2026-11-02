@@ -28,7 +28,7 @@ describe('DB-31 — Rekonsiliasi Bank dihapus dari menu/UI', () => {
       'Transaksi',
       'Buku Besar',
       'Neraca Saldo',
-      'Tutup Buku',
+      'Kunci Periode',
       'Pengaturan',
     ]) {
       expect(APP, `menu "${label}" tetap ada`).toContain(label);
@@ -168,7 +168,7 @@ describe('DB-25 — Import Excel dihapus dari menu/UI', () => {
       'Transaksi',
       'Daftar Akun',
       'Jurnal Umum',
-      'Tutup Buku',
+      'Kunci Periode',
       'Pengaturan',
     ]) {
       expect(APP, `menu "${label}" tetap ada`).toContain(label);
