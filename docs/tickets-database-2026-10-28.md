@@ -2,16 +2,19 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-02 (setelah DB-30):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **967 test / 81 file hijau**; `npm run build`
-> berhasil. Baseline DB-29 adalah 957/79. Baseline DB-28 adalah 948/78.
-> Baseline DB-27 adalah 943/77. Baseline DB-26 adalah 936/76.
-> Baseline DB-16f adalah 929/75.
-> Baseline DB-16e adalah 918/74.
-> Baseline DB-16d adalah 907/73.
-> Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
-> Baseline DB-34 adalah 869/69.
-> Baseline DB-21 adalah 850/69; baseline DB-20 adalah 832/67.
+> **Baseline akhir 2026-11-02 (setelah DB-38):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **976 test / 82 file hijau**; `npm run build`
+> berhasil; `SCHEMA_VERSION` = **21**. Baseline DB-30 adalah 967/81, DB-29
+> 957/79, DB-28 948/78, DB-27 943/77, DB-26 936/76, DB-16f 929/75, DB-16e
+> 918/74, DB-16d 907/73, DB-16c 896/72, DB-16b 882/71, DB-34 869/69, DB-21
+> 850/69, DB-20 832/67.
+>
+> **Status 2026-11-02: seluruh ticket di dokumen ini selesai** (kecuali baris
+> penunjuk “DB-23/24/25 dipindahkan” yang bukan ticket). Setiap ticket punya
+> commit terpisah dan regression test. Catatan verifikasi: `npm test` dengan
+> pool fork default pernah flaky/timeout karena beban mesin; verifikasi akhir
+> memakai `npx vitest run --pool=threads` dan lulus penuh.
+>
 > `docs/panduan-portable.md` dipulihkan; test arsip ERD v1 dihapus karena
 > arsipnya memang tidak dipakai. Angka **737/58** di dokumen AKT sudah tidak
 > relevan. Verifikasi ulang sebelum mulai.
@@ -1158,10 +1161,10 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **Keputusan 2026-10-30:** lampiran tidak dipakai; modul dan tabel dihapus
     lewat **DB-37** dan **DB-33**. Tidak ada kompresi yang perlu dibuat.
 
-- [ ] **DB-23/DB-24/DB-25 — dipindahkan ke Fase 4**
+- [x] **DB-23/DB-24/DB-25 — dipindahkan ke Fase 4 (penunjuk, bukan ticket)**
   - Versi lama (“sembunyikan UI saja”) sudah diganti oleh **DB-23a/DB-23b/
     DB-24/DB-25** di Fase 4: hapus modul, siapkan drop tabel, lalu DB-33.
-  - Jangan mengerjakan versi lama; lihat Fase 4.
+  - Semua sudah selesai; tidak ada versi lama yang dikerjakan.
 
 - [x] **DB-26 — Jurnal Umum di balik mode lanjutan + penjelasan** · P1 · S
   - **Konteks:** user tidak memahami Jurnal Umum. Jangan tampilkan sebagai menu
@@ -1381,81 +1384,46 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
 7. **Denda** memakai 5050 BIAYA LAIN-LAIN; jika client butuh akun terpisah,
    tiket baru.
 
-### Temuan P0 — jangan mulai data nyata sebelum selesai
+### Temuan P0 — status akhir: semua tertutup
 
-1. **Baseline sudah hijau (DB-35).** `docs/panduan-portable.md` dipulihkan;
-   test arsip ERD v1 dihapus. `npm test` **736/58 hijau**. Klaim `737/737` di
-   dokumen AKT sudah tidak relevan.
-2. **DB versi lebih baru kini ditolak (DB-05, 2026-10-30).**
-   `migrasi()` menolak `user_version > SCHEMA_VERSION` sebelum DDL, dan
-   `openDb()` memeriksa versi sebelum PRAGMA WAL sehingga file DB versi lebih
-   baru tidak tersentuh. `validasiKandidatRestore` juga sudah punya guard.
-   Risiko aplikasi versi lama membuka DB versi baru lalu merusak/menimpa aturan
-   sudah ditutup dengan regression test khusus.
-3. **Backup pra-upgrade bergantung pada nama tabel, bukan versi.**
-   `buangTabelLama()` berjalan setiap `openDb()` dan membuang tabel lama
-   berdasarkan bentuk. `backupPraUpgrade()` hanya membuat backup bila ada
-   tabel `transaksi`/`panjar`/`coa`. Selama `panjar` masih ada, backup jalan;
-   setelah `panjar` dihapus, upgrade berikutnya **tidak** akan membuat backup.
-   Ganti kondisinya menjadi “setiap kenaikan versi” di **DB-33**.
-4. **Drop tabel tanpa rencana restore.** `TABEL_WAJIB_RESTORE` masih memuat
-   `aset`; `hapusAkun()` masih mengecek `anggaran`/`panjar_item`/`jurnal_pihak`;
-   `auditIntegritas()` masih mengecek `panjar`. Semua harus diperbarui bersamaan
-   dengan drop tabel, bukan ditinggal.
+1. **Baseline hijau (DB-35 → DB-38).** Verifikasi akhir: typecheck bersih,
+   **976 test / 82 file**, build berhasil.
+2. **DB versi lebih baru ditolak (DB-05).** `openDb()`/`migrasi()` menolak
+   sebelum PRAGMA WAL/DDL; restore juga menolak. Regression test khusus ada.
+3. **Backup pra-upgrade per kenaikan versi (DB-33).** Tidak lagi bergantung
+   pada nama tabel; pemanggil produksi membuat backup sebelum `openDb()`.
+4. **Drop tabel + restore terkoordinasi (DB-33/DB-08).** `TABEL_WAJIB_RESTORE`
+   mengikuti versi, `foreign_key_check` wajib lolos, dan referensi tabel lama
+   dibersihkan. Skema aktif 11 tabel.
 
-### Temuan P1 — akurasi & konsistensi
+### Temuan P1 — status akhir (histori)
 
-1. **Audit integritas belum memeriksa reversal.** `auditIntegritas()` memeriksa
-   jurnal tidak seimbang, jumlah baris, akun asing, orphan, FK, nomor bukti, dan
-   panjar. Ia belum memeriksa: reversal harus cermin persis jurnal asli, satu
-   jurnal hanya satu reversal, reversal tidak boleh dibalik lagi, dan `grup_id`
-   harus sama. Karena reversal adalah satu-satunya jalur koreksi, ini penting.
-2. **Tipe/posisi akun tidak dikunci di DB.** Tabel `akun` tidak punya CHECK;
-   laporan mempercayai `akun.tipe`/`posisi_normal`. Input langsung lewat SQL
-   bisa membuat laporan salah tanpa terdeteksi. Tambahkan audit/trigger.
-3. **Arus kas jurnal campuran.** `arusKas()` memilih satu kelompok berdasarkan
-   “ada lawan bertipe …”. Jurnal manual yang mencampur pendapatan + kewajiban +
-   kas bisa masuk kelompok yang salah. Form terpandu aman; Jurnal Umum perlu
-   dibatasi atau diberi metadata kategori arus kas.
-4. **Kunci periode masih longgar.** Tahun yang sudah ditutup masih bisa
-   diposting dengan alasan ≥5 karakter. Ini keputusan sadar, tetapi untuk
-   akurasi sebaiknya ada aksi “buka periode” yang tercatat, bukan override
-   bebas. Perlu keputusan client/akuntan.
-5. **Angsuran LPD tidak muat di modul Pihak.** `klasifikasiAlurPihak()`
-   mewajibkan tepat 2 baris. Angsuran LPD punya pokok + bunga + denda (3–4
-   baris). Karena itu modul LPD terpisah memang perlu; jangan memaksa lewat
-   `PihakTab`.
-6. **Desain `pinjaman_bayar` berpotensi duplikasi angka (diselesaikan
-   DB-16b/DB-36).** Rancangan awal menyimpan pokok/bunga/denda di tabel
-   pembayaran sekaligus di jurnal. Implementasi final hanya menyimpan link
-   `jurnal_id` + `angsuran_id`; nominal dihitung dari baris jurnal.
-7. **Panjar belum per nota.** `panjar_item` hanya menyimpan
-   `kategori_baga`/nominal/`jurnal_id`; belum ada nomor nota, tanggal nota, atau
-   toko. Jika client tetap butuh “rincian per nota”, DB-18/19/20 harus
-   diselesaikan. Jika tidak, hapus panjar.
-8. **Lampiran dan backup.** `Backup Lengkap` sudah menyalin lampiran, tetapi
-   backup `.db` tunggal tidak. Lampiran sudah diputuskan **hapus** (DB-37),
-   jadi tabel `lampiran_jurnal` dan folder `attachments` tidak perlu
-   dipertahankan. DB-22 (kompresi) dibatalkan.
-9. **Inventaris aset bukan akuntansi.** `aset` tidak masuk jurnal, tidak
-   disusutkan, dan tidak muncul di Neraca. Jangan menyebutnya “aset” dalam
-   laporan keuangan. Jika client hanya butuh daftar fisik, Excel lebih murah;
-   jika butuh aset tetap di Neraca, perlu desain akun + penyusutan terpisah.
-10. **Anggaran bukan bagian pembukuan.** `anggaran` hanya menyimpan pagu;
-    realisasi dihitung dari `labaRugi()`. Tidak memengaruhi Neraca/Laba Rugi.
-    Jika client tidak menetapkan pagu tahunan, hapus.
+1. **Audit reversal (DB-34).** Selesai: cermin baris, satu reversal, grup,
+   reversal-atas-reversal, jenis, tipe/posisi akun, baris dua sisi.
+2. **Tipe/posisi akun dikunci (DB-11/DB-34).** Unique NOCASE + trigger
+   INSERT/UPDATE + audit.
+3. **Arus kas jurnal campuran.** Form terpandu aman; Jurnal Umum kini hanya
+   UMUM dan berada di mode lanjutan (DB-03/DB-26). Metadata kategori arus kas
+   otomatis tetap backlog jika client membutuhkannya.
+4. **Kunci periode masih longgar.** Override beralasan ≥5 karakter tetap
+   keputusan sadar (AKT); aksi buka-periode tercatat belum diminta client.
+5. **Angsuran LPD** punya modul sendiri (DB-16b..f), tidak dipaksa ke Pihak.
+6. **`pinjaman_bayar` link-only** (DB-16b/DB-36): nominal dari jurnal.
+7. **Panjar per nota** (DB-18/19/20); `panjar_item` tetap detail nota.
+8. **Lampiran dihapus** (DB-37/DB-33); backup lengkap = DB + manifest.
+9. **Inventaris aset dihapus** (DB-32/DB-33); bukan modul akuntansi.
+10. **Anggaran dihapus** (DB-24/DB-33); laporan tetap dari jurnal.
 
-### Temuan P2 — kebersihan
+### Temuan P2 — status akhir (histori)
 
-- `jurnal.jenis` dan `grup_id` belum punya constraint DB; validasi hanya di
-  aplikasi.
-- `akun.nama` belum unik di DB (DB-11).
-- `anggaran.created_at`/`updated_at` boleh NULL; tabel baru sebaiknya `STRICT`
-  dan `DEFAULT`.
-- `tutup_buku.backup_path` menyimpan path yang belum tentu berguna; DB-28
-  menghapusnya dari UI/tipe, kolom DB menunggu migrasi berikutnya.
-- Dokumentasi masih menyebut fitur yang akan dihapus (Rekonsiliasi, Anggaran,
-  Import, Aset, Piutang). Update bersamaan dengan DB-29/DB-35.
+- `jurnal.jenis`/`grup_id`: trigger validasi jenis ada (DB-10); constraint
+  `grup_id` tetap backlog.
+- `akun.nama` unik NOCASE: selesai (DB-11).
+- STRICT/DEFAULT: kebijakan untuk tabel baru didokumentasikan di
+  `docs/erd-v2.md`; tabel lama/pinjaman tidak direbuild (DB-30).
+- `tutup_buku.backup_path`: tidak lagi di UI/tipe; kolom DB menunggu migrasi
+  terpisah (DB-28).
+- Dokumentasi fitur yang dihapus: sudah dibersihkan (DB-29/DB-31/32/24/25/37).
 
 ### Urutan pengerjaan yang disarankan
 
