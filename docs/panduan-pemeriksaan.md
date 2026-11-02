@@ -166,11 +166,11 @@ semua laporan memakai rentang Januari–Desember, bukan tahun fiskal.
 - Cocokkan total pendapatan/beban dengan Buku Besar akun terkait.
 - Bila ada pendapatan/beban yang seharusnya masuk tahun lain, periksa tanggal
   jurnal — bukan mengubah angka laporan.
-- Bila **Pengaturan** menampilkan peringatan bahwa data lama masih memakai awal
-  tahun buku selain Januari (mis. bulan 7), jangan mengubah data secara manual.
-  Buka Pengaturan, pastikan field **Awal tahun buku** menunjukkan
-  “Januari (tahun kalender)”, lalu tekan **Simpan Pengaturan Pembukuan**.
-  Aplikasi tidak mengubah setting lama secara otomatis.
+- **Pengaturan tidak lagi menampilkan field awal tahun buku.** Bila DB lama
+  menyimpan nilai selain Januari, aplikasi tetap membukanya tanpa error dan
+  laporan tidak gagal dimuat. Nilai tersimpan baru menjadi Januari setelah
+  operator menekan **Simpan Pengaturan Pembukuan**; aplikasi tidak mengubah data
+  lama hanya karena dibuka.
 
 Catatan: laporan ini **tidak** memakai angka tersimpan. Koreksi jurnal setelah
 periode berjalan langsung mengubah Laba Rugi saat dibuka ulang.
@@ -269,9 +269,11 @@ Riwayat Audit. Alasan koreksi jurnal juga wajib minimal 5 karakter.
 5. **Backup otomatis & lanjut** akan membuat backup `.db` sebelum kunci.
 6. Isi catatan pemeriksaan (opsional), lalu konfirmasi.
 
-Tutup buku hanya menyimpan penanda tahun, waktu, path backup, dan catatan.
-**Laba tidak disimpan sebagai sumber angka.** Menutup ulang tahun yang sama
-tercatat sebagai `TUTUP-ULANG`. Setelah tutup, koreksi masih boleh dengan alasan.
+Tutup buku hanya menyimpan penanda tahun, waktu, dan catatan. Path/lokasi file
+backup tidak disimpan di riwayat tutup buku; backup otomatis tetap dibuat
+sebagai berkas terpisah di folder `backups`. **Laba tidak disimpan sebagai
+sumber angka.** Menutup ulang tahun yang sama tercatat sebagai `TUTUP-ULANG`.
+Setelah tutup, koreksi masih boleh dengan alasan.
 
 Tutup buku **tidak membuat jurnal penutup** dan tidak memindahkan saldo
 PENDAPATAN/BEBAN ke akun ekuitas. Jangan membuat jurnal penutup manual: sistem

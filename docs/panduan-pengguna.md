@@ -471,6 +471,10 @@ jurnal yang mencampur akun pendapatan/beban dengan ekuitas dalam satu jurnal
 5. Tekan **Backup otomatis & lanjut** — sistem membuat backup `.db` lebih dulu.
 6. Isi catatan (opsional), lalu **Konfirmasi tutup buku**.
 
+Riwayat tutup buku menampilkan **tahun**, **laba yang dihitung ulang**, dan
+**catatan**. Lokasi file backup tidak disimpan di riwayat; backup otomatis tetap
+dibuat sebagai berkas terpisah di folder `backups`.
+
 Setelah tutup buku, tanggal pada tahun tersebut terkunci. Koreksi masih boleh,
 tetapi wajib memberi **alasan** dan tercatat di **Riwayat Audit**. Menutup ulang
 tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.

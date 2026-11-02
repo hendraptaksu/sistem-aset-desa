@@ -1,7 +1,8 @@
 // Adapter DB untuk tutup buku (P0-7, AKT-10).
 //
-// `tutup_buku` hanya menyimpan penanda tahun + created_at + backup_path +
-// catatan. Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
+// `tutup_buku` hanya menyimpan penanda tahun + created_at + catatan. Kolom
+// legacy `backup_path` tetap ada di SQLite tetapi tidak dibaca/ditulis lagi
+// (DB-28). Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
 // dari jurnal lewat mesin laporan (P0-5).
 //
 // AKT-10: sebelum mengizinkan tutup buku, jalankan audit integritas. Bila ada
@@ -43,8 +44,6 @@ export type TutupPreview = HasilValidasiTutup & {
 export type OpsiTutupBuku = {
   /** Catatan bebas untuk riwayat (boleh kosong). */
   catatan?: string;
-  /** Path backup yang dibuat wizard sebelum tutup buku. */
-  backupPath?: string;
   /** Setuju menimpa tahun yang sudah pernah ditutup. */
   konfirmasiTimpak?: boolean;
   /** Tanggal acuan batas tahun; default hari ini. */
@@ -184,7 +183,6 @@ export function tutupBuku(
   const data: TutupBuku = {
     tahun: angka,
     created_at: new Date().toISOString(),
-    backup_path: String(opsi.backupPath ?? ''),
     catatan,
   };
   const alasan =

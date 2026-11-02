@@ -179,7 +179,6 @@ export type PinjamanBayar = {
 export type TutupBuku = {
   tahun: number;
   created_at: string; // ISO
-  backup_path: string;
   catatan: string;
   /**
    * @deprecated Model v2 TIDAK menyimpan laba. Field ini hanya disisakan agar

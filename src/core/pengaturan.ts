@@ -17,6 +17,10 @@ export type PengaturanPembukuan = {
   /**
    * Bulan awal tahun buku. Sampai tahun buku fiskal didukung penuh, nilai
    * yang sah hanya Januari (1) — lihat AUD-20.
+   *
+   * @deprecated DB-28: bukan lagi field yang bisa dipilih/disimpan dari UI.
+   * Dipertahankan hanya untuk membaca DB lama dan perhitungan internal lama;
+   * kontrak renderer/API memakai `PengaturanPembukuanPublik`.
    */
   awalTahunBuku: number;
   /** Prefix nomor bukti, 1–8 huruf kapital/angka. */
@@ -24,6 +28,15 @@ export type PengaturanPembukuan = {
   /** Jumlah digit urutan nomor bukti (3–6). */
   paddingNomorBukti: number;
 };
+
+/**
+ * Kontrak pengaturan yang boleh dilihat/dikirim renderer (DB-28).
+ * `awalTahunBuku` sengaja tidak ada: nilai legacy hanya dibaca internal.
+ */
+export type PengaturanPembukuanPublik = Omit<
+  PengaturanPembukuan,
+  'awalTahunBuku'
+>;
 
 /** Kop ringkas untuk builder XLSX/print; `tambahan` boleh kosong. */
 export type KopOrganisasi = {
@@ -54,6 +67,9 @@ export const PESAN_AWAL_TAHUN_BUKU_FISKAL =
  * Peringatan untuk data lama yang masih menyimpan awal tahun buku selain
  * Januari (mis. 7). Tidak pernah mengubah data; UI meminta pengguna menyimpan
  * ulang ke Januari secara sadar.
+ *
+ * @deprecated DB-28: UI tidak lagi menampilkan field/peringatan ini. Helper
+ * dipertahankan untuk test/legacy dan tidak boleh dipakai kontrak publik baru.
  */
 export function peringatanAwalTahunBukuLama(
   awalTahunBuku: number,
@@ -260,8 +276,18 @@ export function tanggalMulaiEfektif(
   return teks || hariIni;
 }
 
+/** Buang field legacy sebelum data dikirim ke renderer (DB-28). */
+export function pengaturanPublik(
+  p: PengaturanPembukuan,
+): PengaturanPembukuanPublik {
+  const { awalTahunBuku: _legacy, ...publik } = p;
+  return publik;
+}
+
 /** Model pengaturan → kop builder XLSX/print. */
-export function kopDariPengaturan(p: PengaturanPembukuan): KopOrganisasi {
+export function kopDariPengaturan(
+  p: Pick<PengaturanPembukuan, 'namaEntitas' | 'kopTambahan'>,
+): KopOrganisasi {
   const nama = p.namaEntitas.trim() || DEFAULT_PENGATURAN.namaEntitas;
   const tambahan = normalisasiKopTambahan(p.kopTambahan);
   return { nama, ...(tambahan ? { tambahan } : {}) };

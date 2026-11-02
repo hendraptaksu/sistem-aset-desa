@@ -35,7 +35,6 @@ export function TutupTab() {
   const [tahun, setTahun] = useState(TAHUN_TERAKHIR_BOLEH_DITUTUP);
   const [step, setStep] = useState<Step>(1);
   const [preview, setPreview] = useState<TutupPreviewData | null>(null);
-  const [backupPath, setBackupPath] = useState('');
   const [catatan, setCatatan] = useState('');
   const [konfirmasiOpen, setKonfirmasiOpen] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
@@ -86,8 +85,7 @@ export function TutupTab() {
     await jalankan(async () => {
       setErr(null);
       try {
-        const r = await api.backupAuto(tahun);
-        setBackupPath(r.path);
+        await api.backupAuto(tahun);
         setStep(3);
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -103,17 +101,15 @@ export function TutupTab() {
         const r = await api.tutupCreate({
           tahun,
           catatan,
-          backupPath,
           konfirmasiTimpak: preview?.sudahDitutup === true,
         });
         setInfo(
           `Tahun ${r.tahun} ${r.aksi === 'TUTUP-ULANG' ? 'ditutup ulang' : 'ditutup'}. ` +
             `Laba ${formatRp(r.laba)}. Laba ditahan ${formatRp(r.labaDitahan)}. ` +
-            `Backup: ${backupPath || '-'}`,
+            'Backup otomatis sudah dibuat.',
         );
         setStep(1);
         setPreview(null);
-        setBackupPath('');
         setCatatan('');
         await refresh();
       } catch (e) {
@@ -206,7 +202,7 @@ export function TutupTab() {
             <p className="text-[15px]">
               Laba tahun {preview.tahun}: <b>{formatRp(preview.laba)}</b>
               <br />
-              Backup: <span className="break-all text-stone-600">{backupPath}</span>
+              <span className="text-stone-600">Backup otomatis sudah dibuat.</span>
             </p>
             <Field label="Catatan tutup buku (opsional)">
               <TextInput
@@ -244,7 +240,6 @@ export function TutupTab() {
               <th className="py-2 pr-3">Tahun</th>
               <th className="py-2 pr-3 text-right">Laba</th>
               <th className="py-2 pr-3">Catatan</th>
-              <th className="py-2 pr-3">Backup</th>
             </tr>
           </thead>
           <tbody>
@@ -253,11 +248,10 @@ export function TutupTab() {
                 <td className="py-2 pr-3"><Badge>{t.tahun}</Badge></td>
                 <td className="py-2 pr-3 text-right">{formatRp(t.laba)}</td>
                 <td className="py-2 pr-3 text-sm text-stone-700">{t.catatan || '-'}</td>
-                <td className="py-2 pr-3 break-all text-sm text-stone-600">{t.backup_path || '-'}</td>
               </tr>
             ))}
             {list.length === 0 && (
-              <tr><td colSpan={4} className="py-4 text-center text-stone-500">Belum pernah tutup buku.</td></tr>
+              <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum pernah tutup buku.</td></tr>
             )}
           </tbody>
         </table>
@@ -281,8 +275,7 @@ export function TutupTab() {
               </p>
               <p className="text-sm text-stone-600">
                 Periode akan dikunci. Koreksi setelah ini tetap boleh, tetapi wajib
-                alasan dan tercatat di audit. Backup sudah dibuat:{' '}
-                <span className="break-all">{backupPath || '-'}</span>.
+                alasan dan tercatat di audit. Backup otomatis sudah dibuat.
               </p>
               {preview.sudahDitutup && (
                 <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">

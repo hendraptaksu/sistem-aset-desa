@@ -8,9 +8,11 @@ import {
   type JurnalInput,
 } from '../core/posting.js';
 import {
+  AWAL_TAHUN_BUKU_DIDUKUNG,
   normalisasiPengaturan,
+  pengaturanPublik,
   validasiPengaturan,
-  type PengaturanPembukuan,
+  type PengaturanPembukuanPublik,
 } from '../core/pengaturan.js';
 import type { ModeNeracaSaldo } from '../core/reports.js';
 import type {
@@ -1395,14 +1397,19 @@ export function validasiIdJurnal(nilai: unknown): HasilBentuk<string> {
  */
 export function validasiBentukPengaturanPembukuan(
   nilai: unknown,
-): HasilBentuk<PengaturanPembukuan> {
+): HasilBentuk<PengaturanPembukuanPublik> {
   if (!objek(nilai))
     return { ok: false, error: 'Data pengaturan pembukuan tidak lengkap.' };
 
-  const input = normalisasiPengaturan(nilai);
+  // DB-28: field legacy `awalTahunBuku` dari renderer lama tidak lagi
+  // menentukan nilai tersimpan; save selalu memakai Januari.
+  const input = {
+    ...normalisasiPengaturan(nilai),
+    awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG,
+  };
   const errors = validasiPengaturan(input);
   if (errors.length > 0)
     return { ok: false, error: errors.join(' ') };
 
-  return { ok: true, input };
+  return { ok: true, input: pengaturanPublik(input) };
 }

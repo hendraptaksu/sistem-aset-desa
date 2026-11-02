@@ -182,7 +182,6 @@ describe('P1-9 — adapter Neraca memakai daftar tutup buku', () => {
     insertTutupBuku(db, {
       tahun: 2025,
       created_at: '2026-01-01T00:00:00.000Z',
-      backup_path: '',
       catatan: 'Sudah diperiksa',
     });
 

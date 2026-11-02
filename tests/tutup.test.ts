@@ -234,7 +234,6 @@ describe('P0-7 — tutup buku di DB', () => {
       const hasil = tutupBuku(db, 2025, {
         sekarang: SEKARANG,
         catatan: 'Sudah diperiksa akuntan',
-        backupPath: '/tmp/pura-2025.db',
       });
       expect(hasil.tersimpan).toBe(true);
       expect(hasil.aksi).toBe('TUTUP');
@@ -242,16 +241,17 @@ describe('P0-7 — tutup buku di DB', () => {
       expect(hasil.data).toMatchObject({
         tahun: 2025,
         catatan: 'Sudah diperiksa akuntan',
-        backup_path: '/tmp/pura-2025.db',
       });
+      // DB-28: path backup tidak lagi ditulis/ diekspos.
+      expect(hasil.data).not.toHaveProperty('backup_path');
 
       const riwayat = listTutupBuku(db);
       expect(riwayat).toHaveLength(1);
       expect(riwayat[0]).toMatchObject({
         tahun: 2025,
         catatan: 'Sudah diperiksa akuntan',
-        backup_path: '/tmp/pura-2025.db',
       });
+      expect(riwayat[0]).not.toHaveProperty('backup_path');
       // Laba tidak pernah disimpan sebagai angka.
       expect(riwayat[0]).not.toHaveProperty('laba');
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
@@ -334,7 +334,6 @@ describe('P0-7 — tutup buku di DB', () => {
       insertTutupBuku(db, {
         tahun: 2024,
         created_at: '2025-01-10T00:00:00.000Z',
-        backup_path: '',
         catatan: 'Tutup lama',
       });
 
@@ -486,7 +485,6 @@ describe('AKT-10 — tutup buku menolak jika audit integritas gagal', () => {
       const hasil = tutupBuku(db, 2025, {
         sekarang: SEKARANG,
         catatan: 'Tidak boleh tersimpan',
-        backupPath: '/tmp/rusak-2025.db',
       });
 
       expect(hasil.tersimpan).toBe(false);

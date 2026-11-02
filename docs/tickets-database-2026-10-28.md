@@ -2,9 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-02 (setelah DB-27):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **943 test / 77 file hijau**; `npm run build`
-> berhasil. Baseline DB-26 adalah 936/76. Baseline DB-16f adalah 929/75.
+> **Baseline terakhir 2026-11-02 (setelah DB-28):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **948 test / 78 file hijau**; `npm run build`
+> berhasil. Baseline DB-27 adalah 943/77. Baseline DB-26 adalah 936/76.
+> Baseline DB-16f adalah 929/75.
 > Baseline DB-16e adalah 918/74.
 > Baseline DB-16d adalah 907/73.
 > Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
@@ -116,7 +117,7 @@
 | DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [x] |
 | DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [x] |
 | DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [x] |
-| DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [ ] |
+| DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [x] |
 | DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [ ] |
 | DB-30 | P2 | M | STRICT/created_at/unique name + ERD v2 | — | [ ] |
 | DB-31 | P1 | M | Hapus modul Rekonsiliasi Bank (UI/API/test) | — | [x] |
@@ -1229,10 +1230,29 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     file hijau** (baseline DB-26 936/76); `npm run build` berhasil.
   - **Catatan:** tidak ada perubahan jurnal, skema lain, atau `data/`.
 
-- [ ] **DB-28 — Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI** · P2 · S
+- [x] **DB-28 — Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI** · P2 · S
   - Hapus field dari tipe/UI/pengaturan; kolom DB boleh tetap sampai migrasi
     berikutnya. Jangan hapus data.
   - Test: pengaturan tetap bisa disimpan; laporan tidak berubah.
+  - **Bukti 2026-11-02:** Riwayat Tutup Buku tidak lagi menampilkan kolom
+    **Backup**; wizard hanya menampilkan status “Backup otomatis sudah dibuat”
+    tanpa path. `TutupBuku`, `OpsiTutupBuku`, insert/upsert, IPC `tutup:create`,
+    dan audit baru tidak lagi membawa `backup_path`. Kolom SQLite tetap ada
+    dengan `DEFAULT ''`; baris lama tetap terbaca dan nilainya tidak dihapus
+    (tutup ulang tidak menimpa `backup_path` lama). Pengaturan tidak lagi
+    menampilkan field/peringatan awal tahun buku. Kontrak renderer/IPC memakai
+    `PengaturanPembukuanPublik` tanpa `awalTahunBuku`; `getPengaturanPembukuan`
+    tetap membaca nilai legacy non-Januari tanpa auto-rewrite, dan setiap save
+    selalu menulis Januari (termasuk input lama yang masih mengirim bulan lain).
+    Test baru `tests/db-28-tutup-pengaturan.test.ts` (7 test) mencakup baris
+    tutup lama + preservasi nilai, write/audit baru tanpa `backup_path`, legacy
+    settings, dan UI tanpa field/kolom. Test lama yang membangun `TutupBuku`/
+    opsi dengan `backup_path`/`backupPath` disesuaikan. Panduan pengguna dan
+    pemeriksaan diperbarui.
+  - `npm run typecheck` bersih; `npx vitest run --pool=threads` **948 test/78
+    file hijau** (baseline DB-27 943/77); `npm run build` berhasil.
+  - **Catatan:** tidak ada perubahan skema/`SCHEMA_VERSION`, jurnal, laporan,
+    `data/`, atau commit.
 
 - [ ] **DB-29 — Kurangi tab sidebar & rename “Tutup Buku”** · P2 · S
   - Setelah DB-24/25/26/23: rapikan `TABS`/`GRUP_MENU`, hapus tab yang
@@ -1380,7 +1400,8 @@ Target akhir: **6 tabel inti + 2 tabel panjar + 3 tabel pinjaman = 11 tabel**
 - `akun.nama` belum unik di DB (DB-11).
 - `anggaran.created_at`/`updated_at` boleh NULL; tabel baru sebaiknya `STRICT`
   dan `DEFAULT`.
-- `tutup_buku.backup_path` menyimpan path yang belum tentu berguna (DB-28).
+- `tutup_buku.backup_path` menyimpan path yang belum tentu berguna; DB-28
+  menghapusnya dari UI/tipe, kolom DB menunggu migrasi berikutnya.
 - Dokumentasi masih menyebut fitur yang akan dihapus (Rekonsiliasi, Anggaran,
   Import, Aset, Piutang). Update bersamaan dengan DB-29/DB-35.
 

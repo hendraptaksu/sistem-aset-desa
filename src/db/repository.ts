@@ -10,6 +10,7 @@ import {
   tahunDariTanggal,
 } from '../core/nomorBukti.js';
 import {
+  AWAL_TAHUN_BUKU_DIDUKUNG,
   DEFAULT_PENGATURAN,
   normalisasiPengaturan,
   validasiPengaturan,
@@ -819,13 +820,14 @@ export function saranNomorBukti(db: Database.Database, tanggal: string): string 
 }
 
 export function listTutupBuku(db: Database.Database): TutupBuku[] {
+  // DB-28: `backup_path` tetap ada di SQLite untuk data lama, tetapi tidak
+  // pernah dibaca/diekspos lagi. Baris lama tetap terbaca lewat kolom lain.
   const rows = db
-    .prepare('SELECT tahun, created_at, backup_path, catatan FROM tutup_buku ORDER BY tahun')
+    .prepare('SELECT tahun, created_at, catatan FROM tutup_buku ORDER BY tahun')
     .all() as Record<string, unknown>[];
   return rows.map((r) => ({
     tahun: Number(r.tahun),
     created_at: String(r.created_at),
-    backup_path: String(r.backup_path ?? ''),
     catatan: String(r.catatan ?? ''),
   }));
 }
@@ -835,14 +837,16 @@ export function listTutupBuku(db: Database.Database): TutupBuku[] {
  * laba selalu jurnal (P0-7). Pemanggil wajib sudah memvalidasi penimpaan.
  */
 export function insertTutupBuku(db: Database.Database, t: TutupBuku): void {
+  // DB-28: kolom `backup_path` tidak lagi ditulis. Kolom itu tetap ada dengan
+  // DEFAULT '' agar DB lama valid; saat tutup ulang, nilai lama dibiarkan
+  // (tidak dihapus) karena tidak ada di daftar UPDATE.
   db.prepare(
-    `INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO tutup_buku (tahun, created_at, catatan)
+     VALUES (?, ?, ?)
      ON CONFLICT(tahun) DO UPDATE SET
        created_at = excluded.created_at,
-       backup_path = excluded.backup_path,
        catatan = excluded.catatan`,
-  ).run(t.tahun, t.created_at, t.backup_path, t.catatan);
+  ).run(t.tahun, t.created_at, t.catatan);
 }
 
 const rowToAuditLog = (r: Record<string, unknown>): AuditLog => ({
@@ -1113,7 +1117,12 @@ export function simpanPengaturanPembukuan(
   input: unknown,
   opsi: OpsiSimpanPengaturan = {},
 ): PengaturanPembukuan {
-  const bersih = normalisasiPengaturan(input);
+  // DB-28: awal tahun buku tidak lagi bisa dipilih operator. Nilai legacy
+  // (mis. 7) hanya dibaca untuk data lama; setiap save selalu menulis Januari.
+  const bersih: PengaturanPembukuan = {
+    ...normalisasiPengaturan(input),
+    awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG,
+  };
   const errors = validasiPengaturan(bersih);
   if (errors.length > 0) throw new Error(errors[0]!);
 

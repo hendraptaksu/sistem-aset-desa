@@ -2,8 +2,6 @@
 // mengikuti prefix/padding, dan kop laporan (XLSX + HTML/PDF).
 // Tanpa Electron/jsdom.
 import Database from 'better-sqlite3';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
@@ -24,6 +22,7 @@ import {
   PESAN_AWAL_TAHUN_BUKU_FISKAL,
   kopDariPengaturan,
   normalisasiPengaturan,
+  pengaturanPublik,
   peringatanAwalTahunBukuLama,
   rentangTahunBuku,
   tanggalMulaiEfektif,
@@ -40,10 +39,6 @@ import {
 import { jurnalPrintDoc } from '../src/features/export/printAdapters.js';
 import { renderPrintHtml } from '../src/features/export/printDoc.js';
 import { validasiBentukPengaturanPembukuan } from '../src/main/validation.js';
-import {
-  BidangAwalTahunBuku,
-  PeringatanAwalTahunBuku,
-} from '../src/renderer/components/PengaturanTab.js';
 
 const pasangan = (debit: string, kredit: string, nominal = 100_000) => [
   { akun_kode: debit, debit: nominal, kredit: 0 },
@@ -206,7 +201,7 @@ describe('P1-13 — simpan/baca + audit', () => {
     }
   });
 
-  it('DB lama berisi awal tahun 7 tidak diubah otomatis dan bisa disimpan ulang ke 1', () => {
+  it('DB lama berisi awal tahun 7 tetap terbaca; save berikutnya memakai Januari', () => {
     const db = dbKosong();
     try {
       setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
@@ -215,17 +210,15 @@ describe('P1-13 — simpan/baca + audit', () => {
       expect(lama.awalTahunBuku).toBe(7);
       expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('7');
       expect(peringatanAwalTahunBukuLama(lama.awalTahunBuku)).toMatch(/bulan 7/);
-      expect(validasiPengaturan(lama)).toEqual([PESAN_AWAL_TAHUN_BUKU_FISKAL]);
 
-      // Simpan tanpa mengubah 7 harus ditolak; DB tetap 7 (tidak auto-migrasi).
-      expect(() => simpanPengaturanPembukuan(db, lama)).toThrow(
-        /Tahun buku fiskal belum didukung/,
-      );
+      // Kontrak publik tidak membawa field legacy; membaca tidak mengubah DB.
+      const publik = pengaturanPublik(lama);
+      expect(publik).not.toHaveProperty('awalTahunBuku');
       expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('7');
 
-      expect(
-        simpanPengaturanPembukuan(db, { ...lama, awalTahunBuku: 1 }),
-      ).toEqual(DEFAULT_PENGATURAN);
+      // Save dari bentuk publik (tanpa awal) menulis Januari, bukan 7.
+      const hasil = simpanPengaturanPembukuan(db, publik);
+      expect(hasil.awalTahunBuku).toBe(1);
       expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('1');
       expect(getPengaturanPembukuan(db)).toEqual(DEFAULT_PENGATURAN);
     } finally {
@@ -426,31 +419,5 @@ describe('P1-13 — kop laporan memakai pengaturan tersimpan', () => {
     } finally {
       db.close();
     }
-  });
-});
-
-describe('AUD-20 — UI awal tahun buku terkunci Januari', () => {
-  it('menampilkan Januari (tahun kalender) tanpa pilihan 1–12', () => {
-    const html = renderToStaticMarkup(createElement(BidangAwalTahunBuku));
-    expect(html).toContain('Awal tahun buku');
-    expect(html).toContain('Januari (tahun kalender)');
-    expect(html).toContain('Tahun buku fiskal');
-    expect(html).not.toContain('Februari');
-    expect(html).not.toContain('<select');
-  });
-
-  it('memperingatkan data lama bulan 7 dan meminta simpan ulang, tanpa mengubah data', () => {
-    const html = renderToStaticMarkup(
-      createElement(PeringatanAwalTahunBuku, { awalTahunBuku: 7 }),
-    );
-    expect(html).toContain('role="alert"');
-    expect(html).toContain('bulan 7');
-    expect(html).toContain('Simpan Pengaturan Pembukuan');
-    expect(html).toContain('tidak diubah otomatis');
-    expect(
-      renderToStaticMarkup(
-        createElement(PeringatanAwalTahunBuku, { awalTahunBuku: 1 }),
-      ),
-    ).toBe('');
   });
 });

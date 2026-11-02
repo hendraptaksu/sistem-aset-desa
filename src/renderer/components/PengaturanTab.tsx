@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { IDLE_MAKS_MENIT, IDLE_MIN_MENIT } from '../../core/pin.js';
 import {
-  AWAL_TAHUN_BUKU_DIDUKUNG,
   DEFAULT_PENGATURAN,
   MAKS_KOP_TAMBAHAN,
   MAKS_NAMA_ENTITAS,
-  peringatanAwalTahunBukuLama,
-  type PengaturanPembukuan,
+  type PengaturanPembukuanPublik,
 } from '../../core/pengaturan.js';
 import { formatNomorBukti } from '../../core/nomorBukti.js';
 import type { AuditLog } from '../../core/types.js';
@@ -56,40 +54,6 @@ const OPSI_REF = [
   { value: 'tutup_buku', label: 'Tutup buku' },
   { value: 'akun', label: 'Akun COA' },
 ] as const;
-
-/**
- * Field awal tahun buku sengaja tidak berupa pilihan 1–12: sampai tahun buku
- * fiskal didukung penuh, semua laporan memakai Januari–Desember (AUD-20).
- */
-export function BidangAwalTahunBuku() {
-  return (
-    <Field label="Awal tahun buku">
-      <TextInput value="Januari (tahun kalender)" disabled readOnly />
-      <p className="mt-1 text-sm text-stone-500">
-        Tahun buku fiskal (mis. mulai Juli) belum didukung. Semua laporan memakai
-        Januari–Desember.
-      </p>
-    </Field>
-  );
-}
-
-/** Peringatan data lama; tidak pernah mengubah setting tersimpan. */
-export function PeringatanAwalTahunBuku({
-  awalTahunBuku,
-}: {
-  awalTahunBuku: number;
-}) {
-  const pesan = peringatanAwalTahunBukuLama(awalTahunBuku);
-  if (!pesan) return null;
-  return (
-    <div
-      role="alert"
-      className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900"
-    >
-      {pesan}
-    </div>
-  );
-}
 
 function Baris({ label, value }: { label: string; value: string }) {
   return (
@@ -233,9 +197,6 @@ export function PengaturanTab({
   const [entitas, setEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
   const [kopTambahan, setKopTambahan] = useState('');
   const [tanggalMulai, setTanggalMulai] = useState('');
-  const [awalTersimpan, setAwalTersimpan] = useState(
-    DEFAULT_PENGATURAN.awalTahunBuku,
-  );
   const [prefix, setPrefix] = useState(DEFAULT_PENGATURAN.prefixNomorBukti);
   const [padding, setPadding] = useState(String(DEFAULT_PENGATURAN.paddingNomorBukti));
   const [errPembukuan, setErrPembukuan] = useState<string | null>(null);
@@ -292,11 +253,10 @@ export function PengaturanTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fAksi, fRefType, fRefId, fMulai, fSampai, limit, offset]);
 
-  function terapkanPembukuan(p: PengaturanPembukuan): void {
+  function terapkanPembukuan(p: PengaturanPembukuanPublik): void {
     setEntitas(p.namaEntitas);
     setKopTambahan(p.kopTambahan);
     setTanggalMulai(p.tanggalMulaiPembukuan);
-    setAwalTersimpan(p.awalTahunBuku);
     setPrefix(p.prefixNomorBukti);
     setPadding(String(p.paddingNomorBukti));
   }
@@ -432,7 +392,6 @@ export function PengaturanTab({
         namaEntitas: entitas,
         kopTambahan,
         tanggalMulaiPembukuan: tanggalMulai,
-        awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG,
         prefixNomorBukti: prefix,
         paddingNomorBukti: Number(padding),
       });
@@ -561,7 +520,6 @@ export function PengaturanTab({
         {okPembukuan && (
           <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okPembukuan}</div>
         )}
-        <PeringatanAwalTahunBuku awalTahunBuku={awalTersimpan} />
         {memuatPembukuan ? (
           <p className="text-sm text-stone-500">Memuat pengaturan…</p>
         ) : (
@@ -594,7 +552,6 @@ export function PengaturanTab({
                 onChange={(e) => setTanggalMulai(e.target.value)}
               />
             </Field>
-            <BidangAwalTahunBuku />
             <Field label="Prefix nomor bukti (1–8 huruf/angka)">
               <TextInput
                 value={prefix}

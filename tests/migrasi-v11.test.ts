@@ -71,7 +71,6 @@ function tutupAwal(): Parameters<typeof insertTutupBuku>[1] {
   return {
     tahun: 2025,
     created_at: '2025-12-31T00:00:00.000Z',
-    backup_path: '/backup/lama.db',
     catatan: 'Tutup lama',
   };
 }
@@ -159,14 +158,12 @@ describe('AKT-26 — trigger v11 pada DB baru', () => {
       insertTutupBuku(db, {
         ...tutupAwal(),
         created_at: '2026-01-01T00:00:00.000Z',
-        backup_path: '/backup/baru.db',
         catatan: 'Tutup ulang',
       });
       expect(listTutupBuku(db)).toEqual([
         {
           tahun: 2025,
           created_at: '2026-01-01T00:00:00.000Z',
-          backup_path: '/backup/baru.db',
           catatan: 'Tutup ulang',
         },
       ]);

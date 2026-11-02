@@ -1,6 +1,6 @@
 import type { Coa, CoaTipe } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
-import type { PengaturanPembukuan } from '../../core/pengaturan.js';
+import type { PengaturanPembukuanPublik } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
 import type {
   AuditLog,
@@ -278,10 +278,13 @@ export const api = {
   lockResetKode: () => call<{ kodeDarurat: string }>('lock:reset-code'),
   lockReset: (kode: string, pinBaru: string) =>
     call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
-  /** Pengaturan pembukuan (P1-13); hanya bisa dibaca saat PIN terbuka. */
-  pengaturanGet: () => call<PengaturanPembukuan>('pengaturan:get'),
-  pengaturanSimpan: (input: PengaturanPembukuan) =>
-    call<PengaturanPembukuan>('pengaturan:simpan', input),
+  /**
+   * Pengaturan pembukuan (P1-13); hanya bisa dibaca saat PIN terbuka.
+   * DB-28: kontrak publik tanpa `awalTahunBuku` (selalu Januari di server).
+   */
+  pengaturanGet: () => call<PengaturanPembukuanPublik>('pengaturan:get'),
+  pengaturanSimpan: (input: PengaturanPembukuanPublik) =>
+    call<PengaturanPembukuanPublik>('pengaturan:simpan', input),
   /** Lokasi data & backup aktual (P2-8); dipakai kartu Pengaturan. */
   infoLokasi: () => call<LokasiData>('app:info-lokasi'),
   /** Buka salah satu folder tetap di file manager; bukan path dari renderer. */
@@ -497,7 +500,6 @@ export const api = {
   tutupCreate: (req: {
     tahun: number;
     catatan?: string;
-    backupPath?: string;
     konfirmasiTimpak?: boolean;
   }) => call<TutupTersimpanData>('tutup:create', req),
   auditList: (f: AuditFilterApi = {}) => call<AuditLogPage>('audit:list', f),

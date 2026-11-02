@@ -82,6 +82,7 @@ import {
 } from '../features/export/backupLengkap.js';
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
+import { pengaturanPublik } from '../core/pengaturan.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
 import {
   PESAN_SIMPAN_GAGAL,
@@ -424,7 +425,9 @@ export function registerIpc(deps: IpcDeps): void {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      return ok(getPengaturanPembukuan(deps.db()));
+      // DB-28: `awalTahunBuku` tetap dibaca internal untuk data lama, tetapi
+      // tidak pernah diekspos ke kontrak renderer.
+      return ok(pengaturanPublik(getPengaturanPembukuan(deps.db())));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }
@@ -436,7 +439,9 @@ export function registerIpc(deps: IpcDeps): void {
       if (k) return fail(k);
       const bentuk = validasiBentukPengaturanPembukuan(input);
       if (!bentuk.ok) return fail(bentuk.error);
-      return ok(simpanPengaturanPembukuan(deps.db(), bentuk.input));
+      return ok(
+        pengaturanPublik(simpanPengaturanPembukuan(deps.db(), bentuk.input)),
+      );
     } catch (e) {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
@@ -1262,22 +1267,18 @@ export function registerIpc(deps: IpcDeps): void {
         | {
             tahun: number;
             catatan?: string;
-            backupPath?: string;
             konfirmasiTimpak?: boolean;
           },
-      backupPathLama = '',
     ) => {
       try {
         const k = perluBuka();
         if (k) return fail(k);
-        // Dukungan bentuk lama (tahun, backupPath) + bentuk baru (objek).
+        // Bentuk angka lama tetap diterima; `backupPath` lama diabaikan
+        // (DB-28: path backup tidak lagi disimpan/diekspos).
         const input =
-          typeof req === 'number'
-            ? { tahun: req, backupPath: String(backupPathLama ?? '') }
-            : (req ?? {});
+          typeof req === 'number' ? { tahun: req } : (req ?? {});
         const hasil = tutupBuku(deps.db(), Number(input.tahun), {
           catatan: typeof input.catatan === 'string' ? input.catatan : '',
-          backupPath: typeof input.backupPath === 'string' ? input.backupPath : '',
           konfirmasiTimpak: input.konfirmasiTimpak === true,
           // Tanggal acuan K2 dapat dipatok test; default tetap hari ini.
           sekarang: tanggalSekarang(),
