@@ -20,6 +20,7 @@ import { AuditDetail } from './AuditDetail.js';
 import { KodeDaruratModal } from './KodeDaruratModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
+  Badge,
   Button,
   Card,
   DetailModal,
@@ -89,14 +90,110 @@ function Baris({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * DB-26: saklar Mode lanjutan. Menyalakan wajib lewat konfirmasi karena menu
+ * Jurnal Umum menampilkan debit/kredit mentah dan hanya untuk akuntan/pemeriksa.
+ */
+export function ModeLanjutanCard({
+  aktif,
+  onBerubah,
+}: {
+  aktif: boolean;
+  onBerubah: (aktif: boolean) => void;
+}) {
+  const [konfirmasi, setKonfirmasi] = useState(false);
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-2xl">
+          <h2 className="mb-1 text-lg font-bold">Mode lanjutan</h2>
+          <p className="text-sm text-stone-600">
+            Untuk akuntan pendamping/pemeriksa. Mode ini menampilkan menu{' '}
+            <b>Jurnal Umum</b> berisi jurnal debit/kredit untuk pemeriksaan.
+            Operator harian tidak perlu membuka ini.
+          </p>
+        </div>
+        <Badge tone={aktif ? 'green' : 'stone'}>
+          {aktif ? 'Aktif' : 'Nonaktif'}
+        </Badge>
+      </div>
+
+      {aktif ? (
+        <>
+          <p className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+            Menu <b>Jurnal Umum</b> tampil di grup <b>Data &amp; Sistem</b>.
+            Jurnal tersimpan tidak boleh diedit/dihapus; koreksi memakai jurnal
+            balik atau form terpandu, bukan mengubah jurnal lama.
+          </p>
+          <div className="mt-3">
+            <Button variant="ghost" onClick={() => onBerubah(false)}>
+              Nonaktifkan Mode lanjutan
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+            <b>Jurnal Umum = tampilan debit/kredit untuk pemeriksaan. Operator
+            harian tidak perlu membuka ini.</b>{' '}
+            Koreksi tidak dilakukan dengan mengedit jurnal: gunakan jurnal balik
+            atau form terpandu.
+          </p>
+          <div className="mt-3">
+            <Button onClick={() => setKonfirmasi(true)}>
+              Aktifkan Mode lanjutan
+            </Button>
+          </div>
+        </>
+      )}
+
+      {konfirmasi && (
+        <KonfirmasiModal
+          judul="Aktifkan Mode lanjutan?"
+          deskripsi={
+            <>
+              <p>
+                Mode lanjutan menampilkan menu <b>Jurnal Umum</b>, yaitu tampilan
+                jurnal debit/kredit mentah untuk pemeriksaan oleh akuntan
+                pendamping/pemeriksa.
+              </p>
+              <p>
+                Operator harian tidak perlu membuka menu ini. Jurnal yang sudah
+                tersimpan tidak boleh diedit/dihapus; koreksi tetap memakai
+                jurnal balik atau form terpandu.
+              </p>
+              <p>
+                Aktifkan hanya bila Anda memahami risiko salah input jurnal
+                manual.
+              </p>
+            </>
+          }
+          labelYa="Ya, aktifkan Mode lanjutan"
+          variant="primary"
+          onBatal={() => setKonfirmasi(false)}
+          onKonfirmasi={() => {
+            setKonfirmasi(false);
+            onBerubah(true);
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
 export function PengaturanTab({
   idleAwal,
   kodeDaruratDiatur,
   onIdleBerubah,
+  modeLanjutan,
+  onModeLanjutanBerubah,
 }: {
   idleAwal: number;
   kodeDaruratDiatur: boolean;
   onIdleBerubah: (m: number) => void;
+  modeLanjutan: boolean;
+  onModeLanjutanBerubah: (aktif: boolean) => void;
 }) {
   const [lama, setLama] = useState('');
   const [baru, setBaru] = useState('');
@@ -350,6 +447,10 @@ export function PengaturanTab({
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold">Pengaturan</h1>
+      <ModeLanjutanCard
+        aktif={modeLanjutan}
+        onBerubah={onModeLanjutanBerubah}
+      />
       <Card>
         <h2 className="mb-1 text-lg font-bold">Kunci Aplikasi (PIN)</h2>
         <p className="mb-3 text-sm text-stone-600">

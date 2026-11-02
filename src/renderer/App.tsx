@@ -45,6 +45,12 @@ import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
 import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
+import {
+  bacaModeLanjutan,
+  menuTerlihat,
+  simpanModeLanjutan,
+  tabSetelahModeLanjutan,
+} from './lib/modeLanjutan.js';
 
 type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pinjaman' | 'pembantu' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
@@ -80,7 +86,7 @@ const GRUP_MENU: {
     id: 'harian',
     label: 'Harian',
     defaultTerbuka: true,
-    item: ['dashboard', 'transaksi', 'panjar', 'pinjaman', 'jurnal'],
+    item: ['dashboard', 'transaksi', 'panjar', 'pinjaman'],
   },
   {
     id: 'laporan',
@@ -99,7 +105,8 @@ const GRUP_MENU: {
     id: 'data',
     label: 'Data & Sistem',
     defaultTerbuka: true,
-    item: ['akun', 'tutup'],
+    // DB-26: Jurnal Umum hanya tampil di sini saat Mode lanjutan aktif.
+    item: ['akun', 'tutup', 'jurnal'],
   },
 ];
 
@@ -162,6 +169,9 @@ function AppShell() {
   // menimpa pilihan manual saat resize; pengguna yang mengubah lebar tidak
   // boleh memaksa ulang status lipat.
   const [collapsed, setCollapsed] = useState(bacaStatusLipatAwal);
+  // DB-26: preferensi per profil; default mati sehingga Jurnal Umum tersembunyi
+  // dari operator harian sampai akuntan mengaktifkannya lewat Pengaturan.
+  const [modeLanjutan, setModeLanjutan] = useState(bacaModeLanjutan);
   // UI-05: isyarat masih ada item di bawah area nav yang terlihat.
   const navRef = useRef<HTMLElement | null>(null);
   const navIsiRef = useRef<HTMLDivElement | null>(null);
@@ -218,6 +228,20 @@ function AppShell() {
     },
     [konfirmasiTinggalkan, lakukanPindah],
   );
+
+  // DB-26: aktif/nonaktifkan Mode lanjutan. Persistensi mengikuti pola status
+  // lipat sidebar; kegagalan localStorage tidak menghalangi perubahan UI.
+  const ubahModeLanjutan = useCallback((aktif: boolean) => {
+    setModeLanjutan(aktif);
+    simpanModeLanjutan(aktif);
+  }, []);
+
+  // DB-26: jangan pernah meninggalkan Jurnal Umum aktif saat mode dimatikan.
+  // `lakukanPindah` melewati guard form karena tab ini sekarang tidak tersedia.
+  useEffect(() => {
+    const tujuan = tabSetelahModeLanjutan(tab, modeLanjutan);
+    if (tujuan !== tab) lakukanPindah(tujuan);
+  }, [tab, modeLanjutan, lakukanPindah]);
 
   // UI-06: catat modalitas input terakhir. `keydown` selalu mendahului klik
   // yang dipicu Enter/Space, sedangkan `pointerdown` mendahului klik mouse.
@@ -548,7 +572,9 @@ function AppShell() {
                         !collapsed && 'mt-1',
                       )}
                     >
-                      {grup.item.map((id) => renderItem(id))}
+                      {grup.item
+                        .filter((id) => menuTerlihat(id, modeLanjutan))
+                        .map((id) => renderItem(id))}
                     </div>
                   </div>
                   {collapsed && index < GRUP_MENU.length - 1 && (
@@ -610,7 +636,10 @@ function AppShell() {
               <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Utang Usaha, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
-              <DashboardTab onBukaTab={bukaDariDashboard} />
+              <DashboardTab
+                onBukaTab={bukaDariDashboard}
+                modeLanjutan={modeLanjutan}
+              />
             </div>
           </>
         ) : (
@@ -619,7 +648,7 @@ function AppShell() {
               <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={pindahTab} />
             )}
             {tab === 'akun' && <AkunTab />}
-            {tab === 'jurnal' && <JurnalTab />}
+            {tab === 'jurnal' && modeLanjutan && <JurnalTab />}
             {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
             {tab === 'neraca-saldo' && (
               <NeracaSaldoTab
@@ -648,6 +677,8 @@ function AppShell() {
                 idleAwal={lock.idleMenit}
                 kodeDaruratDiatur={lock.kodeDaruratDiatur}
                 onIdleBerubah={(m) => setLock((l) => (l ? { ...l, idleMenit: m } : l))}
+                modeLanjutan={modeLanjutan}
+                onModeLanjutanBerubah={ubahModeLanjutan}
               />
             )}
           </div>

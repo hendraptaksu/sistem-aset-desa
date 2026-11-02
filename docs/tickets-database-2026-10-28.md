@@ -2,9 +2,10 @@
 
 > Dibuat dari review database 2026-10-27 + pesan client 2026-10-28.
 > Fokus: **tiket kecil yang bisa dikerjakan satu per satu oleh AI agent**.
-> **Baseline terakhir 2026-11-02 (setelah DB-16f):** `npm run typecheck` bersih;
-> `npx vitest run --pool=threads` **929 test / 75 file hijau**; `npm run build`
-> berhasil. Baseline DB-16e adalah 918/74. Baseline DB-16d adalah 907/73.
+> **Baseline terakhir 2026-11-02 (setelah DB-26):** `npm run typecheck` bersih;
+> `npx vitest run --pool=threads` **936 test / 76 file hijau**; `npm run build`
+> berhasil. Baseline DB-16f adalah 929/75. Baseline DB-16e adalah 918/74.
+> Baseline DB-16d adalah 907/73.
 > Baseline DB-16c adalah 896/72. Baseline DB-16b adalah 882/71.
 > Baseline DB-34 adalah 869/69.
 > Baseline DB-21 adalah 850/69; baseline DB-20 adalah 832/67.
@@ -112,7 +113,7 @@
 | DB-23b | P1 | M | Hapus master Pihak + `jurnal_pihak`; hutang pakai keterangan/LPD | DB-16d, DB-23a | [x] |
 | DB-24 | P1 | M | Hapus modul Anggaran (UI/API/test) | — | [x] |
 | DB-25 | P1 | M | Hapus modul Import Excel (UI/API/parser/test) | DB-02 | [x] |
-| DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [ ] |
+| DB-26 | P1 | S | Jurnal Umum di balik mode lanjutan + penjelasan | DB-01, DB-03 | [x] |
 | DB-27 | P2 | S | Audit log: `ref_type`/`ref_id` | — | [ ] |
 | DB-28 | P2 | S | Hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI | — | [ ] |
 | DB-29 | P2 | S | Kurangi tab sidebar & rename “Tutup Buku” | DB-23a, DB-23b, DB-24..DB-26, DB-31, DB-32 | [ ] |
@@ -1159,7 +1160,7 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
     DB-24/DB-25** di Fase 4: hapus modul, siapkan drop tabel, lalu DB-33.
   - Jangan mengerjakan versi lama; lihat Fase 4.
 
-- [ ] **DB-26 — Jurnal Umum di balik mode lanjutan + penjelasan** · P1 · S
+- [x] **DB-26 — Jurnal Umum di balik mode lanjutan + penjelasan** · P1 · S
   - **Konteks:** user tidak memahami Jurnal Umum. Jangan tampilkan sebagai menu
     harian; akuntan pendamping tetap bisa memakainya.
   - **Langkah:**
@@ -1171,6 +1172,28 @@ bank & Import Excel **tidak lagi masuk backlog**: keduanya diputuskan dihapus
   - **DoD:** operator tidak melihat Jurnal Umum secara default; akuntan bisa
     membuka setelah konfirmasi; test menu.
   - **Verifikasi:** typecheck + test + build.
+  - **Bukti 2026-11-02:** `SCHEMA_VERSION` tetap **20**; tidak ada perubahan
+    skema, `data/`, atau jurnal. Helper baru
+    `src/renderer/lib/modeLanjutan.ts` menyimpan preferensi per profil di
+    localStorage `pura.mode.lanjutan` (default **mati**, nilai selain `'true'`
+    dianggap mati) dan menyediakan `menuTerlihat`/`tabSetelahModeLanjutan`.
+    `App.tsx` memindahkan `jurnal` dari grup **Harian** ke **Data & Sistem**,
+    menyaring menu lewat helper, dan memakai state Mode lanjutan. Toggle
+    **Mode lanjutan** ada di `PengaturanTab` (status Aktif/Nonaktif); menyalakan
+    wajib lewat `KonfirmasiModal` yang menjelaskan jurnal debit/kredit mentah
+    untuk akuntan/pemeriksa, sedangkan menonaktifkan langsung menyembunyikan
+    menu. Bila tab `jurnal` aktif saat mode dimatikan, efek App memindahkannya
+    aman ke Dashboard; pintasan Jurnal Umum di Dashboard juga hanya tampil saat
+    mode aktif. `JurnalTab` menampilkan teks “Jurnal Umum = tampilan debit/kredit
+    untuk pemeriksaan. Operator harian tidak perlu membuka ini.” dan menegaskan
+    koreksi memakai jurnal balik/form terpandu, bukan mengedit. DB-03 tidak
+    berubah: badge statis “Jurnal Umum” dan editor hanya mengirim `UMUM`.
+    `docs/panduan-pengguna.md` + `docs/panduan-pemeriksaan.md` memuat langkah
+    Mode lanjutan. Test baru `tests/db-26-mode-lanjutan.test.ts` (7 test) untuk
+    default tersembunyi, persistensi/localStorage rusak, grup menu, konfirmasi,
+    perpindahan tab, dan teks penjelasan. `npm run typecheck` bersih;
+    `npx vitest run --pool=threads` **936 test/76 file hijau** (baseline
+    DB-16f 929/75); `npm run build` berhasil.
   - **Dependency:** DB-01, DB-03.
 
 ---

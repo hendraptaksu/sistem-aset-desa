@@ -315,6 +315,14 @@ berubah lewat setoran/penarikan modal atau wizard Saldo Awal.
 
 ### 2.6 Jurnal Umum (untuk akuntan pendamping)
 
+> **Mode lanjutan (DB-26).** Menu **Jurnal Umum** tidak tampil untuk operator
+> harian. Akuntan/pendamping membukanya lewat **Pengaturan → Mode lanjutan**,
+> lalu menekan **Aktifkan Mode lanjutan** dan menyetujui konfirmasi. Setelah
+> aktif, menu Jurnal Umum muncul di grup **Data & Sistem**. Ini adalah tampilan
+> debit/kredit mentah untuk pemeriksaan, bukan menu input harian. Mematikan
+> mode menyembunyikan menu lagi; bila tab Jurnal Umum sedang terbuka, aplikasi
+> kembali ke Dashboard. Pilihan tersimpan per profil di perangkat ini.
+
 Menu **Jurnal Umum** dipakai bila transaksi tidak cocok dengan form terpandu,
 atau untuk pemeriksaan. Di sini debit/kredit diisi manual:
 

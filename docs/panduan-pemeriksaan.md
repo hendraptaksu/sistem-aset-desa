@@ -36,6 +36,14 @@ transaksi aslinya.
 
 ## 2. Jurnal Umum
 
+> **Membuka Jurnal Umum (DB-26).** Menu ini sengaja tersembunyi dari operator
+> harian. Buka **Pengaturan → Mode lanjutan**, tekan **Aktifkan Mode lanjutan**,
+> dan setujui konfirmasi yang menjelaskan tampilan debit/kredit mentah untuk
+> pemeriksaan. Menu Jurnal Umum lalu muncul di grup **Data & Sistem**. Matikan
+> kembali mode ini setelah pemeriksaan selesai; bila tab Jurnal Umum sedang
+> aktif saat mode dimatikan, aplikasi berpindah aman ke Dashboard. Preferensi
+> tersimpan per profil di perangkat ini (default mati).
+
 Jurnal baru dari layar **Jurnal Umum** selalu berjenis **`UMUM`**. Jenis
 dokumen lain (`TERIMA`, `BAYAR`, `TRANSFER`, `HUTANG`, `PANJAR`, `SALDO_AWAL`,
 `REVERSAL`) dibuat lewat form terpandu, Buku Panjar, Wizard Saldo Awal, atau

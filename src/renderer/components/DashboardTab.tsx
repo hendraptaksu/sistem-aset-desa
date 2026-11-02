@@ -51,8 +51,11 @@ export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
 
 export function DashboardTab({
   onBukaTab,
+  modeLanjutan = false,
 }: {
   onBukaTab: (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => void;
+  /** DB-26: pintasan Jurnal Umum hanya tersedia setelah Mode lanjutan aktif. */
+  modeLanjutan?: boolean;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<DashboardHasil | null>(null);
@@ -268,9 +271,11 @@ export function DashboardTab({
               <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
                 Tutup Buku
               </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
-                Jurnal Umum
-              </Button>
+              {modeLanjutan && (
+                <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
+                  Jurnal Umum
+                </Button>
+              )}
             </div>
           </Card>
 
@@ -446,15 +451,17 @@ export function DashboardTab({
               ) : (
                 <p className="mt-3 text-stone-500">Belum ada jurnal s/d tanggal laporan.</p>
               )}
-              <div className="mt-3">
-                <Button
-                  variant="ghost"
-                  disabled={sibuk}
-                  onClick={() => onBukaTab('jurnal')}
-                >
-                  Buka Jurnal Umum
-                </Button>
-              </div>
+              {modeLanjutan && (
+                <div className="mt-3">
+                  <Button
+                    variant="ghost"
+                    disabled={sibuk}
+                    onClick={() => onBukaTab('jurnal')}
+                  >
+                    Buka Jurnal Umum
+                  </Button>
+                </div>
+              )}
             </Card>
 
             <Card className="min-w-0">

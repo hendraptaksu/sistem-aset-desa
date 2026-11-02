@@ -249,10 +249,15 @@ export function JurnalTab({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold">Jurnal Umum</h1>
+            <p className="mt-1 max-w-2xl text-[15px] font-semibold text-stone-800">
+              Jurnal Umum = tampilan debit/kredit untuk pemeriksaan. Operator harian
+              tidak perlu membuka ini.
+            </p>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Semua transaksi tercatat sebagai jurnal debit–kredit. Kalau ada yang salah,
-              jangan dihapus: pakai tombol <b>Koreksi</b>. Jurnal asli tetap disimpan untuk
-              pemeriksaan, dan sistem membuat jurnal baliknya.
+              Semua transaksi tercatat sebagai jurnal debit–kredit. Koreksi tidak
+              dilakukan dengan mengedit jurnal: gunakan tombol <b>Koreksi</b> (jurnal
+              balik + alasan) atau form terpandu di menu <b>Transaksi</b>. Jurnal asli
+              tetap disimpan untuk pemeriksaan, dan sistem membuat jurnal baliknya.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
