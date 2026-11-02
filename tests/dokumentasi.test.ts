@@ -300,3 +300,14 @@ describe('P2-8 — konsistensi path dokumen dengan helper', () => {
     );
   });
 });
+
+describe('kebersihan dokumentasi', () => {
+  it('semua dokumen yang ditautkan README benar-benar ada', () => {
+    const tautan = [...README.matchAll(/docs\/[A-Za-z0-9._/-]+\.md/g)]
+      .map((m) => m[0]);
+    expect(tautan.length).toBeGreaterThan(5);
+    for (const path of new Set(tautan)) {
+      expect(existsSync(join(rootDir, path)), `${path} tidak ada`).toBe(true);
+    }
+  });
+});

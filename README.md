@@ -14,8 +14,8 @@ angka turunan yang disimpan mati.
 > hardening, tetapi **belum dinyatakan production-ready**. Jangan jadikan satu-
 > satunya salinan catatan keuangan nyata. Sebelum produksi, selesaikan AUD-01
 > (repo/akun/kode instalasi nyata — manual pemilik), uji backup/restore di mesin
-> target, dan amankan file data di level sistem operasi. Lihat
-> `docs/tickets-audit-akuntansi-2026-10-27.md`.
+> target, dan amankan file data di level sistem operasi. Checklist rilis dan
+> signing ada di `docs/rilis.md`.
 
 > **PIN bukan enkripsi.** PIN 6 digit adalah kunci akses aplikasi (hash scrypt +
 > salt), bukan kunci enkripsi database. Siapa pun yang memegang file `pura.db`
@@ -199,9 +199,11 @@ Rincian ada di `docs/panduan-portable.md`.
 - `docs/erd-v2.md` — ERD skema aktif v21: tabel, kolom, relasi, index, trigger,
   dan aturan sumber angka.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
+- `docs/debugging.md` — smoke test, debug Electron, dan data terisolasi.
+- `docs/template-cetak.md` — tata letak cetak, pratinjau, dan Simpan PDF.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.
-- `docs/audit-ui-2026-10-27.md` — audit UI/UX + bukti pengukuran.
-- `docs/tickets-ui-2026-10-27.md` — ticket perbaikan UI untuk AI agent.
-- `docs/tickets-audit-akuntansi-2026-10-27.md` — daftar pekerjaan audit/hardening.
+
+Arsip tiket yang sudah selesai tidak disimpan di working tree; riwayatnya tetap
+tersedia di git.
 
 Lisensi: ISC.
