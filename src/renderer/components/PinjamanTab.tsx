@@ -2,6 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import type { Pinjaman, PinjamanAngsuran, PinjamanBayar } from '../../core/types.js';
+import {
+  buatJadwalAngsuranOtomatis,
+  type BarisJadwalAngsuran,
+} from '../../core/pinjamanAngsuran.js';
 import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
 import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
@@ -20,6 +24,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  KonfirmasiModal,
   Modal,
   PeringatanModal,
   Select,
@@ -28,16 +33,72 @@ import {
 } from './ui.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
-type BarisJadwal = {
-  ke: number;
-  jatuh_tempo: string;
-  pokok: number;
-  bunga: number;
-  catatan: string;
-};
+type BarisJadwal = BarisJadwalAngsuran;
 
 function barisBaru(ke: number, tanggal = ''): BarisJadwal {
   return { ke, jatuh_tempo: tanggal, pokok: 0, bunga: 0, catatan: '' };
+}
+
+/** Tombol generator aktif hanya saat target pokok > 0 dan tenor bulat ≥ 1. */
+export function bolehIsiJadwalOtomatis(
+  targetPokok: number,
+  tenor: string,
+): boolean {
+  const teks = tenor.trim();
+  if (!teks) return false;
+  const n = Number(teks);
+  return (
+    Number.isSafeInteger(targetPokok) &&
+    targetPokok > 0 &&
+    Number.isSafeInteger(n) &&
+    n >= 1
+  );
+}
+
+/** Input bunga rencana + tombol pengisi jadwal dari tenor (AUD2-15). */
+export function KontrolJadwalOtomatis({
+  targetPokok,
+  tenor,
+  bungaRencana,
+  busy,
+  onBungaRencana,
+  onIsi,
+}: {
+  targetPokok: number;
+  tenor: string;
+  bungaRencana: number;
+  busy: boolean;
+  onBungaRencana: (nominal: number) => void;
+  onIsi: () => void;
+}) {
+  const aktif = bolehIsiJadwalOtomatis(targetPokok, tenor);
+  return (
+    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1">
+          <Field label="Bunga rencana per bulan (Rp)">
+            <CurrencyInput
+              value={bungaRencana}
+              disabled={busy}
+              onChange={onBungaRencana}
+            />
+          </Field>
+        </div>
+        <Button disabled={busy || !aktif} onClick={onIsi}>
+          Isi Jadwal Otomatis dari Tenor
+        </Button>
+      </div>
+      <p className="mt-2 text-sm text-stone-600">
+        {aktif
+          ? `Membuat ${Number(tenor)} baris: pokok dibagi rata ke Rupiah penuh, ` +
+            'baris terakhir menerima sisa, dan jatuh tempo maju satu bulan per baris.'
+          : 'Isi pokok pinjaman (atau sisa pokok) dan tenor minimal 1 bulan untuk mengaktifkan pengisian otomatis.'}
+        {bungaRencana > 0
+          ? ' Bunga rencana diisi ke setiap baris.'
+          : ' Bunga rencana boleh dikosongkan (0).'}
+      </p>
+    </div>
+  );
 }
 
 /** State form bayar angsuran (DB-16d). */
@@ -143,6 +204,8 @@ export function PinjamanTab() {
   const [catatan, setCatatan] = useState('');
   const [noBukti, setNoBukti] = useState('');
   const [jadwal, setJadwal] = useState<BarisJadwal[]>([barisBaru(1)]);
+  const [bungaRencana, setBungaRencana] = useState(0);
+  const [konfirmasiJadwalOtomatis, setKonfirmasiJadwalOtomatis] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [detailId, setDetailId] = useState('');
@@ -322,6 +385,8 @@ export function PinjamanTab() {
     setCatatan('');
     setNoBukti('');
     setJadwal([barisBaru(1)]);
+    setBungaRencana(0);
+    setKonfirmasiJadwalOtomatis(false);
     setPesanKonfirmasi(null);
     setErrorKonfirmasi(null);
     setDirty(false);
@@ -457,6 +522,56 @@ export function PinjamanTab() {
   function hapusJadwal(i: number): void {
     setJadwal((rows) => rows.filter((_, j) => j !== i));
     setDirty(true);
+  }
+
+  function jadwalBerisiData(rows: BarisJadwal[]): boolean {
+    return rows.some(
+      (r) =>
+        r.jatuh_tempo !== '' ||
+        r.pokok !== 0 ||
+        r.bunga !== 0 ||
+        r.catatan.trim() !== '',
+    );
+  }
+
+  function terapkanJadwalOtomatis(): void {
+    const n = Number(tenor);
+    if (!bolehIsiJadwalOtomatis(targetPokok, tenor)) {
+      setErr(
+        'Isi pokok pinjaman (atau sisa pokok) dan tenor minimal 1 bulan sebelum mengisi jadwal otomatis.',
+      );
+      setKonfirmasiJadwalOtomatis(false);
+      return;
+    }
+    if (!tanggal) {
+      setErr('Tanggal mulai jadwal wajib diisi sebelum mengisi jadwal otomatis.');
+      setKonfirmasiJadwalOtomatis(false);
+      return;
+    }
+    try {
+      setJadwal(
+        buatJadwalAngsuranOtomatis({
+          targetPokok,
+          tenor: n,
+          tanggal,
+          bunga: bungaRencana,
+        }),
+      );
+      setErr(null);
+      setDirty(true);
+    } catch (e) {
+      setErr(pesanError(e));
+    } finally {
+      setKonfirmasiJadwalOtomatis(false);
+    }
+  }
+
+  function mintaIsiJadwalOtomatis(): void {
+    if (jadwalBerisiData(jadwal)) {
+      setKonfirmasiJadwalOtomatis(true);
+      return;
+    }
+    terapkanJadwalOtomatis();
   }
 
   async function toggleDetail(id: string): Promise<void> {
@@ -884,8 +999,9 @@ export function PinjamanTab() {
             <div>
               <h3 className="font-bold">Jadwal angsuran (input manual)</h3>
               <p className="mt-1 text-sm text-stone-600">
-                Isi nomor ke, jatuh tempo, pokok, dan bunga sesuai perjanjian LPD.
-                Sistem tidak menghitung sendiri. Total pokok jadwal harus sama dengan{' '}
+                Isi manual, atau bagi rata pokok otomatis dari tenor lalu sesuaikan
+                sebelum menyimpan. Jatuh tempo otomatis maju satu bulan per baris.
+                Total pokok jadwal harus sama dengan{' '}
                 {mode === 'PENCAIRAN' ? 'pokok pinjaman' : 'sisa pokok'}.
               </p>
             </div>
@@ -893,6 +1009,18 @@ export function PinjamanTab() {
               Total pokok {formatRp(totalPokokJadwal)}
             </Badge>
           </div>
+
+          <KontrolJadwalOtomatis
+            targetPokok={targetPokok}
+            tenor={tenor}
+            bungaRencana={bungaRencana}
+            busy={busy}
+            onBungaRencana={(n) => {
+              setBungaRencana(n);
+              setDirty(true);
+            }}
+            onIsi={mintaIsiJadwalOtomatis}
+          />
 
           <div className="mt-3 space-y-2">
             {jadwal.map((row, i) => (
@@ -983,6 +1111,25 @@ export function PinjamanTab() {
             onSubmit={(alasan) => {
               void simpan(alasan);
             }}
+          />
+        )}
+
+        {konfirmasiJadwalOtomatis && (
+          <KonfirmasiModal
+            judul="Ganti jadwal angsuran yang sudah ada?"
+            deskripsi={
+              <>
+                Jadwal yang sekarang berisi {jadwal.length} baris akan diganti
+                dengan <b>{Number(tenor)} baris</b> baru dari tenor. Perubahan
+                manual yang belum disimpan akan hilang.
+              </>
+            }
+            labelYa="Ya, isi ulang jadwal"
+            labelBatal="Batal"
+            variant="danger"
+            sibuk={busy}
+            onBatal={() => setKonfirmasiJadwalOtomatis(false)}
+            onKonfirmasi={terapkanJadwalOtomatis}
           />
         )}
 

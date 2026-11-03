@@ -47,7 +47,7 @@
 | AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [x] |
 | AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [x] |
 | AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [x] |
-| AUD2-15 | P2 | S | Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD` | — | [ ] |
+| AUD2-15 | P2 | S | Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD` | — | [x] |
 | AUD2-16 | P2 | S | Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input | — | [ ] |
 
 ---
@@ -325,7 +325,7 @@
   - **Bukti 2026-11-03:** Form `BAYAR_UTANG` kini memuat saldo `2060` s/d tanggal transaksi lewat `api.laporanBukuBesar({ akun_kode: '2060', sampai: tanggal })` dan menampilkan kotak **"Sisa Utang Usaha (2060) saat ini: Rp ..."**. Bila saldo positif, tombol **"Isi sesuai sisa utang"** mengisi `Nominal` tepat sebesar `saldoAkhir`; saldo nol/negatif hanya menampilkan penjelasan tanpa tombol. Status memuat/gagal tampil di kotak info tanpa memblokir form, perubahan tanggal memicu muat ulang, dan `buatPemuatSisaUtang` membuang hasil tanggal lama agar tidak menimpa hasil terbaru. Regression test `tests/aud2-14-sisa-utang.test.ts` mencakup pemanggilan API 2060, format Rupiah, tombol pengisi, kondisi nol/negatif, status memuat/gagal, dan proteksi race. `npm run typecheck`, 1088 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-10
 
-- [ ] **AUD2-15 — Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD`** · P2 · S
+- [x] **AUD2-15 — Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD`** · P2 · S
   - **Konteks:**
     Pada `src/renderer/components/PinjamanTab.tsx:848-938`, jadwal angsuran harus ditambah satu per satu secara manual. Untuk pinjaman tenor 24–60 bulan, cara ini sangat melelahkan dan rawan salah pilih tanggal jatuh tempo.
   - **File yang disentuh:**
@@ -340,6 +340,7 @@
   - **Test:**
     - Test fungsi generator jadwal untuk pokok Rp 10.000.000 dengan tenor 3 bulan menghasilkan `[3.333.333, 3.333.333, 3.333.334]` (dalam sen) yang totalnya tepat Rp 10.000.000 dan tanggal jatuh tempo berurutan per bulan.
   - **DoD:** Bendahara cukup 1 klik untuk membuat jadwal angsuran puluhan bulan yang total pokoknya langsung valid.
+  - **Bukti 2026-11-03:** Helper murni `tambahBulanUtc()` dan `buatJadwalAngsuranOtomatis()` di `src/core/pinjamanAngsuran.ts` membagi pokok ke Rupiah penuh, memberi sisa ke baris terakhir, dan menghitung jatuh tempo UTC yang aman untuk akhir bulan/kabisat. Bagian Jadwal Angsuran `PinjamanTab.tsx` kini memiliki input **Bunga rencana per bulan (Rp)** dan tombol **Isi Jadwal Otomatis dari Tenor** (aktif saat target pokok > 0 dan tenor ≥ 1), konfirmasi sebelum mengganti baris yang sudah berisi, serta hasil yang tetap bisa diedit manual dan divalidasi total pokoknya saat simpan. Regression test `tests/aud2-15-jadwal-otomatis.test.ts` mencakup pembagian Rp 10.000.000 tenor 3 menjadi Rp 3.333.333 + Rp 3.333.333 + Rp 3.333.334 dengan total tepat, tanggal 31 Jan → 28/29 Feb → 31 Mar, tahun kabisat, berbagai tenor, dan kontrol UI. `npm run typecheck`, 1099 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-16 — Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input** · P2 · S
