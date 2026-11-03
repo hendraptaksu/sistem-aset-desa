@@ -1,7 +1,7 @@
 // UI-23 — Audit regresi UI otomatis memakai Electron asli (Playwright).
 //
 // Menjalankan hasil `npm run build` dengan profil & database sementara per
-// ukuran jendela, lalu memeriksa 14 tab: error console, overflow horizontal,
+// ukuran jendela, lalu memeriksa 13 tab: error console, overflow horizontal,
 // h1/header, sticky header, reset scroll antar tab, skip link, modal, guard
 // isian, simpan transaksi, filter Jurnal Umum, dan akses sidebar. Jurnal Umum
 // hanya muncul setelah Mode lanjutan diaktifkan, sesuai DB-26/DB-29.
@@ -43,7 +43,6 @@ const TAB = [
   { id: 'neraca-saldo', label: 'Neraca Saldo' },
   { id: 'panjar', label: 'Buku Panjar' },
   { id: 'pinjaman', label: 'Pinjaman LPD' },
-  { id: 'pembantu', label: 'Buku Pembantu' },
   { id: 'laba-rugi', label: 'Laba Rugi' },
   { id: 'neraca', label: 'Neraca' },
   { id: 'arus-kas', label: 'Arus Kas' },
@@ -57,7 +56,6 @@ const TAB_DI_GRUP_LAPORAN = new Set([
   'Laba Rugi',
   'Neraca',
   'Arus Kas',
-  'Buku Pembantu',
 ]);
 
 const pesan = (bagian, detail) => `${bagian}: ${detail}`;
@@ -772,7 +770,7 @@ async function jalankanAudit(ukuran, t) {
     await cekScrollAntarTab(page, t);
     ringkasan.flow.scrollAntarTab = 'lulus';
 
-    // 14 tab: verifikasi metrik, screenshot, sticky, dan reset scroll.
+    // 13 tab: verifikasi metrik, screenshot, sticky, dan reset scroll.
     for (let i = 0; i < TAB.length; i++) {
       const tab = TAB[i];
       await pindahTab(page, tab.label);

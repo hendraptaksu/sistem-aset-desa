@@ -43,7 +43,6 @@ const LABEL_TAB = [
   'Neraca Saldo',
   'Buku Panjar',
   'Pinjaman LPD',
-  'Buku Pembantu',
   'Laba Rugi',
   'Neraca',
   'Arus Kas',
@@ -88,10 +87,11 @@ describe('DB-29 — TABS dan GRUP_MENU bersih', () => {
     const item = [...blokGrup.matchAll(/item:\s*\[([^\]]*)\]/g)].flatMap((m) =>
       [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!),
     );
-    expect(item).toHaveLength(13);
+    expect(item).toHaveLength(12);
     expect(new Set(item).size).toBe(item.length);
     expect(item).toContain('jurnal');
     expect(item).not.toContain('pengaturan');
+    expect(item).not.toContain('pembantu');
   });
 
   it('Jurnal Umum tetap tersembunyi sampai Mode lanjutan aktif dan tab aman', () => {
@@ -167,7 +167,7 @@ describe('DB-29 — dokumentasi dan e2e mengikuti label baru', () => {
     }
   });
 
-  it('daftar tab e2e memakai 14 tab saat ini dan mengaktifkan Mode lanjutan', () => {
+  it('daftar tab e2e memakai 13 tab saat ini dan mengaktifkan Mode lanjutan', () => {
     const blokTab = E2E.slice(E2E.indexOf('const TAB ='), E2E.indexOf('const TAB_DI_GRUP'));
     const id = [...blokTab.matchAll(/id: '([^']+)'/g)].map((m) => m[1]);
     expect(id).toEqual([
@@ -179,7 +179,6 @@ describe('DB-29 — dokumentasi dan e2e mengikuti label baru', () => {
       'neraca-saldo',
       'panjar',
       'pinjaman',
-      'pembantu',
       'laba-rugi',
       'neraca',
       'arus-kas',

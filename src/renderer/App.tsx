@@ -13,7 +13,6 @@ import {
   List,
   ListChecks,
   Lock,
-  NotebookText,
   Scale,
   Settings,
   TrendingUp,
@@ -27,7 +26,6 @@ import { BukuBesarTab } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
 import { PinjamanTab } from './components/PinjamanTab.js';
-import { PembantuTab } from './components/PembantuTab.js';
 import { LabaRugiTab } from './components/LabaRugiTab.js';
 import { ArusKasTab } from './components/ArusKasTab.js';
 import { NeracaTab } from './components/NeracaTab.js';
@@ -52,7 +50,7 @@ import {
   tabSetelahModeLanjutan,
 } from './lib/modeLanjutan.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pinjaman' | 'pembantu' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pinjaman' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -63,7 +61,6 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
   { id: 'pinjaman', label: 'Pinjaman LPD', Icon: Landmark },
-  { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
   { id: 'arus-kas', label: 'Arus Kas', Icon: Banknote },
@@ -98,7 +95,6 @@ const GRUP_MENU: {
       'laba-rugi',
       'neraca',
       'arus-kas',
-      'pembantu',
     ],
   },
   {
@@ -658,7 +654,6 @@ function AppShell() {
             )}
             {tab === 'panjar' && <PanjarTab />}
             {tab === 'pinjaman' && <PinjamanTab />}
-            {tab === 'pembantu' && <PembantuTab />}
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (
               <NeracaTab

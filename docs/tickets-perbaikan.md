@@ -44,7 +44,7 @@
 | AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [x] |
 | AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [x] |
 | AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [x] |
-| AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [ ] |
+| AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [x] |
 | AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [ ] |
 | AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [ ] |
 | AUD2-15 | P2 | S | Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD` | — | [ ] |
@@ -276,7 +276,7 @@
   - **Bukti 2026-11-03:** `formatRp()` hanya menampilkan desimal bila `Math.abs(sen) % 100 !== 0` — nominal bulat menjadi `Rp 150.000` dan negatif `(Rp 150.000)`, pecahan sen tetap `Rp 150.000,50`. `CurrencyInput` memakai `inputMode="numeric"`, memformat titik ribuan saat mengetik, dan membaca digit saja sebagai rupiah utuh ×100 ke sen, sehingga paste `100,000` menjadi Rp 100.000 (bukan Rp 100). Test baru `tests/currency-input.test.ts` serta pembaruan ekspektasi format di test laporan, print, jurnal, dan validasi. `npm run typecheck`, 1060 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-12 — Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar`** · P2 · S
+- [x] **AUD2-12 — Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar`** · P2 · S
   - **Konteks:**
     Tab `Buku Pembantu` (`src/renderer/components/PembantuTab.tsx`) menampilkan data yang 100% sama dengan `Buku Besar`, tetapi tidak memiliki fitur *drill-down* klik baris jurnal dan tidak menampilkan nomor bukti. Keberadaan dua menu untuk hal yang sama membingungkan bendahara dan akuntan.
   - **File yang disentuh:**
@@ -292,6 +292,7 @@
   - **Test:**
     - Perbarui test navigasi sidebar (`App.tsx`) dan pastikan `BukuBesarTab` menampilkan keterangan arah mutasi yang jelas.
   - **DoD:** Menu sidebar lebih ramping dan `Buku Besar` mudah dipahami baik oleh bendahara awam maupun akuntan.
+  - **Bukti 2026-11-03:** Tab `pembantu` dihapus dari `TabId`, `TABS`, `GRUP_MENU`, render `App.tsx`, dan `PembantuTab.tsx` (file mati tanpa referensi tersisa); daftar tab e2e menyusut menjadi 13 dan test sidebar diperbarui. `BukuBesarTab` menampilkan header mutasi dengan istilah Debit/Kredit plus sub-label arah sesuai `posisi_normal`: Debit `(+ / Masuk)` / Kredit `(- / Keluar)` untuk akun normal debit, serta Debit `(- / Berkurang)` / Kredit `(+ / Bertambah)` untuk akun normal kredit; drill-down jurnal asal tetap dipertahankan. Regression test `tests/aud2-12-buku-pembantu.test.ts` mencakup penghapusan navigasi/file, daftar tab e2e, dan kedua arah mutasi. `npm run typecheck`, 1066 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-01
 
 - [ ] **AUD2-13 — Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian** · P1 · M
