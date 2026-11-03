@@ -9,9 +9,10 @@
 //    - pinjaman dengan jurnal pencairan (`jurnal_pencairan_id` terisi):
 //      kredit neto 2050 pada jurnal pencairan dikurangi debit neto 2050 pada
 //      seluruh jurnal pembayaran yang ditautkan lewat `pinjaman_bayar`;
-//    - pinjaman berjalan (`jurnal_pencairan_id` null): `sisa_pokok_awal`
-//      (sudah tercatat sebagai kredit 2050 di Saldo Awal) dikurangi debit neto
-//      2050 pada jurnal pembayaran tertaut.
+//    - pinjaman berjalan (`jurnal_pencairan_id` null): bagian kredit neto 2050
+//      dari grup jurnal `SALDO_AWAL` yang dialokasikan ke pinjaman ini,
+//      dikurangi debit neto 2050 pada jurnal pembayaran tertaut. Nilai ini
+//      berasal dari GL aktual, BUKAN salinan `sisa_pokok_awal`.
 //
 // 2. `jadwal` = `sisa_pokok_awal` dikurangi jumlah POKOK AKTUAL dari jurnal
 //    pembayaran yang ditautkan. Pokok aktual diambil dari debit 2050 bila ada.
@@ -52,6 +53,12 @@ export type PinjamanRekonsiliasiInput = {
   jurnal_pencairan_id: string | null;
   /** Baris jurnal pencairan; kosong untuk pinjaman berjalan/tanpa jurnal. */
   baris_pencairan: readonly BarisRekonsiliasiPinjaman[];
+  /**
+   * Bagian kredit neto 2050 dari grup `SALDO_AWAL` yang dialokasikan ke
+   * pinjaman berjalan ini. Diisi adapter dari saldo GL aktual, bukan dari
+   * `sisa_pokok_awal`. Untuk pinjaman pencairan nilainya diabaikan.
+   */
+  saldo_awal_2050?: number;
   /** Pembayaran yang ditautkan lewat `pinjaman_bayar`. */
   pembayaran: readonly PembayaranRekonsiliasiPinjaman[];
   /** Akun bunga pinjaman; dipakai memisahkan bunga dari pokok aktual. */
@@ -154,11 +161,13 @@ export function hitungRekonsiliasiPinjaman(
   );
 
   // Pinjaman pencairan baru memakai kredit 2050 di jurnal pencairan sebagai
-  // saldo awal. Pinjaman berjalan tidak punya jurnal pencairan: sisa pokok
-  // awalnya sudah ada di Saldo Awal 2050, jadi jangan menambahkan kredit lagi.
+  // saldo awal. Pinjaman berjalan tidak punya jurnal pencairan: saldo awalnya
+  // dibaca dari bagian GL 2050 grup SALDO_AWAL yang dialokasikan adapter,
+  // bukan disalin dari header pinjaman. Nilai tidak boleh melebihi sisa pokok
+  // awal pinjaman ini agar alokasi beberapa pinjaman tidak dobel.
   const glAwal = input.jurnal_pencairan_id
     ? saldoKreditAkun(input.baris_pencairan, akunHutang)
-    : sisaPokokAwal;
+    : Math.min(sisaPokokAwal, Math.max(0, angka(input.saldo_awal_2050)));
 
   const gl = glAwal + pembayaran2050;
   const jadwal = (input.dibatalkan ? 0 : sisaPokokAwal) - pembayaranPokok;

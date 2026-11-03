@@ -32,6 +32,10 @@ import type {
   RincianPembayaranPinjaman,
 } from '../core/types.js';
 import { AKUN_HUTANG, akunBolehDiposting } from './coa.js';
+import {
+  saldoAwal2050,
+  totalSisaPokokBerjalan,
+} from './pinjamanRekonsiliasi.js';
 import { postingJurnal } from './posting.js';
 import { catatAudit, getAkun, getJurnalDetail, listAkun } from './repository.js';
 import { formatRp } from '../utils/format.js';
@@ -852,6 +856,9 @@ export function simpanPinjamanLpd(
         jurnalId = jurnal.id;
       }
 
+      const totalBerjalan =
+        mode === 'BERJALAN' ? totalSisaPokokBerjalan(db) + nominal : 0;
+
       const hasil = buatPinjaman(db, {
         ...(teks(data.id) ? { id: teks(data.id) } : {}),
         kreditur,
@@ -872,6 +879,23 @@ export function simpanPinjamanLpd(
         throw new GagalPinjamanLpd(
           hasil.errors.length > 0 ? hasil.errors : ['Pinjaman gagal disimpan.'],
         );
+
+      // AUD2-05: pinjaman berjalan tidak membuat jurnal pencairan. Sisa
+      // pokoknya wajib sudah tercatat sebagai kredit neto 2050 pada grup
+      // SALDO_AWAL; jika tidak, Neraca 2050 akan minus tanpa terlihat di
+      // rekonsiliasi. Pemeriksaan dilakukan setelah validasi bentuk pinjaman
+      // agar error akun/jadwal tetap tampil lebih dulu; lemparan ini
+      // membatalkan seluruh transaksi.
+      if (mode === 'BERJALAN') {
+        const saldoAwal = saldoAwal2050(db);
+        if (totalBerjalan > saldoAwal)
+          throw new GagalPinjamanLpd([
+            `Sisa pokok pinjaman berjalan (${formatRp(totalBerjalan)}) ` +
+              `melebihi Saldo Awal akun 2050 HUTANG LAIN-LAIN ` +
+              `(${formatRp(saldoAwal)}). Isi atau koreksi Saldo Awal 2050 ` +
+              'terlebih dahulu.',
+          ]);
+      }
 
       const pinjaman = hasil.pinjaman;
       catatAudit(db, {

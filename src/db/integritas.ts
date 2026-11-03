@@ -24,13 +24,21 @@
 // DB-16f menambahkan rekonsiliasi outstanding 2050 vs jadwal pinjaman per
 // pinjaman. Perbandingan hanya memakai jurnal yang tertaut ke pinjaman itu,
 // BUKAN saldo total 2050, karena akun 2050 juga menampung utang non-LPD.
+// AUD2-05 menambahkan validasi Saldo Awal 2050 untuk pinjaman berjalan serta
+// ringkasan agregat: kredit neto 2050 Buku Besar tidak boleh kurang dari
+// outstanding seluruh pinjaman aktif. Kelebihan GL tetap bukan temuan karena
+// dapat berasal dari utang non-LPD.
 
 import type Database from 'better-sqlite3';
 import { JENIS_JURNAL } from '../core/posting.js';
 import { AKUN_PANJAR, POSISI_NORMAL, type CoaTipe } from './coa.js';
 import { formatRp } from '../utils/format.js';
 import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
-import { rekonsiliasiSemuaPinjaman } from './pinjamanRekonsiliasi.js';
+import {
+  rekonsiliasiGl2050,
+  rekonsiliasiSaldoAwal2050,
+  rekonsiliasiSemuaPinjaman,
+} from './pinjamanRekonsiliasi.js';
 
 export type KodeTemuan =
   | 'JURNAL_TANPA_BARIS'
@@ -1234,8 +1242,10 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     ]);
 
   if (pinjamanLengkap) {
+    let adaTemuanPinjaman = false;
     for (const rekonsiliasi of rekonsiliasiSemuaPinjaman(db)) {
       if (rekonsiliasi.cocok) continue;
+      adaTemuanPinjaman = true;
       temuan.push({
         kode: 'REKONSILIASI_PINJAMAN_SELISIH',
         pesan:
@@ -1248,6 +1258,51 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           gl: rekonsiliasi.gl,
           jadwal: rekonsiliasi.jadwal,
           selisih: rekonsiliasi.selisih,
+        },
+      });
+    }
+
+    // AUD2-05: ringkasan agregat memastikan kredit neto 2050 grup SALDO_AWAL
+    // mencukupi total sisa pokok seluruh pinjaman berjalan, dan kredit neto
+    // 2050 Buku Besar tidak kurang dari outstanding seluruh pinjaman aktif.
+    // Bila per pinjaman sudah melaporkan selisih, temuan agregat tidak
+    // diduplikasi. Kelebihan GL tidak dianggap temuan karena dapat berasal dari
+    // utang non-LPD; hanya kekurangan yang dilaporkan.
+    const agregat = rekonsiliasiSaldoAwal2050(db);
+    const agregatGl = rekonsiliasiGl2050(db);
+    if (
+      !adaTemuanPinjaman &&
+      agregat.total_sisa_pokok_berjalan > 0 &&
+      (agregat.kekurangan > 0 || agregatGl.kekurangan > 0)
+    ) {
+      const bagian: string[] = [];
+      if (agregat.kekurangan > 0)
+        bagian.push(
+          `Saldo Awal 2050 ${formatRp(agregat.saldo_awal_2050)} tidak ` +
+            `mencukupi total sisa pokok pinjaman berjalan ` +
+            `${formatRp(agregat.total_sisa_pokok_berjalan)} ` +
+            `(kekurangan ${formatRp(agregat.kekurangan)})`,
+        );
+      if (agregatGl.kekurangan > 0)
+        bagian.push(
+          `kredit neto 2050 Buku Besar ${formatRp(agregatGl.gl_2050)} kurang ` +
+            `dari outstanding seluruh pinjaman aktif ` +
+            `${formatRp(agregatGl.outstanding_pinjaman)} ` +
+            `(kekurangan ${formatRp(agregatGl.kekurangan)})`,
+        );
+      temuan.push({
+        kode: 'REKONSILIASI_PINJAMAN_SELISIH',
+        pesan:
+          `${bagian.join('; ')}. Isi atau koreksi Saldo Awal 2050 terlebih ` +
+          'dahulu; aplikasi tidak mengoreksi otomatis.',
+        detail: {
+          saldo_awal_2050: agregat.saldo_awal_2050,
+          total_sisa_pokok_berjalan: agregat.total_sisa_pokok_berjalan,
+          kekurangan_saldo_awal: agregat.kekurangan,
+          gl_2050: agregatGl.gl_2050,
+          outstanding_pinjaman: agregatGl.outstanding_pinjaman,
+          selisih: agregatGl.selisih,
+          kekurangan_gl: agregatGl.kekurangan,
         },
       });
     }

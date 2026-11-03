@@ -37,7 +37,7 @@
 | AUD2-02 | P0 | S | Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama | — | [x] |
 | AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [x] |
 | AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [x] |
-| AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [ ] |
+| AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [x] |
 | AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [ ] |
 | AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [ ] |
 | AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [ ] |
@@ -142,7 +142,7 @@
   - **Bukti 2026-11-03:** `validasiJurnal` menolak baris `1040`/`2050` pada jurnal `UMUM` (kecuali `konteks.koreksiSaldoAwal`) dengan pesan persis sesuai tiket, tanpa mengganggu jalur internal `PANJAR`/`HUTANG`/`SALDO_AWAL`/`REVERSAL`. `auditIntegritas` menghitung saldo normal debit `1040` dari `jurnal_baris` (termasuk `SALDO_AWAL`/reversal) dan membandingkannya dengan `SUM(jumlah)` panjar `OPEN` aktif (`jurnal_batal_id` kosong), lalu melaporkan `REKONSILIASI_PANJAR_GL_SELISIH` dengan detail saldo GL, total panjar, dan selisih; pemeriksaan dilewati untuk backup pra-v19 tanpa kolom batal. Test regresi baru mencakup penolakan UMUM `1040`/`2050`, izin jenis internal + koreksi saldo awal, deteksi baris `1040` liar lewat SQL, serta pengecualian panjar `CLOSED`/dibatalkan. `npm run typecheck`, 1019 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-05 — Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN`** · P0 · M
+- [x] **AUD2-05 — Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN`** · P0 · M
   - **Konteks:**
     1. Di `src/core/pinjamanRekonsiliasi.ts:157-161`, pinjaman mode `BERJALAN` (`jurnal_pencairan_id === null`) menetapkan `glAwal = sisaPokokAwal` (menyalin dari header pinjaman, bukan membaca saldo `2050` dari jurnal `SALDO_AWAL`). Akibatnya, walaupun bendahara lupa mengisi `2050` di Saldo Awal, rekonsiliasi selalu menampilkan **"Cocok" (Selisih 0)** padahal Neraca `2050` minus!
     2. `simpanPinjamanLpd` mode `BERJALAN` di `src/db/pinjaman.ts:776` tidak memvalidasi apakah saldo kredit `2050` pada jurnal `SALDO_AWAL` mencukupi.
@@ -158,6 +158,7 @@
     - Buat pinjaman `BERJALAN` tanpa Saldo Awal `2050` → ditolak oleh `simpanPinjamanLpd`.
     - Jika dipaksa lewat `buatPinjaman` / SQL mentah tanpa Saldo Awal `2050`, `rekonsiliasiSemuaPinjaman` dan `auditIntegritas` melaporkan `cocok: false` (`REKONSILIASI_PINJAMAN_SELISIH`).
   - **DoD:** Pinjaman `BERJALAN` tidak bisa membuat akun `2050` di Neraca menjadi negatif atau selisih diam-diam.
+  - **Bukti 2026-11-03:** `simpanPinjamanLpd` mode `BERJALAN` menghitung kredit neto `2050` dari grup jurnal `SALDO_AWAL` (kredit − debit, sehingga reversal mengurangi saldo) dan menolak simpan bila total `sisa_pokok_awal` seluruh pinjaman berjalan + pinjaman baru melebihi saldo tersebut, dengan pesan persis sesuai tiket. `hitungRekonsiliasiPinjaman` kini memakai alokasi kredit neto `2050` aktual untuk pinjaman berjalan, bukan menyalin `sisa_pokok_awal`; adapter membagi saldo pembukaan berurutan ke beberapa pinjaman berjalan sehingga pembayaran dan pinjaman lama tetap cocok. `rekonsiliasiSaldoAwal2050` dan `rekonsiliasiGl2050` memeriksa kecukupan saldo awal serta kredit neto `2050` Buku Besar terhadap outstanding seluruh pinjaman aktif (hanya kekurangan yang dilaporkan agar utang non-LPD tidak menjadi temuan palsu), dan `auditIntegritas` melaporkan `REKONSILIASI_PINJAMAN_SELISIH` termasuk saat saldo awal kurang. Test regresi mencakup penolakan tanpa `2050`, penolakan total melebihi saldo awal, alokasi beberapa pinjaman, pembayaran pokok, pemaksaan lewat `buatPinjaman`, arah debit `2050`, serta deteksi debit `2050` liar di tingkat agregat. `npm run typecheck`, 1028 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-04
 
 - [ ] **AUD2-06 — Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota** · P0 · S

@@ -42,7 +42,7 @@ const K = (akun: string, nominal: number): JurnalBarisInput => ({
 
 const dbTerbuka: Database.Database[] = [];
 
-function dbKas(): Database.Database {
+function dbKas(saldoAwal2050 = 0): Database.Database {
   const db = openDb(':memory:');
   dbTerbuka.push(db);
   const awal = postingJurnal(db, {
@@ -56,7 +56,8 @@ function dbKas(): Database.Database {
     baris: [
       D('1001', RP(100_000_000)),
       D('1014', RP(50_000_000)),
-      K(AKUN_MODAL, RP(150_000_000)),
+      ...(saldoAwal2050 === 0 ? [] : [K('2050', saldoAwal2050)]),
+      K(AKUN_MODAL, RP(150_000_000) - saldoAwal2050),
     ],
   });
   expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
@@ -220,7 +221,7 @@ describe('DB-16c — mode pencairan baru', () => {
 
 describe('DB-16c — mode sudah berjalan', () => {
   it('tidak membuat jurnal baru dan memakai sisa pokok sebagai pokok awal', () => {
-    const db = dbKas();
+    const db = dbKas(RP(10_000_000));
     const sebelum = hitungJurnal(db);
     const sisa = RP(7_500_000);
 
@@ -252,7 +253,7 @@ describe('DB-16c — mode sudah berjalan', () => {
   });
 
   it('menerima mode berjalan tanpa memilih akun kas dan memakai kas aktif DB', () => {
-    const db = dbKas();
+    const db = dbKas(RP(1_000_000));
     const hasil = simpanPinjamanLpd(db, {
       mode: 'BERJALAN',
       kreditur: 'LPD Cadangan',

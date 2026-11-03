@@ -18,6 +18,7 @@ import { openDb } from '../src/db/database.js';
 import { AKUN_MODAL } from '../src/db/coa.js';
 import {
   bayarAngsuranPinjaman,
+  buatPinjaman,
   getPinjaman,
   simpanPinjamanLpd,
 } from '../src/db/pinjaman.js';
@@ -27,7 +28,9 @@ import {
 } from '../src/db/pinjamanRekonsiliasi.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { reverseJurnal } from '../src/db/reversal.js';
 import { validasiBentukPinjamanRekonsiliasi } from '../src/main/validation.js';
+import { formatRp } from '../src/utils/format.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -108,6 +111,61 @@ function siapkanFixture(): Fixture {
       id: a.id,
       ke: a.ke,
     })),
+  };
+}
+
+/**
+ * DB dengan Saldo Awal kas dan, bila diminta, kredit 2050. Modal dibuat
+ * penyeimbang agar jurnal SALDO_AWAL tetap seimbang. Saldo 2050 negatif
+ * (debit) dipakai untuk menguji arah tanda.
+ */
+function dbSaldoAwal2050(saldo2050 = 0): Database.Database {
+  const db = openDb(':memory:');
+  dbTerbuka.push(db);
+  const kas = RP(200_000_000);
+  const baris = [
+    D('1001', kas),
+    ...(saldo2050 > 0
+      ? [K('2050', saldo2050)]
+      : saldo2050 < 0
+        ? [D('2050', -saldo2050)]
+        : []),
+    K(AKUN_MODAL, kas - saldo2050),
+  ];
+  const awal = postingJurnal(db, {
+    header: {
+      id: `awal-2050-${saldo2050}`,
+      tanggal: '2026-01-01',
+      no_bukti: `SA-2050-${saldo2050}`,
+      keterangan: 'Saldo awal uji pinjaman berjalan',
+      jenis: 'SALDO_AWAL',
+    },
+    baris,
+  });
+  expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+  return db;
+}
+
+function inputBerjalan(
+  sisaPokok: number,
+  id = 'pjr-berjalan-16f',
+  tanggal = '2026-01-01',
+): Parameters<typeof simpanPinjamanLpd>[1] {
+  return {
+    id,
+    mode: 'BERJALAN',
+    kreditur: 'LPD Desa Adat',
+    tanggal,
+    akunBunga: '5063',
+    sisaPokok,
+    angsuran: [
+      {
+        ke: 1,
+        jatuh_tempo: '2026-02-01',
+        pokok: sisaPokok,
+        bunga: RP(100_000),
+      },
+    ],
   };
 }
 
@@ -198,36 +256,267 @@ describe('DB-16f — rekonsiliasi per pinjaman', () => {
     });
   });
 
-  it('pinjaman berjalan memakai sisa_pokok_awal sebagai saldo awal 2050', () => {
+  it('menolak pinjaman berjalan tanpa Saldo Awal 2050 dengan pesan jelas', () => {
     const db = openDb(':memory:');
     dbTerbuka.push(db);
-    const simpan = simpanPinjamanLpd(db, {
-      id: 'pjr-berjalan-16f',
-      mode: 'BERJALAN',
-      kreditur: 'LPD Desa Adat',
-      tanggal: '2026-01-01',
-      sisaPokok: RP(5_000_000),
-      akunBunga: '5063',
-      angsuran: [
-        {
-          ke: 1,
-          jatuh_tempo: '2026-02-01',
-          pokok: RP(5_000_000),
-          bunga: RP(100_000),
-        },
-      ],
-    });
-    expect(simpan.tersimpan, simpan.errors.join(' ')).toBe(true);
+    const sisa = RP(5_000_000);
+    const simpan = simpanPinjamanLpd(db, inputBerjalan(sisa));
 
+    expect(simpan.tersimpan).toBe(false);
+    expect(simpan.errors).toContain(
+      `Sisa pokok pinjaman berjalan (${formatRp(sisa)}) melebihi Saldo Awal ` +
+        `akun 2050 HUTANG LAIN-LAIN (${formatRp(0)}). ` +
+        'Isi atau koreksi Saldo Awal 2050 terlebih dahulu.',
+    );
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman').get() as { n: number })
+        .n,
+    ).toBe(0);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM jurnal').get() as { n: number })
+        .n,
+    ).toBe(0);
+  });
+
+  it('menolak bila total sisa pokok pinjaman berjalan melebihi Saldo Awal 2050', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const pertama = simpanPinjamanLpd(
+      db,
+      inputBerjalan(RP(3_000_000), 'pjr-berjalan-a'),
+    );
+    expect(pertama.tersimpan, pertama.errors.join(' ')).toBe(true);
+
+    const kedua = simpanPinjamanLpd(
+      db,
+      inputBerjalan(RP(3_000_000), 'pjr-berjalan-b', '2026-01-02'),
+    );
+    expect(kedua.tersimpan).toBe(false);
+    expect(kedua.errors).toContain(
+      `Sisa pokok pinjaman berjalan (${formatRp(RP(6_000_000))}) melebihi ` +
+        `Saldo Awal akun 2050 HUTANG LAIN-LAIN (${formatRp(RP(5_000_000))}). ` +
+        'Isi atau koreksi Saldo Awal 2050 terlebih dahulu.',
+    );
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman').get() as { n: number })
+        .n,
+    ).toBe(1);
+  });
+
+  it('menerima pinjaman berjalan bila Saldo Awal 2050 cukup dan rekonsiliasi cocok', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const sisa = RP(5_000_000);
+    const simpan = simpanPinjamanLpd(db, inputBerjalan(sisa));
+
+    expect(simpan.tersimpan, simpan.errors.join(' ')).toBe(true);
     const hasil = rekonsiliasiPinjaman(db, simpan.pinjaman!.id)!;
     expect(hasil).toMatchObject({
-      gl: RP(5_000_000),
-      jadwal: RP(5_000_000),
+      gl: sisa,
+      jadwal: sisa,
       selisih: 0,
       cocok: true,
     });
     expect(hasil.pesan).toMatch(/cocok/i);
     expect(kodeTemuan(db)).not.toContain('REKONSILIASI_PINJAMAN_SELISIH');
+  });
+
+  it('membagi Saldo Awal 2050 ke beberapa pinjaman berjalan dan tetap cocok', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const a = simpanPinjamanLpd(
+      db,
+      inputBerjalan(RP(2_000_000), 'pjr-berjalan-a'),
+    );
+    const b = simpanPinjamanLpd(
+      db,
+      inputBerjalan(RP(3_000_000), 'pjr-berjalan-b', '2026-01-02'),
+    );
+    expect(a.tersimpan, a.errors.join(' ')).toBe(true);
+    expect(b.tersimpan, b.errors.join(' ')).toBe(true);
+
+    for (const [id, sisa] of [
+      [a.pinjaman!.id, RP(2_000_000)],
+      [b.pinjaman!.id, RP(3_000_000)],
+    ] as const) {
+      expect(rekonsiliasiPinjaman(db, id)).toMatchObject({
+        gl: sisa,
+        jadwal: sisa,
+        selisih: 0,
+        cocok: true,
+      });
+    }
+    expect(kodeTemuan(db)).not.toContain('REKONSILIASI_PINJAMAN_SELISIH');
+  });
+
+  it('pinjaman berjalan tetap cocok setelah pembayaran pokok', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const sisa = RP(5_000_000);
+    const simpan = simpanPinjamanLpd(db, {
+      ...inputBerjalan(sisa),
+      angsuran: [
+        {
+          ke: 1,
+          jatuh_tempo: '2026-02-01',
+          pokok: sisa,
+          bunga: 0,
+        },
+      ],
+    });
+    expect(simpan.tersimpan, simpan.errors.join(' ')).toBe(true);
+    const bayar = bayarAngsuranPinjaman(db, {
+      id: 'pby-berjalan-16f',
+      jurnal_id: 'j-bayar-berjalan-16f',
+      pinjaman_id: simpan.pinjaman!.id,
+      angsuran_id: simpan.pinjaman!.angsuran![0].id,
+      tanggal: '2026-02-05',
+      akun_kas: '1001',
+      pokok: RP(2_000_000),
+      bunga: 0,
+    });
+    expect(bayar.tersimpan, bayar.errors.join(' ')).toBe(true);
+
+    expect(rekonsiliasiPinjaman(db, simpan.pinjaman!.id)).toMatchObject({
+      gl: RP(3_000_000),
+      jadwal: RP(3_000_000),
+      selisih: 0,
+      cocok: true,
+    });
+    expect(kodeTemuan(db)).not.toContain('REKONSILIASI_PINJAMAN_SELISIH');
+  });
+
+  it('mendeteksi kekurangan GL 2050 agregat dari debit 2050 yang tidak tertaut', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const sisa = RP(5_000_000);
+    const simpan = simpanPinjamanLpd(db, inputBerjalan(sisa));
+    expect(simpan.tersimpan, simpan.errors.join(' ')).toBe(true);
+
+    const liar = postingJurnal(db, {
+      header: {
+        id: 'j-2050-liar-16f',
+        tanggal: '2026-01-03',
+        keterangan: 'Debit 2050 tanpa link pinjaman',
+        jenis: 'HUTANG',
+      },
+      baris: [D('2050', RP(1_000_000)), K('1001', RP(1_000_000))],
+    });
+    expect(liar.tersimpan, liar.errors.join(' ')).toBe(true);
+
+    // Per pinjaman tetap cocok karena debit liar tidak tertaut; ringkasan
+    // agregat yang menangkap kekurangan GL 2050 terhadap outstanding pinjaman.
+    expect(rekonsiliasiPinjaman(db, simpan.pinjaman!.id)).toMatchObject({
+      gl: sisa,
+      jadwal: sisa,
+      selisih: 0,
+      cocok: true,
+    });
+    const temuan = auditIntegritas(db).temuan.filter(
+      (t) => t.kode === 'REKONSILIASI_PINJAMAN_SELISIH',
+    );
+    expect(temuan).toHaveLength(1);
+    expect(temuan[0].detail).toMatchObject({
+      gl_2050: RP(4_000_000),
+      outstanding_pinjaman: sisa,
+      kekurangan_gl: RP(1_000_000),
+    });
+    expect(temuan[0].pesan).toMatch(/kredit neto 2050 Buku Besar/i);
+  });
+
+  it('tidak menganggap kredit 2050 non-LPD sebagai selisih pinjaman', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const sisa = RP(5_000_000);
+    const simpan = simpanPinjamanLpd(db, inputBerjalan(sisa));
+    expect(simpan.tersimpan, simpan.errors.join(' ')).toBe(true);
+
+    const utangLain = postingJurnal(db, {
+      header: {
+        id: 'j-2050-non-lpd-16f',
+        tanggal: '2026-01-03',
+        keterangan: 'Utang non-LPD di 2050',
+        jenis: 'HUTANG',
+      },
+      baris: [D('1001', RP(2_000_000)), K('2050', RP(2_000_000))],
+    });
+    expect(utangLain.tersimpan, utangLain.errors.join(' ')).toBe(true);
+
+    expect(kodeTemuan(db)).not.toContain('REKONSILIASI_PINJAMAN_SELISIH');
+  });
+
+  it('memakai Saldo Awal 2050 aktual, bukan sisa_pokok_awal, saat rekonsiliasi dipaksa lewat buatPinjaman', () => {
+    const db = openDb(':memory:');
+    dbTerbuka.push(db);
+    const sisa = RP(5_000_000);
+    const buat = buatPinjaman(db, {
+      id: 'pjr-paksa-16f',
+      kreditur: 'LPD Desa Adat',
+      akun_kas: '1001',
+      akun_bunga: '5063',
+      pokok_awal: sisa,
+      sisa_pokok_awal: sisa,
+      tanggal_mulai: '2026-01-01',
+      jurnal_pencairan_id: null,
+      angsuran: [
+        {
+          ke: 1,
+          jatuh_tempo: '2026-02-01',
+          pokok: sisa,
+          bunga: RP(100_000),
+        },
+      ],
+    });
+    expect(buat.tersimpan, buat.errors.join(' ')).toBe(true);
+
+    const hasil = rekonsiliasiPinjaman(db, 'pjr-paksa-16f')!;
+    expect(hasil).toMatchObject({
+      gl: 0,
+      jadwal: sisa,
+      selisih: -sisa,
+      cocok: false,
+    });
+    expect(hasil.pesan).toMatch(/Saldo Awal 2050/i);
+    expect(rekonsiliasiSemuaPinjaman(db)).toEqual([
+      expect.objectContaining({
+        pinjaman_id: 'pjr-paksa-16f',
+        cocok: false,
+        gl: 0,
+        jadwal: sisa,
+        selisih: -sisa,
+      }),
+    ]);
+
+    const temuan = auditIntegritas(db).temuan.filter(
+      (t) => t.kode === 'REKONSILIASI_PINJAMAN_SELISIH',
+    );
+    expect(temuan.length).toBeGreaterThan(0);
+    expect(temuan[0].detail).toMatchObject({
+      pinjaman_id: 'pjr-paksa-16f',
+      gl: 0,
+      jadwal: sisa,
+      selisih: -sisa,
+    });
+  });
+
+  it('pinjaman berjalan dengan Saldo Awal 2050 debit (tanda terbalik) tetap ditolak', () => {
+    const db = dbSaldoAwal2050(-RP(1_000_000));
+    const simpan = simpanPinjamanLpd(db, inputBerjalan(RP(5_000_000)));
+    expect(simpan.tersimpan).toBe(false);
+    expect(simpan.errors.join(' ')).toMatch(
+      /melebihi Saldo Awal akun 2050 HUTANG LAIN-LAIN/,
+    );
+    expect(simpan.errors.join(' ')).toContain(formatRp(-RP(1_000_000)));
+  });
+
+  it('reversal jurnal SALDO_AWAL mengurangi kredit neto 2050', () => {
+    const db = dbSaldoAwal2050(RP(5_000_000));
+    const balik = reverseJurnal(
+      db,
+      `awal-2050-${RP(5_000_000)}`,
+      'Koreksi saldo awal pinjaman',
+    );
+    expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
+
+    const simpan = simpanPinjamanLpd(db, inputBerjalan(RP(5_000_000)));
+    expect(simpan.tersimpan).toBe(false);
+    expect(simpan.errors.join(' ')).toContain(
+      `Saldo Awal akun 2050 HUTANG LAIN-LAIN (${formatRp(0)})`,
+    );
   });
 
   it('jurnal pembayaran salah akun tetap terdeteksi lewat selisih GL vs jadwal', () => {
