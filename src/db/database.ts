@@ -385,6 +385,7 @@ function terapkanMigrasiSingleEntryLama(
  * Semua perintah idempoten:
  * - index global lama dibuang (nomor bukti kini unik PER TAHUN);
  * - trigger menolak baris dengan debit & kredit sekaligus;
+ * - AUD2-08: trigger menolak nilai pecahan/REAL, negatif, dan dua sisi nol;
  * - trigger menolak update/delete jurnal dan barisnya (koreksi lewat reversal).
  */
 function terapkanAturanV9(db: Database.Database): void {
@@ -398,17 +399,39 @@ function terapkanAturanV9(db: Database.Database): void {
     DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
     CREATE TRIGGER trg_jurnal_baris_satu_sisi_insert
     BEFORE INSERT ON jurnal_baris
-    WHEN NEW.debit > 0 AND NEW.kredit > 0
+    WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+      OR NEW.debit < 0 OR NEW.kredit < 0
+      OR (NEW.debit = 0 AND NEW.kredit = 0)
+      OR (NEW.debit > 0 AND NEW.kredit > 0)
     BEGIN
-      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
+      SELECT CASE
+        WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal harus bilangan bulat (integer), bukan pecahan.')
+        WHEN NEW.debit < 0 OR NEW.kredit < 0
+          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal tidak boleh negatif.')
+        WHEN NEW.debit = 0 AND NEW.kredit = 0
+          THEN RAISE(ABORT, 'Baris jurnal harus mengisi salah satu sisi: debit atau kredit lebih dari 0.')
+        ELSE RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.')
+      END;
     END;
 
     DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
     CREATE TRIGGER trg_jurnal_baris_satu_sisi_update
     BEFORE UPDATE ON jurnal_baris
-    WHEN NEW.debit > 0 AND NEW.kredit > 0
+    WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+      OR NEW.debit < 0 OR NEW.kredit < 0
+      OR (NEW.debit = 0 AND NEW.kredit = 0)
+      OR (NEW.debit > 0 AND NEW.kredit > 0)
     BEGIN
-      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
+      SELECT CASE
+        WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal harus bilangan bulat (integer), bukan pecahan.')
+        WHEN NEW.debit < 0 OR NEW.kredit < 0
+          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal tidak boleh negatif.')
+        WHEN NEW.debit = 0 AND NEW.kredit = 0
+          THEN RAISE(ABORT, 'Baris jurnal harus mengisi salah satu sisi: debit atau kredit lebih dari 0.')
+        ELSE RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.')
+      END;
     END;
 
     DROP TRIGGER IF EXISTS trg_jurnal_immutable_update;

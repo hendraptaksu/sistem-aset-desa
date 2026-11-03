@@ -19,6 +19,8 @@
 // - baris reversal wajib cermin persis jurnal asli (akun, nominal, sisi tukar);
 // - kode akun 4 digit dan nama tidak kosong (legacy di luar trigger v15);
 // - baris jurnal tidak boleh negatif, dua sisi, atau tanpa sisi positif.
+// AUD2-08 menambahkan:
+// - debit/kredit baris jurnal wajib bertipe INTEGER (bukan REAL/pecahan).
 // Pemeriksaan lampiran dan anggaran sengaja tidak ada karena tabel/modulnya
 // sudah dihapus (DB-33/DB-37/DB-24).
 // DB-16f menambahkan rekonsiliasi outstanding 2050 vs jadwal pinjaman per
@@ -59,6 +61,7 @@ export type KodeTemuan =
   | 'AKUN_AKTIF_TIDAK_VALID'
   | 'BARIS_DUA_SISI'
   | 'BARIS_NILAI_NEGATIF'
+  | 'BARIS_NILAI_PECAHAN'
   | 'BARIS_TANPA_SISI'
   | 'BARIS_ORPHAN'
   | 'FOREIGN_KEY'
@@ -188,6 +191,8 @@ type BarisJurnalTidakValid = {
   akun_kode: string;
   debit: number;
   kredit: number;
+  tipe_debit: string;
+  tipe_kredit: string;
 };
 
 type PanjarTidakKonsisten = {
@@ -355,8 +360,8 @@ function petaSisiJurnal(
  *     yatim/duplikat dilaporkan;
  * 13. master akun memakai tipe/posisi_normal yang valid dan `aktif` 0/1;
  * 14. DB-34: `jurnal.jenis` wajib salah satu `JENIS_JURNAL`;
- * 15. DB-34: baris `jurnal_baris` tidak negatif, tidak mengisi dua sisi, dan
- *     punya tepat satu sisi positif;
+ * 15. DB-34/AUD2-08: baris `jurnal_baris` bertipe INTEGER, tidak negatif,
+ *     tidak mengisi dua sisi, dan punya tepat satu sisi positif;
  * 16. DB-34: kode akun tepat 4 digit dan nama tidak kosong (legacy);
  * 17. DB-16f: outstanding 2050 yang tertaut ke pinjaman sama dengan outstanding
  *     jadwal (selisih != 0 menjadi temuan, tanpa koreksi otomatis);
@@ -492,14 +497,17 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   }
 
   // DB-34: CHECK/trigger v9 mencegah nilai negatif dan dua sisi positif lewat
-  // aplikasi. Audit memeriksa legacy/korupsi SQL langsung. Setiap baris hanya
-  // menghasilkan satu kode agar diagnosis tidak berulang: negatif lebih dulu,
-  // lalu dua sisi, lalu tidak punya sisi positif.
+  // aplikasi. AUD2-08: trigger juga menolak nilai REAL/pecahan, tetapi audit
+  // tetap memeriksa legacy/korupsi SQL langsung (termasuk saat trigger hilang).
+  // Setiap baris hanya menghasilkan satu kode agar diagnosis tidak berulang:
+  // pecahan lebih dulu, lalu negatif, lalu dua sisi, lalu tidak punya sisi.
   const barisTidakValid = db
     .prepare(
-      `SELECT id AS baris_id, jurnal_id, akun_kode, debit, kredit
+      `SELECT id AS baris_id, jurnal_id, akun_kode, debit, kredit,
+              typeof(debit) AS tipe_debit, typeof(kredit) AS tipe_kredit
          FROM jurnal_baris
-        WHERE debit < 0 OR kredit < 0
+        WHERE typeof(debit) <> 'integer' OR typeof(kredit) <> 'integer'
+           OR debit < 0 OR kredit < 0
            OR (debit > 0 AND kredit > 0)
            OR NOT (debit > 0 OR kredit > 0)
         ORDER BY id`,
@@ -508,21 +516,29 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   for (const r of barisTidakValid) {
     const debit = Number(r.debit);
     const kredit = Number(r.kredit);
+    const pecahan = r.tipe_debit !== 'integer' || r.tipe_kredit !== 'integer';
     const negatif = debit < 0 || kredit < 0;
     const duaSisi = debit > 0 && kredit > 0;
-    const kode = negatif
-      ? 'BARIS_NILAI_NEGATIF'
-      : duaSisi
-        ? 'BARIS_DUA_SISI'
-        : 'BARIS_TANPA_SISI';
-    const pesan = negatif
-      ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} punya nilai negatif ` +
-        `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); debit dan kredit wajib >= 0.`
-      : duaSisi
-        ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} mengisi debit dan kredit ` +
-          `sekaligus (${formatRp(debit)} dan ${formatRp(kredit)}); isi salah satu sisi saja.`
-        : `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} tidak punya sisi positif ` +
-          `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); isi tepat satu sisi.`;
+    const kode = pecahan
+      ? 'BARIS_NILAI_PECAHAN'
+      : negatif
+        ? 'BARIS_NILAI_NEGATIF'
+        : duaSisi
+          ? 'BARIS_DUA_SISI'
+          : 'BARIS_TANPA_SISI';
+    const pesan = pecahan
+      ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} punya nilai pecahan/bukan ` +
+        `bilangan bulat (debit ${String(debit)} [${r.tipe_debit}], kredit ` +
+        `${String(kredit)} [${r.tipe_kredit}]); debit dan kredit wajib bilangan bulat ` +
+        `(integer) dalam satuan sen.`
+      : negatif
+        ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} punya nilai negatif ` +
+          `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); debit dan kredit wajib >= 0.`
+        : duaSisi
+          ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} mengisi debit dan kredit ` +
+            `sekaligus (${formatRp(debit)} dan ${formatRp(kredit)}); isi salah satu sisi saja.`
+          : `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} tidak punya sisi positif ` +
+            `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); isi tepat satu sisi.`;
     temuan.push({ kode, pesan, detail: r });
   }
 

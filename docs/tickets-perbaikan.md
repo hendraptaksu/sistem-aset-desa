@@ -40,7 +40,7 @@
 | AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [x] |
 | AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [x] |
 | AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [x] |
-| AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [ ] |
+| AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [x] |
 | AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [ ] |
 | AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [ ] |
 | AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [ ] |
@@ -204,7 +204,7 @@
 
 ## Fase 2 — P1: Ketahanan Skema Database (`STRICT` & Validasi Kewajiban)
 
-- [ ] **AUD2-08 — Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas`** · P0 · S
+- [x] **AUD2-08 — Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas`** · P0 · S
   - **Konteks:**
     Terbukti pada `docs/audit/repro-akuntansi-2026-11-02.ts:75-81` (`FRACTIONAL_SEN_SQL`), SQLite non-STRICT mengizinkan nilai pecahan seperti `0.5` sen masuk ke `jurnal_baris.debit`/`kredit` (`typeof = 'real'`), dan `auditIntegritas` menganggapnya valid (`auditOk: true`).
   - **File yang disentuh:**
@@ -216,6 +216,7 @@
   - **Test:**
     - Jalankan skenario `FRACTIONAL_SEN_SQL`: insert `0.5` langsung ditolak trigger DB; bila trigger dimatikan saat insert lalu dijalankan `auditIntegritas(db)`, menghasilkan `ok: false`.
   - **DoD:** Nilai pecahan sen tidak pernah bisa masuk atau lolos audit integritas.
+  - **Bukti 2026-11-03:** `terapkanAturanV9` membuat ulang `trg_jurnal_baris_satu_sisi_insert`/`_update` dengan penolakan `typeof(NEW.debit)`/`typeof(NEW.kredit) <> 'integer'`, nilai negatif, dan dua sisi nol; aturan satu sisi tetap berlaku dan body baru otomatis diterapkan ke DB existing lewat migrasi. `auditIntegritas` menambah temuan `BARIS_NILAI_PECAHAN` beserta tipe `typeof`/nilai mentah. Regression test baru mencakup jalur insert, update, audit saat trigger dilewati, dan migrasi DB existing. `npm run typecheck`, 1044 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-09 — Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan** · P1 · M
