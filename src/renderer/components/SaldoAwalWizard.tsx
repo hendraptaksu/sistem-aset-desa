@@ -41,26 +41,41 @@ type GrupAkun = {
   akun: Coa[];
 };
 
+/** Tanggal default wizard: hari ini, tetapi dijepit ke batas jurnal pertama. */
+function tanggalAwalWizard(tanggalMaksimal?: string): string {
+  const hariIni = tanggalLokal();
+  const maks = String(tanggalMaksimal ?? '').trim();
+  return tanggalKalenderValid(maks) && hariIni > maks ? maks : hariIni;
+}
+
 /**
  * Wizard Saldo Awal (P1-6) — dipakai sekali saat mulai pembukuan nyata.
  *
  * Operator mengisi saldo per akun, bukan debit/kredit. Selisih aktiva −
  * kewajiban otomatis menjadi baris 3000 MODAL sehingga pratinjau selalu satu
  * jurnal seimbang. Simpan hanya mengirim form mentah; main menyusun ulang
- * jurnal dengan builder yang sama dan adapter DB memastikan tabel jurnal kosong.
+ * jurnal dengan builder yang sama dan adapter DB memastikan saldo awal belum
+ * pernah dibuat serta tanggalnya tidak setelah jurnal paling awal.
  */
 export function SaldoAwalWizard({
   coa,
+  tanggalMaksimal,
   onClose,
   onSukses,
 }: {
   coa: Coa[];
+  /** AUD2-02: batas atas tanggal (jurnal paling awal); kosong = belum ada jurnal. */
+  tanggalMaksimal?: string;
   onClose: () => void;
   onSukses: (pesan: string) => void;
 }) {
   // DB-15: dropdown hanya menawarkan akun aktif. Akun yang dinonaktifkan tetap
   // tersedia di histori/laporan, tetapi bukan untuk jurnal saldo awal baru.
   const akunAktif = useMemo(() => coa.filter((a) => a.aktif !== false), [coa]);
+  const batasTanggal = useMemo(() => {
+    const maks = String(tanggalMaksimal ?? '').trim();
+    return tanggalKalenderValid(maks) ? maks : undefined;
+  }, [tanggalMaksimal]);
   const akunRelevan = useMemo(
     () =>
       akunAktif.filter((a) => a.tipe === 'AKTIVA' || a.tipe === 'KEWAJIBAN'),
@@ -73,7 +88,9 @@ export function SaldoAwalWizard({
     '';
 
   const keyRef = useRef(2);
-  const [tanggal, setTanggal] = useState(tanggalLokal());
+  const [tanggal, setTanggal] = useState(() =>
+    tanggalAwalWizard(tanggalMaksimal),
+  );
   const [rows, setRows] = useState<BarisSaldo[]>([
     { key: 1, akun: akunAwal, nominal: 0 },
   ]);
@@ -97,6 +114,15 @@ export function SaldoAwalWizard({
     setRows((prev) => prev.map((r) => (r.akun ? r : { ...r, akun: akunAwal })));
   }, [akunAwal]);
 
+  // Bila batas tanggal tiba setelah wizard terbuka, jepit tanggal yang sudah
+  // terlanjur melewati batas agar tombol simpan tidak mengirim isian mustahil.
+  useEffect(() => {
+    if (!batasTanggal) return;
+    setTanggal((prev) =>
+      tanggalKalenderValid(prev) && prev > batasTanggal ? batasTanggal : prev,
+    );
+  }, [batasTanggal]);
+
   const grupAkun = useMemo<GrupAkun[]>(() => {
     const kas = akunRelevan.filter((a) => isAkunKasData(a));
     const asetLain = akunRelevan.filter(
@@ -116,6 +142,11 @@ export function SaldoAwalWizard({
       return {
         data: null as ReturnType<typeof buatJurnalSaldoAwal> | null,
         error: PESAN_TANGGAL_TIDAK_VALID,
+      };
+    if (batasTanggal && tanggal > batasTanggal)
+      return {
+        data: null as ReturnType<typeof buatJurnalSaldoAwal> | null,
+        error: `Tanggal saldo awal (${tanggal}) tidak boleh setelah transaksi paling awal (${batasTanggal}).`,
       };
     const saldo = rows.map((r) => ({ akun_kode: r.akun, nominal: r.nominal }));
     if (!saldo.some((s) => Number.isInteger(s.nominal) && s.nominal > 0))
@@ -140,7 +171,7 @@ export function SaldoAwalWizard({
         error: pesanError(e),
       };
     }
-  }, [tanggal, rows, keterangan, noBukti, akunAktif]);
+  }, [tanggal, rows, keterangan, noBukti, akunAktif, batasTanggal]);
 
   const formSah = Boolean(hasil.data);
 
@@ -273,9 +304,16 @@ export function SaldoAwalWizard({
             <TextInput
               type="date"
               value={tanggal}
+              max={batasTanggal}
               disabled={busy}
               onChange={(e) => setTanggal(e.target.value)}
             />
+            {batasTanggal && (
+              <span className="mt-1 block text-helper text-stone-500">
+                Maksimal {formatTanggal(batasTanggal)} karena sudah ada transaksi
+                pada tanggal tersebut.
+              </span>
+            )}
           </Field>
           <Field label="Keterangan (opsional)">
             <TextInput

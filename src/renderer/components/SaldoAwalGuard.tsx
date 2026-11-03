@@ -32,11 +32,13 @@ export function SaldoAwalGuard({
   const [wizardOpen, setWizardOpen] = useState(false);
   const [coa, setCoa] = useState<Coa[]>(coaAwal ?? []);
   const [memuatCoa, setMemuatCoa] = useState(false);
+  const [tanggalMaksimal, setTanggalMaksimal] = useState<string | undefined>();
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (terbuka) return;
     setWizardOpen(false);
+    setTanggalMaksimal(undefined);
     setErr(null);
   }, [terbuka]);
 
@@ -47,13 +49,17 @@ export function SaldoAwalGuard({
 
   async function bukaWizard(): Promise<void> {
     setErr(null);
-    if (coa.length > 0) {
-      setWizardOpen(true);
-      return;
-    }
     setMemuatCoa(true);
     try {
-      setCoa(await api.coa());
+      // AUD2-02: batas tanggal ikut dimuat agar wizard dari guard pun tidak
+      // menawarkan tanggal setelah jurnal pertama. Kegagalan status tidak
+      // memblokir wizard; backend tetap memvalidasi saat menyimpan.
+      const [daftarCoa, status] = await Promise.all([
+        coa.length > 0 ? Promise.resolve(coa) : api.coa(),
+        api.saldoAwalStatus().catch(() => null),
+      ]);
+      if (coa.length === 0) setCoa(daftarCoa);
+      setTanggalMaksimal(status?.tanggalMaksimal);
       setWizardOpen(true);
     } catch (e) {
       setErr(
@@ -73,6 +79,7 @@ export function SaldoAwalGuard({
     return (
       <SaldoAwalWizard
         coa={coa}
+        tanggalMaksimal={tanggalMaksimal}
         onClose={() => setWizardOpen(false)}
         onSukses={(pesan) => {
           setWizardOpen(false);

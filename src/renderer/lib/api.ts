@@ -203,6 +203,8 @@ export type FilterRekonsiliasiPinjamanApi = {
 export type StatusSaldoAwal = {
   boleh: boolean;
   jumlahJurnal: number;
+  /** AUD2-02: tanggal jurnal paling awal; batas atas tanggal saldo awal. */
+  tanggalMaksimal?: string;
   alasan?: string;
 };
 
@@ -376,7 +378,7 @@ export const api = {
   ) => call<{ jurnal: Jurnal }>('jurnal:posting', input, opsi),
   jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
     call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),
-  /** Wizard Saldo Awal: hanya bisa dipakai saat belum ada jurnal (P1-6). */
+  /** Wizard Saldo Awal: sekali pakai, boleh disusulkan sebelum jurnal pertama (P1-6/AUD2-02). */
   saldoAwalStatus: () => call<StatusSaldoAwal>('saldo-awal:status'),
   saldoAwalPosting: (
     input: FormSaldoAwal,

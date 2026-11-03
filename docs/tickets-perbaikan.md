@@ -34,7 +34,7 @@
 | ID | Prioritas | Ukuran | Judul | Dependency | Status |
 |---|---|---|---|---|---|
 | AUD2-01 | P0 | S | Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun` | — | [x] |
-| AUD2-02 | P0 | S | Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama | — | [ ] |
+| AUD2-02 | P0 | S | Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama | — | [x] |
 | AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [ ] |
 | AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [ ] |
 | AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [ ] |
@@ -80,7 +80,7 @@
   - **Bukti 2026-11-03:** `laporanBukuBesar()` meneruskan `daftarAkun` ke `bukuBesar()`; `labaDitahan()`/`labaTahun()`, adapter tutup buku, dan IPC `tutup:list` memakai `listAkun(db)`; `saldo-awal:posting` meneruskan master akun DB ke `buatJurnalSaldoAwal()`; `hapusAkun()` menolak referensi `panjar.akun_kas_sumber`, `pinjaman.akun_kas`, dan `pinjaman.akun_bunga` dengan pesan Indonesia. Regression test baru untuk akun `5011`/`1101`, Kunci Periode, dan referensi hapus. `npm run typecheck`, 1007 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-02 — Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama** · P0 · S
+- [x] **AUD2-02 — Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama** · P0 · S
   - **Konteks:**
     Di `src/db/saldoAwal.ts:67-72`, `statusSaldoAwal(db)` mengembalikan `boleh: true` selama belum ada jurnal berjenis `SALDO_AWAL`. Namun jika bendahara pernah memilih *"Mulai tanpa saldo awal"* dan mencatat 1 transaksi harian, tombol **Wizard Saldo Awal** di UI tetap aktif menyala tetapi saat disimpan ditolak oleh `simpanSaldoAwal()` (`if (hitungJurnal(db) > 0)` di `src/db/saldoAwal.ts:102`).
   - **File yang disentuh:**
@@ -96,6 +96,7 @@
   - **Test:**
     - Skenario `OPENING_STATUS` (`docs/audit/repro-akuntansi-2026-11-02.ts:52-57`): setelah ada jurnal tanggal `2025-01-02`, simpan saldo awal tanggal `2025-01-01` berhasil; simpan saldo awal tanggal `2025-01-05` ditolak; simpan saldo awal kedua ditolak.
   - **DoD:** Tidak ada lagi tombol Wizard Saldo Awal yang aktif di UI tetapi gagal saat disimpan karena sudah ada 1 transaksi harian.
+  - **Bukti 2026-11-03:** `simpanSaldoAwal()` kini menolak hanya bila `SALDO_AWAL` sudah ada, lalu membandingkan tanggal dengan `MIN(jurnal.tanggal)` di dalam transaksi yang sama; tanggal setelah jurnal pertama ditolak dengan pesan jelas, tanggal sama/lebih awal diterima dan menulis `KUNCI_AKUNTANSI_TANGGAL_MULAI`. `statusSaldoAwal()` mengembalikan `tanggalMaksimal`; `SaldoAwalWizard` memakai batas `max` tersebut, menjepit tanggal default, dan menonaktifkan simpan bila tanggal melewati batas. Guard saldo awal ikut memuat batas tanggal. Test baru mencakup skenario OPENING_STATUS (simpan `2025-01-01` setelah jurnal `2025-01-02` berhasil, tanggal `2025-01-05` ditolak, saldo awal kedua ditolak), status `tanggalMaksimal`, dan UI `max`. `npm run typecheck`, 1009 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-03 — Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar)** · P0 · M

@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
+import { formatTanggal } from '../../utils/format.js';
 import { api, type StatusSaldoAwal } from '../lib/api.js';
 import { Badge, Button, Card, ErrorBox, RING_FOKUS } from './ui.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
@@ -156,7 +157,9 @@ export function TransaksiTab({
             )}
             {saldoStatus?.boleh && (
               <p className="mt-2 text-sm text-emerald-800">
-                Belum ada saldo awal. Wizard Saldo Awal bisa dipakai satu kali.
+                {saldoStatus.tanggalMaksimal
+                  ? `Belum ada saldo awal. Wizard masih bisa dipakai dengan tanggal paling lambat ${formatTanggal(saldoStatus.tanggalMaksimal)} (mengikuti transaksi paling awal).`
+                  : 'Belum ada saldo awal. Wizard Saldo Awal bisa dipakai satu kali.'}
               </p>
             )}
             {saldoStatus && !saldoStatus.boleh && (
@@ -186,7 +189,8 @@ export function TransaksiTab({
               disabled={!saldoStatus?.boleh || memuat}
               title={
                 saldoStatus && !saldoStatus.boleh
-                  ? 'Saldo awal sudah pernah dibuat.'
+                  ? (saldoStatus.alasan ??
+                    'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.')
                   : undefined
               }
               onClick={() => setWizardOpen(true)}
@@ -280,12 +284,14 @@ export function TransaksiTab({
       {wizardOpen && (
         <SaldoAwalWizard
           coa={coa}
+          tanggalMaksimal={saldoStatus?.tanggalMaksimal}
           onClose={() => setWizardOpen(false)}
           onSukses={(pesan) => {
             setPesanSaldo(pesan);
             setWizardOpen(false);
             // Optimistis: tombol langsung terkunci walau refresh status gagal.
             setSaldoStatus((s) => ({
+              ...(s ?? {}),
               boleh: false,
               jumlahJurnal: (s?.jumlahJurnal ?? 0) + 1,
               alasan:

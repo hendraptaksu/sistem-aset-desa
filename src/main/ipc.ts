@@ -707,10 +707,12 @@ export function registerIpc(deps: IpcDeps): void {
   );
 
   // ---- Wizard Saldo Awal (P1-6) ----
-  // Hanya sekali, saat tabel jurnal masih kosong. Renderer mengirim form mentah
-  // (tanggal + saldo per akun); main menyusun jurnal lewat builder murni yang
-  // sama dengan pratinjau UI, lalu adapter DB memeriksa "masih kosong" secara
-  // atomik sebelum menulis jurnal + audit SALDO-AWAL.
+  // Hanya sekali; setelah ada jurnal harian pun masih boleh disusulkan selama
+  // tanggal saldo awal tidak setelah jurnal paling awal (AUD2-02). Renderer
+  // mengirim form mentah (tanggal + saldo per akun); main menyusun jurnal lewat
+  // builder murni yang sama dengan pratinjau UI, lalu adapter DB memeriksa
+  // eksistensi SALDO_AWAL + batas tanggal secara atomik sebelum menulis jurnal
+  // + audit SALDO-AWAL.
   daftarkan('saldo-awal:status', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(statusSaldoAwal(deps.db()));

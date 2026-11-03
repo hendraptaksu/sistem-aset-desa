@@ -205,7 +205,11 @@ describe('DB-04 — unique index saldo awal', () => {
       );
 
       expect(sudahAdaSaldoAwal(db)).toBe(false);
-      expect(statusSaldoAwal(db)).toEqual({ boleh: true, jumlahJurnal: 1 });
+      expect(statusSaldoAwal(db)).toEqual({
+        boleh: true,
+        jumlahJurnal: 1,
+        tanggalMaksimal: '2026-01-02',
+      });
 
       insertJurnalTervalidasi(
         db,
@@ -223,6 +227,7 @@ describe('DB-04 — unique index saldo awal', () => {
       expect(statusSaldoAwal(db)).toEqual({
         boleh: false,
         jumlahJurnal: 2,
+        tanggalMaksimal: '2026-01-01',
         alasan: PESAN_SALDO_AWAL_SUDAH_ADA,
       });
     } finally {

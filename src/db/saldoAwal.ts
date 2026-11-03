@@ -1,17 +1,22 @@
 // Adapter DB Wizard Saldo Awal (P1-6).
 //
 // Prinsip:
-// - Saldo awal hanya boleh dibuat SEKALI, saat tabel `jurnal` masih kosong.
-//   Pemeriksaan jumlah jurnal dilakukan DI DALAM transaksi DB yang sama dengan
-//   penulisan jurnal (race-safe), bukan hanya di UI. DB-04 menambahkan unique
-//   index sebagai penjaga terakhir serta status UI berbasis eksistensi
-//   SALDO_AWAL (jurnal harian biasa tidak mengunci wizard).
+// - Saldo awal hanya boleh dibuat SEKALI. Jurnal harian yang sudah ada tidak
+//   menutup wizard, tetapi tanggal saldo awal tidak boleh setelah jurnal
+//   paling awal agar tidak ada transaksi yang mendahului saldo awal.
+// - Pemeriksaan eksistensi SALDO_AWAL, batas tanggal, dan penulisan jurnal
+//   dilakukan DI DALAM transaksi DB yang sama (race-safe), bukan hanya di UI.
+//   DB-04 menambahkan unique index sebagai penjaga terakhir.
 // - Hasilnya tetap satu jurnal double-entry seimbang (jenis SALDO_AWAL); tidak
 //   ada tabel saldo/angka turunan. Laporan selalu dihitung dari jurnal.
 // - Audit `SALDO-AWAL` ditulis atomik bersama jurnal lewat `postingSaldoAwal`.
 
 import type Database from 'better-sqlite3';
-import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
+import {
+  tanggalKalenderValid,
+  type HasilValidasiJurnal,
+  type JurnalInput,
+} from '../core/posting.js';
 import {
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
   setPengaturan,
@@ -19,11 +24,16 @@ import {
 import { postingSaldoAwal, type HasilPosting } from './posting.js';
 
 export const PESAN_SALDO_AWAL_SUDAH_ADA =
-  'Saldo awal hanya bisa diisi saat belum ada jurnal. Gunakan koreksi/jurnal biasa.';
+  'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.';
 
 export type StatusSaldoAwal = {
   boleh: boolean;
   jumlahJurnal: number;
+  /**
+   * AUD2-02: tanggal jurnal paling awal bila sudah ada jurnal. Wizard memakai
+   * nilai ini sebagai batas atas tanggal saldo awal yang masih bisa disusulkan.
+   */
+  tanggalMaksimal?: string;
   /** Diisi bila tidak boleh; siap ditampilkan di UI. */
   alasan?: string;
 };
@@ -45,6 +55,15 @@ function hitungJurnal(db: Database.Database): number {
   return Number(row.total);
 }
 
+/** Tanggal jurnal paling awal; `undefined` bila tabel jurnal masih kosong. */
+function tanggalJurnalPertama(db: Database.Database): string | undefined {
+  const row = db.prepare('SELECT MIN(tanggal) AS awal FROM jurnal').get() as {
+    awal: string | null;
+  };
+  const awal = row.awal == null ? '' : String(row.awal).trim();
+  return awal || undefined;
+}
+
 /**
  * DB-04: apakah jurnal SALDO_AWAL sudah pernah dibuat. Deteksi memakai
  * eksistensi baris (didukung `ux_jurnal_saldo_awal`), bukan jumlah seluruh
@@ -59,16 +78,22 @@ export function sudahAdaSaldoAwal(db: Database.Database): boolean {
 /**
  * Status wizard untuk UI: terkunci hanya bila SALDO_AWAL sudah ada.
  * `jumlahJurnal` tetap jumlah seluruh jurnal agar informasi status transparan.
- *
- * Catatan: kebijakan simpan "hanya saat DB kosong" TIDAK diubah di sini
- * (AKT-01/AKT-02); `simpanSaldoAwal()` tetap menolak bila sudah ada jurnal apa
- * pun. Status ini hanya mendeteksi apakah saldo awal sudah pernah dibuat.
+ * Bila sudah ada jurnal, `tanggalMaksimal` memberi batas atas tanggal saldo
+ * awal yang masih boleh disusulkan (AUD2-02).
  */
 export function statusSaldoAwal(db: Database.Database): StatusSaldoAwal {
   const jumlahJurnal = hitungJurnal(db);
+  const tanggalMaksimal = tanggalJurnalPertama(db);
+  const dasar = tanggalMaksimal
+    ? { jumlahJurnal, tanggalMaksimal }
+    : { jumlahJurnal };
   return sudahAdaSaldoAwal(db)
-    ? { boleh: false, jumlahJurnal, alasan: PESAN_SALDO_AWAL_SUDAH_ADA }
-    : { boleh: true, jumlahJurnal };
+    ? {
+        boleh: false,
+        ...dasar,
+        alasan: PESAN_SALDO_AWAL_SUDAH_ADA,
+      }
+    : { boleh: true, ...dasar };
 }
 
 function hasilGagal(pesan: string): HasilPosting {
@@ -84,10 +109,11 @@ function hasilGagal(pesan: string): HasilPosting {
 /**
  * Simpan saldo awal sebagai satu jurnal seimbang + audit SALDO-AWAL.
  *
- * Pemeriksaan "jurnal masih kosong" dan penulisan jurnal berada dalam satu
- * transaksi, sehingga jurnal kedua (termasuk jurnal balik) tidak bisa membuat
- * saldo awal baru. Bila sudah ada jurnal, hasilnya `tersimpan: false` dengan
- * pesan yang sama seperti status UI.
+ * AUD2-02: saldo awal tetap hanya sekali, tetapi boleh disusulkan setelah ada
+ * jurnal harian selama tanggalnya tidak setelah jurnal paling awal. Semua
+ * pemeriksaan (SALDO_AWAL sudah ada, batas tanggal) dan penulisan jurnal berada
+ * dalam satu transaksi, sehingga dua penyimpanan bersamaan tidak bisa sama-sama
+ * lolos; unique index `ux_jurnal_saldo_awal` menjadi penjaga terakhir.
  */
 export function simpanSaldoAwal(
   db: Database.Database,
@@ -99,7 +125,20 @@ export function simpanSaldoAwal(
 
   try {
     const simpan = db.transaction((): HasilPosting => {
-      if (hitungJurnal(db) > 0) return hasilGagal(PESAN_SALDO_AWAL_SUDAH_ADA);
+      if (sudahAdaSaldoAwal(db)) return hasilGagal(PESAN_SALDO_AWAL_SUDAH_ADA);
+
+      const tanggalSaldoAwal = String(input.header.tanggal ?? '').trim();
+      const jurnalPertama = tanggalJurnalPertama(db);
+      if (
+        jurnalPertama &&
+        tanggalKalenderValid(tanggalSaldoAwal) &&
+        tanggalSaldoAwal > jurnalPertama
+      ) {
+        return hasilGagal(
+          `Tanggal saldo awal (${tanggalSaldoAwal}) tidak boleh setelah transaksi paling awal (${jurnalPertama}).`,
+        );
+      }
+
       const hasil = postingSaldoAwal(db, input, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
         alasanPeringatan: opsi.alasanPeringatan,
