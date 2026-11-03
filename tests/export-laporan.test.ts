@@ -473,7 +473,7 @@ describe('P1-10 — builder XLSX numerik', () => {
     const html = neracaSaldoToHtml(nsSelisih);
     expect(html).toContain('SELISIH');
     expect(html).toContain('Tidak seimbang');
-    expect(html).toContain('Rp 1.234,00');
+    expect(html).toContain('Rp 1.234');
   });
 
   it('Neraca Saldo mode tahun: periode tahun buku + baris laba ditahan', async () => {
@@ -683,7 +683,7 @@ describe('P1-10 — HTML print semua laporan', () => {
 
   it('HTML menampilkan total yang sama dengan core dan negatif dalam kurung', () => {
     expect(jurnalDaftarToHtml(jurnal, COA)).toContain('TOTAL KESELURUHAN');
-    expect(bukuBesarToHtml(bb)).toContain('107.900.000,00');
+    expect(bukuBesarToHtml(bb)).toContain('107.900.000');
     expect(neracaSaldoToHtml(ns)).toContain('Seimbang');
     expect(neracaSaldoToHtml(ns)).toContain('SELISIH');
     expect(neracaSaldoToHtml(nsTahun)).toContain('Laba ditahan sebelum periode');
@@ -697,7 +697,7 @@ describe('P1-10 — HTML print semua laporan', () => {
     expect(panjarToHtml(panjar, COA)).toContain('Subtotal');
 
     // Defisit: format Rupiah negatif wajib dalam kurung, bukan minus.
-    expect(labaRugiToHtml(lrDefisit)).toContain('(Rp 500.000,00)');
+    expect(labaRugiToHtml(lrDefisit)).toContain('(Rp 500.000)');
   });
 });
 

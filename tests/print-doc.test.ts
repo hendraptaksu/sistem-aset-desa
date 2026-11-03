@@ -535,7 +535,7 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     expect(laba.nilai?.[2]).toBe(lr.laba);
 
     const htmlDefisit = renderPrintHtml(labaRugiPrintDoc(lrDefisit, { tanggalCetak: '2026-10-23' }));
-    expect(htmlDefisit).toContain('(Rp 500.000,00)');
+    expect(htmlDefisit).toContain('(Rp 500.000)');
   });
 
   it('Neraca: aset/kewajiban/ekuitas, laba turunan, total aset/pasiva', () => {

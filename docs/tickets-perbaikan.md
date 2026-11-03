@@ -43,7 +43,7 @@
 | AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [x] |
 | AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [x] |
 | AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [x] |
-| AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [ ] |
+| AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [x] |
 | AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [ ] |
 | AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [ ] |
 | AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [ ] |
@@ -257,7 +257,7 @@
 
 ## Fase 3 — P2: Penyederhanaan Fitur & UX Anti-Salah-Input bagi Bendahara Pura
 
-- [ ] **AUD2-11 — Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`)** · P1 · M
+- [x] **AUD2-11 — Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`)** · P1 · M
   - **Konteks:**
     Transaksi pura tidak pernah memakai pecahan sen. Saat ini `CurrencyInput` (`src/renderer/components/ui.tsx:230`) memakai `inputMode="decimal"` yang berisiko fatal: mengetik `100,000` dengan koma dibaca sebagai `Rp 100,00` (seratus rupiah). Selain itu, akhiran `,00` di `formatRp` (`src/utils/format.ts:5`) memenuhi seluruh tabel laporan.
   - **File yang disentuh:**
@@ -273,6 +273,7 @@
   - **Test:**
     - Perbarui unit test `formatRp` dan `CurrencyInput` agar menguji format Rupiah bulat (`Rp 150.000`) dan memastikan ketikan angka bulat tetap menghasilkan nilai sen (`* 100`) yang akurat.
   - **DoD:** Input angka mudah dibaca dengan titik ribuan otomatis dan laporan bebas dari deretan `,00` yang membingungkan.
+  - **Bukti 2026-11-03:** `formatRp()` hanya menampilkan desimal bila `Math.abs(sen) % 100 !== 0` — nominal bulat menjadi `Rp 150.000` dan negatif `(Rp 150.000)`, pecahan sen tetap `Rp 150.000,50`. `CurrencyInput` memakai `inputMode="numeric"`, memformat titik ribuan saat mengetik, dan membaca digit saja sebagai rupiah utuh ×100 ke sen, sehingga paste `100,000` menjadi Rp 100.000 (bukan Rp 100). Test baru `tests/currency-input.test.ts` serta pembaruan ekspektasi format di test laporan, print, jurnal, dan validasi. `npm run typecheck`, 1060 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-12 — Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar`** · P2 · S

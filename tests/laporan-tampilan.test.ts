@@ -158,10 +158,10 @@ describe('P1-9 — adapter Laba Rugi sama persis dengan core/reports', () => {
     // Februari–Desember 2026: pendapatan Januari tidak ikut, beban 500rb ikut.
     expect(defisit.laba).toBe(RP(-500_000));
     expect(defisit.defisit).toBe(true);
-    expect(formatRp(defisit.laba)).toBe('(Rp 500.000,00)');
+    expect(formatRp(defisit.laba)).toBe('(Rp 500.000)');
 
     // Format kurung diuji langsung pada nominal negatif (kontrak formatRp).
-    expect(formatRp(RP(-1_500_000))).toBe('(Rp 1.500.000,00)');
+    expect(formatRp(RP(-1_500_000))).toBe('(Rp 1.500.000)');
   });
 });
 

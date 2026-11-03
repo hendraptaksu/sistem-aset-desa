@@ -9,7 +9,6 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { parseRupiahToSen } from '../../utils/format.js';
 import {
   MIN_ALASAN_PERINGATAN,
   alasanPeringatanCukup,
@@ -225,8 +224,23 @@ export function PinInput({
   );
 }
 
-/** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
- * Desimal opsional — ketik '1500' jadi Rp 1.500,00; '1500,50' jadi Rp 1.500,50. */
+const rpInput = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
+// 13 digit rupiah ×100 masih bilangan aman; 17 = 13 digit + 4 titik ribuan.
+const MAX_DIGIT_RUPIAH = 13;
+const MAX_PANJANG_INPUT = 17;
+
+/** Baca ketikan/paste CurrencyInput: hanya digit dihitung sebagai rupiah utuh.
+ * '150000' → { tampil: '150.000', sen: 15_000_000 };
+ * '100,000' → { tampil: '100.000', sen: 10_000_000 }, bukan Rp 100. */
+export function parseCurrencyInput(teks: string): { tampil: string; sen: number } {
+  const digit = teks.replace(/\D/g, '').slice(0, MAX_DIGIT_RUPIAH);
+  if (digit === '') return { tampil: '', sen: 0 };
+  const rupiah = Number(digit);
+  return { tampil: rpInput.format(rupiah), sen: rupiah * 100 };
+}
+
+/** Input Rupiah bulat: tampil grouping Indonesia, state berupa SEN (integer).
+ * Mengetik '1500' → tampil Rp 1.500 dan onChange(150000). */
 export function CurrencyInput({
   value,
   onChange,
@@ -238,33 +252,43 @@ export function CurrencyInput({
 }) {
   const [teks, setTeks] = useState<string | null>(null);
   const [fokus, setFokus] = useState(false);
-  // Perubahan value dari luar (cth. reset form setelah submit) tersinkron saat blur.
+  const terakhirDikirim = useRef(value);
+  // Sinkronkan value dari luar: saat blur (reset form) maupun saat fokus
+  // (mis. parent mengoreksi nominal), tanpa menimpa ketikan sendiri.
   useEffect(() => {
-    if (!fokus) setTeks(null);
+    if (!fokus) {
+      setTeks(null);
+      terakhirDikirim.current = value;
+      return;
+    }
+    if (value !== terakhirDikirim.current) {
+      terakhirDikirim.current = value;
+      setTeks(value === 0 ? '' : formatSenInput(value));
+    }
   }, [value, fokus]);
   const shown = fokus && teks !== null ? teks : value === 0 ? '' : formatSenInput(value);
   return (
     <TextInput
-      inputMode="decimal"
+      inputMode="numeric"
       placeholder="0"
+      maxLength={MAX_PANJANG_INPUT}
       disabled={disabled}
       value={shown}
       onFocus={() => {
         setFokus(true);
         setTeks(value === 0 ? '' : formatSenInput(value));
+        terakhirDikirim.current = value;
       }}
       onBlur={() => {
         setFokus(false);
         setTeks(null);
+        terakhirDikirim.current = value;
       }}
       onChange={(e) => {
-        const v = e.target.value;
-        setTeks(v);
-        try {
-          onChange(parseRupiahToSen(v));
-        } catch {
-          /* abaikan state ketik antara (cth. '1,') */
-        }
+        const { tampil, sen } = parseCurrencyInput(e.target.value);
+        setTeks(tampil);
+        terakhirDikirim.current = sen;
+        onChange(sen);
       }}
     />
   );
@@ -276,7 +300,7 @@ function formatSenInput(sen: number): string {
   const abs = Math.abs(sen);
   const rupiah = Math.floor(abs / 100);
   const sisa = abs % 100;
-  const grup = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(rupiah);
+  const grup = rpInput.format(rupiah);
   return sisa === 0 ? `${neg}${grup}` : `${neg}${grup},${String(sisa).padStart(2, '0')}`;
 }
 

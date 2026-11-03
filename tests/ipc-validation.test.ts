@@ -248,8 +248,8 @@ describe('P0-4 — bentuk & keseimbangan jurnal', () => {
       ],
     });
     expect(pesan(hasil)).toMatch(/tidak seimbang/);
-    expect(pesan(hasil)).toMatch(/Rp 1\.000,00/);
-    expect(pesan(hasil)).toMatch(/Rp 900,00/);
+    expect(pesan(hasil)).toMatch(/Rp 1\.000(?!\d|[.,]\d)/);
+    expect(pesan(hasil)).toMatch(/Rp 900(?!\d|[.,]\d)/);
     expect(hasil.boleh).toBe(false);
   });
 
@@ -297,7 +297,7 @@ describe('P0-4 — kas/bank minus = peringatan, bukan error', () => {
     expect(hasil.boleh).toBe(true);
     expect(hasil.perluKonfirmasi).toBe(true);
     expect(hasil.peringatan.join(' ')).toMatch(/Kas\/Bank 1001 KAS akan minus/);
-    expect(hasil.peringatan.join(' ')).toMatch(/Rp 500,00/);
+    expect(hasil.peringatan.join(' ')).toMatch(/Rp 500(?!\d|[.,]\d)/);
   });
 
   it('tidak memberi peringatan bila saldo pas atau justru bertambah', () => {

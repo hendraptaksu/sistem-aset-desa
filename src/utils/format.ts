@@ -1,10 +1,16 @@
 // Satuan nominal aplikasi = SEN (integer). 1 Rp = 100 sen.
 
+const rp0 = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
 const rp2 = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** Rupiah bulat tampil tanpa `,00`; pecahan sen tetap ditampilkan. */
 export function formatRp(sen: number): string {
-  if (sen < 0) return `(Rp ${rp2.format(Math.abs(sen) / 100)})`;
-  return `Rp ${rp2.format(sen / 100)}`;
+  const abs = Math.abs(sen);
+  const nominal = abs % 100 === 0 ? rp0.format(abs / 100) : rp2.format(abs / 100);
+  return sen < 0 ? `(Rp ${nominal})` : `Rp ${nominal}`;
 }
 
 const persen1 = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });

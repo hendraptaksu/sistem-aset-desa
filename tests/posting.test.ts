@@ -635,7 +635,7 @@ describe('AKT-04 — peringatan kas minus untuk tanggal setelah jurnal', () => {
       expect(validasi.perluKonfirmasi).toBe(true);
       expect(validasi.peringatan).toHaveLength(1);
       expect(validasi.peringatan[0]).toMatch(/Kas\/Bank 1001/);
-      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 100,00/);
+      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 100(?!\d|[.,]\d)/);
 
       const belum = postingJurnal(db, backdate);
       expect(belum.tersimpan).toBe(false);
@@ -758,7 +758,7 @@ describe('AKT-04 — peringatan kas minus untuk tanggal setelah jurnal', () => {
       });
       expect(validasi.boleh).toBe(true);
       expect(validasi.peringatan).toHaveLength(1);
-      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 200,00/);
+      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 200(?!\d|[.,]\d)/);
       expect(validasi.perluKonfirmasi).toBe(true);
     } finally {
       db.close();
@@ -806,8 +806,8 @@ describe('AKT-04 — peringatan kas minus untuk tanggal setelah jurnal', () => {
         baris: pasangan('5000', '1001', 120_000),
       });
       expect(validasi.peringatan).toHaveLength(1);
-      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 1\.000,00/);
-      expect(validasi.peringatan[0]).not.toMatch(/Rp 200,00/);
+      expect(validasi.peringatan[0]).toMatch(/akan minus Rp 1\.000(?!\d|[.,]\d)/);
+      expect(validasi.peringatan[0]).not.toMatch(/Rp 200(?!\d|[.,]\d)/);
     } finally {
       db.close();
     }

@@ -52,7 +52,7 @@ describe('AKT-07 — modal alasan konfirmasi peringatan', () => {
   it('menampilkan peringatan, field alasan, dan tombol konfirmasi nonaktif', () => {
     const html = renderToStaticMarkup(
       createElement(PeringatanModal, {
-        pesan: 'Jurnal akan membuat saldo kas 1001 minus Rp 50.000,00.',
+        pesan: 'Jurnal akan membuat saldo kas 1001 minus Rp 50.000.',
         onCancel: () => undefined,
         onSubmit: () => undefined,
       }),
@@ -60,7 +60,7 @@ describe('AKT-07 — modal alasan konfirmasi peringatan', () => {
 
     expect(html).toContain('Konfirmasi peringatan');
     expect(html).toContain(
-      'Jurnal akan membuat saldo kas 1001 minus Rp 50.000,00.',
+      'Jurnal akan membuat saldo kas 1001 minus Rp 50.000.',
     );
     expect(html).toContain(
       `Alasan tetap menyimpan (min. ${MIN_ALASAN_PERINGATAN} karakter)`,

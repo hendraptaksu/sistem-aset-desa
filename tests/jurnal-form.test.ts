@@ -430,7 +430,7 @@ describe('P1-7 — smoke UI Jurnal Umum', () => {
     expect(html).toContain('JURNAL UMUM');
     expect(html).toContain('JU-2026-0001');
     expect(html).toContain('1001 — KAS');
-    expect(html).toContain('Rp 150.000,00');
+    expect(html).toContain('Rp 150.000');
     expect(html).toContain('TOTAL');
   });
 });

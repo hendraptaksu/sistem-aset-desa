@@ -15,8 +15,8 @@ describe('P1-12 — pesanError', () => {
     for (const pesan of [
       'Keterangan wajib diisi.',
       'Nomor bukti JU-2026-0001 sudah dipakai. Gunakan nomor bukti lain.',
-      'Kas/Bank 1001 KAS akan minus Rp 500,00. Periksa kembali.',
-      'Jurnal tidak seimbang: total debit Rp 1.000,00 ≠ total kredit Rp 900,00.',
+      'Kas/Bank 1001 KAS akan minus Rp 500. Periksa kembali.',
+      'Jurnal tidak seimbang: total debit Rp 1.000 ≠ total kredit Rp 900.',
       'File backup kosong.',
     ]) {
       expect(pesanError(new Error(pesan))).toBe(pesan);

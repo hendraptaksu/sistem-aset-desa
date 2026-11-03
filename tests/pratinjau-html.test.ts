@@ -9,7 +9,7 @@ import { wrapPrintDocument } from '../src/features/export/workbooks.js';
 import { PratinjauHtmlModal } from '../src/renderer/components/PratinjauHtmlModal.js';
 
 const bodyLegacy =
-  '<table><tbody><tr><td>Buku Pembantu</td><td>Rp 1.000,00</td></tr></tbody></table>';
+  '<table><tbody><tr><td>Buku Pembantu</td><td>Rp 1.000</td></tr></tbody></table>';
 
 describe('PratinjauHtmlModal (P1-15)', () => {
   it('dokumen legacy dibungkus tanpa window.print() otomatis dan tanpa script', () => {
