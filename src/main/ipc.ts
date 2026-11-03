@@ -37,6 +37,7 @@ import {
 import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
 import {
   batalPanjarV2,
+  batalkanPertanggungjawabanPanjar,
   closePanjarV2,
   listPanjarItemsV2,
   listPanjarV2,
@@ -107,6 +108,7 @@ import {
   validasiStatusAkunAktif,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
+  validasiBentukPembatalanPertanggungjawabanPanjar,
   validasiBentukPengaturanPembukuan,
   validasiBentukPinjamanBayar,
   validasiBentukPembatalanPinjaman,
@@ -954,6 +956,42 @@ export function registerIpc(deps: IpcDeps): void {
           const perluKonfirmasi =
             hasil.errors.length === 0 && hasil.perluKonfirmasi;
           return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
+        return ok({ panjar: hasil.panjar, jurnal: hasil.jurnal });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:batal-close',
+    (_e, input: unknown, opsi: unknown = {}) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        const bentuk = validasiBentukPembatalanPertanggungjawabanPanjar(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const konfirmasi =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+        const hasil = batalkanPertanggungjawabanPanjar(deps.db(), {
+          ...bentuk.input,
+          konfirmasiPeringatan: konfirmasi,
+          alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        });
+        if (!hasil.tersimpan || !hasil.panjar || !hasil.jurnal) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Koreksi pertanggungjawaban panjar gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
         }
         return ok({ panjar: hasil.panjar, jurnal: hasil.jurnal });
       } catch (e) {

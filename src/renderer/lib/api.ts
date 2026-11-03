@@ -418,6 +418,19 @@ export const api = {
       konfirmasiPeringatan?: boolean;
     } = {},
   ) => call<{ panjar: Panjar; jurnal?: Jurnal }>('panjar:batal', id, alasan, opsi),
+  /** AUD2-03: koreksi pertanggungjawaban CLOSED lewat jurnal balik; alasan >= 5 karakter. */
+  panjarBatalClose: (
+    input: { id: string; alasan: string; tanggalBatal?: string },
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      alasanPeringatan?: string;
+    } = {},
+  ) =>
+    call<{ panjar: Panjar; jurnal?: Jurnal }>(
+      'panjar:batal-close',
+      input,
+      opsi,
+    ),
   panjarCreate: (
     input: {
       tanggal: string;

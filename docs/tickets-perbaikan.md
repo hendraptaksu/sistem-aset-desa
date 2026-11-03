@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|
 | AUD2-01 | P0 | S | Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun` | — | [x] |
 | AUD2-02 | P0 | S | Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama | — | [x] |
-| AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [ ] |
+| AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [x] |
 | AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [ ] |
 | AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [ ] |
 | AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [ ] |
@@ -99,7 +99,7 @@
   - **Bukti 2026-11-03:** `simpanSaldoAwal()` kini menolak hanya bila `SALDO_AWAL` sudah ada, lalu membandingkan tanggal dengan `MIN(jurnal.tanggal)` di dalam transaksi yang sama; tanggal setelah jurnal pertama ditolak dengan pesan jelas, tanggal sama/lebih awal diterima dan menulis `KUNCI_AKUNTANSI_TANGGAL_MULAI`. `statusSaldoAwal()` mengembalikan `tanggalMaksimal`; `SaldoAwalWizard` memakai batas `max` tersebut, menjepit tanggal default, dan menonaktifkan simpan bila tanggal melewati batas. Guard saldo awal ikut memuat batas tanggal. Test baru mencakup skenario OPENING_STATUS (simpan `2025-01-01` setelah jurnal `2025-01-02` berhasil, tanggal `2025-01-05` ditolak, saldo awal kedua ditolak), status `tanggalMaksimal`, dan UI `max`. `npm run typecheck`, 1009 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-03 — Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar)** · P0 · M
+- [x] **AUD2-03 — Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar)** · P0 · M
   - **Konteks:**
     Saat ini panjar yang sudah `CLOSED` tidak bisa dikoreksi dari mana pun: `reverseJurnal` memblokir jurnal panjar (`PESAN_REVERSAL_PANJAR` di `src/db/reversal.ts:56`), sedangkan `batalPanjarV2` menolak panjar `CLOSED` (`src/db/panjar.ts:575`). Jika bendahara salah menginput nota pertanggungjawaban, tidak ada jalan untuk memperbaiki.
   - **File yang disentuh:**
@@ -119,6 +119,7 @@
   - **Test:**
     - Skenario `CLOSED_PANJAR_CORRECTION` (`docs/audit/repro-akuntansi-2026-11-02.ts:68-73`): serah panjar → close dengan akun salah `5003` → batalkan pertanggungjawaban dengan alasan → saldo `1040` kembali sebesar panjar & beban `5003` kembali 0 → close ulang dengan akun benar `5010` → lolos `auditIntegritas(db)`.
   - **DoD:** Panjar `CLOSED` yang salah input dapat dikoreksi dan dipertanggungjawabkan ulang secara atomik dengan jejak audit lengkap.
+  - **Bukti 2026-11-03:** `batalkanPertanggungjawabanPanjar()` memvalidasi panjar `CLOSED` + `jurnal_close_id` + alasan ≥5 karakter, menyusun jurnal balik lewat `rencanaReversal` (default tanggal `tanggal_close`), lalu dalam satu transaksi memposting reversal, menghapus `panjar_item` (data lama lengkap di `audit_log`), mereset panjar menjadi `OPEN` dengan `tanggal_close`/`jurnal_close_id` NULL, dan menulis audit `PANJAR-BATAL-CLOSE`; jurnal close asli tetap utuh. Channel `panjar:batal-close` didaftarkan di IPC dengan validator `validasiBentukPembatalanPertanggungjawabanPanjar` dan API renderer (preload tetap memakai `ipcRenderer.invoke` generik). PanjarTab menampilkan tombol **Koreksi Pertanggungjawaban** pada baris `CLOSED`, modal alasan ≥5 karakter dengan konfirmasi peringatan, lalu memuat panjar tersebut kembali ke form pertanggungjawaban. Test regresi `CLOSED_PANJAR_CORRECTION` membuktikan saldo `1040` pulih, beban `5003` nol, item lama terhapus tetapi tercatat di audit, close ulang dengan `5010` berhasil, dan `auditIntegritas` lolos; ditambah test validasi, IPC, API, dan UI. `npm run typecheck`, 1015 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-04 — Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040`** · P0 · S

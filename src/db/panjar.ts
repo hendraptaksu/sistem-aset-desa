@@ -111,6 +111,18 @@ export type BatalPanjarInput = {
   konfirmasiPeringatan?: boolean;
 };
 
+export type BatalPertanggungjawabanPanjarInput = {
+  id: string;
+  /** Wajib >= 5 karakter; disimpan di audit `PANJAR-BATAL-CLOSE`. */
+  alasan: string;
+  /** Tanggal jurnal balik; default tanggal_close panjar. */
+  tanggalBatal?: string;
+  /** Operator sudah menyetujui peringatan posting (mis. kas minus). */
+  konfirmasiPeringatan?: boolean;
+  /** Alasan operator saat peringatan posting dikonfirmasi. */
+  alasanPeringatan?: string;
+};
+
 export type StatusPanjar = 'OPEN' | 'CLOSED' | 'DIBATALKAN';
 
 export type HasilPanjar = HasilValidasiJurnal & {
@@ -666,6 +678,146 @@ export function batalPanjarV2(
   } catch (e) {
     return gagal(
       `Pembatalan panjar gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+/**
+ * AUD2-03 — koreksi pertanggungjawaban panjar yang sudah CLOSED.
+ *
+ * Panjar CLOSED tidak bisa dibatalkan lewat `batalPanjarV2` dan jurnal close-nya
+ * diblokir dari Jurnal Umum. Alur ini membuka jalan koreksi tanpa mengubah
+ * jurnal asli:
+ * 1. validasi status CLOSED, `jurnal_close_id`, dan alasan >= 5 karakter;
+ * 2. susun reversal jurnal close lewat `rencanaReversal` (default tanggal =
+ *    tanggal_close) — bukan `reverseJurnal`, agar guard Jurnal Umum tetap utuh;
+ * 3. dalam satu transaksi: posting reversal, hapus `panjar_item` lama (seluruh
+ *    data disimpan di audit), reset panjar menjadi OPEN, dan tulis audit
+ *    `PANJAR-BATAL-CLOSE`. Jurnal close asli tetap tersimpan sebagai jejak.
+ */
+export function batalkanPertanggungjawabanPanjar(
+  db: Database.Database,
+  input: BatalPertanggungjawabanPanjarInput,
+): HasilPanjar {
+  const id = String(input?.id ?? '').trim();
+  if (!id) return gagal('Panjar yang akan dikoreksi belum dipilih.');
+
+  const panjar = getPanjar(db, id);
+  if (!panjar) return gagal(`Panjar ${id} tidak ditemukan.`);
+  if (panjar.status !== 'CLOSED')
+    return gagal(
+      'Hanya panjar berstatus CLOSED yang bisa dikoreksi pertanggungjawabannya. ' +
+        'Panjar OPEN tidak punya jurnal close untuk dibalik.',
+    );
+
+  const alasan = String(input?.alasan ?? '').trim();
+  if (alasan.length < 5)
+    return gagal('Alasan koreksi pertanggungjawaban wajib diisi minimal 5 karakter.');
+
+  const jurnalCloseId = String(panjar.jurnal_close_id ?? '').trim();
+  if (!jurnalCloseId)
+    return gagal(
+      `Panjar ${id} tidak punya jurnal pertanggungjawaban (jurnal_close_id kosong), ` +
+        'sehingga tidak ada jurnal yang bisa dibalik. Perbaiki data panjar lebih dulu.',
+    );
+
+  const detail = getJurnalDetail(db, jurnalCloseId);
+  if (!detail)
+    return gagal(
+      `Jurnal pertanggungjawaban ${jurnalCloseId} untuk panjar ${id} tidak ditemukan. ` +
+        'Koreksi dibatalkan agar tidak ada jurnal balik tanpa asli.',
+    );
+
+  const tanggalBatal =
+    String(input?.tanggalBatal ?? '').trim() || String(panjar.tanggal_close ?? '');
+  const jurnalBatalId = uid('jk');
+  const rencana = rencanaReversal({
+    jurnal: detail.jurnal,
+    baris: detail.baris,
+    reversalAda: listJurnal(db, { reversal_of: jurnalCloseId }),
+    id: jurnalBatalId,
+    tanggal: tanggalBatal,
+    alasan,
+  });
+  if (!rencana.boleh || !rencana.input)
+    return gagal(
+      rencana.errors.join(' ') ||
+        'Jurnal balik koreksi pertanggungjawaban panjar gagal disusun.',
+    );
+
+  const itemsLama = listPanjarItemsV2(db, id);
+  const dibuka: Panjar = {
+    id: panjar.id,
+    tanggal: panjar.tanggal,
+    penerima: panjar.penerima,
+    jumlah: panjar.jumlah,
+    akun_kas_sumber: panjar.akun_kas_sumber,
+    status: 'OPEN',
+    tanggal_close: null,
+    jurnal_open_id: panjar.jurnal_open_id,
+    jurnal_close_id: null,
+    jurnal_batal_id: panjar.jurnal_batal_id,
+    tanggal_batal: panjar.tanggal_batal,
+    alasan_batal: panjar.alasan_batal,
+    created_at: panjar.created_at,
+    total_realisasi: 0,
+  };
+  const audit = buatAuditLog(
+    `PANJAR-BATAL-CLOSE ${id}`,
+    alasan,
+    { panjar, items: itemsLama },
+    {
+      panjar: dibuka,
+      items_dihapus: itemsLama,
+      jurnal: rencana.input.header,
+      baris: rencana.input.baris,
+      jurnal_close_id: jurnalCloseId,
+      reversal_of: jurnalCloseId,
+      tanggalBatal,
+    },
+    { ref_type: 'panjar', ref_id: id },
+  );
+
+  try {
+    const simpan = db.transaction(() => {
+      const hasil = postingJurnal(db, rencana.input!, {
+        konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        alasanPeringatan: String(input.alasanPeringatan ?? '').trim(),
+        wajibAlasanPeringatan: true,
+        audit: [audit],
+      });
+      if (!hasil.tersimpan || !hasil.jurnal) return hasil;
+
+      const hapus = db
+        .prepare('DELETE FROM panjar_item WHERE panjar_id = ?')
+        .run(id);
+      if (Number(hapus.changes) !== itemsLama.length)
+        throw new Error(
+          'Rincian item panjar berubah saat koreksi. Muat ulang daftar panjar.',
+        );
+
+      // Guard status + link close di WHERE agar dua proses tidak bisa
+      // mengoreksi panjar yang sama secara bersamaan.
+      const update = db
+        .prepare(
+          `UPDATE panjar
+              SET status = 'OPEN', tanggal_close = NULL, jurnal_close_id = NULL
+            WHERE id = ?
+              AND status = 'CLOSED'
+              AND jurnal_close_id = ?`,
+        )
+        .run(id, jurnalCloseId);
+      if (Number(update.changes) !== 1)
+        throw new Error(
+          'Panjar sudah berubah oleh proses lain. Muat ulang daftar panjar.',
+        );
+
+      return { ...hasil, panjar: dibuka };
+    });
+    return simpan();
+  } catch (e) {
+    return gagal(
+      `Koreksi pertanggungjawaban panjar gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 }

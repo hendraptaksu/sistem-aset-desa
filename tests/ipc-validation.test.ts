@@ -19,6 +19,7 @@ import {
   validasiBentukKoreksiInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
+  validasiBentukPembatalanPertanggungjawabanPanjar,
   validasiBentukSaldoAwal,
   validasiBentukTransaksiInput,
   validasiCutoffLaporan,
@@ -771,6 +772,53 @@ describe('DB-18 — validasi bentuk close panjar dengan detail nota', () => {
         items: [{ ...dasar.items[0], ...nota }],
       });
       expect(hasil.ok, String(nota)).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toMatch(pola);
+    }
+  });
+});
+
+describe('AUD2-03 — validasi bentuk koreksi pertanggungjawaban panjar', () => {
+  it('menormalisasi id/alasan/tanggal dan menolak bentuk tidak aman', () => {
+    const lengkap = validasiBentukPembatalanPertanggungjawabanPanjar({
+      id: '  p-1  ',
+      alasan: '  Salah kategori realisasi  ',
+      tanggalBatal: ' 2026-02-05 ',
+    });
+    expect(lengkap.ok).toBe(true);
+    if (lengkap.ok)
+      expect(lengkap.input).toEqual({
+        id: 'p-1',
+        alasan: 'Salah kategori realisasi',
+        tanggalBatal: '2026-02-05',
+      });
+
+    const tanpaTanggal = validasiBentukPembatalanPertanggungjawabanPanjar({
+      id: 'p-1',
+      alasan: 'Salah kategori realisasi',
+    });
+    expect(tanpaTanggal.ok).toBe(true);
+    if (tanpaTanggal.ok)
+      expect(tanpaTanggal.input).toEqual({
+        id: 'p-1',
+        alasan: 'Salah kategori realisasi',
+      });
+
+    const cases: [unknown, RegExp][] = [
+      [null, /tidak lengkap/i],
+      [{}, /wajib dipilih/i],
+      [{ id: 'p-1', alasan: 'sala' }, /minimal 5/i],
+      [
+        { id: 'p-1', alasan: 'Salah kategori', tanggalBatal: '2026-02-31' },
+        /tanggal/i,
+      ],
+      [
+        { id: 'p-1', alasan: 'Salah kategori', tanggalBatal: 20260205 },
+        /tanggal/i,
+      ],
+    ];
+    for (const [nilai, pola] of cases) {
+      const hasil = validasiBentukPembatalanPertanggungjawabanPanjar(nilai);
+      expect(hasil.ok, String(nilai)).toBe(false);
       if (!hasil.ok) expect(hasil.error).toMatch(pola);
     }
   });

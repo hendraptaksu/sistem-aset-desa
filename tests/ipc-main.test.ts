@@ -181,6 +181,7 @@ const CHANNEL_IPC = [
   'lock:status',
   'lock:unlock',
   'panjar:batal',
+  'panjar:batal-close',
   'panjar:close',
   'panjar:create',
   'panjar:items',
@@ -206,11 +207,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 62 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 63 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(62);
+    expect(env.handlers.size).toBe(63);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(62);
+    expect(CHANNEL_IPC).toHaveLength(63);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1662,6 +1663,96 @@ describe('DB-21 — IPC pembatalan panjar OPEN', () => {
     const audit = await env.panggil('audit:list', { aksi: 'PANJAR-BATAL' });
     expect(audit.ok, audit.error).toBe(true);
     expect(audit.data.total).toBe(1);
+    const integritas = await env.panggil('audit:integritas');
+    expect(integritas.ok, integritas.error).toBe(true);
+    expect(integritas.data.ok).toBe(true);
+  });
+});
+
+describe('AUD2-03 — IPC koreksi pertanggungjawaban panjar CLOSED', () => {
+  it('membalik jurnal close, mengosongkan item, lalu mengizinkan close ulang', async () => {
+    const env = buatEnv();
+    expect(
+      (
+        await env.panggil('saldo-awal:posting', {
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal AUD2-03',
+          saldo: [{ akun_kode: '1001', nominal: 10_000_000 }],
+        })
+      ).ok,
+    ).toBe(true);
+
+    const buat = await env.panggil('panjar:create', {
+      tanggal: '2026-01-02',
+      penerima: 'Panitia AUD2-03',
+      jumlah: 1_000_000,
+      akunKasSumber: '1001',
+    });
+    expect(buat.ok, buat.error).toBe(true);
+    const id = buat.data.id as string;
+
+    const close = await env.panggil('panjar:close', {
+      id,
+      tanggalClose: '2026-01-03',
+      items: [
+        {
+          kategori_baga: '5003',
+          nominal: 900_000,
+          nota_nomor: 'N-AUD2-03',
+          toko: 'Toko Uji',
+        },
+      ],
+    });
+    expect(close.ok, close.error).toBe(true);
+    const closeId = close.data.panjar.jurnal_close_id as string;
+
+    const pendek = await env.panggil('panjar:batal-close', {
+      id,
+      alasan: 'sala',
+    });
+    expect(pendek.ok).toBe(false);
+    expect(pendek.error).toMatch(/alasan.*minimal 5/i);
+
+    const koreksi = await env.panggil('panjar:batal-close', {
+      id,
+      alasan: 'Salah kategori realisasi',
+      tanggalBatal: '2026-01-03',
+    });
+    expect(koreksi.ok, koreksi.error).toBe(true);
+    expect(koreksi.data.panjar).toMatchObject({
+      id,
+      status: 'OPEN',
+      tanggal_close: null,
+      jurnal_close_id: null,
+    });
+    expect(koreksi.data.jurnal).toMatchObject({
+      jenis: 'REVERSAL',
+      reversal_of: closeId,
+      tanggal: '2026-01-03',
+    });
+
+    expect((await env.panggil('panjar:items', id)).data).toEqual([]);
+    const open = await env.panggil('panjar:list', 'OPEN');
+    expect(open.data).toHaveLength(1);
+    expect(open.data[0]).toMatchObject({ id, status: 'OPEN' });
+    expect((await env.panggil('panjar:list', 'CLOSED')).data).toEqual([]);
+
+    const audit = await env.panggil('audit:list', {
+      aksi: 'PANJAR-BATAL-CLOSE',
+    });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    expect(audit.data.rows[0].alasan).toBe('Salah kategori realisasi');
+    expect(audit.data.rows[0].data_lama_json).toContain('N-AUD2-03');
+
+    const reclose = await env.panggil('panjar:close', {
+      id,
+      tanggalClose: '2026-01-04',
+      items: [{ kategori_baga: '5010', nominal: 800_000 }],
+    });
+    expect(reclose.ok, reclose.error).toBe(true);
+    expect(reclose.data.panjar.status).toBe('CLOSED');
+
     const integritas = await env.panggil('audit:integritas');
     expect(integritas.ok, integritas.error).toBe(true);
     expect(integritas.data.ok).toBe(true);

@@ -191,6 +191,55 @@ export function validasiBentukPanjarClose(
   return { ok: true, input: { id: id.nilai, tanggalClose: tanggalClose.nilai, items } };
 }
 
+export type BentukPembatalanPertanggungjawabanPanjar = {
+  id: string;
+  alasan: string;
+  /** Tanggal jurnal balik; kosong = pakai tanggal_close panjar. */
+  tanggalBatal?: string;
+};
+
+/**
+ * AUD2-03: normalisasi koreksi pertanggungjawaban panjar CLOSED. Hanya bentuk
+ * yang aman yang diteruskan; status panjar, kepemilikan jurnal close, dan
+ * larangan reversal ganda tetap ditegakkan adapter DB.
+ */
+export function validasiBentukPembatalanPertanggungjawabanPanjar(
+  nilai: unknown,
+): HasilBentuk<BentukPembatalanPertanggungjawabanPanjar> {
+  if (!objek(nilai))
+    return {
+      ok: false,
+      error: 'Data koreksi pertanggungjawaban panjar tidak lengkap.',
+    };
+
+  const id = teksOpsional(nilai.id, 'ID panjar', 200);
+  if (!id.ok) return id;
+  if (!id.nilai)
+    return { ok: false, error: 'Panjar yang akan dikoreksi wajib dipilih.' };
+
+  const alasan = teksOpsional(nilai.alasan, 'Alasan koreksi', 1000);
+  if (!alasan.ok) return alasan;
+  if (alasan.nilai.length < 5)
+    return {
+      ok: false,
+      error: 'Alasan koreksi pertanggungjawaban wajib diisi minimal 5 karakter.',
+    };
+
+  const tanggalBatal = teksOpsional(nilai.tanggalBatal, 'Tanggal koreksi', 10);
+  if (!tanggalBatal.ok) return tanggalBatal;
+  if (tanggalBatal.nilai && !tanggalKalenderValid(tanggalBatal.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
+
+  return {
+    ok: true,
+    input: {
+      id: id.nilai,
+      alasan: alasan.nilai,
+      ...(tanggalBatal.nilai ? { tanggalBatal: tanggalBatal.nilai } : {}),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Bentuk input wizard pinjaman LPD (DB-16c)
 // ---------------------------------------------------------------------------
