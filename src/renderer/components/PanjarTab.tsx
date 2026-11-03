@@ -44,6 +44,7 @@ import {
   TextInput,
 } from './ui.js';
 import { SaldoAwalGuard } from './SaldoAwalGuard.js';
+import { PetunjukAkunKembar } from './PetunjukAkunKembar.js';
 import { ExportActions } from './ExportActions.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
@@ -1275,6 +1276,7 @@ export function PanjarTab() {
                       </option>
                     ))}
                   </Select>
+                  <PetunjukAkunKembar kode={it.kategori_baga} />
                 </Field>
                 <Field label="Nominal (Rp)">
                   <CurrencyInput

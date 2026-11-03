@@ -42,6 +42,7 @@ import {
   TextInput,
 } from './ui.js';
 import { SaldoAwalGuard } from './SaldoAwalGuard.js';
+import { PetunjukAkunKembar } from './PetunjukAkunKembar.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
   PESAN_MUAT_GAGAL,
@@ -941,6 +942,7 @@ export function FormTransaksiTerpandu({
                 </optgroup>
               ))}
             </Select>
+            <PetunjukAkunKembar kode={akunLawan} />
             <span className="mt-1 block text-helper text-stone-500">
               {konfigurasi.hintBeban}
             </span>
@@ -1006,6 +1008,7 @@ export function FormTransaksiTerpandu({
                   </optgroup>
                 ))}
               </Select>
+              <PetunjukAkunKembar kode={akunLawan} />
               <span className="mt-1 block text-helper text-stone-500">
                 {konfigurasi.hintLawan}
               </span>

@@ -48,7 +48,7 @@
 | AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [x] |
 | AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [x] |
 | AUD2-15 | P2 | S | Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD` | — | [x] |
-| AUD2-16 | P2 | S | Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input | — | [ ] |
+| AUD2-16 | P2 | S | Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input | — | [x] |
 
 ---
 
@@ -343,7 +343,7 @@
   - **Bukti 2026-11-03:** Helper murni `tambahBulanUtc()` dan `buatJadwalAngsuranOtomatis()` di `src/core/pinjamanAngsuran.ts` membagi pokok ke Rupiah penuh, memberi sisa ke baris terakhir, dan menghitung jatuh tempo UTC yang aman untuk akhir bulan/kabisat. Bagian Jadwal Angsuran `PinjamanTab.tsx` kini memiliki input **Bunga rencana per bulan (Rp)** dan tombol **Isi Jadwal Otomatis dari Tenor** (aktif saat target pokok > 0 dan tenor ≥ 1), konfirmasi sebelum mengganti baris yang sudah berisi, serta hasil yang tetap bisa diedit manual dan divalidasi total pokoknya saat simpan. Regression test `tests/aud2-15-jadwal-otomatis.test.ts` mencakup pembagian Rp 10.000.000 tenor 3 menjadi Rp 3.333.333 + Rp 3.333.333 + Rp 3.333.334 dengan total tepat, tanggal 31 Jan → 28/29 Feb → 31 Mar, tahun kabisat, berbagai tenor, dan kontrol UI. `npm run typecheck`, 1099 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-16 — Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input** · P2 · S
+- [x] **AUD2-16 — Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input** · P2 · S
   - **Konteks:**
     Karena `KODE AKUN.csv` menyimpan akun lama sekaligus akun tambahan baru yang mirip (`5010` vs `5060` untuk listrik/air/telepon, `5004` vs `5062` untuk upakara/banten, `4005` vs `4006` untuk parkir), bendahara rawan tidak konsisten saat memilih akun di dropdown.
   - **File yang disentuh:**
@@ -355,4 +355,5 @@
   - **Test:**
     - Test `TransaksiForm` menampilkan petunjuk kontekstual ketika akun yang memiliki kembaran dipilih.
   - **DoD:** Risiko salah pilih akun yang mirip oleh bendahara berkurang drastis tanpa merusak arsip COA client.
+  - **Bukti 2026-11-03:** Helper murni `src/renderer/lib/petunjukAkun.ts` menyimpan pesan bertipe untuk 11 akun kembar (`5010`, `5060`, `5004`, `5062`, `5003`, `5031`, `4005`, `4006`, `4008`, `4041`, `4060`) dan mengembalikan `null` untuk akun lain. Komponen `PetunjukAkunKembar` menampilkan kotak tips netral di bawah dropdown akun lawan `TransaksiForm.tsx` (Terima, Bayar, dan Catat Utang) serta dropdown akun beban pertanggungjawaban `PanjarTab.tsx`; petunjuk otomatis berganti/hilang mengikuti akun yang dipilih tanpa mengubah data COA/arsip. Regression test `tests/aud2-16-petunjuk-akun.test.ts` mencakup seluruh kode, akun tanpa kembaran, perapian spasi, tampilan di kedua form, dan pengikatan ke state pilihan (11 test). `npm run typecheck`, 1110 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
