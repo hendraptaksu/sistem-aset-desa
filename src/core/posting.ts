@@ -63,6 +63,13 @@ export type PostingContext = {
   /** Saldo kas/bank saat ini dalam sen, per kode akun. */
   saldoKas?: Readonly<Record<string, number>>;
   /**
+   * AUD2-10: saldo normal kredit akun 2060 HUTANG USAHA pada tanggal jurnal,
+   * yaitu SUM(kredit - debit) s.d. tanggal jurnal (belum termasuk jurnal yang
+   * sedang divalidasi). Kosong = pemeriksaan dilewati (kompatibel pemanggil
+   * lama/fungsi murni).
+   */
+  saldoHutangUsaha?: number;
+  /**
    * AKT-04: minimum cumulative sum (≤ 0) mutasi kas pada tanggal SETELAH
    * tanggal jurnal, per kode akun kas. Menunjukkan tambahan terburuk yang bisa
    * menimpa saldo pada tanggal jurnal (mis. pengeluaran backdate). Kosong = 0.
@@ -169,6 +176,7 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  * 5. Total debit = total kredit dan > 0.
  * 6. Periode terkunci wajib alasan >= 5 karakter.
  * 7. Kas/bank akan minus -> peringatan (bukan error).
+ * 7b. Utang usaha (2060) akan minus -> peringatan (bukan error).
  * 8. Nomor bukti duplikat ditolak.
  */
 export function validasiJurnal(
@@ -236,6 +244,7 @@ export function validasiJurnal(
   };
 
   const deltaKas = new Map<string, number>();
+  let deltaHutangUsaha = 0;
   let totalDebit = 0;
   let totalKredit = 0;
   let adaNominalSalah = false;
@@ -292,6 +301,7 @@ export function validasiJurnal(
     totalKredit += kredit;
     if (akunBaris && kasDi(kode))
       deltaKas.set(kode, (deltaKas.get(kode) ?? 0) + debit - kredit);
+    if (kode === AKUN_HUTANG_USAHA) deltaHutangUsaha += kredit - debit;
   });
 
   // ---- 3. Jenis jurnal konsisten dengan akun yang dipakai ----
@@ -417,6 +427,19 @@ export function validasiJurnal(
           `Kas/Bank ${labelAkun(petaAkun.get(kode), kode)} akan minus ${formatRp(-saldoTerburuk)}. Periksa kembali — boleh lanjut dengan konfirmasi.`,
         );
       }
+    }
+  }
+
+  // ---- 6b. Utang usaha minus: peringatan, bukan error (AUD2-10) ----
+  // Pembayaran utang usaha (D 2060) yang melebihi utang tercatat membuat
+  // kewajiban di Neraca negatif. Saldo awal berasal dari DB pada tanggal jurnal
+  // (belum termasuk jurnal ini), lalu ditambah delta kredit - debit 2060.
+  if (konteks.saldoHutangUsaha !== undefined && deltaHutangUsaha !== 0) {
+    const saldoAkhir = konteks.saldoHutangUsaha + deltaHutangUsaha;
+    if (saldoAkhir < 0) {
+      peringatan.push(
+        `Utang Usaha (2060) akan menjadi minus ${formatRp(-saldoAkhir)}. Pastikan utang sudah dicatat lewat Catat Utang Usaha sebelum dibayar.`,
+      );
     }
   }
 

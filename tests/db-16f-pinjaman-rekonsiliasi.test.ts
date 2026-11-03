@@ -521,15 +521,21 @@ describe('DB-16f — rekonsiliasi per pinjaman', () => {
 
   it('jurnal pembayaran salah akun tetap terdeteksi lewat selisih GL vs jadwal', () => {
     const { db, pinjamanId, angsuran } = siapkanFixture();
-    const jurnal = postingJurnal(db, {
-      header: {
-        id: 'j-salah-akun',
-        tanggal: '2026-02-05',
-        keterangan: 'Pembayaran pokok salah akun (2060)',
-        jenis: 'HUTANG',
+    const jurnal = postingJurnal(
+      db,
+      {
+        header: {
+          id: 'j-salah-akun',
+          tanggal: '2026-02-05',
+          keterangan: 'Pembayaran pokok salah akun (2060)',
+          jenis: 'HUTANG',
+        },
+        baris: [D('2060', RP(3_000_000)), K('1014', RP(3_000_000))],
       },
-      baris: [D('2060', RP(3_000_000)), K('1014', RP(3_000_000))],
-    });
+      // AUD2-10: debit 2060 tanpa saldo utang kini berperingatan dan butuh
+      // konfirmasi; skenario rekonsiliasi ini sengaja memakai akun yang salah.
+      { konfirmasiPeringatan: true },
+    );
     expect(jurnal.tersimpan, jurnal.errors.join(' ')).toBe(true);
 
     // Simulasi link lama/rusak: service menolak jurnal tanpa debit 2050, jadi

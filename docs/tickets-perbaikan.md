@@ -42,7 +42,7 @@
 | AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [x] |
 | AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [x] |
 | AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [x] |
-| AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [ ] |
+| AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [x] |
 | AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [ ] |
 | AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [ ] |
 | AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [ ] |
@@ -237,7 +237,7 @@
   - **Bukti 2026-11-03:** Seluruh 11 tabel aktif kini `STRICT` di DDL baru dan pada DB hasil migrasi; `SCHEMA_VERSION` naik ke 23 dengan migrasi rebuild atomik (`foreign_keys` dimatikan sementara, tabel baru -> salin kolom -> drop lama -> rename, fallback bentuk legacy tanpa kehilangan kolom), index/trigger dipasang ulang, dan helper `pastikanTabelAktifStrict()` memverifikasi kontrak. `tutup_buku.backup_path` dihapus dari DDL/migrasi; CHECK `panjar.status` menerima `DIBATALKAN`, `batalPanjarV2` menulis status tersebut, baris legacy dinormalisasi, serta filter/audit/UI disesuaikan. `docs/erd-v2.md` dan test kontrak diperbarui. Regression test baru mencakup DB v22 non-STRICT (seluruh data 11 tabel, index, trigger, FK), DB versi lama tanpa tabel pinjaman, dan `openDb(':memory:')`. `npm run typecheck`, 1048 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-08
 
-- [ ] **AUD2-10 — Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA`** · P1 · S
+- [x] **AUD2-10 — Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA`** · P1 · S
   - **Konteks:**
     Saat ini `validasiJurnal` (`src/core/posting.ts:385`) hanya memeriksa saldo minus untuk akun kas/bank (`is_kas = 1`). Jika bendahara memilih **Bayar Utang Usaha** (`D 2060 / K Kas`) dengan nominal lebih besar daripada saldo Utang Usaha (`2060`) yang tercatat (atau belum pernah mencatat utang sama sekali), sistem menyimpan tanpa peringatan sehingga kewajiban `2060` di Neraca menjadi negatif.
   - **File yang disentuh:**
@@ -250,6 +250,7 @@
   - **Test:**
     - Test `postingJurnal` untuk `Bayar Utang Usaha` saat saldo `2060` = 0 menghasilkan `perluKonfirmasi: true` dengan peringatan minus; bila saldo `2060` mencukupi, langsung tersimpan tanpa peringatan.
   - **DoD:** Bendahara langsung diperingatkan jika membayar utang usaha melebihi utang yang tercatat.
+  - **Bukti 2026-11-03:** `PostingContext` kini menerima `saldoHutangUsaha` (saldo normal kredit 2060 s.d. tanggal jurnal, `SUM(kredit - debit)`); `buatKonteksPosting` mengisinya dengan cutoff tanggal yang sama seperti saldo kas dan belum menghitung jurnal yang sedang divalidasi. `validasiJurnal` menambahkan peringatan (bukan error) bila delta 2060 membuat saldo akhir negatif: `Utang Usaha (2060) akan menjadi minus <nominal>. Pastikan utang sudah dicatat lewat Catat Utang Usaha sebelum dibayar.`; seluruh jalur HUTANG/UMUM memakai konteks ini dan peringatan kas minus tetap berjalan. Regression test di `tests/utang-usaha.test.ts` mencakup saldo 2060 nol, saldo cukup, kelebihan bayar sebagian, dan cutoff tanggal; test rekonsiliasi pinjaman yang sengaja memakai akun salah disesuaikan dengan konfirmasi peringatan. `npm run typecheck`, 1052 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 ---

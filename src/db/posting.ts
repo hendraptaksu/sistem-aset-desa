@@ -3,7 +3,7 @@
 // supaya aturan bisnis tidak tersebar di UI/IPC (P0-4).
 
 import type Database from 'better-sqlite3';
-import { kodeKasDariDaftarAkun } from './coa.js';
+import { AKUN_HUTANG_USAHA, kodeKasDariDaftarAkun } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
 import {
   getPengaturanPembukuan,
@@ -129,6 +129,13 @@ export function buatKonteksPosting(
   for (const r of saldoRows) {
     if (setKas.has(String(r.akun_kode))) saldoKas[String(r.akun_kode)] = Number(r.saldo);
   }
+  // AUD2-10: saldo normal kredit 2060 HUTANG USAHA pada tanggal jurnal, yaitu
+  // SUM(kredit - debit). Memakai cutoff dan sumber baris yang sama dengan saldo
+  // kas; jurnal yang sedang divalidasi belum tersimpan sehingga delta-nya baru
+  // ditambahkan di validator (tidak dobel).
+  const saldoHutangUsaha = -Number(
+    saldoRows.find((r) => String(r.akun_kode) === AKUN_HUTANG_USAHA)?.saldo ?? 0,
+  );
 
   // AKT-04: backdate tidak boleh lolos hanya karena saldo pada tanggal jurnal
   // masih positif. Hitung minimum cumulative sum mutasi kas SETELAH tanggal
@@ -170,6 +177,7 @@ export function buatKonteksPosting(
     tutupBuku: listTutupBuku(db).map((t) => ({ tahun: Number(t.tahun) })),
     noBuktiTerpakai,
     saldoKas,
+    saldoHutangUsaha,
     kasMinimumSetelah,
     // AKT-03: batas bawah pembukuan dibaca dari pengaturan. Nilai kosong tetap
     // kosong (bukan `tanggalMulaiEfektif` yang jatuh ke hari ini) agar data

@@ -32,6 +32,7 @@ import {
 } from '../src/core/reports.js';
 import { AKUN_MODAL, AKUN_PIUTANG, COA } from '../src/db/coa.js';
 import type { JurnalInput } from '../src/core/posting.js';
+import { formatRp } from '../src/utils/format.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
@@ -250,6 +251,139 @@ describe('DB-23b — alur utang usaha end-to-end', () => {
           .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jurnal_pihak'")
           .get(),
       ).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AUD2-10 — peringatan saldo utang usaha minus', () => {
+  const pesanMinus = (nominal: number): string =>
+    `Utang Usaha (2060) akan menjadi minus ${formatRp(nominal)}. ` +
+    'Pastikan utang sudah dicatat lewat Catat Utang Usaha sebelum dibayar.';
+
+  it('menahan pembayaran 2060 saat belum ada utang tercatat sampai dikonfirmasi', () => {
+    const db = dbDenganKas();
+    try {
+      const bayar = buatJurnalBayarUtangUsaha({
+        ...dasar,
+        tanggal: '2026-02-10',
+        keterangan: 'Bayar utang ke Toko Bangunan Jaya',
+        akunKas: '1001',
+        nominal: RP(200_000),
+        id: 'j-bayar-tanpa-utang',
+      });
+
+      const hasil = postingJurnal(db, bayar);
+      expect(hasil.errors).toEqual([]);
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.perluKonfirmasi).toBe(true);
+      expect(hasil.peringatan).toEqual([pesanMinus(RP(200_000))]);
+      expect(saldoAkun(listBarisJurnal(db), '2060')).toBe(0);
+
+      const lanjut = postingJurnal(db, bayar, { konfirmasiPeringatan: true });
+      expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
+      expect(lanjut.peringatan).toEqual([pesanMinus(RP(200_000))]);
+      expect(saldoAkun(listBarisJurnal(db), '2060')).toBe(RP(-200_000));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('langsung menyimpan tanpa peringatan bila saldo 2060 mencukupi', () => {
+    const db = dbDenganKas();
+    try {
+      const catat = postingJurnal(
+        db,
+        buatJurnalCatatUtangUsaha({
+          ...dasar,
+          akunBeban: '5003',
+          nominal: RP(300_000),
+          id: 'j-catat-utang-cukup',
+        }),
+      );
+      expect(catat.tersimpan, catat.errors.join(' ')).toBe(true);
+
+      const bayar = postingJurnal(
+        db,
+        buatJurnalBayarUtangUsaha({
+          ...dasar,
+          tanggal: '2026-02-10',
+          keterangan: 'Bayar utang ke Toko Bangunan Jaya',
+          akunKas: '1001',
+          nominal: RP(200_000),
+          id: 'j-bayar-utang-cukup',
+        }),
+      );
+      expect(bayar.errors).toEqual([]);
+      expect(bayar.peringatan).toEqual([]);
+      expect(bayar.perluKonfirmasi).toBe(false);
+      expect(bayar.tersimpan).toBe(true);
+      expect(saldoAkun(listBarisJurnal(db), '2060')).toBe(RP(100_000));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menghitung selisih kelebihan bayar saat saldo 2060 hanya sebagian', () => {
+    const db = dbDenganKas();
+    try {
+      const catat = postingJurnal(
+        db,
+        buatJurnalCatatUtangUsaha({
+          ...dasar,
+          akunBeban: '5003',
+          nominal: RP(300_000),
+          id: 'j-catat-utang-sebagian',
+        }),
+      );
+      expect(catat.tersimpan, catat.errors.join(' ')).toBe(true);
+
+      const bayar = buatJurnalBayarUtangUsaha({
+        ...dasar,
+        tanggal: '2026-02-10',
+        keterangan: 'Bayar utang ke Toko Bangunan Jaya',
+        akunKas: '1001',
+        nominal: RP(400_000),
+        id: 'j-bayar-kelebihan',
+      });
+      const hasil = postingJurnal(db, bayar);
+      expect(hasil.errors).toEqual([]);
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.perluKonfirmasi).toBe(true);
+      expect(hasil.peringatan).toEqual([pesanMinus(RP(100_000))]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('memakai saldo 2060 s.d tanggal jurnal, bukan utang yang dicatat setelahnya', () => {
+    const db = dbDenganKas();
+    try {
+      const catatMasaDepan = postingJurnal(
+        db,
+        buatJurnalCatatUtangUsaha({
+          ...dasar,
+          tanggal: '2026-03-01',
+          akunBeban: '5003',
+          nominal: RP(300_000),
+          id: 'j-catat-utang-masa-depan',
+        }),
+      );
+      expect(catatMasaDepan.tersimpan, catatMasaDepan.errors.join(' ')).toBe(true);
+
+      const bayar = buatJurnalBayarUtangUsaha({
+        ...dasar,
+        tanggal: '2026-02-10',
+        keterangan: 'Bayar utang ke Toko Bangunan Jaya',
+        akunKas: '1001',
+        nominal: RP(200_000),
+        id: 'j-bayar-backdate',
+      });
+      const hasil = postingJurnal(db, bayar);
+      expect(hasil.errors).toEqual([]);
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.peringatan).toEqual([pesanMinus(RP(200_000))]);
     } finally {
       db.close();
     }
