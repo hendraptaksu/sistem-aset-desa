@@ -45,7 +45,7 @@
 | AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [x] |
 | AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [x] |
 | AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [x] |
-| AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [ ] |
+| AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [x] |
 | AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [ ] |
 | AUD2-15 | P2 | S | Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD` | — | [ ] |
 | AUD2-16 | P2 | S | Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input | — | [ ] |
@@ -295,7 +295,7 @@
   - **Bukti 2026-11-03:** Tab `pembantu` dihapus dari `TabId`, `TABS`, `GRUP_MENU`, render `App.tsx`, dan `PembantuTab.tsx` (file mati tanpa referensi tersisa); daftar tab e2e menyusut menjadi 13 dan test sidebar diperbarui. `BukuBesarTab` menampilkan header mutasi dengan istilah Debit/Kredit plus sub-label arah sesuai `posisi_normal`: Debit `(+ / Masuk)` / Kredit `(- / Keluar)` untuk akun normal debit, serta Debit `(- / Berkurang)` / Kredit `(+ / Bertambah)` untuk akun normal kredit; drill-down jurnal asal tetap dipertahankan. Regression test `tests/aud2-12-buku-pembantu.test.ts` mencakup penghapusan navigasi/file, daftar tab e2e, dan kedua arah mutasi. `npm run typecheck`, 1066 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-01
 
-- [ ] **AUD2-13 — Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian** · P1 · M
+- [x] **AUD2-13 — Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian** · P1 · M
   - **Konteks:**
     Karena menu `Jurnal Umum` disembunyikan di balik `Mode Lanjutan`, bendahara harian yang baru saja menyimpan `Terima Uang`, `Bayar`, `Pindah Dana`, atau `Utang Usaha` tidak bisa melihat daftar transaksi yang baru dicatatnya dan tidak bisa langsung mengoreksi jika salah ketik nominal/keterangan.
   - **File yang disentuh:**
@@ -308,6 +308,7 @@
   - **Test:**
     - Test `TransaksiTab` menampilkan transaksi yang baru disimpan dan mengizinkan pembatalan jurnal dengan alasan tanpa harus membuka Mode Lanjutan.
   - **DoD:** Bendahara dapat langsung memeriksa dan membatalkan salah ketik harian dari halaman `Transaksi`.
+  - **Bukti 2026-11-03:** `TransaksiTab` kini menampilkan kartu **"Transaksi Terakhir yang Dicatat"** berisi 10 jurnal terbaru (halaman terakhir `api.jurnalCari({ limit: 10, offset: 0 })` diambil bila total > 10, lalu diurutkan terbaru di atas) dengan kolom Tanggal, No. Bukti, Jenis, Keterangan, Nominal (jumlah debit baris), Status, dan aksi. `Lihat` membuka `DetailJurnalModal`; `Batalkan / Salah Input` hanya muncul untuk jurnal aktif non-panjar/non-pinjaman (HUTANG 2050 dikecualikan), membuka modal alasan minimal 5 karakter, memanggil `api.jurnalReverse(jurnal.id, alasan)`, lalu me-refresh daftar. `FormTransaksiTerpandu` menerima callback `onTersimpan`, dan `SaldoAwalWizard` memicu refresh yang sama; tersedia state memuat/kosong/gagal. Regression test `tests/aud2-13-transaksi-terakhir.test.ts` mencakup tabel, aturan pembatalan, nominal dari baris, pemuatan 10 terbaru, dan pengiriman alasan. `npm run typecheck`, 1077 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-14 — Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha`** · P2 · S

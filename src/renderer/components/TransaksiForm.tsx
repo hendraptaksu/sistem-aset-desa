@@ -228,10 +228,13 @@ export function FormTransaksiTerpandu({
   jenis,
   coa,
   memuat = false,
+  onTersimpan,
 }: {
   jenis: JenisFormTransaksi;
   coa: Coa[];
   memuat?: boolean;
+  /** Dipanggil setelah transaksi tersimpan agar daftar terakhir ikut segar. */
+  onTersimpan?: () => void;
 }) {
   const konfigurasi = KONFIG[jenis];
   const pindah = konfigurasi.mode === 'PINDAH';
@@ -615,6 +618,7 @@ export function FormTransaksiTerpandu({
       setNoBukti('');
       // UI-07: simpan sukses = tidak ada isian yang perlu diperingatkan.
       setDirty(false);
+      onTersimpan?.();
       // UI-13: fokuskan Nominal setelah reset ter-commit agar entri berikutnya
       // bisa langsung diketik. Dua rAF memberi ruang commit React + paint.
       requestAnimationFrame(() => {
