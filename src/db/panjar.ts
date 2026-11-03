@@ -59,7 +59,10 @@ export type SerahPanjarInput = {
   keterangan?: string;
   noBukti?: string;
   alasan?: string;
+  /** Operator sudah menyetujui peringatan posting (mis. kas minus). */
   konfirmasiPeringatan?: boolean;
+  /** Alasan operator saat peringatan posting dikonfirmasi. */
+  alasanPeringatan?: string;
   /** AKT-02: pintu input mewajibkan saldo awal untuk jurnal pertama. */
   wajibSaldoAwal?: boolean;
   /** Operator sudah memilih "mulai tanpa saldo awal" pada sesi ini. */
@@ -256,6 +259,7 @@ export function serahkanPanjar(
   }
 
   const createdAt = new Date().toISOString();
+  const alasanPeringatan = String(input.alasanPeringatan ?? '').trim();
   const panjar: Panjar = {
     id,
     tanggal,
@@ -273,7 +277,12 @@ export function serahkanPanjar(
     `PANJAR-OPEN ${id}`,
     String(input.alasan ?? '').trim(),
     undefined,
-    { panjar, jurnal: jurnalInput.header, baris: jurnalInput.baris },
+    {
+      panjar,
+      jurnal: jurnalInput.header,
+      baris: jurnalInput.baris,
+      ...(alasanPeringatan ? { alasanPeringatan } : {}),
+    },
     { ref_type: 'panjar', ref_id: id },
   );
 
@@ -281,6 +290,8 @@ export function serahkanPanjar(
     const simpan = db.transaction(() => {
       const hasil = postingJurnal(db, jurnalInput, {
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        alasanPeringatan,
+        wajibAlasanPeringatan: true,
         wajibSaldoAwal: input.wajibSaldoAwal === true,
         konfirmasiTanpaSaldoAwal: input.konfirmasiTanpaSaldoAwal === true,
         audit: [audit],
@@ -652,6 +663,8 @@ export function batalPanjarV2(
     const simpan = db.transaction(() => {
       const hasil = postingJurnal(db, rencana.input!, {
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
+        alasanPeringatan: alasan,
+        wajibAlasanPeringatan: true,
         audit: [audit],
       });
       if (!hasil.tersimpan || !hasil.jurnal) return hasil;

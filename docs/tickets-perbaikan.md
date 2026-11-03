@@ -39,7 +39,7 @@
 | AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [x] |
 | AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [x] |
 | AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [x] |
-| AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [ ] |
+| AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [x] |
 | AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [ ] |
 | AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [ ] |
 | AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [ ] |
@@ -178,7 +178,7 @@
   - **Bukti 2026-11-03:** `KonteksValidasiTutup` menerima `panjarOpenTahun`; `validasiTutupBuku()` menolak kunci periode maupun tutup ulang tahun Y selama masih ada panjar OPEN aktif bertanggal <= 31 Des Y, dengan pesan yang menyebut penerima, tanggal, dan saran menyelesaikan/membatalkan panjar. `previewTutupBuku()` dan `tutupBuku()` membaca panjar OPEN aktif (`status = 'OPEN'` dan `jurnal_batal_id` kosong) lalu meneruskannya ke validasi. Form pertanggungjawaban `PanjarTab` menampilkan kotak kuning `PeringatanTahunPertanggungjawaban` bila tahun `tanggalClose` berbeda dari tahun panjar atau tanggal nota, dan menjelaskan beban akan masuk Laba Rugi tahun `tanggalClose`. Regression test mencakup penolakan preview/simpan 2025, keberhasilan setelah panjar di-close dan setelah dibatalkan, validasi murni lintas tahun, serta peringatan UI. `npm run typecheck`, 1035 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-07 — Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal** · P1 · S
+- [x] **AUD2-07 — Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal** · P1 · S
   - **Konteks:**
     Beberapa jalur konfirmasi peringatan masih melewati kewajiban alasan minimal 5 karakter dari pengguna:
     - `PinjamanTab.tsx:379` mengirim hardcoded `alasanPeringatan: 'Konfirmasi operator'`.
@@ -197,6 +197,7 @@
   - **Test:**
     - Uji `panjar:create` dan `pinjaman:simpan` saat kas minus: konfirmasi tanpa `alasanPeringatan` $\ge 5$ karakter ditolak; dengan alasan valid tersimpan dan tercatat di `audit_log`.
   - **DoD:** Tidak ada lagi konfirmasi peringatan yang lolos tanpa alasan nyata dari pengguna.
+  - **Bukti 2026-11-03:** `serahkanPanjar()` meneruskan `alasanPeringatan` + `wajibAlasanPeringatan: true` ke `postingJurnal` dan mencatat alasan di audit `PANJAR-OPEN`; `reverseJurnal()` dan `batalPanjarV2()` meneruskan `alasan.trim()` dengan kewajiban yang sama; `simpanPinjamanLpd()` ikut mewajibkan alasan pada peringatan posting. IPC `panjar:create` meneruskan `alasanPeringatan` dan mempertahankan `perluKonfirmasi` saat alasan kurang, sejalan dengan `pinjaman:simpan`. Form Serah Panjar dan Simpan Pinjaman kini memakai `PeringatanModal` yang mewajibkan alasan minimal 5 karakter (hardcoded `'Konfirmasi operator'` dihapus) dan meneruskannya sebagai `alasanPeringatan`. Regression test baru mencakup penolakan tanpa/pendek alasan, penyimpanan dengan alasan valid, jejak audit, serta propagasi opsi pada serah/reversal/batal panjar. `npm run typecheck`, 1040 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 ---

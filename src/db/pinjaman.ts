@@ -838,6 +838,7 @@ export function simpanPinjamanLpd(
         const posting = postingJurnal(db, inputJurnal, {
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
           alasanPeringatan: opsi.alasanPeringatan,
+          wajibAlasanPeringatan: true,
           wajibSaldoAwal: opsi.wajibSaldoAwal === true,
           konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
           sekarang: opsi.sekarang,

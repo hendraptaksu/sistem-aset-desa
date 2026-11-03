@@ -411,7 +411,10 @@ export function PanjarTab() {
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
   const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
   const saldoAwalTargetRef = useRef<'OPEN' | 'CLOSE'>('OPEN');
-  const saldoAwalPendingRef = useRef<{ konfirmasiPeringatan?: boolean }>({});
+  const saldoAwalPendingRef = useRef<{
+    konfirmasiPeringatan?: boolean;
+    alasanPeringatan?: string;
+  }>({});
 
   // Form serah
   const [tanggal, setTanggal] = useState(tanggalLokal());
@@ -423,6 +426,7 @@ export function PanjarTab() {
   const [busyOpen, setBusyOpen] = useState(false);
   const busyOpenRef = useRef(false);
   const [pesanKonfirmasiSerah, setPesanKonfirmasiSerah] = useState<string | null>(null);
+  const [errorKonfirmasiSerah, setErrorKonfirmasiSerah] = useState<string | null>(null);
   // Alasan periode terkunci disimpan agar retry konfirmasi kas minus tidak
   // kehilangan alasan yang sudah diisi operator.
   const alasanOpenRef = useRef('');
@@ -573,6 +577,7 @@ export function PanjarTab() {
     alasan?: string,
     opsi: {
       konfirmasiPeringatan?: boolean;
+      alasanPeringatan?: string;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
   ): Promise<void> {
@@ -580,7 +585,12 @@ export function PanjarTab() {
     setErr(null);
     setInfo(null);
     setLockRetry(null);
-    setPesanKonfirmasiSerah(null);
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (opsi.konfirmasiPeringatan !== true) {
+      setPesanKonfirmasiSerah(null);
+      setErrorKonfirmasiSerah(null);
+    }
     setSaldoAwalOpen(false);
 
     if (!formSerahSah) {
@@ -589,6 +599,18 @@ export function PanjarTab() {
           ? 'Lengkapi penerima, nominal, dan sumber kas terlebih dahulu.'
           : PESAN_TANGGAL_TIDAK_VALID,
       );
+      return;
+    }
+
+    const alasanPeringatan = rapikanAlasanPeringatan(opsi.alasanPeringatan);
+    if (
+      opsi.konfirmasiPeringatan === true &&
+      !alasanPeringatanCukup(alasanPeringatan)
+    ) {
+      setPesanKonfirmasiSerah(
+        (sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN,
+      );
+      setErrorKonfirmasiSerah(PESAN_ALASAN_PERINGATAN_MIN);
       return;
     }
 
@@ -612,10 +634,15 @@ export function PanjarTab() {
         alasanPakai,
         {
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          ...(opsi.konfirmasiPeringatan === true && alasanPeringatan
+            ? { alasanPeringatan }
+            : {}),
           ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
         },
       );
       alasanOpenRef.current = '';
+      setPesanKonfirmasiSerah(null);
+      setErrorKonfirmasiSerah(null);
       setPenerima('');
       setJumlah(0);
       setKeterangan('');
@@ -629,12 +656,24 @@ export function PanjarTab() {
       );
     } catch (e) {
       if (adalahErrorSaldoAwal(e)) {
+        setPesanKonfirmasiSerah(null);
+        setErrorKonfirmasiSerah(null);
         setSaldoAwalOpen(true);
       } else if (isPerluAlasan(e)) {
+        setPesanKonfirmasiSerah(null);
+        setErrorKonfirmasiSerah(null);
         setLockRetry(() => (a: string) => submitOpen(a));
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
-        setPesanKonfirmasiSerah(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasiSerah((sebelum) => sebelum ?? pesan);
+        // Penolakan "alasan kurang" ditampilkan di dalam modal agar operator
+        // bisa langsung memperbaiki isian yang sama.
+        setErrorKonfirmasiSerah(
+          opsi.konfirmasiPeringatan === true ? pesan : null,
+        );
       } else {
+        setPesanKonfirmasiSerah(null);
+        setErrorKonfirmasiSerah(null);
         setErr(pesanError(e));
       }
     } finally {
@@ -1088,25 +1127,21 @@ export function PanjarTab() {
         </div>
 
         {pesanKonfirmasiSerah && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasiSerah}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                disabled={busyOpen}
-                onClick={() => void submitOpen(undefined, { konfirmasiPeringatan: true })}
-              >
-                Ya, tetap serahkan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busyOpen}
-                onClick={() => setPesanKonfirmasiSerah(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasiSerah}
+            pesanError={errorKonfirmasiSerah}
+            sibuk={busyOpen}
+            onCancel={() => {
+              setPesanKonfirmasiSerah(null);
+              setErrorKonfirmasiSerah(null);
+            }}
+            onSubmit={(alasan) => {
+              void submitOpen(undefined, {
+                konfirmasiPeringatan: true,
+                alasanPeringatan: alasan,
+              });
+            }}
+          />
         )}
 
         <div className="mt-4">

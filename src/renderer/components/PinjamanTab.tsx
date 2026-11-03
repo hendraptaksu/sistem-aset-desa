@@ -7,6 +7,11 @@ import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal, tahunLokal } from '../../utils/tanggal.js';
 import { api, isPerluKonfirmasi, type ModePinjamanApi } from '../lib/api.js';
+import {
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
@@ -16,6 +21,7 @@ import {
   ErrorBox,
   Field,
   Modal,
+  PeringatanModal,
   Select,
   TextArea,
   TextInput,
@@ -138,6 +144,7 @@ export function PinjamanTab() {
   const [noBukti, setNoBukti] = useState('');
   const [jadwal, setJadwal] = useState<BarisJadwal[]>([barisBaru(1)]);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [detailId, setDetailId] = useState('');
   const [detail, setDetail] = useState<Record<string, Pinjaman>>({});
   const [pembayaran, setPembayaran] = useState<Record<string, PinjamanBayar[]>>({});
@@ -316,14 +323,19 @@ export function PinjamanTab() {
     setNoBukti('');
     setJadwal([barisBaru(1)]);
     setPesanKonfirmasi(null);
+    setErrorKonfirmasi(null);
     setDirty(false);
   }
 
-  async function simpan(konfirmasi = false): Promise<void> {
+  async function simpan(alasanPeringatan?: string): Promise<void> {
     if (busy) return;
+    const konfirmasi = alasanPeringatan !== undefined;
     setErr(null);
     setInfo(null);
-    if (!konfirmasi) setPesanKonfirmasi(null);
+    if (!konfirmasi) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     if (!kreditur.trim()) {
       setErr('Nama kreditur/LPD wajib diisi.');
       return;
@@ -354,6 +366,15 @@ export function PinjamanTab() {
       return;
     }
 
+    const alasanBersih = rapikanAlasanPeringatan(alasanPeringatan);
+    if (konfirmasi && !alasanPeringatanCukup(alasanBersih)) {
+      setPesanKonfirmasi(
+        (sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN,
+      );
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
+      return;
+    }
+
     setBusy(true);
     try {
       const r = await api.pinjamanSimpan(
@@ -376,8 +397,12 @@ export function PinjamanTab() {
             catatan: row.catatan.trim(),
           })),
         },
-        konfirmasi ? { konfirmasiPeringatan: true, alasanPeringatan: 'Konfirmasi operator' } : {},
+        konfirmasi
+          ? { konfirmasiPeringatan: true, alasanPeringatan: alasanBersih }
+          : {},
       );
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
       setInfo(
         `${mode === 'PENCAIRAN' ? 'Pencairan' : 'Pinjaman berjalan'} ` +
           `${r.pinjaman.kreditur} tersimpan` +
@@ -392,8 +417,16 @@ export function PinjamanTab() {
       setDetail({});
       await refresh();
     } catch (e) {
-      if (isPerluKonfirmasi(e)) setPesanKonfirmasi(pesanError(e));
-      else setErr(pesanError(e));
+      if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        // Penolakan "alasan kurang" tetap di dalam modal agar bisa diperbaiki.
+        setErrorKonfirmasi(konfirmasi ? pesan : null);
+      } else {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
+        setErr(pesanError(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -404,6 +437,7 @@ export function PinjamanTab() {
     setErr(null);
     setInfo(null);
     setPesanKonfirmasi(null);
+    setErrorKonfirmasi(null);
     setDirty(true);
   }
 
@@ -938,22 +972,18 @@ export function PinjamanTab() {
         </div>
 
         {pesanKonfirmasi && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900">
-            <p className="font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1">{pesanKonfirmasi}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button disabled={busy} onClick={() => void simpan(true)}>
-                Ya, tetap simpan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setPesanKonfirmasi(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasi}
+            pesanError={errorKonfirmasi}
+            sibuk={busy}
+            onCancel={() => {
+              setPesanKonfirmasi(null);
+              setErrorKonfirmasi(null);
+            }}
+            onSubmit={(alasan) => {
+              void simpan(alasan);
+            }}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">

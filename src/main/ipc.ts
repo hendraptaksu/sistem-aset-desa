@@ -893,6 +893,7 @@ export function registerIpc(deps: IpcDeps): void {
           ...bentuk.input,
           ...(alasanTeks ? { alasan: alasanTeks } : {}),
           konfirmasiPeringatan: konfirmasi,
+          alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
           // AKT-02: serah panjar ikut mewajibkan saldo awal pertama.
           wajibSaldoAwal: true,
           konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
@@ -906,7 +907,11 @@ export function registerIpc(deps: IpcDeps): void {
             m.includes('Periode sudah ditutup'),
           );
           const perluKonfirmasi =
-            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+            hasil.perluKonfirmasi &&
+            (hasil.errors.length === 0 ||
+              hasil.errors.every((m) =>
+                m.includes('wajib disertai alasan minimal 5 karakter'),
+              ));
           return fail(pesan, perluAlasan, perluKonfirmasi);
         }
         return ok({

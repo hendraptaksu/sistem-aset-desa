@@ -1293,6 +1293,7 @@ describe('AKT-02 — IPC utang usaha/panjar ikut mewajibkan saldo awal pertama',
 
     const ditolak = await env.panggil('panjar:create', input, undefined, {
       konfirmasiPeringatan: true,
+      alasanPeringatan: 'Kas minus disetujui pemilik',
     });
     expect(ditolak.ok).toBe(false);
     expect(ditolak.error).toMatch(/Belum ada saldo awal/);
@@ -1300,6 +1301,7 @@ describe('AKT-02 — IPC utang usaha/panjar ikut mewajibkan saldo awal pertama',
 
     const lanjut = await env.panggil('panjar:create', input, undefined, {
       konfirmasiPeringatan: true,
+      alasanPeringatan: 'Kas minus disetujui pemilik',
       konfirmasiTanpaSaldoAwal: true,
     });
     expect(lanjut.ok, lanjut.error).toBe(true);
@@ -2176,6 +2178,125 @@ describe('DB-16c — IPC pinjaman LPD', () => {
       jurnal_batal_id: batalPencairan.data.jurnal.id,
       outstanding: 0,
     });
+  });
+});
+
+describe('AUD2-07 — IPC panjar/pinjaman mewajibkan alasan peringatan', () => {
+  it('panjar:create menolak tanpa/pendek alasan, menerima alasan valid, dan audit memuatnya', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 100_000 }],
+    });
+    expect(awal.ok, awal.error).toBe(true);
+
+    const input = {
+      tanggal: '2026-01-02',
+      penerima: 'Panitia AUD2-07',
+      jumlah: 150_000,
+      akunKasSumber: '1001',
+    };
+
+    const belum = await env.panggil('panjar:create', input);
+    expect(belum.ok).toBe(false);
+    expect(belum.perluKonfirmasi).toBe(true);
+    expect(belum.error).toMatch(/akan minus/);
+
+    for (const alasanPeringatan of [undefined, '', '   ', 'ok']) {
+      const ditolak = await env.panggil('panjar:create', input, undefined, {
+        konfirmasiPeringatan: true,
+        ...(alasanPeringatan === undefined ? {} : { alasanPeringatan }),
+      });
+      expect(ditolak.ok, String(alasanPeringatan)).toBe(false);
+      expect(ditolak.error).toMatch(/alasan minimal 5 karakter/i);
+      expect(ditolak.perluKonfirmasi).toBe(true);
+    }
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+
+    const alasan = 'Kas minus disetujui pemilik';
+    const tersimpan = await env.panggil('panjar:create', input, undefined, {
+      konfirmasiPeringatan: true,
+      alasanPeringatan: alasan,
+    });
+    expect(tersimpan.ok, tersimpan.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(2);
+
+    const audit = await env.panggil('audit:list', { aksi: 'PANJAR-OPEN' });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    const data = JSON.parse(audit.data.rows[0].data_baru_json) as {
+      alasanPeringatan?: string;
+    };
+    expect(data.alasanPeringatan).toBe(alasan);
+  });
+
+  it('pinjaman:simpan menolak tanpa/pendek alasan, menerima alasan valid, dan audit memuatnya', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 100_000 }],
+    });
+    expect(awal.ok, awal.error).toBe(true);
+    const keluar = await env.panggil(
+      'transaksi:posting',
+      {
+        header: {
+          id: 'j-aud2-07-minus',
+          tanggal: '2026-01-02',
+          keterangan: 'Buat kas minus untuk AUD2-07',
+          jenis: 'BAYAR',
+        },
+        baris: [D('5000', 200_000), K('1001', 200_000)],
+      },
+      { konfirmasiPeringatan: true, alasanPeringatan: 'Kas minus disetujui pemilik' },
+    );
+    expect(keluar.ok, keluar.error).toBe(true);
+
+    const input = {
+      mode: 'PENCAIRAN',
+      kreditur: 'LPD AUD2-07',
+      tanggal: '2026-01-03',
+      akunKas: '1001',
+      akunBunga: '5063',
+      pokok: 50_000,
+      tenor: 1,
+      angsuran: [
+        { ke: 1, jatuh_tempo: '2026-02-01', pokok: 50_000, bunga: 0, catatan: '' },
+      ],
+    };
+
+    const belum = await env.panggil('pinjaman:simpan', input);
+    expect(belum.ok).toBe(false);
+    expect(belum.perluKonfirmasi).toBe(true);
+    expect(belum.error).toMatch(/akan minus/);
+
+    for (const alasanPeringatan of [undefined, '', '   ', 'ok']) {
+      const ditolak = await env.panggil('pinjaman:simpan', input, {
+        konfirmasiPeringatan: true,
+        ...(alasanPeringatan === undefined ? {} : { alasanPeringatan }),
+      });
+      expect(ditolak.ok, String(alasanPeringatan)).toBe(false);
+      expect(ditolak.error).toMatch(/alasan minimal 5 karakter/i);
+      expect(ditolak.perluKonfirmasi).toBe(true);
+    }
+
+    const alasan = 'Kas minus disetujui pemilik';
+    const tersimpan = await env.panggil('pinjaman:simpan', input, {
+      konfirmasiPeringatan: true,
+      alasanPeringatan: alasan,
+    });
+    expect(tersimpan.ok, tersimpan.error).toBe(true);
+    const jurnalId = tersimpan.data.jurnal.id as string;
+
+    const audit = await env.panggil('audit:list', { aksi: `CREATE ${jurnalId}` });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    const data = JSON.parse(audit.data.rows[0].data_baru_json) as {
+      peringatan: string[];
+      alasanPeringatan?: string;
+    };
+    expect(data.peringatan.join(' ')).toMatch(/akan minus/);
+    expect(data.alasanPeringatan).toBe(alasan);
   });
 });
 

@@ -165,7 +165,9 @@ export function reverseJurnal(
     // Metadata subledger pihak sudah tidak ada sejak skema v12 (DB-23b/DB-33).
     // Reversal hanya membuat jurnal balik seperti biasa.
     return postingJurnal(db, rencana.input!, {
-      konfirmasiPeringatan: opsi.konfirmasiPeringatan,
+      konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+      alasanPeringatan: alasan.trim(),
+      wajibAlasanPeringatan: true,
       koreksiSaldoAwal: anggotaSaldoAwal(db, detail.jurnal),
       audit: [audit],
     });

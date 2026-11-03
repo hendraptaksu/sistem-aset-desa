@@ -443,6 +443,7 @@ export const api = {
     alasan?: string,
     opsi: {
       konfirmasiPeringatan?: boolean;
+      alasanPeringatan?: string;
       wajibSaldoAwal?: boolean;
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
