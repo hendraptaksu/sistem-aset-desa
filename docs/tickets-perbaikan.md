@@ -46,7 +46,7 @@
 | AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [x] |
 | AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [x] |
 | AUD2-13 | P1 | M | Tabel "Transaksi Terakhir" & tombol Koreksi cepat di halaman `Transaksi` harian | — | [x] |
-| AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [ ] |
+| AUD2-14 | P2 | S | Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha` | AUD2-10 | [x] |
 | AUD2-15 | P2 | S | Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD` | — | [ ] |
 | AUD2-16 | P2 | S | Petunjuk pembeda akun kembar (`5010`/`5060`, `5004`/`5062`, `4005`/`4006`) di form input | — | [ ] |
 
@@ -311,7 +311,7 @@
   - **Bukti 2026-11-03:** `TransaksiTab` kini menampilkan kartu **"Transaksi Terakhir yang Dicatat"** berisi 10 jurnal terbaru (halaman terakhir `api.jurnalCari({ limit: 10, offset: 0 })` diambil bila total > 10, lalu diurutkan terbaru di atas) dengan kolom Tanggal, No. Bukti, Jenis, Keterangan, Nominal (jumlah debit baris), Status, dan aksi. `Lihat` membuka `DetailJurnalModal`; `Batalkan / Salah Input` hanya muncul untuk jurnal aktif non-panjar/non-pinjaman (HUTANG 2050 dikecualikan), membuka modal alasan minimal 5 karakter, memanggil `api.jurnalReverse(jurnal.id, alasan)`, lalu me-refresh daftar. `FormTransaksiTerpandu` menerima callback `onTersimpan`, dan `SaldoAwalWizard` memicu refresh yang sama; tersedia state memuat/kosong/gagal. Regression test `tests/aud2-13-transaksi-terakhir.test.ts` mencakup tabel, aturan pembatalan, nominal dari baris, pemuatan 10 terbaru, dan pengiriman alasan. `npm run typecheck`, 1077 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-14 — Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha`** · P2 · S
+- [x] **AUD2-14 — Tampilkan sisa saldo `2060 HUTANG USAHA` secara langsung di form `Bayar Utang Usaha`** · P2 · S
   - **Konteks:**
     Saat bendahara membuka kartu **Bayar Utang** (`BAYAR_UTANG` di `src/renderer/components/TransaksiForm.tsx`), ia tidak tahu berapa saldo Utang Usaha (`2060`) yang masih belum dibayar tanpa berpindah ke tab Neraca atau Buku Besar.
   - **File yang disentuh:**
@@ -322,6 +322,7 @@
   - **Test:**
     - Test komponen `FormTransaksiTerpandu` mode `BAYAR_UTANG` menampilkan saldo `2060` dan tombol pengisi nominal otomatis.
   - **DoD:** Bendahara langsung melihat sisa utang usaha saat hendak melunasi dan tidak salah ketik nominal pelunasan.
+  - **Bukti 2026-11-03:** Form `BAYAR_UTANG` kini memuat saldo `2060` s/d tanggal transaksi lewat `api.laporanBukuBesar({ akun_kode: '2060', sampai: tanggal })` dan menampilkan kotak **"Sisa Utang Usaha (2060) saat ini: Rp ..."**. Bila saldo positif, tombol **"Isi sesuai sisa utang"** mengisi `Nominal` tepat sebesar `saldoAkhir`; saldo nol/negatif hanya menampilkan penjelasan tanpa tombol. Status memuat/gagal tampil di kotak info tanpa memblokir form, perubahan tanggal memicu muat ulang, dan `buatPemuatSisaUtang` membuang hasil tanggal lama agar tidak menimpa hasil terbaru. Regression test `tests/aud2-14-sisa-utang.test.ts` mencakup pemanggilan API 2060, format Rupiah, tombol pengisi, kondisi nol/negatif, status memuat/gagal, dan proteksi race. `npm run typecheck`, 1088 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-10
 
 - [ ] **AUD2-15 — Generator jadwal angsuran otomatis (bagi rata pokok & jatuh tempo bulanan) di `Pinjaman LPD`** · P2 · S

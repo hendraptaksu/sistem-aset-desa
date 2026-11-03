@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AKUN_MODAL, isAkunKasData, type Coa } from '../../db/coa.js';
+import {
+  AKUN_HUTANG_USAHA,
+  AKUN_MODAL,
+  isAkunKasData,
+  type Coa,
+} from '../../db/coa.js';
 import {
   buatJurnalBayar,
   buatJurnalBayarUtangUsaha,
@@ -39,6 +44,7 @@ import {
 import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
+  PESAN_MUAT_GAGAL,
   PESAN_PROSES_GAGAL,
   PESAN_TANGGAL_TIDAK_VALID,
   pesanError,
@@ -224,6 +230,101 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
   },
 };
 
+export type StatusSisaUtang =
+  | { status: 'idle' }
+  | { status: 'memuat' }
+  | { status: 'sukses'; saldoAkhir: number }
+  | { status: 'gagal'; pesan: string };
+
+/** Nominal isian hanya untuk saldo utang positif; selain itu tidak ada isian. */
+export function nominalSisaUtang(saldoAkhir: number): number | null {
+  return Number.isInteger(saldoAkhir) && saldoAkhir > 0 ? saldoAkhir : null;
+}
+
+/** Saldo 2060 s/d tanggal transaksi (dalam sen, sesuai konvensi aplikasi). */
+export async function muatSisaUtangUsaha(tanggal: string): Promise<number> {
+  const hasil = await api.laporanBukuBesar({
+    akun_kode: AKUN_HUTANG_USAHA,
+    sampai: tanggal,
+  });
+  return hasil.saldoAkhir;
+}
+
+/**
+ * Pemuat yang hanya menerima hasil permintaan terbaru. Permintaan lama tetap
+ * berjalan, tetapi hasilnya menjadi `null` agar tidak menimpa tanggal baru.
+ */
+export function buatPemuatSisaUtang(
+  ambil: (tanggal: string) => Promise<number> = muatSisaUtangUsaha,
+): {
+  muat: (tanggal: string) => Promise<number | null>;
+  batalkan: () => void;
+} {
+  let nomorTerakhir = 0;
+  return {
+    async muat(tanggal: string): Promise<number | null> {
+      const nomor = ++nomorTerakhir;
+      const saldoAkhir = await ambil(tanggal);
+      return nomor === nomorTerakhir ? saldoAkhir : null;
+    },
+    batalkan(): void {
+      nomorTerakhir += 1;
+    },
+  };
+}
+
+/** Kotak info sisa Utang Usaha; dipisah agar mudah diuji tanpa IPC. */
+export function SisaUtangUsahaInfo({
+  status,
+  onIsi,
+}: {
+  status: StatusSisaUtang;
+  onIsi: (nominal: number) => void;
+}) {
+  return (
+    <div
+      data-testid="sisa-utang-usaha"
+      role="status"
+      className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[15px] text-amber-900"
+    >
+      {status.status === 'memuat' ? (
+        <p>Memuat sisa Utang Usaha (2060)…</p>
+      ) : status.status === 'gagal' ? (
+        <p>
+          Sisa Utang Usaha (2060) gagal dimuat. {status.pesan} Form tetap bisa
+          diisi manual.
+        </p>
+      ) : status.status === 'idle' ? (
+        <p>Isi tanggal yang valid untuk melihat sisa Utang Usaha (2060).</p>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold">
+              {`Sisa Utang Usaha (2060) saat ini: ${formatRp(status.saldoAkhir)}`}
+            </p>
+            {status.saldoAkhir <= 0 && (
+              <p className="mt-1 text-sm">
+                {status.saldoAkhir === 0
+                  ? 'Tidak ada sisa utang usaha (2060) per tanggal ini.'
+                  : 'Saldo (2060) tidak menunjukkan utang yang perlu dibayar.'}
+              </p>
+            )}
+          </div>
+          {status.saldoAkhir > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onIsi(status.saldoAkhir)}
+            >
+              Isi sesuai sisa utang
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FormTransaksiTerpandu({
   jenis,
   coa,
@@ -261,6 +362,9 @@ export function FormTransaksiTerpandu({
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
   const [noBukti, setNoBukti] = useState('');
+  const [sisaUtang, setSisaUtang] = useState<StatusSisaUtang>({
+    status: 'memuat',
+  });
 
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -274,6 +378,12 @@ export function FormTransaksiTerpandu({
   } | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
   const nominalRef = useRef<HTMLDivElement | null>(null);
+  const pemuatSisaUtangRef = useRef<ReturnType<
+    typeof buatPemuatSisaUtang
+  > | null>(null);
+  if (pemuatSisaUtangRef.current === null) {
+    pemuatSisaUtangRef.current = buatPemuatSisaUtang();
+  }
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
@@ -302,6 +412,38 @@ export function FormTransaksiTerpandu({
     ringkasan.focus({ preventScroll: true });
     ringkasan.scrollIntoView({ block: 'center' });
   }, [err, errorSeq]);
+
+  // Sisa Utang Usaha (2060) s/d tanggal transaksi. Form tetap bisa dipakai
+  // manual bila pemuatan gagal; hasil tanggal lama tidak boleh menimpa baru.
+  useEffect(() => {
+    if (!bayarUtang) return;
+    const pemuat = pemuatSisaUtangRef.current;
+    if (!pemuat) return;
+    if (!tanggalKalenderValid(tanggal)) {
+      pemuat.batalkan();
+      setSisaUtang({ status: 'idle' });
+      return;
+    }
+    let aktif = true;
+    setSisaUtang({ status: 'memuat' });
+    pemuat
+      .muat(tanggal)
+      .then((saldoAkhir) => {
+        if (!aktif || saldoAkhir === null) return;
+        setSisaUtang({ status: 'sukses', saldoAkhir });
+      })
+      .catch((e) => {
+        if (!aktif) return;
+        setSisaUtang({
+          status: 'gagal',
+          pesan: pesanError(e, PESAN_MUAT_GAGAL),
+        });
+      });
+    return () => {
+      aktif = false;
+      pemuat.batalkan();
+    };
+  }, [bayarUtang, tanggal]);
 
   // COA dimuat async oleh TransaksiTab. Isi pilihan awal saat datanya tiba,
   // tanpa menimpa pilihan yang sudah dibuat operator.
@@ -696,6 +838,20 @@ export function FormTransaksiTerpandu({
           className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
         >
           {info}
+        </div>
+      )}
+
+      {bayarUtang && (
+        <div className="mt-3">
+          <SisaUtangUsahaInfo
+            status={sisaUtang}
+            onIsi={(saldoAkhir) => {
+              const nilai = nominalSisaUtang(saldoAkhir);
+              if (nilai === null) return;
+              setNominal(nilai);
+              setDirty(true);
+            }}
+          />
         </div>
       )}
 
