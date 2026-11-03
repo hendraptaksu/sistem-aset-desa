@@ -56,7 +56,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('membuat tabel jurnal + jurnal_baris dan menaikkan user_version ke versi skema', () => {
     const { db } = freshDb();
     try {
-      expect(SCHEMA_VERSION).toBe(22);
+      expect(SCHEMA_VERSION).toBe(23);
       expect(versi(db)).toBe(SCHEMA_VERSION);
       const tabel = db
         .prepare(
@@ -858,7 +858,8 @@ describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
 
       // Fixture v1 tidak punya tutup_buku; DDL membuat bentuk v2 tanpa `laba`.
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
-      expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'backup_path', 'catatan']));
+      expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'catatan']));
+      expect(kolom).not.toContain('backup_path');
       expect(kolom).not.toContain('laba');
 
       expect(listJurnal(db)).toEqual([]);

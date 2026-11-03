@@ -1,11 +1,16 @@
 // AUD2-08 — nilai pecahan (REAL) pada jurnal_baris.
 //
+// Sejak AUD2-09 tabel jurnal_baris STRICT, sehingga SQLite sendiri menolak
+// REAL pada kolom INTEGER. Trigger AUD2-08 tetap dipertahankan sebagai
+// pertahanan kedua (mis. DB legacy/backup non-STRICT), dan auditIntegritas
+// tetap mendeteksi baris pecahan pada DB lama.
+//
 // Fokus:
-// - Trigger DB menolak debit/kredit bukan INTEGER (mis. 0.5) pada INSERT dan
-//   UPDATE, termasuk nilai negatif dan dua sisi nol.
+// - STRICT/trigger menolak debit/kredit bukan INTEGER (mis. 0.5) pada INSERT
+//   dan UPDATE, termasuk nilai negatif dan dua sisi nol.
 // - Aturan satu sisi (debit dan kredit sekaligus) tetap berlaku.
 // - Trigger baru diterapkan ke DB lama/current lewat `migrasi()`.
-// - `auditIntegritas` melaporkan baris pecahan bila trigger sempat dilewati.
+// - `auditIntegritas` melaporkan baris pecahan pada tabel legacy non-STRICT.
 
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -16,6 +21,7 @@ import { DDL, SCHEMA_VERSION, migrasi, openDb } from '../src/db/database.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 
 const WAKTU = '2026-11-03T00:00:00.000Z';
+const PESAN_PECAHAN = /bilangan bulat.*pecahan|cannot store REAL value in INTEGER/i;
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -77,9 +83,9 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
       buatJurnal(db);
 
       const kasus: [debit: number, kredit: number, pesan: RegExp][] = [
-        [0.5, 0, /bilangan bulat.*pecahan/i],
-        [0, 0.5, /bilangan bulat.*pecahan/i],
-        [0.25, 0.25, /bilangan bulat.*pecahan/i],
+        [0.5, 0, PESAN_PECAHAN],
+        [0, 0.5, PESAN_PECAHAN],
+        [0.25, 0.25, PESAN_PECAHAN],
         [-1, 0, /tidak boleh negatif/i],
         [0, -1, /tidak boleh negatif/i],
         [0, 0, /salah satu sisi/i],
@@ -128,8 +134,8 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
       db.exec('DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_update');
 
       const kasus: [debit: number, kredit: number, pesan: RegExp][] = [
-        [0.5, 0, /bilangan bulat.*pecahan/i],
-        [0, 0.5, /bilangan bulat.*pecahan/i],
+        [0.5, 0, PESAN_PECAHAN],
+        [0, 0.5, PESAN_PECAHAN],
         [-1, 0, /tidak boleh negatif/i],
         [0, -1, /tidak boleh negatif/i],
         [0, 0, /salah satu sisi/i],
@@ -153,13 +159,30 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
     }
   });
 
-  it('auditIntegritas melaporkan baris pecahan yang lolos saat trigger dilewati', () => {
+  it('auditIntegritas melaporkan baris pecahan pada tabel legacy non-STRICT', () => {
     const db = openDb(':memory:');
     try {
       buatJurnal(db);
+      // Simulasi DB/backup lama: jurnal_baris belum STRICT. STRICT mencegah
+      // REAL masuk, tetapi audit tetap harus mendeteksi data legacy.
       db.exec(`
         DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
         DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
+        DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_update;
+        DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_delete;
+        DROP TABLE jurnal_baris;
+        CREATE TABLE jurnal_baris (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          jurnal_id TEXT NOT NULL,
+          akun_kode TEXT NOT NULL,
+          debit INTEGER NOT NULL DEFAULT 0,
+          kredit INTEGER NOT NULL DEFAULT 0,
+          keterangan TEXT NOT NULL DEFAULT '',
+          CHECK (debit >= 0 AND kredit >= 0),
+          CHECK (debit > 0 OR kredit > 0),
+          FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
+          FOREIGN KEY (akun_kode) REFERENCES akun(kode)
+        );
       `);
       buatBaris(db, 'j-aud208', '1001', 0.5, 0);
       buatBaris(db, 'j-aud208', '4001', 0, 0.5);
@@ -194,7 +217,7 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
     const path = tmpDb('pura-aud208-migrasi-');
     const lama = new Database(path);
     try {
-      lama.exec(DDL);
+      lama.exec(DDL.replace(/\) STRICT;/g, ');'));
       pasangTriggerSatuSisiLama(lama);
       lama.pragma(`user_version = ${SCHEMA_VERSION}`);
     } finally {
@@ -220,7 +243,7 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
 
       buatJurnal(db);
       expect(() => buatBaris(db, 'j-aud208', '1001', 0.5, 0)).toThrow(
-        /bilangan bulat.*pecahan/i,
+        PESAN_PECAHAN,
       );
       expect(migrasi(db)).toBe(SCHEMA_VERSION);
     } finally {

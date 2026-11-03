@@ -1,8 +1,8 @@
 // Adapter DB untuk tutup buku (P0-7, AKT-10).
 //
 // `tutup_buku` hanya menyimpan penanda tahun + created_at + catatan. Kolom
-// legacy `backup_path` tetap ada di SQLite tetapi tidak dibaca/ditulis lagi
-// (DB-28). Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
+// legacy `backup_path` sudah dibuang oleh rebuild STRICT v23 (AUD2-09).
+// Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
 // dari jurnal lewat mesin laporan (P0-5).
 //
 // AKT-10: sebelum mengizinkan tutup buku, jalankan audit integritas. Bila ada

@@ -832,8 +832,7 @@ export function saranNomorBukti(db: Database.Database, tanggal: string): string 
 }
 
 export function listTutupBuku(db: Database.Database): TutupBuku[] {
-  // DB-28: `backup_path` tetap ada di SQLite untuk data lama, tetapi tidak
-  // pernah dibaca/diekspos lagi. Baris lama tetap terbaca lewat kolom lain.
+  // AUD2-09: `tutup_buku.backup_path` sudah dibuang dari skema v23.
   const rows = db
     .prepare('SELECT tahun, created_at, catatan FROM tutup_buku ORDER BY tahun')
     .all() as Record<string, unknown>[];
@@ -849,9 +848,7 @@ export function listTutupBuku(db: Database.Database): TutupBuku[] {
  * laba selalu jurnal (P0-7). Pemanggil wajib sudah memvalidasi penimpaan.
  */
 export function insertTutupBuku(db: Database.Database, t: TutupBuku): void {
-  // DB-28: kolom `backup_path` tidak lagi ditulis. Kolom itu tetap ada dengan
-  // DEFAULT '' agar DB lama valid; saat tutup ulang, nilai lama dibiarkan
-  // (tidak dihapus) karena tidak ada di daftar UPDATE.
+  // AUD2-09: `backup_path` tidak ada lagi di skema v23.
   db.prepare(
     `INSERT INTO tutup_buku (tahun, created_at, catatan)
      VALUES (?, ?, ?)

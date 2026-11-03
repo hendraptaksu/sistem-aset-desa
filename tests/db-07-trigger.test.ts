@@ -259,8 +259,8 @@ describe('DB-07 — trigger lama diganti body terbaru', () => {
       );
 
       db.prepare(
-        `INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan)
-         VALUES (2025, ?, '', 'Uji DB-07')`,
+        `INSERT INTO tutup_buku (tahun, created_at, catatan)
+         VALUES (2025, ?, 'Uji DB-07')`,
       ).run(WAKTU);
       expect(() => db.prepare('DELETE FROM tutup_buku WHERE tahun = 2025').run()).toThrow(
         /Tutup buku tidak boleh dihapus/,

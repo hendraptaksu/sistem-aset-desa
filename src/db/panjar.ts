@@ -178,13 +178,14 @@ function rowToPanjar(r: RowPanjar, totalRealisasi: number): Panjar {
     r.jurnal_batal_id === null || r.jurnal_batal_id === undefined
       ? null
       : String(r.jurnal_batal_id);
-  // Status publik diturunkan: kolom `status` sengaja tetap OPEN/CLOSED agar
-  // CHECK lama tidak perlu rebuild tabel. Baris yang punya jurnal batal
-  // ditampilkan DIBATALKAN.
+  // Status publik mengikuti kolom `status` resmi (OPEN/CLOSED/DIBATALKAN).
+  // Baris legacy yang dibatalkan sebelum v23 masih menyimpan status OPEN +
+  // `jurnal_batal_id`; keduanya tetap dibaca sebagai DIBATALKAN.
+  const statusDb = String(r.status);
   const status: Panjar['status'] =
-    jurnalBatalId !== null && jurnalBatalId !== ''
+    statusDb === 'DIBATALKAN' || (jurnalBatalId !== null && jurnalBatalId !== '')
       ? 'DIBATALKAN'
-      : String(r.status) === 'CLOSED'
+      : statusDb === 'CLOSED'
         ? 'CLOSED'
         : 'OPEN';
   const p: Panjar = {
@@ -508,7 +509,8 @@ export function closePanjarV2(
         .prepare(
           `UPDATE panjar
              SET status = 'CLOSED', tanggal_close = ?, jurnal_close_id = ?
-           WHERE id = ? AND status = 'OPEN'`,
+           WHERE id = ? AND status = 'OPEN'
+             AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')`,
         )
         .run(tanggalClose, jurnalId, id);
       if (Number(update.changes) !== 1)
@@ -574,11 +576,12 @@ export function closePanjarV2(
  *    lewat `rencanaReversal` — bukan `reverseJurnal`, supaya guard Jurnal Umum
  *    `PESAN_REVERSAL_PANJAR` tidak dilonggarkan untuk pengguna umum;
  * 3. posting reversal berjenis REVERSAL dengan grup & `reversal_of` jurnal
- *    serah, lalu tautkan `jurnal_batal_id`/`tanggal_batal`/`alasan_batal` dan
- *    tulis audit `PANJAR-BATAL`. Jurnal asli tidak pernah diubah/dihapus.
+ *    serah, lalu tautkan `jurnal_batal_id`/`tanggal_batal`/`alasan_batal`,
+ *    ubah `status` menjadi DIBATALKAN, dan tulis audit `PANJAR-BATAL`.
+ *    Jurnal asli tidak pernah diubah/dihapus.
  *
- * Status kolom tetap OPEN (CHECK lama); status publik DIBATALKAN diturunkan
- * dari `jurnal_batal_id`.
+ * Sejak v23 CHECK `panjar.status` resmi menerima DIBATALKAN; baris legacy
+ * dengan status OPEN + jurnal_batal_id tetap dibaca sebagai DIBATALKAN.
  */
 export function batalPanjarV2(
   db: Database.Database,
@@ -674,7 +677,8 @@ export function batalPanjarV2(
       const update = db
         .prepare(
           `UPDATE panjar
-              SET jurnal_batal_id = ?, tanggal_batal = ?, alasan_batal = ?
+              SET status = 'DIBATALKAN',
+                  jurnal_batal_id = ?, tanggal_batal = ?, alasan_batal = ?
             WHERE id = ?
               AND status = 'OPEN'
               AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')`,
@@ -848,7 +852,8 @@ export function listPanjarV2(
     where =
       "WHERE p.status = 'CLOSED' AND (p.jurnal_batal_id IS NULL OR p.jurnal_batal_id = '')";
   else if (status === 'DIBATALKAN')
-    where = "WHERE p.jurnal_batal_id IS NOT NULL AND p.jurnal_batal_id <> ''";
+    where =
+      "WHERE p.status = 'DIBATALKAN' OR (p.jurnal_batal_id IS NOT NULL AND p.jurnal_batal_id <> '')";
 
   const sql = `
     SELECT p.*, COALESCE(SUM(i.nominal), 0) AS total_realisasi

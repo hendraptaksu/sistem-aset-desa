@@ -81,9 +81,9 @@ function buatFixtureV8(path: string): void {
     ).run('p-v8', '5004', 75_000, 'j-v8-item');
 
     db.prepare(
-      `INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan)
-       VALUES (?, ?, ?, ?)`,
-    ).run(2025, WAKTU, '/backup/2025.db', 'Tutup buku v8');
+      `INSERT INTO tutup_buku (tahun, created_at, catatan)
+       VALUES (?, ?, ?)`,
+    ).run(2025, WAKTU, 'Tutup buku v8');
 
     db.pragma('user_version = 8');
   } finally {
@@ -112,7 +112,7 @@ function bacaDataPreserved(db: Database.Database): {
       .all(),
     tutup: db
       .prepare(
-        `SELECT tahun, created_at, backup_path, catatan
+        `SELECT tahun, created_at, catatan
            FROM tutup_buku ORDER BY tahun`,
       )
       .all(),
@@ -153,7 +153,6 @@ describe('DB-06 — data v8 aman saat openDb', () => {
         {
           tahun: 2025,
           created_at: WAKTU,
-          backup_path: '/backup/2025.db',
           catatan: 'Tutup buku v8',
         },
       ]);
@@ -280,7 +279,7 @@ describe('DB-06 — DROP tidak lagi diputuskan dari bentuk kolom', () => {
         );
         CREATE TABLE tutup_buku (
           tahun INTEGER PRIMARY KEY, laba INTEGER NOT NULL,
-          created_at TEXT NOT NULL, backup_path TEXT NOT NULL DEFAULT ''
+          created_at TEXT NOT NULL
         );
 
         INSERT INTO panjar
@@ -324,8 +323,10 @@ describe('DB-06 — DROP tidak lagi diputuskan dari bentuk kolom', () => {
 
     // Pemakaian bentuk kolom hanya untuk ALTER TABLE aditif: audit_log (P0-9
     // dan DB-27), akun (DB-14), panjar_item (DB-18), dan guard index link
-    // panjar DB-20/21 (tabel panjar bentuk lama tidak direbuild). Tidak boleh
-    // ada panggilan shape-check untuk tabel lain.
+    // panjar DB-20/21 (tabel panjar bentuk lama tidak direbuild). AUD2-09
+    // memakai bentuk kolom untuk memilih rebuild STRICT vs fallback yang
+    // mempertahankan seluruh kolom legacy. Tidak boleh ada panggilan shape-check
+    // untuk memutuskan DROP data.
     const panggilanKolom = [...sumber.matchAll(/kolomTabel\(db,\s*'([^']+)'\)/g)].map(
       (m) => m[1],
     );
@@ -335,6 +336,7 @@ describe('DB-06 — DROP tidak lagi diputuskan dari bentuk kolom', () => {
       'panjar',
       'panjar',
       'audit_log',
+      'panjar',
       'audit_log',
     ]);
     expect(sumber.match(/table_info\(/g) ?? []).toHaveLength(1);

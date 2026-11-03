@@ -181,11 +181,12 @@ di-seed lewat SQL langsung.
 
 Migrasi v19 menambah kolom aditif `jurnal_batal_id`, `tanggal_batal`, dan
 `alasan_batal`, plus partial unique index `ux_panjar_jurnal_batal` (satu jurnal
-batal untuk satu dokumen). Tabel **tidak** direbuild dan CHECK lama
-`status IN ('OPEN','CLOSED')` tidak diubah.
+batal untuk satu dokumen). Sejak v23 (AUD2-09) tabel panjar ikut direbuild
+`STRICT` dan CHECK status resmi menjadi `OPEN`, `CLOSED`, atau `DIBATALKAN`.
 
-- Saat panjar OPEN dibatalkan, status tersimpan tetap `OPEN`; status publik
-  `DIBATALKAN` diturunkan dari `jurnal_batal_id` yang tidak NULL.
+- Saat panjar OPEN dibatalkan, status tersimpan menjadi `DIBATALKAN` dan
+  `jurnal_batal_id` menautkan jurnal balik. Baris legacy yang masih `OPEN`
+  tetapi punya `jurnal_batal_id` tetap dibaca sebagai `DIBATALKAN`.
 - Jurnal balik dibuat dari jurnal serah: `D kas sumber / K 1040`, berjenis
   `REVERSAL`, `grup_id` sama, `reversal_of` = jurnal serah, keterangan
   `KOREKSI: ...`. Jurnal serah asli tidak diubah/dihapus.

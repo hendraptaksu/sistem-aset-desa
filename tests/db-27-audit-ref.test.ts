@@ -411,8 +411,8 @@ describe('DB-27 — migrasi v20 → v21', () => {
 
     const db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(22);
-      expect(Number(db.pragma('user_version', { simple: true }))).toBe(22);
+      expect(SCHEMA_VERSION).toBe(23);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(23);
 
       const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map(
         (k) => k.name,
@@ -451,7 +451,7 @@ describe('DB-27 — migrasi v20 → v21', () => {
     // Idempoten: buka ulang tidak menambah kolom/data atau menurunkan versi.
     const db2 = openDb(path);
     try {
-      expect(Number(db2.pragma('user_version', { simple: true }))).toBe(22);
+      expect(Number(db2.pragma('user_version', { simple: true }))).toBe(23);
       expect(listAuditLog(db2)).toHaveLength(1);
     } finally {
       db2.close();

@@ -1111,6 +1111,10 @@ describe('DB-21 — pembatalan panjar OPEN', () => {
         tanggal: '2026-02-02',
       });
       expect(hasil.jurnal?.keterangan).toMatch(/^KOREKSI: /);
+      // AUD2-09: status tersimpan resmi DIBATALKAN, bukan OPEN + link.
+      expect(db.prepare('SELECT status FROM panjar WHERE id = ?').get('p1')).toEqual({
+        status: 'DIBATALKAN',
+      });
 
       // Reversal menukar debit/kredit jurnal serah: D kas sumber / K 1040.
       expect(ringkasBaris('j-batal-p1', db)).toEqual([

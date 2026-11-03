@@ -1,15 +1,14 @@
-// DB-30 — invariant ringan skema aktif (v21).
+// DB-30 — invariant ringan skema aktif (v23).
 //
 // Fokus:
 // - set tabel aktif tepat 11; tidak ada tabel modul lama yang muncul kembali;
+// - seluruh 11 tabel aktif STRICT (AUD2-09);
 // - unique index penting (saldo awal, reversal, nama akun NOCASE, link panjar,
 //   link pembayaran pinjaman) ada dan unik;
 // - kolom `created_at` tersedia pada tabel yang memakainya; `audit_log` memakai
 //   `tanggal` (bukan `created_at`) sesuai skema nyata;
 // - `pinjaman_bayar`/`pinjaman_angsuran` tidak menyimpan saldo berjalan atau
 //   nominal pembayaran ganda.
-//
-// Test ini sengaja tidak mengubah DDL/SCHEMA_VERSION dan tidak merebuild tabel.
 
 import type Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
@@ -43,6 +42,13 @@ function kolom(db: Database.Database, tabel: string): string[] {
   return (db.pragma(`table_info(${tabel})`) as { name: string }[]).map(
     (k) => k.name,
   );
+}
+
+function strict(db: Database.Database, tabel: string): number {
+  const row = (
+    db.pragma('table_list') as { schema: string; name: string; strict: number }[]
+  ).find((r) => r.schema === 'main' && r.name === tabel);
+  return Number(row?.strict ?? -1);
 }
 
 interface InfoIndex {
@@ -101,8 +107,11 @@ describe('DB-30 — invariant tabel aktif', () => {
   it('memakai tepat 11 tabel aktif dan tidak menghidupkan tabel lama', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(22);
+      expect(SCHEMA_VERSION).toBe(23);
       expect(namaTabel(db)).toEqual([...TABEL_AKTIF]);
+      for (const tabel of TABEL_AKTIF) {
+        expect(strict(db, tabel), `${tabel} harus STRICT`).toBe(1);
+      }
       expect(namaTabel(db)).not.toEqual(
         expect.arrayContaining([...TABEL_DIHAPUS_V12]),
       );

@@ -1,8 +1,8 @@
 // DB-28 — hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI.
 //
 // Fokus:
-// - kolom backup_path tetap ada di SQLite dan data lama tetap terbaca;
-// - penulisan baru tidak lagi menyimpan/mengekspos path backup;
+// - kolom backup_path sudah dibuang dari skema v23 (AUD2-09);
+// - penulisan baru tidak menyimpan/mengekspos path backup;
 // - pengaturan lama non-Januari tetap terbaca tanpa auto-rewrite;
 // - save pengaturan dari kontrak publik (tanpa awal tahun) menulis Januari;
 // - UI Pengaturan tidak punya field/peringatan awal tahun buku dan riwayat
@@ -81,34 +81,16 @@ afterEach(() => {
 });
 
 describe('DB-28 — tutup buku tanpa backup_path', () => {
-  it('baris lama tetap terbaca dan nilai backup_path tidak dihapus', () => {
+  it('skema tutup_buku hanya berisi tahun, created_at, dan catatan', () => {
     const db = dbKosong();
-    db.prepare(
-      `INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan)
-       VALUES (2025, '2026-01-01T00:00:00.000Z', '/backup/lama-2025.db', 'Catatan lama')`,
-    ).run();
-
-    const riwayat = listTutupBuku(db);
-    expect(riwayat).toEqual([
-      {
-        tahun: 2025,
-        created_at: '2026-01-01T00:00:00.000Z',
-        catatan: 'Catatan lama',
-      },
-    ]);
-    expect(riwayat[0]).not.toHaveProperty('backup_path');
-
-    // Nilai lama tidak disentuh oleh pembacaan.
-    const fisik = db
-      .prepare('SELECT backup_path, catatan FROM tutup_buku WHERE tahun = 2025')
-      .get() as { backup_path: string; catatan: string };
-    expect(fisik).toEqual({
-      backup_path: '/backup/lama-2025.db',
-      catatan: 'Catatan lama',
-    });
+    const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map(
+      (k) => k.name,
+    );
+    expect(kolom).toEqual(['tahun', 'created_at', 'catatan']);
+    expect(kolom).not.toContain('backup_path');
   });
 
-  it('tutup baru tidak menulis backup_path; audit baru juga tidak memuatnya', () => {
+  it('tutup baru menyimpan catatan; audit baru tidak memuat backup_path', () => {
     const db = dbKosong();
     catatPendapatan(db, 2025);
 
@@ -120,9 +102,10 @@ describe('DB-28 — tutup buku tanpa backup_path', () => {
     expect(hasil.data).not.toHaveProperty('backup_path');
 
     const fisik = db
-      .prepare('SELECT backup_path FROM tutup_buku WHERE tahun = 2025')
-      .get() as { backup_path: string };
-    expect(fisik.backup_path).toBe('');
+      .prepare('SELECT tahun, created_at, catatan FROM tutup_buku WHERE tahun = 2025')
+      .get() as { tahun: number; created_at: string; catatan: string };
+    expect(fisik.tahun).toBe(2025);
+    expect(fisik.catatan).toBe('Sudah diperiksa');
 
     const audit = listAuditLog(db).find((a) => a.aksi === 'TUTUP 2025');
     expect(audit).toBeDefined();
@@ -140,12 +123,13 @@ describe('DB-28 — tutup buku tanpa backup_path', () => {
     void terlarang;
   });
 
-  it('tutup ulang tidak menghapus nilai backup_path baris lama', () => {
+  it('tutup ulang memperbarui catatan tanpa kolom legacy', () => {
     const db = dbKosong();
-    db.prepare(
-      `INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan)
-       VALUES (2024, '2025-01-01T00:00:00.000Z', '/backup/lama-2024.db', 'Lama')`,
-    ).run();
+    insertTutupBuku(db, {
+      tahun: 2024,
+      created_at: '2025-01-01T00:00:00.000Z',
+      catatan: 'Lama',
+    });
 
     insertTutupBuku(db, {
       tahun: 2024,
@@ -160,10 +144,6 @@ describe('DB-28 — tutup buku tanpa backup_path', () => {
         catatan: 'Diperbarui',
       },
     ]);
-    const fisik = db
-      .prepare('SELECT backup_path FROM tutup_buku WHERE tahun = 2024')
-      .get() as { backup_path: string };
-    expect(fisik.backup_path).toBe('/backup/lama-2024.db');
   });
 });
 

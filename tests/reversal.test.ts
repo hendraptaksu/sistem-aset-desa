@@ -347,8 +347,8 @@ describe('P0-6 — reversal di database', () => {
     const db = freshDb();
     try {
       db.prepare(
-        'INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan) VALUES (?, ?, ?, ?)',
-      ).run(2025, '2026-01-01T00:00:00.000Z', '', 'Uji kunci');
+        'INSERT INTO tutup_buku (tahun, created_at, catatan) VALUES (?, ?, ?)',
+      ).run(2025, '2026-01-01T00:00:00.000Z', 'Uji kunci');
 
       insertJurnalTervalidasi(
         db,
@@ -687,8 +687,8 @@ describe('P0-6 — koreksi & isi ulang', () => {
     const db = freshDb();
     try {
       db.prepare(
-        'INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan) VALUES (?, ?, ?, ?)',
-      ).run(2025, '2026-01-01T00:00:00.000Z', '', '');
+        'INSERT INTO tutup_buku (tahun, created_at, catatan) VALUES (?, ?, ?)',
+      ).run(2025, '2026-01-01T00:00:00.000Z', '');
 
       insertJurnalTervalidasi(
         db,

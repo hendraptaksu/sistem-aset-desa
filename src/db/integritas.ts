@@ -770,13 +770,21 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       'jurnal_id',
     ]);
   const panjarLengkap = panjarV2 && panjarItemV2;
+  // Baris legacy yang dibatalkan sebelum v23 masih berstatus OPEN tetapi punya
+  // jurnal_batal_id. Jangan perlakukan sebagai panjar OPEN aktif.
+  const filterBatal = kolomPanjar.has('jurnal_batal_id')
+    ? " AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')"
+    : '';
+  const filterBatalP = kolomPanjar.has('jurnal_batal_id')
+    ? " AND (p.jurnal_batal_id IS NULL OR p.jurnal_batal_id = '')"
+    : '';
 
   const panjarOpenTanpaJurnal = panjarV2
     ? (db
         .prepare(
           `SELECT id, status, jurnal_open_id, jurnal_close_id, tanggal_close
              FROM panjar
-            WHERE status = 'OPEN'
+            WHERE status = 'OPEN'${filterBatal}
               AND (jurnal_open_id IS NULL OR jurnal_open_id = '')
             ORDER BY id`,
         )
@@ -830,7 +838,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         .prepare(
           `SELECT id, status, jurnal_open_id, jurnal_close_id, tanggal_close
              FROM panjar
-            WHERE status = 'OPEN'
+            WHERE status = 'OPEN'${filterBatal}
               AND (
                 (jurnal_close_id IS NOT NULL AND jurnal_close_id <> '')
                 OR (tanggal_close IS NOT NULL AND tanggal_close <> '')
@@ -858,7 +866,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           `SELECT p.id, p.status, COUNT(i.id) AS jumlah_item
              FROM panjar p
              JOIN panjar_item i ON i.panjar_id = p.id
-            WHERE p.status = 'OPEN'
+            WHERE p.status = 'OPEN'${filterBatalP}
             GROUP BY p.id
            HAVING COUNT(i.id) > 0
             ORDER BY p.id`,
@@ -875,10 +883,11 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     });
   }
 
-  // DB-21: panjar yang dibatalkan wajib punya jurnal balik yang valid, tanggal
-  // dan alasan, tetap tersimpan OPEN, serta tidak punya close/item. Tautan
-  // yatim/duplikat dan status yang tidak konsisten dilaporkan tanpa perbaikan
-  // otomatis. Panjar OPEN non-batal tetap memakai pemeriksaan lama di atas.
+  // DB-21/AUD2-09: panjar yang dibatalkan wajib punya jurnal balik yang valid,
+  // tanggal dan alasan, status tersimpan DIBATALKAN (baris legacy OPEN tetap
+  // diterima), serta tidak punya close/item. Tautan yatim/duplikat dan status
+  // yang tidak konsisten dilaporkan tanpa perbaikan otomatis. Panjar OPEN
+  // non-batal tetap memakai pemeriksaan lama di atas.
   //
   // Audit juga dipakai untuk memvalidasi backup lama SEBELUM migrasi. Karena
   // kolom v19 belum tentu ada di sana, bagian batal dilewati bila kolomnya
@@ -924,8 +933,10 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       alasan.push('tanggal_batal masih kosong');
     if (String(r.alasan_batal ?? '').trim().length < 5)
       alasan.push('alasan_batal kurang dari 5 karakter');
-    if (r.status !== 'OPEN')
-      alasan.push(`status tersimpan ${r.status}, seharusnya tetap OPEN`);
+    if (r.status !== 'OPEN' && r.status !== 'DIBATALKAN')
+      alasan.push(
+        `status tersimpan ${r.status}, seharusnya OPEN/DIBATALKAN`,
+      );
     if (r.jurnal_close_id)
       alasan.push(`masih punya jurnal close ${r.jurnal_close_id}`);
     if (r.tanggal_close)

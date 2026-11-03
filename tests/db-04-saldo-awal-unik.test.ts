@@ -245,8 +245,8 @@ describe('DB-04 — migrasi v13', () => {
 
       const db = openDb(path);
       try {
-        expect(SCHEMA_VERSION).toBe(22);
-        expect(versi(db)).toBe(22);
+        expect(SCHEMA_VERSION).toBe(23);
+        expect(versi(db)).toBe(23);
         expect(indeksSaldoAwal(db)?.name).toBe('ux_jurnal_saldo_awal');
         expect(jumlahJurnal(db)).toBe(2);
         expect(
@@ -263,7 +263,7 @@ describe('DB-04 — migrasi v13', () => {
       // Buka ulang: idempoten, index tidak dobel, saldo awal tidak bertambah.
       const db2 = openDb(path);
       try {
-        expect(versi(db2)).toBe(22);
+        expect(versi(db2)).toBe(23);
         expect(
           db2
             .prepare(

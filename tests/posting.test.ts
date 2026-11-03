@@ -895,8 +895,8 @@ describe('P0-4 — kunci periode via DB', () => {
     const { db } = freshDb();
     try {
       db.prepare(
-        'INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan) VALUES (?, ?, ?, ?)',
-      ).run(2025, '2026-01-01T00:00:00.000Z', '', 'Uji kunci');
+        'INSERT INTO tutup_buku (tahun, created_at, catatan) VALUES (?, ?, ?)',
+      ).run(2025, '2026-01-01T00:00:00.000Z', 'Uji kunci');
 
       const koreksi = {
         header: header({
@@ -924,8 +924,8 @@ describe('P0-4 — kunci periode via DB', () => {
     const { db } = freshDb();
     try {
       db.prepare(
-        'INSERT INTO tutup_buku (tahun, created_at, backup_path, catatan) VALUES (?, ?, ?, ?)',
-      ).run(2025, '2026-01-01T00:00:00.000Z', '', '');
+        'INSERT INTO tutup_buku (tahun, created_at, catatan) VALUES (?, ?, ?)',
+      ).run(2025, '2026-01-01T00:00:00.000Z', '');
 
       const hasil = postingJurnal(db, {
         header: header({ id: 'j-2026', tanggal: '2026-01-01', no_bukti: 'JU-2026-0009' }),

@@ -164,8 +164,8 @@ describe('DB-20 — migrasi v18 link jurnal panjar unik', () => {
 
     let db = openDb(path);
     try {
-      expect(SCHEMA_VERSION).toBe(22);
-      expect(versi(db)).toBe(22);
+      expect(SCHEMA_VERSION).toBe(23);
+      expect(versi(db)).toBe(23);
       expect(daftarIndex(db)).toEqual(
         expect.arrayContaining(['ux_panjar_jurnal_open', 'ux_panjar_jurnal_close']),
       );
@@ -196,7 +196,7 @@ describe('DB-20 — migrasi v18 link jurnal panjar unik', () => {
 
     db = openDb(path);
     try {
-      expect(versi(db)).toBe(22);
+      expect(versi(db)).toBe(23);
       expect(
         (db.prepare('SELECT COUNT(*) AS n FROM panjar').get() as { n: number }).n,
       ).toBe(1);

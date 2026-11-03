@@ -88,7 +88,8 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
       }
       // tutup_buku v2 tidak menyimpan laba sebagai sumber angka.
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
-      expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'backup_path', 'catatan']));
+      expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'catatan']));
+      expect(kolom).not.toContain('backup_path');
       expect(kolom).not.toContain('laba');
     } finally {
       db.close();

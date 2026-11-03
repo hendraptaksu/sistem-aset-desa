@@ -1,6 +1,6 @@
 # ERD v2 — Skema Aktif Keuangan Pura Dalem Puri
 
-**Status:** aktif, ditulis 2026-11-02 dari skema `SCHEMA_VERSION = 22`.
+**Status:** aktif, ditulis 2026-11-02 dari skema `SCHEMA_VERSION = 23`.
 **Sumber kebenaran dokumen ini:** DDL di `src/db/database.ts` dan database baru
 hasil `openDb(':memory:')` (bukan database produksi/dev).
 **Cakupan:** 11 tabel aktif — `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`,
@@ -27,8 +27,10 @@ di sini.
    tabel ini sengaja tidak memiliki `created_at`. Trigger menolak UPDATE/DELETE.
 5. **`panjar` menyimpan header operasional, bukan angka turunan.** `tanggal`,
    `jumlah`, dan `akun_kas_sumber` adalah cermin jurnal serah; `total_realisasi`,
-   `sisa`, dan `kurang` dihitung dari `panjar_item` + jurnal. Status publik
-   `DIBATALKAN` diturunkan dari `jurnal_batal_id`, bukan nilai `status` baru.
+   `sisa`, dan `kurang` dihitung dari `panjar_item` + jurnal. Sejak v23 status
+   `DIBATALKAN` disimpan resmi di `panjar.status`; baris legacy yang masih
+   berstatus `OPEN` tetapi punya `jurnal_batal_id` tetap dibaca sebagai
+   `DIBATALKAN` dan dinormalisasi oleh migrasi.
 6. **`pinjaman_angsuran` adalah rencana; jurnal adalah realisasi.**
    `pinjaman_bayar` hanya menautkan `jurnal_id` + `angsuran_id`; nominal
    pokok/bunga/denda dibaca dari baris jurnal. Outstanding =
@@ -38,15 +40,19 @@ di sini.
    `ux_akun_nama_nocase` (DB-11). Constraint ini tidak diduplikasi di tempat
    lain; trigger akun hanya memvalidasi bentuk kode/nama/tipe/posisi/aktif.
 
-## Kebijakan tabel baru: `STRICT` + `DEFAULT`
+## Kebijakan `STRICT` untuk seluruh tabel aktif
 
-Saat DB-30 diaudit, **11 tabel aktif belum memakai `STRICT`**. Tabel
-`pinjaman`, `pinjaman_angsuran`, dan `pinjaman_bayar` dibuat pada v20, sebelum
-kebijakan ini, dan sudah mungkin berisi data. Ticket DB-30 **tidak boleh**
-merebuild tabel lama/tabel pinjaman tanpa ticket migrasi terpisah dan kenaikan
-`SCHEMA_VERSION`; karena itu DDL pinjaman dibiarkan apa adanya.
+Sejak skema **v23 (AUD2-09)**, **seluruh 11 tabel aktif memakai `STRICT`**.
+Database baru dibuat langsung `STRICT`; database lama non-`STRICT` direbuild
+secara atomik oleh migrasi v23 (tabel baru -> salin kolom -> drop tabel lama ->
+rename) dengan `foreign_keys` dimatikan sementara di luar transaksi. Data
+dipertahankan, lalu seluruh index dan trigger dipasang ulang. Rebuild ini juga
+membuang kolom warisan `tutup_buku.backup_path` dan memperlebar CHECK status
+panjar. Tabel bentuk pra-v4 yang tidak cocok dengan DDL aktif tetap
+dipertahankan seluruh kolomnya dan hanya ditambah `STRICT`, sehingga data
+legacy tidak hilang; tabel seperti itu bukan bagian model aktif v2.
 
-Kebijakan untuk **tabel baru setelah DB-30**:
+Kebijakan untuk **tabel baru setelah v23**:
 
 - Wajib `CREATE TABLE ... (...) STRICT`.
 - Kolom `NOT NULL` wajib punya `DEFAULT` eksplisit bila nilainya boleh diisi
@@ -58,9 +64,9 @@ Kebijakan untuk **tabel baru setelah DB-30**:
   `YYYY-MM-DD HH:MM:SS`) lalu aplikasi menormalisasi/mengisi ISO penuh
   (`YYYY-MM-DDTHH:MM:SS.sssZ`) saat INSERT, atau isi ISO penuh dari aplikasi
   tanpa mengandalkan default DB.
-- Jangan menyalin DDL `pinjaman*` yang non-STRICT/tanpa default `created_at`
-  untuk tabel baru. Tabel lama hanya boleh direbuild lewat ticket khusus yang
-  menaikkan `SCHEMA_VERSION` dan menyediakan migrasi + backup.
+- Jangan membuat tabel aktif baru tanpa `STRICT`; tabel lama hanya boleh
+  diubah lewat migrasi yang menaikkan `SCHEMA_VERSION` dan menyediakan rebuild
+  + backup.
 
 Kolom waktu pada skema aktif saat ini:
 
@@ -172,14 +178,12 @@ laporan berasal dari tabel ini.
 ### `tutup_buku`
 
 Penanda tahun yang sudah dikunci. Tidak menyimpan laba, saldo, atau jurnal
-penutup. `backup_path` adalah kolom legacy yang tidak lagi dipakai UI sejak
-DB-28; dipertahankan agar tabel tidak direbuild.
+penutup. Kolom warisan `backup_path` sudah dibuang pada rebuild STRICT v23.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
 | `tahun` | INTEGER | tidak efektif | — | PRIMARY KEY |
 | `created_at` | TEXT | tidak | — | ISO dari aplikasi |
-| `backup_path` | TEXT | tidak | `''` | legacy, tidak dipakai UI |
 | `catatan` | TEXT | tidak | `''` | — |
 
 **Trigger:** `trg_tutup_buku_immutable_delete`.
@@ -222,9 +226,9 @@ preferensi UI).
 ### `panjar`
 
 Header dokumen panjar. `jumlah` dan `tanggal` adalah cermin jurnal serah dan
-wajib cocok; nilai turunan tidak disimpan. `status` tersimpan hanya
-`OPEN`/`CLOSED`; pembatalan ditandai `jurnal_batal_id` dan status publik
-`DIBATALKAN` diturunkan saat membaca.
+wajib cocok; nilai turunan tidak disimpan. `status` resmi berisi
+`OPEN`/`CLOSED`/`DIBATALKAN`; pembatalan juga menautkan `jurnal_batal_id`
+sebagai jejak jurnal balik.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
@@ -233,7 +237,7 @@ wajib cocok; nilai turunan tidak disimpan. `status` tersimpan hanya
 | `penerima` | TEXT | tidak | — | — |
 | `jumlah` | INTEGER | tidak | — | CHECK `jumlah > 0`; cermin nominal jurnal serah |
 | `akun_kas_sumber` | TEXT | tidak | — | FK `akun(kode)` |
-| `status` | TEXT | tidak | `'OPEN'` | CHECK `status IN ('OPEN','CLOSED')` |
+| `status` | TEXT | tidak | `'OPEN'` | CHECK `status IN ('OPEN','CLOSED','DIBATALKAN')` |
 | `tanggal_close` | TEXT | ya | — | diisi saat close |
 | `jurnal_open_id` | TEXT | tidak | — | FK `jurnal(id)`; UNIQUE |
 | `jurnal_close_id` | TEXT | ya | — | FK `jurnal(id)`; UNIQUE bila tidak NULL |
@@ -272,7 +276,7 @@ realisasi; jurnal close tetap agregat per akun.
 Header perjanjian pinjaman LPD. `sisa_pokok_awal` adalah saldo awal yang sudah
 ada di Saldo Awal 2050 (bukan saldo berjalan). `jurnal_pencairan_id = NULL`
 berarti pinjaman sudah berjalan dan modul tidak membuat jurnal pencairan baru.
-Tabel ini berasal dari v20 dan belum `STRICT` (lihat kebijakan tabel baru).
+Tabel ini berasal dari v20 dan sudah direbuild `STRICT` oleh v23.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
@@ -286,7 +290,7 @@ Tabel ini berasal dari v20 dan belum `STRICT` (lihat kebijakan tabel baru).
 | `tenor_bulan` | INTEGER | ya | — | CHECK `tenor_bulan > 0` bila diisi |
 | `jurnal_pencairan_id` | TEXT | ya | — | UNIQUE; FK `jurnal(id)` |
 | `catatan` | TEXT | tidak | `''` | — |
-| `created_at` | TEXT | tidak | — | ISO dari aplikasi; warisan v20 tanpa default DB |
+| `created_at` | TEXT | tidak | — | ISO dari aplikasi |
 
 **Index:** `idx_pinjaman_tanggal`, `idx_pinjaman_kreditur`; autoindex UNIQUE
 untuk `jurnal_pencairan_id`.
@@ -297,7 +301,7 @@ untuk `jurnal_pencairan_id`.
 
 Rencana jadwal angsuran. Bukan realisasi; status BELUM/SEBAGIAN/LUNAS dihitung
 dari akumulasi nominal jurnal pembayaran aktif yang tertaut ke angsuran.
-Tabel ini berasal dari v20 dan belum `STRICT`.
+Tabel ini berasal dari v20 dan sudah direbuild `STRICT` oleh v23.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
@@ -317,7 +321,8 @@ autoindex UNIQUE `(pinjaman_id, ke)`.
 ### `pinjaman_bayar`
 
 Link pembayaran ke jurnal + angsuran. Tidak menyimpan nominal pokok/bunga/denda
-maupun saldo berjalan. Tabel ini berasal dari v20 dan belum `STRICT`.
+maupun saldo berjalan. Tabel ini berasal dari v20 dan sudah direbuild `STRICT`
+oleh v23.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
@@ -327,7 +332,7 @@ maupun saldo berjalan. Tabel ini berasal dari v20 dan belum `STRICT`.
 | `jurnal_id` | TEXT | tidak | — | UNIQUE; FK `jurnal(id)` |
 | `tanggal` | TEXT | tidak | — | tanggal pembayaran |
 | `catatan` | TEXT | tidak | `''` | — |
-| `created_at` | TEXT | tidak | — | ISO dari aplikasi; warisan v20 tanpa default DB |
+| `created_at` | TEXT | tidak | — | ISO dari aplikasi |
 
 **Index:** `idx_pinjaman_bayar_pinjaman`, `idx_pinjaman_bayar_tanggal`,
 `idx_pinjaman_bayar_angsuran` (non-unique); autoindex UNIQUE `jurnal_id`.
@@ -350,15 +355,19 @@ maupun saldo berjalan. Tabel ini berasal dari v20 dan belum `STRICT`.
 - Tidak ada kolom `sisa_pokok`, `running_balance`, `saldo_berjalan`, atau
   `saldo_pokok` di `pinjaman`, `pinjaman_bayar`, maupun `pinjaman_angsuran`.
   `pinjaman_bayar` juga tidak punya kolom nominal `pokok`/`bunga`/`denda`.
-- Semua tabel aktif saat ini **non-STRICT**; tiga tabel `pinjaman*` adalah
-  warisan v20 yang sengaja tidak direbuild. Kebijakan `STRICT` hanya berlaku
-  untuk tabel baru setelah DB-30.
+- Semua 11 tabel aktif sudah **`STRICT`** sejak v23 (AUD2-09), termasuk tiga
+  tabel `pinjaman*` warisan v20 yang direbuild tanpa kehilangan data.
+  `tutup_buku.backup_path` tidak ada lagi di skema aktif.
 
 ## Catatan migrasi
 
-- Skema aktif **v22**: index unik per angsuran dilepas untuk pembayaran sebagian.
-  Data/jurnal tidak dibuang atau direbuild.
-- DB lama dibuka lewat migrasi idempoten v2–v22. Tabel modul yang sudah dihapus
+- Skema aktif **v23**: seluruh tabel aktif direbuild `STRICT`; kolom
+  `tutup_buku.backup_path` dibuang; CHECK `panjar.status` diperlebar ke
+  `DIBATALKAN`; panjar lama yang sudah punya `jurnal_batal_id` dinormalisasi
+  menjadi `DIBATALKAN`. Data dan jurnal tidak dibuang.
+- Skema v22 melepas index unik per angsuran untuk pembayaran sebagian.
+  Data/jurnal tidak dibuang atau direbuild pada migrasi itu.
+- DB lama dibuka lewat migrasi idempoten v2–v23. Tabel modul yang sudah dihapus
   dibuang hanya oleh migrasi v12 yang eksplisit; tabel akuntansi inti dan
   panjar tidak pernah dibuang berdasarkan bentuk kolom.
 - `akun.nama` unik NOCASE dipasang oleh migrasi v15 (DB-11), bukan diduplikasi

@@ -92,11 +92,36 @@ import {
  *
  * - 22   = pembayaran sebagian: beberapa pembayaran per angsuran; jurnal_id
  *          tetap unik. Riwayat pembatalan diturunkan dari jurnal reversal.
+ * - 23   = seluruh 11 tabel aktif menjadi STRICT (AUD2-09): tabel non-STRICT
+ *          direbuild atomik (tabel baru -> salin kolom -> drop lama -> rename)
+ *          dengan foreign key dimatikan sementara. `tutup_buku.backup_path`
+ *          dibuang dan CHECK `panjar.status` diperlebar ke
+ *          OPEN/CLOSED/DIBATALKAN. Index + trigger dipasang ulang setelah
+ *          rebuild; data lama tidak diubah/dihapus selain normalisasi status
+ *          panjar yang sudah punya `jurnal_batal_id` menjadi DIBATALKAN.
  *
  * DB-30 (hygiene/ERD v2) TIDAK menaikkan versi: tidak ada DDL, rebuild, atau
  * perubahan data. Kontrak skema aktif didokumentasikan di `docs/erd-v2.md`.
  */
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
+
+/**
+ * AUD2-09 — daftar resmi 11 tabel aktif yang wajib `STRICT`.
+ * Urutan mengikuti dokumen ERD; jangan menambah tabel legacy di sini.
+ */
+export const TABEL_AKTIF = [
+  'akun',
+  'jurnal',
+  'jurnal_baris',
+  'tutup_buku',
+  'audit_log',
+  'pengaturan',
+  'panjar',
+  'panjar_item',
+  'pinjaman',
+  'pinjaman_angsuran',
+  'pinjaman_bayar',
+] as const;
 
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
@@ -116,10 +141,10 @@ export const PESAN_DB_VERSI_BARU =
  * DB-30 — kebijakan tabel baru: tabel yang dibuat SETELAH DB-30 wajib memakai
  * `STRICT` dan memberi `DEFAULT` eksplisit untuk kolom waktu (`created_at`
  * default ISO). Tabel pinjaman di bawah dibuat pada v20, SEBELUM kebijakan
- * itu, dan sengaja TIDAK direbuild/diubah karena data bisa sudah ada; rebuild
- * hanya boleh lewat ticket migrasi terpisah + kenaikan `SCHEMA_VERSION`.
- * Jangan menyalin DDL non-STRICT/tanpa default `created_at` ini untuk tabel
- * baru. Dokumen kontrak: `docs/erd-v2.md`.
+ * itu. Sejak AUD2-09 (v23) seluruh tabel aktif, termasuk tiga tabel pinjaman,
+ * direbuild menjadi `STRICT` oleh `terapkanMigrasiV23()`. Jangan menyalin DDL
+ * tanpa `STRICT`/default `created_at` ini untuk tabel baru. Dokumen kontrak:
+ * `docs/erd-v2.md`.
  */
 export const DDL_PINJAMAN = `
 CREATE TABLE IF NOT EXISTS pinjaman (
@@ -134,7 +159,7 @@ CREATE TABLE IF NOT EXISTS pinjaman (
   jurnal_pencairan_id TEXT UNIQUE NULL REFERENCES jurnal(id),
   catatan TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_pinjaman_tanggal ON pinjaman(tanggal_mulai);
 CREATE INDEX IF NOT EXISTS idx_pinjaman_kreditur ON pinjaman(kreditur);
 
@@ -147,7 +172,7 @@ CREATE TABLE IF NOT EXISTS pinjaman_angsuran (
   bunga INTEGER NOT NULL CHECK (bunga >= 0),
   catatan TEXT NOT NULL DEFAULT '',
   UNIQUE (pinjaman_id, ke)
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_pinjaman
   ON pinjaman_angsuran(pinjaman_id);
 CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_jatuh_tempo
@@ -161,7 +186,7 @@ CREATE TABLE IF NOT EXISTS pinjaman_bayar (
   tanggal TEXT NOT NULL,
   catatan TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_pinjaman
   ON pinjaman_bayar(pinjaman_id);
 CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
@@ -206,7 +231,7 @@ CREATE TABLE IF NOT EXISTS akun (
   is_kas INTEGER NOT NULL DEFAULT 0,
   kelompok TEXT NOT NULL DEFAULT '',
   sumber TEXT NOT NULL DEFAULT 'BAWAAN'
-);
+) STRICT;
 
 -- Model double-entry: jurnal = satu transaksi/bukti, jurnal_baris = debit/kredit.
 CREATE TABLE IF NOT EXISTS jurnal (
@@ -219,7 +244,7 @@ CREATE TABLE IF NOT EXISTS jurnal (
   reversal_of TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (reversal_of) REFERENCES jurnal(id)
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
 CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
@@ -237,7 +262,7 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
   CHECK (debit > 0 OR kredit > 0),
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
   FOREIGN KEY (akun_kode) REFERENCES akun(kode)
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
 CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 
@@ -246,9 +271,8 @@ CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 CREATE TABLE IF NOT EXISTS tutup_buku (
   tahun INTEGER PRIMARY KEY,
   created_at TEXT NOT NULL,
-  backup_path TEXT NOT NULL DEFAULT '',
   catatan TEXT NOT NULL DEFAULT ''
-);
+) STRICT;
 
 -- Audit log lengkap (P0-9): alasan + kondisi sebelum/sesudah dalam JSON.
 -- DB-27: ref_type/ref_id menunjuk objek terkait secara terstruktur
@@ -265,14 +289,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
   data_baru_json TEXT NOT NULL DEFAULT '',
   ref_type TEXT NOT NULL DEFAULT '',
   ref_id TEXT NOT NULL DEFAULT ''
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
 CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
 
 CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
   nilai TEXT NOT NULL DEFAULT ''
-);
+) STRICT;
 
 -- Panjar v2 (P1-4): dokumen serah & pertanggungjawaban.
 -- Angka saldo/realisasi TIDAK disimpan di sini; laporan tetap dihitung dari
@@ -296,15 +320,19 @@ CREATE TABLE IF NOT EXISTS panjar (
   penerima TEXT NOT NULL,
   jumlah INTEGER NOT NULL CHECK (jumlah > 0),
   akun_kas_sumber TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'DIBATALKAN')),
   tanggal_close TEXT,
   jurnal_open_id TEXT NOT NULL,
   jurnal_close_id TEXT,
   created_at TEXT NOT NULL,
+  jurnal_batal_id TEXT,
+  tanggal_batal TEXT,
+  alasan_batal TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (akun_kas_sumber) REFERENCES akun(kode),
   FOREIGN KEY (jurnal_open_id) REFERENCES jurnal(id),
-  FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id)
-);
+  FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id),
+  FOREIGN KEY (jurnal_batal_id) REFERENCES jurnal(id)
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
 CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
 
@@ -322,7 +350,7 @@ CREATE TABLE IF NOT EXISTS panjar_item (
   FOREIGN KEY (panjar_id) REFERENCES panjar(id) ON DELETE CASCADE,
   FOREIGN KEY (kategori_baga) REFERENCES akun(kode),
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
-);
+) STRICT;
 CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
 
 ${DDL_PINJAMAN}
@@ -988,6 +1016,209 @@ function terapkanMigrasiV21(db: Database.Database): void {
 }
 
 /**
+ * AUD2-09 — helper strictness. `pragma table_list` adalah sumber kebenaran
+ * (bukan tebakan dari SQL DDL). Dipakai migrasi dan test kontrak.
+ */
+type InfoTabel = {
+  schema: string;
+  name: string;
+  type: string;
+  strict: number;
+  sql?: string | null;
+};
+
+function infoTabel(db: Database.Database, nama: string): InfoTabel | undefined {
+  return (db.pragma('table_list') as InfoTabel[]).find(
+    (r) => r.schema === 'main' && r.name === nama && r.type === 'table',
+  );
+}
+
+function sqlTabel(db: Database.Database, nama: string): string {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(nama) as { sql: string } | undefined;
+  return String(row?.sql ?? '');
+}
+
+/** Daftar tabel aktif yang belum STRICT (kosong = seluruh kontrak terpenuhi). */
+export function tabelAktifBelumStrict(db: Database.Database): string[] {
+  return TABEL_AKTIF.filter((nama) => {
+    const info = infoTabel(db, nama);
+    return !info || Number(info.strict) !== 1;
+  });
+}
+
+/**
+ * AUD2-09 — verifikasi akhir migrasi. Melempar pesan Indonesia yang menyebut
+ * tabel bermasalah agar operator tidak membuka DB dengan skema setengah jadi.
+ */
+export function pastikanTabelAktifStrict(db: Database.Database): void {
+  const belum = tabelAktifBelumStrict(db);
+  if (belum.length === 0) return;
+  throw new Error(
+    'Migrasi v23 gagal: tabel aktif wajib STRICT, tetapi tabel berikut belum ' +
+      `STRICT atau tidak ditemukan: ${belum.join(', ')}. ` +
+      'Database tidak diubah lebih lanjut; periksa file DB/backup.',
+  );
+}
+
+/** Ambil CREATE TABLE target (STRICT) untuk satu tabel dari DDL resmi. */
+function ddlTargetTabel(nama: string): string {
+  const pola = new RegExp(
+    `CREATE TABLE IF NOT EXISTS ${nama} \\([\\s\\S]*?\\n\\) STRICT;`,
+  );
+  const hasil = DDL.match(pola);
+  if (!hasil) throw new Error(`DDL STRICT untuk tabel ${nama} tidak ditemukan.`);
+  return hasil[0];
+}
+
+/** Nama kolom dari CREATE TABLE target; constraint bukan kolom. */
+function kolomDariDdl(ddl: string): string[] {
+  return [...ddl.matchAll(/^  ([a-z_]+) (?:TEXT|INTEGER|REAL|BLOB|ANY)\b/gm)].map(
+    (m) => m[1],
+  );
+}
+
+function dropTabelSementara(db: Database.Database, nama: string): string {
+  const tmp = `__strict_${nama}`;
+  db.exec(`DROP TABLE IF EXISTS "${tmp}"`);
+  return tmp;
+}
+
+/**
+ * Rebuild ke bentuk DDL target: tabel baru -> salin kolom target -> drop lama
+ * -> rename. Hanya dipakai bila seluruh kolom target ada dan tidak ada kolom
+ * ekstra yang berisi data (kecuali `tutup_buku.backup_path` yang memang
+ * dibuang).
+ */
+function rebuildTabelTarget(
+  db: Database.Database,
+  nama: string,
+  targetSql: string,
+  kolomTarget: string[],
+): void {
+  const tmp = dropTabelSementara(db, nama);
+  const sqlTmp = targetSql.replace(
+    `CREATE TABLE IF NOT EXISTS ${nama}`,
+    `CREATE TABLE "${tmp}"`,
+  );
+  db.exec(sqlTmp);
+  const daftar = kolomTarget.map((k) => `"${k}"`).join(', ');
+  db.exec(`INSERT INTO "${tmp}" (${daftar}) SELECT ${daftar} FROM "${nama}"`);
+  db.exec(`DROP TABLE "${nama}"`);
+  db.exec(`ALTER TABLE "${tmp}" RENAME TO "${nama}"`);
+}
+
+/**
+ * Fallback untuk tabel bentuk legacy yang tidak cocok dengan DDL target
+ * (mis. `tutup_buku` v2 dengan kolom `laba`). Bentuk kolom dipertahankan
+ * 100%, hanya ditambah opsi `STRICT`, sehingga tidak ada data legacy yang
+ * hilang. Tabel seperti ini tidak dipakai sebagai tabel aktif model v2.
+ */
+function rebuildTabelBentukLama(
+  db: Database.Database,
+  nama: string,
+  sqlLama: string,
+): void {
+  const tmp = dropTabelSementara(db, nama);
+  const tanpaSemi = sqlLama.trim().replace(/;\s*$/, '');
+  const pola = new RegExp(
+    '^(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)(?:["\\x60\\[])?' +
+      nama +
+      '(?:["\\x60\\]])?',
+    'i',
+  );
+  const sqlTmp = tanpaSemi.replace(pola, `$1"${tmp}"`);
+  if (sqlTmp === tanpaSemi)
+    throw new Error(`Bentuk CREATE TABLE legacy untuk ${nama} tidak dikenali.`);
+  const opsi = /WITHOUT\s+ROWID\s*$/i.test(sqlTmp) ? ', STRICT' : ' STRICT';
+  const kolomLama = kolomTabel(db, nama);
+  try {
+    db.exec(`${sqlTmp}${opsi}`);
+    const daftar = kolomLama.map((k) => `"${k}"`).join(', ');
+    db.exec(`INSERT INTO "${tmp}" (${daftar}) SELECT ${daftar} FROM "${nama}"`);
+    db.exec(`DROP TABLE "${nama}"`);
+    db.exec(`ALTER TABLE "${tmp}" RENAME TO "${nama}"`);
+  } catch (e) {
+    throw new Error(
+      `Migrasi v23 gagal merebuild tabel legacy ${nama} menjadi STRICT: ` +
+        `${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+/**
+ * AUD2-09 — migrasi v23: rebuild seluruh tabel aktif non-STRICT menjadi
+ * STRICT. Tabel yang sudah STRICT dan bentuknya sudah sesuai dilewati, jadi
+ * fungsi ini idempoten dan aman dipanggil setiap `migrasi()`.
+ *
+ * Urutan aman:
+ * 1. `migrasi()` mematikan `foreign_keys` SEBELUM transaksi (pragma ini tidak
+ *    berlaku di dalam transaksi), sehingga DROP/RENAME tidak memicu cascade
+ *    atau penolakan FK sementara.
+ * 2. Untuk tabel bentuk current: buat tabel target, salin kolom target, drop
+ *    tabel lama, rename. `tutup_buku.backup_path` tidak disalin.
+ * 3. Untuk tabel bentuk legacy yang tidak cocok: pertahankan seluruh kolom,
+ *    cukup tambahkan STRICT agar tidak ada data yang hilang.
+ * 4. Normalisasi panjar lama: baris yang sudah punya `jurnal_batal_id`
+ *    diubah statusnya menjadi DIBATALKAN (CHECK baru mengizinkannya).
+ * 5. Index/trigger dipasang ulang oleh `migrasi()` setelah fungsi ini.
+ */
+function terapkanMigrasiV23(db: Database.Database): string[] {
+  const dibangun: string[] = [];
+
+  for (const nama of TABEL_AKTIF) {
+    const info = infoTabel(db, nama);
+    if (!info) continue;
+
+    const kolomLama = kolomTabel(db, nama);
+    const targetSql = ddlTargetTabel(nama);
+    const kolomTarget = kolomDariDdl(targetSql);
+    const setLama = new Set(kolomLama);
+    const setTarget = new Set(kolomTarget);
+    const kolomLengkap = kolomTarget.every((k) => setLama.has(k));
+    const ekstra = kolomLama.filter((k) => !setTarget.has(k));
+    const ekstraAman =
+      ekstra.length === 0 ||
+      (nama === 'tutup_buku' && ekstra.every((k) => k === 'backup_path'));
+    const sudahStrict = Number(info.strict) === 1;
+    const checkPanjarBaru =
+      nama !== 'panjar' || sqlTabel(db, nama).includes("'DIBATALKAN'");
+
+    if (sudahStrict && !kolomLengkap) continue;
+    if (sudahStrict && kolomLengkap && !ekstraAman) continue;
+    if (
+      sudahStrict &&
+      kolomLengkap &&
+      ekstraAman &&
+      ekstra.length === 0 &&
+      checkPanjarBaru
+    )
+      continue;
+
+    if (kolomLengkap && ekstraAman) {
+      rebuildTabelTarget(db, nama, targetSql, kolomTarget);
+    } else {
+      rebuildTabelBentukLama(db, nama, sqlTabel(db, nama));
+    }
+    dibangun.push(nama);
+  }
+
+  const kolomPanjar = new Set(kolomTabel(db, 'panjar'));
+  if (kolomPanjar.has('status') && kolomPanjar.has('jurnal_batal_id')) {
+    db.prepare(
+      `UPDATE panjar
+          SET status = 'DIBATALKAN'
+        WHERE jurnal_batal_id IS NOT NULL
+          AND jurnal_batal_id <> ''
+          AND status = 'OPEN'`,
+    ).run();
+  }
+
+  return dibangun;
+}
+
+/**
  * DB-05 — guard downgrade. `openDb()` memanggil ini SEBELUM pragma WAL (yang
  * mengubah header file), dan `migrasi()` memanggilnya sebelum DDL. DB dengan
  * `user_version` lebih besar tidak boleh disentuh sama sekali.
@@ -1016,42 +1247,71 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v19 (kolom pembatalan panjar + link jurnal batal unik).
  * - Menerapkan migrasi v20 (tabel pinjaman LPD, aditif/idempoten).
  * - Menerapkan migrasi v21 (referensi audit terstruktur, aditif/idempoten).
+ * - Menerapkan migrasi v23 (rebuild seluruh tabel aktif menjadi STRICT).
  * - Menaikkan user_version ke versi skema saat ini.
  */
 export function migrasi(db: Database.Database): number {
   const versiAwal = pastikanVersiDidukung(db);
-  const siapkan = db.transaction(() => {
-    // DB-06: `versiAwal` ditangkap SEBELUM `user_version` diubah. Cleanup
-    // legacy tidak boleh berjalan pada DB baru/current.
-    terapkanMigrasiSingleEntryLama(db, versiAwal);
-    db.exec(DDL);
-    // P0-9: DB v2 belum punya kolom data baru. ALTER TABLE idempoten agar DB
-    // yang dibuat sebelum audit lengkap tetap terbuka tanpa kehilangan audit lama.
-    if (!kolomTabel(db, 'audit_log').includes('data_baru_json')) {
-      db.exec("ALTER TABLE audit_log ADD COLUMN data_baru_json TEXT NOT NULL DEFAULT ''");
-    }
-    terapkanAturanV9(db);
-    terapkanKontrakV10(db);
-    terapkanAturanV11(db);
-    terapkanMigrasiV12(db);
-    terapkanMigrasiV13(db);
-    terapkanMigrasiV14(db);
-    terapkanMigrasiV15(db);
-    terapkanMigrasiV16(db);
-    terapkanMigrasiV17(db);
-    terapkanMigrasiV18(db);
-    terapkanMigrasiV19(db);
-    terapkanMigrasiV20(db);
-    terapkanMigrasiV21(db);
-    // v22: lepaskan batas satu kuitansi per angsuran, tanpa mengubah histori.
-    db.exec('DROP INDEX IF EXISTS ux_pinjaman_bayar_angsuran');
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
-      ON pinjaman_bayar(angsuran_id)`);
-    if (versiAwal < SCHEMA_VERSION) {
-      db.pragma(`user_version = ${SCHEMA_VERSION}`);
-    }
-  });
-  siapkan();
+  // AUD2-09: `PRAGMA foreign_keys` tidak bisa diubah di dalam transaksi.
+  // Matikan dulu agar DROP/RENAME tabel saat rebuild tidak memicu cascade atau
+  // penolakan FK sementara; setelah transaksi selesai/rollback, pulihkan.
+  const fkAwal = Number(db.pragma('foreign_keys', { simple: true })) === 1;
+  if (fkAwal && !db.inTransaction) db.pragma('foreign_keys = OFF');
+
+  try {
+    const siapkan = db.transaction(() => {
+      // DB-06: `versiAwal` ditangkap SEBELUM `user_version` diubah. Cleanup
+      // legacy tidak boleh berjalan pada DB baru/current.
+      terapkanMigrasiSingleEntryLama(db, versiAwal);
+      db.exec(DDL);
+      // P0-9: DB v2 belum punya kolom data baru. ALTER TABLE idempoten agar DB
+      // yang dibuat sebelum audit lengkap tetap terbuka tanpa kehilangan audit lama.
+      if (!kolomTabel(db, 'audit_log').includes('data_baru_json')) {
+        db.exec("ALTER TABLE audit_log ADD COLUMN data_baru_json TEXT NOT NULL DEFAULT ''");
+      }
+      terapkanAturanV9(db);
+      terapkanKontrakV10(db);
+      terapkanAturanV11(db);
+      terapkanMigrasiV12(db);
+      terapkanMigrasiV13(db);
+      terapkanMigrasiV14(db);
+      terapkanMigrasiV15(db);
+      terapkanMigrasiV16(db);
+      terapkanMigrasiV17(db);
+      terapkanMigrasiV18(db);
+      terapkanMigrasiV19(db);
+      terapkanMigrasiV20(db);
+      terapkanMigrasiV21(db);
+      // v22: lepaskan batas satu kuitansi per angsuran, tanpa mengubah histori.
+      db.exec('DROP INDEX IF EXISTS ux_pinjaman_bayar_angsuran');
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
+        ON pinjaman_bayar(angsuran_id)`);
+
+      // AUD2-09: rebuild tabel non-STRICT. Index/trigger yang ikut terhapus
+      // oleh DROP TABLE dipasang ulang di bawah (DDL + fungsi aturan).
+      terapkanMigrasiV23(db);
+      db.exec(DDL);
+      terapkanAturanV9(db);
+      terapkanAturanV11(db);
+      terapkanMigrasiV13(db);
+      terapkanMigrasiV14(db);
+      terapkanMigrasiV15(db);
+      terapkanMigrasiV18(db);
+      terapkanMigrasiV19(db);
+      terapkanMigrasiV21(db);
+      db.exec('DROP INDEX IF EXISTS ux_pinjaman_bayar_angsuran');
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
+        ON pinjaman_bayar(angsuran_id)`);
+
+      pastikanTabelAktifStrict(db);
+      if (versiAwal < SCHEMA_VERSION) {
+        db.pragma(`user_version = ${SCHEMA_VERSION}`);
+      }
+    });
+    siapkan();
+  } finally {
+    if (fkAwal && !db.inTransaction) db.pragma('foreign_keys = ON');
+  }
   return Number(db.pragma('user_version', { simple: true }));
 }
 

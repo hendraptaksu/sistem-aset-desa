@@ -41,7 +41,7 @@
 | AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [x] |
 | AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [x] |
 | AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [x] |
-| AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [ ] |
+| AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [x] |
 | AUD2-10 | P1 | S | Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA` | — | [ ] |
 | AUD2-11 | P1 | M | Ubah input & tampilan nominal ke Rupiah bulat (tanpa desimal sen `,00`) | — | [ ] |
 | AUD2-12 | P2 | S | Hapus tab redundan `Buku Pembantu` & perjelas label arah mutasi di `Buku Besar` | AUD2-01 | [ ] |
@@ -219,7 +219,7 @@
   - **Bukti 2026-11-03:** `terapkanAturanV9` membuat ulang `trg_jurnal_baris_satu_sisi_insert`/`_update` dengan penolakan `typeof(NEW.debit)`/`typeof(NEW.kredit) <> 'integer'`, nilai negatif, dan dua sisi nol; aturan satu sisi tetap berlaku dan body baru otomatis diterapkan ke DB existing lewat migrasi. `auditIntegritas` menambah temuan `BARIS_NILAI_PECAHAN` beserta tipe `typeof`/nilai mentah. Regression test baru mencakup jalur insert, update, audit saat trigger dilewati, dan migrasi DB existing. `npm run typecheck`, 1044 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-09 — Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan** · P1 · M
+- [x] **AUD2-09 — Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan** · P1 · M
   - **Konteks:**
     Aplikasi belum di production dan semua data masih dummy. Saat ini ke-11 tabel aktif di `src/db/database.ts` belum memakai `STRICT` (`docs/erd-v2.md:43`), `tutup_buku` masih menyimpan kolom warisan `backup_path`, dan `panjar.status` masih `CHECK (status IN ('OPEN', 'CLOSED'))`.
   - **File yang disentuh:**
@@ -234,6 +234,7 @@
   - **Test:**
     - Pastikan `pragma table_list` menunjukkan `strict = 1` untuk seluruh 11 tabel aktif pada `openDb(':memory:')` maupun DB hasil migrasi, dan `tests/erd-v2.test.ts` hijau.
   - **DoD:** Seluruh 11 tabel database aktif berstatus `STRICT` dan cocok 100% dengan `docs/erd-v2.md`.
+  - **Bukti 2026-11-03:** Seluruh 11 tabel aktif kini `STRICT` di DDL baru dan pada DB hasil migrasi; `SCHEMA_VERSION` naik ke 23 dengan migrasi rebuild atomik (`foreign_keys` dimatikan sementara, tabel baru -> salin kolom -> drop lama -> rename, fallback bentuk legacy tanpa kehilangan kolom), index/trigger dipasang ulang, dan helper `pastikanTabelAktifStrict()` memverifikasi kontrak. `tutup_buku.backup_path` dihapus dari DDL/migrasi; CHECK `panjar.status` menerima `DIBATALKAN`, `batalPanjarV2` menulis status tersebut, baris legacy dinormalisasi, serta filter/audit/UI disesuaikan. `docs/erd-v2.md` dan test kontrak diperbarui. Regression test baru mencakup DB v22 non-STRICT (seluruh data 11 tabel, index, trigger, FK), DB versi lama tanpa tabel pinjaman, dan `openDb(':memory:')`. `npm run typecheck`, 1048 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-08
 
 - [ ] **AUD2-10 — Peringatan saldo negatif (debit > kredit) pada pembayaran `2060 HUTANG USAHA`** · P1 · S

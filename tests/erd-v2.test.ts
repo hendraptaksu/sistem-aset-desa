@@ -15,6 +15,7 @@ import type Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import {
   SCHEMA_VERSION,
+  TABEL_AKTIF,
   TABEL_DIHAPUS_V12,
   TABEL_SINGLE_ENTRY_LAMA,
   openDb,
@@ -82,6 +83,13 @@ function kolomTabel(db: Database.Database, tabel: string): string[] {
   );
 }
 
+function strictTabel(db: Database.Database, tabel: string): number {
+  const row = (
+    db.pragma('table_list') as { schema: string; name: string; strict: number }[]
+  ).find((r) => r.schema === 'main' && r.name === tabel);
+  return Number(row?.strict ?? -1);
+}
+
 describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
   it('mendokumentasikan tepat 11 tabel aktif dan tidak ada tabel lain', () => {
     const db = openDb(':memory:');
@@ -91,6 +99,24 @@ describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
 
       expect(diDb).toHaveLength(11);
       expect([...diErd].sort()).toEqual(diDb);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('seluruh 11 tabel aktif STRICT dan tidak punya kolom backup_path', () => {
+    const db = openDb(':memory:');
+    try {
+      expect([...TABEL_AKTIF].sort()).toEqual(namaTabelAktif(db));
+      for (const tabel of TABEL_AKTIF) {
+        expect(strictTabel(db, tabel), `${tabel} harus STRICT`).toBe(1);
+      }
+      expect(kolomTabel(db, 'tutup_buku')).toEqual([
+        'tahun',
+        'created_at',
+        'catatan',
+      ]);
+      expect(ERD).not.toContain('| `backup_path` |');
     } finally {
       db.close();
     }

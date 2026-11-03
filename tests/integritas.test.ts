@@ -604,7 +604,8 @@ describe('DB-12 — perluasan audit integritas', () => {
       db.prepare("UPDATE akun SET posisi_normal = 'DEBIT' WHERE kode = '4001'").run();
       db.prepare("UPDATE akun SET posisi_normal = 'SALAH' WHERE kode = '4002'").run();
       db.prepare('UPDATE akun SET aktif = 2 WHERE kode = ?').run('4003');
-      db.prepare("UPDATE akun SET aktif = 'ya' WHERE kode = '4004'").run();
+      // STRICT v23 menolak teks pada kolom INTEGER; nilai 2 di atas sudah cukup
+      // untuk menguji audit AKUN_AKTIF_TIDAK_VALID.
 
       const hasil = auditIntegritas(db);
       const kode = hasil.temuan.map((t) => t.kode);
