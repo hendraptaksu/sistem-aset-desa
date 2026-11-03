@@ -162,6 +162,7 @@ export function laporanBukuBesar(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     akun,
     filter,
+    daftarAkun,
   );
 }
 

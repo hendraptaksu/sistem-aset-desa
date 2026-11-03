@@ -383,6 +383,18 @@ export function hapusAkun(
   const referensi: { label: string; sql: string }[] = [
     { label: 'jurnal', sql: 'SELECT 1 FROM jurnal_baris WHERE akun_kode = ? LIMIT 1' },
     { label: 'panjar', sql: 'SELECT 1 FROM panjar_item WHERE kategori_baga = ? LIMIT 1' },
+    {
+      label: 'panjar (akun kas sumber)',
+      sql: 'SELECT 1 FROM panjar WHERE akun_kas_sumber = ? LIMIT 1',
+    },
+    {
+      label: 'pinjaman (akun kas)',
+      sql: 'SELECT 1 FROM pinjaman WHERE akun_kas = ? LIMIT 1',
+    },
+    {
+      label: 'pinjaman (akun bunga)',
+      sql: 'SELECT 1 FROM pinjaman WHERE akun_bunga = ? LIMIT 1',
+    },
   ];
   for (const r of referensi) {
     const ada = db.prepare(r.sql).get(lama.kode);

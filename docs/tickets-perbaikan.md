@@ -33,7 +33,7 @@
 
 | ID | Prioritas | Ukuran | Judul | Dependency | Status |
 |---|---|---|---|---|---|
-| AUD2-01 | P0 | S | Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun` | — | [ ] |
+| AUD2-01 | P0 | S | Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun` | — | [x] |
 | AUD2-02 | P0 | S | Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama | — | [ ] |
 | AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [ ] |
 | AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [ ] |
@@ -54,7 +54,7 @@
 
 ## Fase 1 — P0: Bug Fungsional & Integritas Akuntansi
 
-- [ ] **AUD2-01 — Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun`** · P0 · S
+- [x] **AUD2-01 — Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun`** · P0 · S
   - **Konteks:**
     Saat operator menambahkan akun baru (`TAMBAHAN`, misal `5011`, `4043`, atau `1101`) lewat menu **Daftar Akun** lalu memposting transaksi dengan akun tersebut:
     1. `laporanBukuBesar()` di `src/db/laporan.ts:161` memanggil `bukuBesar(baris, akun, filter)` tanpa argumen ke-4 (`daftarAkun`). Akibatnya `bukuBesar()` memakai default `COA` statis dan melempar error `Akun 5011 pada jurnal tidak dikenal di COA` untuk seluruh akun.
@@ -77,6 +77,7 @@
   - **Test:**
     - Buat test yang menambah akun `5011` (BEBAN) dan `1101` (AKTIVA kas/bank), mengisi Saldo Awal dengan `1101`, memposting jurnal beban `5011`, lalu memastikan `laporanBukuBesar`, `previewTutupBuku`, `tutupBuku`, `tutup:list`, dan `hapusAkun` berjalan tanpa error.
   - **DoD:** Semua laporan, Kunci Periode, dan Wizard Saldo Awal mendukung penuh akun `TAMBAHAN` dari database.
+  - **Bukti 2026-11-03:** `laporanBukuBesar()` meneruskan `daftarAkun` ke `bukuBesar()`; `labaDitahan()`/`labaTahun()`, adapter tutup buku, dan IPC `tutup:list` memakai `listAkun(db)`; `saldo-awal:posting` meneruskan master akun DB ke `buatJurnalSaldoAwal()`; `hapusAkun()` menolak referensi `panjar.akun_kas_sumber`, `pinjaman.akun_kas`, dan `pinjaman.akun_bunga` dengan pesan Indonesia. Regression test baru untuk akun `5011`/`1101`, Kunci Periode, dan referensi hapus. `npm run typecheck`, 1007 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-02 — Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama** · P0 · S

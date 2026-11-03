@@ -6,6 +6,7 @@
 //
 // K2: hanya tahun yang sudah selesai (<= tahun lalu) yang boleh ditutup.
 
+import { COA, type Coa } from '../db/coa.js';
 import { labaTahun, type BarisJurnalSumber } from './reports.js';
 import { tahunLokal } from '../utils/tanggal.js';
 
@@ -149,6 +150,10 @@ export function validasiTutupBuku(
 export function labaDitahan(
   baris: readonly BarisJurnalSumber[],
   tutup: ReadonlyArray<TutupBukuRef>,
+  daftarAkun: readonly Coa[] = COA,
 ): number {
-  return tahunTutupTerurut(tutup).reduce((total, tahun) => total + labaTahun(baris, tahun), 0);
+  return tahunTutupTerurut(tutup).reduce(
+    (total, tahun) => total + labaTahun(baris, tahun, daftarAkun),
+    0,
+  );
 }

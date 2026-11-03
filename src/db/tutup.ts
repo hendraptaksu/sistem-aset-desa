@@ -21,6 +21,7 @@ import { labaTahun } from '../core/reports.js';
 import { catatanTahunPertamaParsial } from '../core/pengaturan.js';
 import type { TutupBuku } from '../core/types.js';
 import { tanggalLokal } from '../utils/tanggal.js';
+import type { Coa } from './coa.js';
 import {
   auditIntegritas,
   type HasilAuditIntegritas,
@@ -31,6 +32,7 @@ import {
   getPengaturanPembukuan,
   insertAuditLog,
   insertTutupBuku,
+  listAkun,
   listTutupBuku,
 } from './repository.js';
 
@@ -113,10 +115,12 @@ function validasiDenganIntegritas(
 function hitungLabaDitahan(
   baris: ReturnType<typeof listBarisJurnal>,
   daftar: ReadonlyArray<{ tahun: number }>,
+  daftarAkun: readonly Coa[],
 ): number {
   return labaDitahanJurnal(
     baris,
     tahunTutupTerurut(daftar).map((tahun) => ({ tahun })),
+    daftarAkun,
   );
 }
 
@@ -151,7 +155,8 @@ export function previewTutupBuku(
     auditIntegritas(db),
   );
   const baris = listBarisJurnal(db);
-  const laba = Number.isInteger(angka) ? labaTahun(baris, angka) : 0;
+  const daftarAkun = listAkun(db);
+  const laba = Number.isInteger(angka) ? labaTahun(baris, angka, daftarAkun) : 0;
   const sudahDitutup = daftar.some((t) => Number(t.tahun) === angka);
 
   const tahunSesudah = new Set(tahunTutupTerurut(daftar));
@@ -162,8 +167,12 @@ export function previewTutupBuku(
     ...validasi,
     tahun: angka,
     laba,
-    labaDitahanSekarang: hitungLabaDitahan(baris, daftar),
-    labaDitahanSesudah: hitungLabaDitahan(baris, [...tahunSesudah].map((t) => ({ tahun: t }))),
+    labaDitahanSekarang: hitungLabaDitahan(baris, daftar, daftarAkun),
+    labaDitahanSesudah: hitungLabaDitahan(
+      baris,
+      [...tahunSesudah].map((t) => ({ tahun: t })),
+      daftarAkun,
+    ),
     sudahDitutup,
     ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
   };
@@ -192,8 +201,9 @@ export function tutupBuku(
     auditIntegritas(db),
   );
   const baris = listBarisJurnal(db);
-  const laba = Number.isInteger(angka) ? labaTahun(baris, angka) : 0;
-  const labaDitahanSekarang = hitungLabaDitahan(baris, daftar);
+  const daftarAkun = listAkun(db);
+  const laba = Number.isInteger(angka) ? labaTahun(baris, angka, daftarAkun) : 0;
+  const labaDitahanSekarang = hitungLabaDitahan(baris, daftar, daftarAkun);
   const catatanParsial = catatanTahunPertama(db, angka);
 
   if (!validasi.boleh) {
@@ -237,7 +247,7 @@ export function tutupBuku(
     ...validasi,
     tersimpan: true,
     laba,
-    labaDitahan: hitungLabaDitahan(baris, sesudah),
+    labaDitahan: hitungLabaDitahan(baris, sesudah, daftarAkun),
     data,
     ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
   };

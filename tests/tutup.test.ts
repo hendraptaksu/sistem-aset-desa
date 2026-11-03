@@ -5,7 +5,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
-import { insertJurnalTervalidasi, insertTutupBuku, listTutupBuku } from '../src/db/repository.js';
+import {
+  insertJurnalTervalidasi,
+  insertTutupBuku,
+  listAkun,
+  listTutupBuku,
+  tambahAkun,
+} from '../src/db/repository.js';
 import { previewTutupBuku, tutupBuku } from '../src/db/tutup.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { postingJurnal } from '../src/db/posting.js';
@@ -518,6 +524,42 @@ describe('AKT-10 — tutup buku menolak jika audit integritas gagal', () => {
       expect(pratinjau.temuanIntegritas.map((t) => t.kode)).toContain('REVERSAL_GANDA');
       expect(listTutupBuku(db)).toHaveLength(0);
       expect(audit(db)).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AUD2-01 — laba tahun & laba ditahan memakai master akun DB', () => {
+  it('preview, tutup, dan labaDitahan mengenali akun BEBAN tambahan', () => {
+    const db = freshDb();
+    try {
+      tambahAkun(db, {
+        kode: '5011',
+        nama: 'PENGELUARAN ARTOS',
+        tipe: 'BEBAN',
+      });
+
+      catat(db, 'j-beban-2024', '2024-05-01', keluar('5011', 1_000_000));
+      const tutup2024 = tutupBuku(db, 2024, { sekarang: SEKARANG });
+      expect(tutup2024.tersimpan, tutup2024.errors.join(' ')).toBe(true);
+      expect(tutup2024.laba).toBe(-1_000_000);
+
+      catat(db, 'j-beban-2025', '2025-05-01', keluar('5011', 500_000));
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.boleh, pratinjau.errors.join(' ')).toBe(true);
+      expect(pratinjau.laba).toBe(-500_000);
+      expect(pratinjau.labaDitahanSekarang).toBe(-1_000_000);
+      expect(pratinjau.labaDitahanSesudah).toBe(-1_500_000);
+
+      const hasil = tutupBuku(db, 2025, { sekarang: SEKARANG });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.laba).toBe(-500_000);
+      expect(hasil.labaDitahan).toBe(-1_500_000);
+
+      expect(
+        labaDitahan(listBarisJurnal(db), listTutupBuku(db), listAkun(db)),
+      ).toBe(-1_500_000);
     } finally {
       db.close();
     }

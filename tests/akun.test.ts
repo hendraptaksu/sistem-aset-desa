@@ -531,6 +531,111 @@ describe('DB-14 — akun kas/bank baru dan metadata sumber', () => {
     }
   });
 
+  it('AUD2-01: laporanBukuBesar memakai master akun DB untuk akun tambahan', () => {
+    const db = freshDb();
+    try {
+      tambahAkun(db, { kode: '5011', nama: 'PENGELUARAN ARTOS', tipe: 'BEBAN' });
+      tambahAkun(db, {
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        is_kas: true,
+        kelompok: 'BANK',
+      });
+
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-aud2-01', tanggal: '2026-01-01', keterangan: 'Saldo awal bank baru' },
+        [
+          { akun_kode: '1101', debit: RP(10_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(10_000_000) },
+        ],
+      );
+      const posting = postingJurnal(db, {
+        header: {
+          id: 'j-aud2-01',
+          tanggal: '2026-02-01',
+          keterangan: 'Uji akun beban tambahan',
+          jenis: 'UMUM',
+        },
+        baris: [
+          { akun_kode: '5011', debit: RP(250_000), kredit: 0 },
+          { akun_kode: '1101', debit: 0, kredit: RP(250_000) },
+        ],
+      });
+      expect(posting.tersimpan, posting.errors.join(' ')).toBe(true);
+
+      const beban = laporanBukuBesar(db, '5011', { sampai: '2026-12-31' });
+      expect(beban).toMatchObject({
+        kode: '5011',
+        nama: 'PENGELUARAN ARTOS',
+        totalDebit: RP(250_000),
+        saldoAkhir: RP(250_000),
+      });
+
+      const bank = laporanBukuBesar(db, '1101', { sampai: '2026-12-31' });
+      expect(bank).toMatchObject({
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        totalDebit: RP(10_000_000),
+        totalKredit: RP(250_000),
+        saldoAkhir: RP(9_750_000),
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AUD2-01: hapusAkun menolak referensi panjar dan pinjaman dengan pesan Indonesia', () => {
+    const db = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        { id: 'j-awal-hapus', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
+        [
+          { akun_kode: '1001', debit: RP(1_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(1_000_000) },
+        ],
+      );
+      for (const kode of ['1102', '1103']) {
+        tambahAkun(db, {
+          kode,
+          nama: `BANK UJI ${kode}`,
+          tipe: 'AKTIVA',
+          is_kas: true,
+          kelompok: 'BANK',
+        });
+      }
+      tambahAkun(db, { kode: '5012', nama: 'BUNGA PINJAMAN UJI', tipe: 'BEBAN' });
+
+      // Referensi panjar langsung (tanpa baris jurnal akun kas) tetap dicek.
+      db.prepare(
+        `INSERT INTO panjar
+           (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+            jurnal_open_id, created_at)
+         VALUES ('panjar-aud2-01', '2026-01-02', 'Uji', 100000, '1102', 'OPEN',
+                 'j-awal-hapus', '2026-01-02T00:00:00.000Z')`,
+      ).run();
+      expect(() => hapusAkun(db, '1102')).toThrow(/panjar.*akun kas sumber/i);
+      expect(getAkun(db, '1102')).not.toBeNull();
+
+      // Pinjaman BERJALAN belum punya jurnal, tetapi akun kas/bunganya dicek.
+      db.prepare(
+        `INSERT INTO pinjaman
+           (id, kreditur, akun_kas, akun_bunga, pokok_awal, sisa_pokok_awal,
+            tanggal_mulai, tenor_bulan, jurnal_pencairan_id, catatan, created_at)
+         VALUES ('pinjaman-aud2-01', 'LPD Uji', '1103', '5012', 500000, 500000,
+                 '2026-01-02', NULL, NULL, '', '2026-01-02T00:00:00.000Z')`,
+      ).run();
+      expect(() => hapusAkun(db, '1103')).toThrow(/pinjaman.*akun kas/i);
+      expect(() => hapusAkun(db, '5012')).toThrow(/pinjaman.*akun bunga/i);
+      expect(getAkun(db, '1103')).not.toBeNull();
+      expect(getAkun(db, '5012')).not.toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
   it('akun bank tambahan tetap utuh setelah reopen (nama, tipe, aktif, metadata)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-akun-bank-'));
     try {

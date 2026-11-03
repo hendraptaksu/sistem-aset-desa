@@ -2071,3 +2071,80 @@ describe('DB-16c — IPC pinjaman LPD', () => {
     });
   });
 });
+
+describe('AUD2-01 — IPC laporan, kunci periode, dan saldo awal memakai akun DB', () => {
+  it('akun 5011/1101 tambahan lolos Buku Besar, Saldo Awal, Kunci Periode, dan riwayat tutup', async () => {
+    const env = buatEnv();
+
+    const beban = await env.panggil('akun:tambah', {
+      kode: '5011',
+      nama: 'PENGELUARAN ARTOS',
+      tipe: 'BEBAN',
+    });
+    expect(beban.ok, beban.error).toBe(true);
+    const bank = await env.panggil('akun:tambah', {
+      kode: '1101',
+      nama: 'BANK BPD REKENING BARU',
+      tipe: 'AKTIVA',
+      is_kas: true,
+      kelompok: 'BANK',
+    });
+    expect(bank.ok, bank.error).toBe(true);
+
+    // Akun bank TAMBAHAN harus lolos builder Saldo Awal di main, bukan COA statis.
+    const saldo = await env.panggil('saldo-awal:posting', {
+      tanggal: '2025-01-01',
+      saldo: [{ akun_kode: '1101', nominal: 10_000_000 }],
+    });
+    expect(saldo.ok, saldo.error).toBe(true);
+
+    const posting = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-aud2-01',
+        tanggal: '2025-02-01',
+        keterangan: 'Uji akun beban tambahan',
+        jenis: 'UMUM',
+      },
+      baris: [D('5011', 250_000), K('1101', 250_000)],
+    });
+    expect(posting.ok, posting.error).toBe(true);
+
+    const bukuBesar = await env.panggil('laporan:buku-besar', {
+      akun_kode: '5011',
+      sampai: '2025-12-31',
+    });
+    expect(bukuBesar.ok, bukuBesar.error).toBe(true);
+    expect(bukuBesar.data).toMatchObject({
+      kode: '5011',
+      nama: 'PENGELUARAN ARTOS',
+      totalDebit: 250_000,
+      saldoAkhir: 250_000,
+    });
+
+    const pratinjau = await env.panggil('tutup:preview', 2025);
+    expect(pratinjau.ok, pratinjau.error).toBe(true);
+    expect(pratinjau.data).toMatchObject({
+      tahun: 2025,
+      boleh: true,
+      laba: -250_000,
+      labaDitahanSekarang: 0,
+      sudahDitutup: false,
+    });
+
+    const tutup = await env.panggil('tutup:create', {
+      tahun: 2025,
+      catatan: 'Uji AUD2-01',
+    });
+    expect(tutup.ok, tutup.error).toBe(true);
+    expect(tutup.data).toMatchObject({
+      tahun: 2025,
+      aksi: 'TUTUP',
+      laba: -250_000,
+    });
+
+    const riwayat = await env.panggil('tutup:list');
+    expect(riwayat.ok, riwayat.error).toBe(true);
+    expect(riwayat.data).toHaveLength(1);
+    expect(riwayat.data[0]).toMatchObject({ tahun: 2025, laba: -250_000 });
+  });
+});

@@ -724,7 +724,10 @@ export function registerIpc(deps: IpcDeps): void {
       const bentuk = validasiBentukSaldoAwal(input);
       if (!bentuk.ok) return fail(bentuk.error);
 
-      const jurnalInput = buatJurnalSaldoAwal(bentuk.input).input;
+      const jurnalInput = buatJurnalSaldoAwal({
+        ...bentuk.input,
+        daftarAkun: listAkun(deps.db()),
+      }).input;
       const konfirmasiPeringatan =
         typeof opsi === 'object' &&
         opsi !== null &&
@@ -1260,6 +1263,7 @@ export function registerIpc(deps: IpcDeps): void {
     if (k) return fail(k);
     // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
     const baris = listBarisJurnal(deps.db());
+    const daftarAkun = listAkun(deps.db());
     const tanggalMulai = getPengaturanPembukuan(deps.db()).tanggalMulaiPembukuan;
     return ok(
       listTutupBuku(deps.db()).map((t) => {
@@ -1268,7 +1272,7 @@ export function registerIpc(deps: IpcDeps): void {
           catatanTahunPertamaParsial(tanggalMulai, tahun) ?? undefined;
         return {
           ...t,
-          laba: labaTahunJurnal(baris, tahun),
+          laba: labaTahunJurnal(baris, tahun, daftarAkun),
           ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
         };
       }),
