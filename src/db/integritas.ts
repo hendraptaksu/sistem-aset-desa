@@ -64,6 +64,7 @@ export type KodeTemuan =
   | 'PANJAR_BATAL_TIDAK_LENGKAP'
   | 'PANJAR_BATAL_GANDA'
   | 'PANJAR_BATAL_TIDAK_KONSISTEN'
+  | 'REKONSILIASI_PANJAR_GL_SELISIH'
   | 'REKONSILIASI_PINJAMAN_SELISIH';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
@@ -251,6 +252,13 @@ type PanjarBatalGanda = {
   ids: string;
 };
 
+type RekonsiliasiPanjarGlSelisih = {
+  akun: string;
+  saldo_gl: number;
+  total_panjar: number;
+  selisih: number;
+};
+
 type AkunTidakValid = {
   kode: string;
   nama: string;
@@ -343,7 +351,9 @@ function petaSisiJurnal(
  *     punya tepat satu sisi positif;
  * 16. DB-34: kode akun tepat 4 digit dan nama tidak kosong (legacy);
  * 17. DB-16f: outstanding 2050 yang tertaut ke pinjaman sama dengan outstanding
- *     jadwal (selisih != 0 menjadi temuan, tanpa koreksi otomatis).
+ *     jadwal (selisih != 0 menjadi temuan, tanpa koreksi otomatis);
+ * 18. AUD2-04: saldo normal debit 1040 di Buku Besar sama dengan total panjar
+ *     OPEN aktif (selisih != 0 menjadi REKONSILIASI_PANJAR_GL_SELISIH).
  *
  * Pemeriksaan panjar dan pinjaman dilewati dengan aman bila tabel/kolom belum
  * ada (backup v2/v3, atau backup lama sebelum tabel pinjaman v20).
@@ -1066,6 +1076,61 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         `${r.jurnal_close_id}: ${rincian || `selisih ${formatRp(hasil.selisih)}`}.`,
       detail,
     });
+  }
+
+  // AUD2-04: 1040 adalah akun kontrol subledger panjar. Saldo normal debit GL
+  // (seluruh baris 1040, termasuk SALDO_AWAL/reversal) wajib sama dengan total
+  // panjar OPEN yang belum dibatalkan. Selisih berarti ada jurnal 1040 liar
+  // atau data panjar tidak sinkron; audit hanya melaporkan, tidak mengoreksi
+  // dan tidak menyimpan angka turunan. Backup sebelum v19 belum punya kolom
+  // jurnal_batal_id, jadi pemeriksaan dilewati agar data legacy tidak dianggap
+  // rusak hanya karena bentuknya lebih lama.
+  const panjarGlSiap =
+    adaTabelPanjar &&
+    punyaSemuaKolom(kolomPanjar, ['status', 'jumlah', 'jurnal_batal_id']);
+  if (panjarGlSiap) {
+    const saldoGl = Number(
+      (
+        db
+          .prepare(
+            `SELECT COALESCE(SUM(debit - kredit), 0) AS saldo
+               FROM jurnal_baris
+              WHERE akun_kode = ?`,
+          )
+          .get(AKUN_PANJAR) as { saldo: number }
+      ).saldo,
+    );
+    const totalPanjarOpen = Number(
+      (
+        db
+          .prepare(
+            `SELECT COALESCE(SUM(jumlah), 0) AS total
+               FROM panjar
+              WHERE status = 'OPEN'
+                AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')`,
+          )
+          .get() as { total: number }
+      ).total,
+    );
+    const selisih = saldoGl - totalPanjarOpen;
+    if (selisih !== 0) {
+      const detail: RekonsiliasiPanjarGlSelisih = {
+        akun: AKUN_PANJAR,
+        saldo_gl: saldoGl,
+        total_panjar: totalPanjarOpen,
+        selisih,
+      };
+      temuan.push({
+        kode: 'REKONSILIASI_PANJAR_GL_SELISIH',
+        pesan:
+          `Saldo normal debit akun ${AKUN_PANJAR} UANG PANJAR di Buku Besar ` +
+          `${formatRp(saldoGl)} tidak sama dengan total panjar OPEN aktif ` +
+          `${formatRp(totalPanjarOpen)} (selisih ${formatRp(selisih)}). ` +
+          'Periksa baris jurnal 1040 liar atau data panjar; jurnal 1040 hanya ' +
+          'boleh berasal dari menu Buku Panjar.',
+        detail,
+      });
+    }
   }
 
   // DB-12: master akun adalah sumber laporan; typo tipe/posisi membuat akun

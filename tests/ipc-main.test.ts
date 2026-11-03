@@ -1796,14 +1796,30 @@ describe('DB-23b — IPC mencatat utang usaha 2060 tanpa master pihak', () => {
     });
     expect(bayar.ok, bayar.error).toBe(true);
 
-    // Pinjaman 2050 lama tetap bisa dikoreksi lewat Jurnal Umum (UMUM); tidak
-    // ada master pihak baru, jadi tidak ada respons `alur`/`akunPihak`.
-    const pinjam = await env.panggil('jurnal:posting', {
+    // AUD2-04: 2050 adalah akun kontrol pinjaman dan tidak boleh diposting
+    // lewat Jurnal Umum manual. Pinjaman lama tetap bisa dicatat lewat jalur
+    // HUTANG terpandu; tidak ada master pihak baru, jadi tidak ada respons
+    // `alur`/`akunPihak`.
+    const ditolak = await env.panggil('jurnal:posting', {
+      header: {
+        id: 'j-pinjam-2050-umum',
+        tanggal: '2026-01-04',
+        keterangan: 'Terima pinjaman lama — Koperasi Desa',
+        jenis: 'UMUM',
+      },
+      baris: [D('1001', 500_000), K('2050', 500_000)],
+    });
+    expect(ditolak.ok).toBe(false);
+    expect(ditolak.error).toMatch(
+      /Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman/,
+    );
+
+    const pinjam = await env.panggil('transaksi:posting', {
       header: {
         id: 'j-pinjam-2050',
         tanggal: '2026-01-04',
         keterangan: 'Terima pinjaman lama — Koperasi Desa',
-        jenis: 'UMUM',
+        jenis: 'HUTANG',
       },
       baris: [D('1001', 500_000), K('2050', 500_000)],
     });

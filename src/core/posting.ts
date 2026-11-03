@@ -9,6 +9,7 @@
 import {
   AKUN_HUTANG,
   AKUN_HUTANG_USAHA,
+  AKUN_PANJAR,
   PESAN_AKUN_LEGACY,
   POSISI_NORMAL,
   akunBolehDiposting,
@@ -94,6 +95,18 @@ export const PESAN_INPUT_JURNAL_TIDAK_VALID =
 export const PESAN_JURNAL_PENUTUP_MANUAL =
   'Jurnal penutup manual tidak didukung. Kunci periode hanya penanda; gunakan menu Kunci Periode. Untuk pembayaran beban oleh pemilik, buat dua jurnal: beban/kas lalu kas/modal.';
 
+/**
+ * AUD2-04: 1040/2050 adalah akun kontrol subledger. Jurnal manual UMUM yang
+ * menyentuhnya akan membuat saldo GL berbeda dari daftar Panjar/Pinjaman.
+ * Jalur internal (PANJAR/HUTANG/SALDO_AWAL/REVERSAL) dan koreksi saldo awal
+ * yang sudah memverifikasi grup pembukaan tetap diizinkan.
+ */
+export const PESAN_AKUN_KONTROL_PANJAR_UMUM =
+  'Akun 1040 UANG PANJAR adalah akun kontrol panjar dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Buku Panjar.';
+
+export const PESAN_AKUN_KONTROL_PINJAMAN_UMUM =
+  'Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Pinjaman LPD (atau 2060 HUTANG USAHA untuk utang usaha).';
+
 export type JurnalInput = {
   header: JurnalHeaderInput;
   baris: JurnalBarisInput[];
@@ -147,7 +160,8 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  * 2. Akun ada, aktif, bukan akun legacy 3001/3002, tipe/posisi normal
  *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
- *    PIUTANG 1050; HUTANG 2050 pinjaman atau 2060 utang usaha).
+ *    PIUTANG 1050; HUTANG 2050 pinjaman atau 2060 utang usaha). UMUM tidak
+ *    boleh memakai akun kontrol 1040/2050, kecuali konteks koreksiSaldoAwal.
  * 4. Jurnal penutup manual (P&L + ekuitas) ditolak, kecuali SALDO_AWAL.
  * 4b. Jurnal ber-kas yang memuat 2050 dan 2060 sekaligus ditolak agar tidak
  *    ada satu jurnal dengan dua kelompok arus kas; reklasifikasi non-kas tetap
@@ -308,6 +322,17 @@ export function validasiJurnal(
         errors.push(
           'Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN (pinjaman) atau 2060 HUTANG USAHA (utang usaha).',
         );
+    }
+
+    // AUD2-04: akun kontrol subledger hanya boleh disentuh jalur internal yang
+    // menulis subledgernya. Jurnal manual UMUM dilarang agar saldo GL 1040/2050
+    // tidak bercabang dari daftar Panjar/Pinjaman. `koreksiSaldoAwal` adalah
+    // pengecualian karena service koreksi sudah memverifikasi grup pembukaan.
+    if (jenis === 'UMUM' && konteks.koreksiSaldoAwal !== true) {
+      if (kodeSah.includes(AKUN_PANJAR))
+        errors.push(PESAN_AKUN_KONTROL_PANJAR_UMUM);
+      if (kodeSah.includes(AKUN_HUTANG))
+        errors.push(PESAN_AKUN_KONTROL_PINJAMAN_UMUM);
     }
   }
 

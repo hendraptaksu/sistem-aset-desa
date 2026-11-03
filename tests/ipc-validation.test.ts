@@ -182,9 +182,23 @@ describe('P0-4 — akun & jenis akun', () => {
     });
     expect(pesan(campuran)).toMatch(/Pisahkan pembayaran utang usaha dan pinjaman/);
 
-    // Reklasifikasi D 2050 / K 2060 tanpa kas tetap sah.
-    const reklas = jalankan({
+    // AUD2-04: 2050 adalah akun kontrol pinjaman, jadi reklasifikasi lewat
+    // Jurnal Umum manual ikut ditolak. Reklasifikasi non-kas tetap bisa dicatat
+    // lewat jenis internal HUTANG.
+    const reklasUmum = jalankan({
       header: { jenis: 'UMUM' },
+      baris: [
+        { akun_kode: '2050', debit: 100_000, kredit: 0 },
+        { akun_kode: '2060', debit: 0, kredit: 100_000 },
+      ],
+    });
+    expect(pesan(reklasUmum)).toMatch(
+      /Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman/,
+    );
+    expect(reklasUmum.boleh).toBe(false);
+
+    const reklas = jalankan({
+      header: { jenis: 'HUTANG' },
       baris: [
         { akun_kode: '2050', debit: 100_000, kredit: 0 },
         { akun_kode: '2060', debit: 0, kredit: 100_000 },

@@ -236,7 +236,10 @@ function buatFixtureV11(path: string): void {
         WAKTU,
       );
     insBaris.run('j-v11-close', '5004', 50_000, 0);
-    insBaris.run('j-v11-close', '1040', 0, 50_000);
+    // Sisa panjar 50.000 kembali ke kas agar saldo 1040 nol dan cocok dengan
+    // daftar panjar OPEN (AUD2-04).
+    insBaris.run('j-v11-close', '1001', 50_000, 0);
+    insBaris.run('j-v11-close', '1040', 0, 100_000);
 
     lama
       .prepare(

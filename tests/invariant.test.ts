@@ -125,6 +125,7 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
 
       let seq = 0;
       let panjarSisa = 0;
+      let panjarTerbukaId: string | null = null;
       let sudahTutup = false;
       const bisaDireversal: Jurnal[] = [];
       const jenisTerpakai = new Set<JurnalJenis>();
@@ -243,14 +244,19 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
           input = buatJurnalPindahDana({ ...dasar, dari, ke });
         } else {
           // Panjar: serah bila belum ada, pertanggungjawaban bila ada sisa.
-          if (panjarSisa <= 0 || rnd() < 0.5) {
+          // Hanya satu panjar OPEN pada satu waktu agar subledger uji konsisten.
+          if (panjarSisa <= 0) {
             input = buatJurnalPanjarSerah({
               ...dasar,
               akunKas: pick(rnd, ['1001', '1029']),
             });
             panjarSisa += nominal;
           } else {
-            const realisasi = Math.floor((panjarSisa * Math.floor(rnd() * 10)) / 10);
+            // Realisasi 10–90% agar selalu ada minimal satu item BEBAN dan
+            // panjar CLOSED tetap lengkap untuk audit.
+            const realisasi = Math.floor(
+              (panjarSisa * (1 + Math.floor(rnd() * 9))) / 10,
+            );
             const sisa = panjarSisa - realisasi;
             const baris: JurnalBarisInput[] = [];
             if (realisasi > 0) baris.push(D(pick(rnd, beban), realisasi));
@@ -273,6 +279,53 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
 
         const jurnal = simpan(input, `operasi #${i + 1}`);
         jenisTerpakai.add(input.header.jenis!);
+
+        // AUD2-04: jurnal PANJAR di test ini dibuat manual, jadi subledgernya
+        // ikut disinkronkan agar audit GL 1040 vs panjar OPEN tetap konsisten.
+        if (input.header.jenis === 'PANJAR') {
+          const debit1040 = input.baris
+            .filter((b) => b.akun_kode === '1040')
+            .reduce((s, b) => s + b.debit, 0);
+          const kredit1040 = input.baris
+            .filter((b) => b.akun_kode === '1040')
+            .reduce((s, b) => s + b.kredit, 0);
+          const createdAt = '2025-01-01T00:00:00.000Z';
+          if (debit1040 > 0) {
+            const kas =
+              input.baris.find((b) => b.kredit > 0 && b.akun_kode !== '1040')
+                ?.akun_kode ?? '1001';
+            panjarTerbukaId = `p-${jurnal.id}`;
+            db.prepare(
+              `INSERT INTO panjar
+                 (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+                  tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
+               VALUES (?, ?, 'Penerima uji invariant', ?, ?, 'OPEN', NULL, ?, NULL, ?)`,
+            ).run(
+              panjarTerbukaId,
+              input.header.tanggal,
+              debit1040,
+              kas,
+              jurnal.id,
+              createdAt,
+            );
+          } else if (kredit1040 > 0 && panjarTerbukaId) {
+            db.prepare(
+              `UPDATE panjar
+                  SET status = 'CLOSED', tanggal_close = ?, jurnal_close_id = ?
+                WHERE id = ?`,
+            ).run(input.header.tanggal, jurnal.id, panjarTerbukaId);
+            const insertItem = db.prepare(
+              `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
+               VALUES (?, ?, ?, ?)`,
+            );
+            for (const b of input.baris) {
+              if (b.debit > 0 && beban.some((kode) => kode === b.akun_kode))
+                insertItem.run(panjarTerbukaId, b.akun_kode, b.debit, jurnal.id);
+            }
+            panjarTerbukaId = null;
+          }
+        }
+
         if (['TERIMA', 'BAYAR', 'TRANSFER'].includes(input.header.jenis!))
           bisaDireversal.push(jurnal);
         pastikanSeimbang(db, `operasi #${i + 1}`);

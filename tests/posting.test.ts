@@ -1387,3 +1387,120 @@ describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
     }
   });
 });
+
+describe('AUD2-04 — akun kontrol panjar/pinjaman dikunci dari Jurnal Umum', () => {
+  const PESAN_1040 =
+    'Akun 1040 UANG PANJAR adalah akun kontrol panjar dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Buku Panjar.';
+  const PESAN_2050 =
+    'Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Pinjaman LPD (atau 2060 HUTANG USAHA untuk utang usaha).';
+
+  it('menolak UMUM yang memakai 1040/2050 dengan pesan tepat dan tidak menulis jurnal', () => {
+    const { db } = freshDb();
+    try {
+      const ctx = buatKonteksPosting(db, header({ jenis: 'UMUM' }));
+
+      const panjar = validasiJurnal(
+        {
+          header: header({ id: 'j-umum-1040', jenis: 'UMUM' }),
+          baris: pasangan('1040', '1001'),
+        },
+        ctx,
+      );
+      expect(panjar.boleh).toBe(false);
+      expect(panjar.errors).toContain(PESAN_1040);
+
+      const pinjaman = validasiJurnal(
+        {
+          header: header({ id: 'j-umum-2050', jenis: 'UMUM' }),
+          baris: pasangan('1001', '2050'),
+        },
+        ctx,
+      );
+      expect(pinjaman.boleh).toBe(false);
+      expect(pinjaman.errors).toContain(PESAN_2050);
+
+      const hasil = postingJurnal(db, {
+        header: header({ id: 'j-umum-kontrol', jenis: 'UMUM' }),
+        baris: [
+          { akun_kode: '1040', debit: 100_000, kredit: 0 },
+          { akun_kode: '2050', debit: 0, kredit: 100_000 },
+        ],
+      });
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors).toContain(PESAN_1040);
+      expect(hasil.errors).toContain(PESAN_2050);
+      expect(jumlahJurnal(db)).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengizinkan PANJAR/HUTANG/SALDO_AWAL/REVERSAL dan konteks koreksi saldo awal', () => {
+    const { db } = freshDb();
+    try {
+      const ctx = buatKonteksPosting(db, header());
+      const kasus: [label: string, input: JurnalInput][] = [
+        [
+          'PANJAR',
+          {
+            header: header({ id: 'j-panjar', jenis: 'PANJAR' }),
+            baris: pasangan('1040', '1001'),
+          },
+        ],
+        [
+          'HUTANG',
+          {
+            header: header({ id: 'j-hutang', jenis: 'HUTANG' }),
+            baris: pasangan('1001', '2050'),
+          },
+        ],
+        [
+          'SALDO_AWAL',
+          {
+            header: header({ id: 'j-saldo-awal', jenis: 'SALDO_AWAL' }),
+            baris: [
+              { akun_kode: '1040', debit: 100_000, kredit: 0 },
+              { akun_kode: '1001', debit: 50_000, kredit: 0 },
+              { akun_kode: '2050', debit: 0, kredit: 150_000 },
+            ],
+          },
+        ],
+        [
+          'REVERSAL 1040',
+          {
+            header: header({ id: 'j-reversal-panjar', jenis: 'REVERSAL' }),
+            baris: pasangan('1001', '1040'),
+          },
+        ],
+        [
+          'REVERSAL 2050',
+          {
+            header: header({ id: 'j-reversal-pinjaman', jenis: 'REVERSAL' }),
+            baris: pasangan('2050', '1001'),
+          },
+        ],
+      ];
+
+      for (const [label, input] of kasus) {
+        const hasil = validasiJurnal(input, ctx);
+        expect(hasil.errors, `${label}: ${hasil.errors.join(' ')}`).toEqual([]);
+        expect(hasil.boleh, label).toBe(true);
+      }
+
+      const koreksi = validasiJurnal(
+        {
+          header: header({ id: 'j-koreksi-saldo-awal', jenis: 'UMUM' }),
+          baris: [
+            { akun_kode: '1040', debit: 100_000, kredit: 0 },
+            { akun_kode: '2050', debit: 0, kredit: 100_000 },
+          ],
+        },
+        { ...ctx, koreksiSaldoAwal: true },
+      );
+      expect(koreksi.errors, koreksi.errors.join(' ')).toEqual([]);
+      expect(koreksi.boleh).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+});

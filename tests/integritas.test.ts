@@ -365,15 +365,18 @@ describe('AKT-09 — audit integritas akuntansi', () => {
       });
 
       const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_CLOSED_TIDAK_LENGKAP');
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(temuan).toMatchObject({
         kode: 'PANJAR_CLOSED_TIDAK_LENGKAP',
         detail: { id: 'p-closed-tidak-lengkap', status: 'CLOSED', jumlah_item: 0 },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/jurnal_close_id dan tanggal_close/i);
-      expect(hasil.temuan[0]?.pesan).toMatch(/item pertanggungjawaban/i);
+      expect(temuan?.pesan).toMatch(/jurnal_close_id dan tanggal_close/i);
+      expect(temuan?.pesan).toMatch(/item pertanggungjawaban/i);
+      // Panjar CLOSED tanpa jurnal close juga meninggalkan saldo 1040 tanpa
+      // panjar OPEN; AUD2-04 melaporkan split-brain itu secara terpisah.
+      expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     });
   });
 
@@ -394,14 +397,17 @@ describe('AKT-09 — audit integritas akuntansi', () => {
       });
 
       const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_OPEN_PUNYA_CLOSE');
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(temuan).toMatchObject({
         kode: 'PANJAR_OPEN_PUNYA_CLOSE',
         detail: { id: 'p-open-punya-close', status: 'OPEN' },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/status OPEN.*jurnal close/i);
+      expect(temuan?.pesan).toMatch(/status OPEN.*jurnal close/i);
+      // Jurnal close sudah mengkredit 1040, sedangkan panjar masih OPEN:
+      // saldo GL tidak lagi sama dengan daftar panjar OPEN.
+      expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     });
   });
 });
@@ -550,14 +556,17 @@ describe('DB-12 — perluasan audit integritas', () => {
       });
 
       const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_CLOSED_TIDAK_LENGKAP');
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(temuan).toMatchObject({
         kode: 'PANJAR_CLOSED_TIDAK_LENGKAP',
         detail: { id: 'p-closed-tanpa-item', jumlah_item: 0 },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/belum punya item pertanggungjawaban/i);
+      expect(temuan?.pesan).toMatch(/belum punya item pertanggungjawaban/i);
+      // Jurnal close uji tidak mengkredit 1040, jadi saldo GL juga tidak cocok
+      // dengan daftar panjar OPEN.
+      expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     });
   });
 
@@ -688,10 +697,10 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
       db.prepare("UPDATE panjar_item SET nominal = 70000 WHERE panjar_id = 'p-nominal'").run();
 
       const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_ITEM_TIDAK_COCOK');
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(temuan).toMatchObject({
         kode: 'PANJAR_ITEM_TIDAK_COCOK',
         detail: {
           id: 'p-nominal',
@@ -709,8 +718,11 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
           ],
         },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/tidak cocok dengan jurnal close/i);
-      expect(hasil.temuan[0]?.pesan).toMatch(/5004/);
+      expect(temuan?.pesan).toMatch(/tidak cocok dengan jurnal close/i);
+      expect(temuan?.pesan).toMatch(/5004/);
+      // Close hanya mengkredit 1040 sebesar 60.000 dari panjar 100.000,
+      // sehingga sisa 40.000 di GL tidak punya pasangan panjar OPEN.
+      expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     });
   });
 
@@ -768,10 +780,10 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
       buatItemPanjar(db, 'p-akun-ekstra', '5001', 25_000, 'j-close-p-akun-ekstra');
 
       const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_ITEM_TIDAK_COCOK');
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(temuan).toMatchObject({
         kode: 'PANJAR_ITEM_TIDAK_COCOK',
         detail: {
           id: 'p-akun-ekstra',
@@ -787,7 +799,9 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
           ],
         },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/5001/);
+      expect(temuan?.pesan).toMatch(/5001/);
+      // Close hanya mengkredit 1040 sebesar 60.000, menyisakan 40.000 di GL.
+      expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     });
   });
 
@@ -841,10 +855,10 @@ describe('DB-20 — header panjar vs jurnal serah', () => {
       db.prepare("UPDATE panjar SET jumlah = 90000 WHERE id = 'p-header-jumlah'").run();
 
       const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_HEADER_TIDAK_COCOK');
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(temuan).toMatchObject({
         kode: 'PANJAR_HEADER_TIDAK_COCOK',
         detail: {
           id: 'p-header-jumlah',
@@ -853,7 +867,10 @@ describe('DB-20 — header panjar vs jurnal serah', () => {
           debit_panjar: 100_000,
         },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/jumlah header.*debit 1040/i);
+      expect(temuan?.pesan).toMatch(/jumlah header.*debit 1040/i);
+      // GL 1040 tetap 100.000 sedangkan header panjar OPEN sudah diubah ke
+      // 90.000; selisih ini juga dilaporkan AUD2-04.
+      expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     });
   });
 
@@ -1565,5 +1582,86 @@ describe('DB-34 — akun legacy, baris rusak, dan tabel opsional', () => {
       'lampiran_jurnal',
     ].join('|');
     expect(sumber).not.toMatch(new RegExp(`\\b(?:FROM|JOIN)\\s+(?:${tabelDihapus})\\b`, 'i'));
+  });
+});
+
+describe('AUD2-04 — rekonsiliasi saldo GL 1040 vs panjar OPEN', () => {
+  it('mendeteksi baris 1040 liar yang di-inject lewat SQL', () => {
+    denganDb((db) => {
+      jurnalOpenPanjar(db, 'j-open-aud204', '2026-02-01', 100_000, '1001');
+      buatPanjar(db, {
+        id: 'p-aud204',
+        status: 'OPEN',
+        jurnalOpenId: 'j-open-aud204',
+      });
+      expect(auditIntegritas(db).ok).toBe(true);
+
+      // Baris liar D 1040 / K 1001 tanpa dokumen panjar. Trigger aplikasi tidak
+      // menolak insert SQL langsung; audit harus menangkap split-brain-nya.
+      buatJurnal(db, 'j-liar-1040', '2026-02-02', 'LIAR-1040');
+      buatBaris(db, 'j-liar-1040', '1040', 25_000, 0);
+      buatBaris(db, 'j-liar-1040', '1001', 0, 25_000);
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find(
+        (t) => t.kode === 'REKONSILIASI_PANJAR_GL_SELISIH',
+      );
+
+      expect(hasil.ok).toBe(false);
+      expect(temuan).toMatchObject({
+        kode: 'REKONSILIASI_PANJAR_GL_SELISIH',
+        detail: {
+          akun: '1040',
+          saldo_gl: 125_000,
+          total_panjar: 100_000,
+          selisih: 25_000,
+        },
+      });
+      expect(temuan?.pesan).toMatch(/1040 UANG PANJAR/);
+      expect(temuan?.pesan).toMatch(/panjar OPEN/i);
+      expect(temuan?.pesan).toMatch(/selisih/i);
+      expect(auditIntegritasDb(db).some((p) => p.startsWith('REKONSILIASI_PANJAR_GL_SELISIH: '))).toBe(
+        true,
+      );
+    });
+  });
+
+  it('mengabaikan panjar CLOSED dan panjar yang sudah dibatalkan', () => {
+    denganDb((db) => {
+      panjarClosedLengkap(
+        db,
+        'p-tutup-aud204',
+        [['5004', 100_000]],
+        [
+          ['5004', 100_000, 0],
+          ['1040', 0, 100_000],
+        ],
+      );
+
+      jurnalOpenPanjar(db, 'j-open-batal-aud204', '2026-02-03', 100_000, '1001');
+      buatJurnalLengkap(db, 'j-batal-aud204', {
+        tanggal: '2026-02-04',
+        jenis: 'REVERSAL',
+        grupId: 'j-open-batal-aud204',
+        reversalOf: 'j-open-batal-aud204',
+        baris: [
+          ['1040', 0, 100_000],
+          ['1001', 100_000, 0],
+        ],
+      });
+      db.prepare(
+        `INSERT INTO panjar
+           (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+            tanggal_close, jurnal_open_id, jurnal_close_id,
+            jurnal_batal_id, tanggal_batal, alasan_batal, created_at)
+         VALUES ('p-batal-aud204', '2026-02-03', 'Penerima Uji', 100000, '1001', 'OPEN',
+                 NULL, 'j-open-batal-aud204', NULL,
+                 'j-batal-aud204', '2026-02-04', 'Salah serah', ?)`,
+      ).run(WAKTU);
+
+      const hasil = auditIntegritas(db);
+      expect(hasil.temuan).toEqual([]);
+      expect(hasil.ok).toBe(true);
+    });
   });
 });

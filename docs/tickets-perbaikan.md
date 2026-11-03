@@ -36,7 +36,7 @@
 | AUD2-01 | P0 | S | Teruskan master akun DB (`listAkun`) ke Buku Besar, Kunci Periode, Saldo Awal, dan `hapusAkun` | — | [x] |
 | AUD2-02 | P0 | S | Selaraskan `statusSaldoAwal` & izinkan Saldo Awal disusulkan sebelum tanggal jurnal pertama | — | [x] |
 | AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [x] |
-| AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [ ] |
+| AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [x] |
 | AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [ ] |
 | AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [ ] |
 | AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [ ] |
@@ -122,7 +122,7 @@
   - **Bukti 2026-11-03:** `batalkanPertanggungjawabanPanjar()` memvalidasi panjar `CLOSED` + `jurnal_close_id` + alasan ≥5 karakter, menyusun jurnal balik lewat `rencanaReversal` (default tanggal `tanggal_close`), lalu dalam satu transaksi memposting reversal, menghapus `panjar_item` (data lama lengkap di `audit_log`), mereset panjar menjadi `OPEN` dengan `tanggal_close`/`jurnal_close_id` NULL, dan menulis audit `PANJAR-BATAL-CLOSE`; jurnal close asli tetap utuh. Channel `panjar:batal-close` didaftarkan di IPC dengan validator `validasiBentukPembatalanPertanggungjawabanPanjar` dan API renderer (preload tetap memakai `ipcRenderer.invoke` generik). PanjarTab menampilkan tombol **Koreksi Pertanggungjawaban** pada baris `CLOSED`, modal alasan ≥5 karakter dengan konfirmasi peringatan, lalu memuat panjar tersebut kembali ke form pertanggungjawaban. Test regresi `CLOSED_PANJAR_CORRECTION` membuktikan saldo `1040` pulih, beban `5003` nol, item lama terhapus tetapi tercatat di audit, close ulang dengan `5010` berhasil, dan `auditIntegritas` lolos; ditambah test validasi, IPC, API, dan UI. `npm run typecheck`, 1015 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
-- [ ] **AUD2-04 — Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040`** · P0 · S
+- [x] **AUD2-04 — Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040`** · P0 · S
   - **Konteks:**
     Akun `1040 UANG PANJAR` dan `2050 HUTANG LAIN-LAIN` memiliki subledger (`panjar` dan `pinjaman`). Jika akuntan memposting jurnal manual `UMUM` langsung ke `1040` atau `2050`, saldo Buku Besar/Neraca akan berbeda (*split-brain*) dengan daftar di tab Buku Panjar dan Pinjaman LPD.
   - **File yang disentuh:**
@@ -139,6 +139,7 @@
     - Test `validasiJurnal` menolak `UMUM` dengan `1040` atau `2050`, tetapi tetap mengizinkan `PANJAR`, `HUTANG`, `SALDO_AWAL`, dan `REVERSAL`.
     - Test `auditIntegritas` mendeteksi selisih jika ada baris jurnal `1040` liar yang di-inject lewat SQL.
   - **DoD:** Saldo `1040` di Neraca selalu dijamin sama dengan daftar Panjar `OPEN`.
+  - **Bukti 2026-11-03:** `validasiJurnal` menolak baris `1040`/`2050` pada jurnal `UMUM` (kecuali `konteks.koreksiSaldoAwal`) dengan pesan persis sesuai tiket, tanpa mengganggu jalur internal `PANJAR`/`HUTANG`/`SALDO_AWAL`/`REVERSAL`. `auditIntegritas` menghitung saldo normal debit `1040` dari `jurnal_baris` (termasuk `SALDO_AWAL`/reversal) dan membandingkannya dengan `SUM(jumlah)` panjar `OPEN` aktif (`jurnal_batal_id` kosong), lalu melaporkan `REKONSILIASI_PANJAR_GL_SELISIH` dengan detail saldo GL, total panjar, dan selisih; pemeriksaan dilewati untuk backup pra-v19 tanpa kolom batal. Test regresi baru mencakup penolakan UMUM `1040`/`2050`, izin jenis internal + koreksi saldo awal, deteksi baris `1040` liar lewat SQL, serta pengecualian panjar `CLOSED`/dibatalkan. `npm run typecheck`, 1019 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-05 — Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN`** · P0 · M
