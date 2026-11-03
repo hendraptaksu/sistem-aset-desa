@@ -135,6 +135,81 @@ function TabelPratinjau({
   );
 }
 
+/** Tahun dari tanggal ISO; null bila format tidak valid. */
+function tahunDariIso(tanggal: string): string | null {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(String(tanggal ?? '').trim());
+  return m ? m[1]! : null;
+}
+
+/**
+ * AUD2-06: peringatan bila realisasi berada di tahun yang berbeda dari panjar
+ * atau nota. Beban selalu masuk Laba Rugi tahun `tanggalClose`, bukan tahun
+ * panjar/nota, sehingga operator perlu memastikan tanggalnya memang disengaja.
+ */
+export function PeringatanTahunPertanggungjawaban({
+  tanggalClose,
+  tanggalPanjar,
+  notaTanggal,
+}: {
+  tanggalClose: string;
+  tanggalPanjar: string;
+  notaTanggal: readonly string[];
+}) {
+  const tahunClose = tahunDariIso(tanggalClose);
+  if (!tahunClose) return null;
+
+  const tahunPanjar = tahunDariIso(tanggalPanjar);
+  const panjarBeda = tahunPanjar !== null && tahunPanjar !== tahunClose;
+  const notaBeda = notaTanggal
+    .map((tanggal) => ({
+      tanggal: String(tanggal ?? '').trim(),
+      tahun: tahunDariIso(tanggal),
+    }))
+    .filter(
+      (n): n is { tanggal: string; tahun: string } =>
+        n.tahun !== null && n.tahun !== tahunClose,
+    );
+
+  if (!panjarBeda && notaBeda.length === 0) return null;
+
+  const rincian: string[] = [];
+  if (panjarBeda) {
+    rincian.push(
+      `panjar diserahkan ${formatTanggal(tanggalPanjar)} (tahun ${tahunPanjar})`,
+    );
+  }
+  if (notaBeda.length > 0) {
+    const tanggalNota = [...new Set(notaBeda.map((n) => formatTanggal(n.tanggal)))].join(
+      ', ',
+    );
+    const tahunNota = [...new Set(notaBeda.map((n) => n.tahun))].join(', ');
+    rincian.push(`tanggal nota ${tanggalNota} berada di tahun ${tahunNota}`);
+  }
+  const tahunLain = [
+    ...new Set([
+      ...(panjarBeda && tahunPanjar ? [tahunPanjar] : []),
+      ...notaBeda.map((n) => n.tahun),
+    ]),
+  ].join(', ');
+
+  return (
+    <div
+      role="status"
+      className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900"
+    >
+      <p className="font-semibold">
+        Perhatian: tahun realisasi berbeda dari tahun panjar/nota.
+      </p>
+      <p className="mt-1">
+        Tanggal realisasi {formatTanggal(tanggalClose)} berada di tahun{' '}
+        <b>{tahunClose}</b>, sedangkan {rincian.join(' dan ')}. Beban akan masuk
+        ke <b>Laba Rugi tahun {tahunClose}</b>, bukan tahun {tahunLain}. Pastikan
+        tanggal realisasi memang disengaja.
+      </p>
+    </div>
+  );
+}
+
 /** DB-21: konfirmasi pembatalan panjar OPEN dengan alasan wajib. */
 function BatalPanjarModal({
   target,
@@ -1099,6 +1174,14 @@ export function PanjarTab() {
             Panjar dari <b>{labelAkun(closeTarget.akun_kas_sumber)}</b> sebesar{' '}
             <b>{formatRp(closeTarget.jumlah)}</b>.
           </div>
+        )}
+
+        {closeTarget && (
+          <PeringatanTahunPertanggungjawaban
+            tanggalClose={tanggalClose}
+            tanggalPanjar={closeTarget.tanggal}
+            notaTanggal={items.map((it) => it.nota_tanggal)}
+          />
         )}
 
         <div className="mt-3 space-y-3">

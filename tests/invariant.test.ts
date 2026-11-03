@@ -151,8 +151,10 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
 
       for (let i = 0; i < 200; i++) {
         // Tutup buku 2025 (tahun selesai, K2) di tengah rangkaian; sesudahnya
-        // semua jurnal 2025 wajib beralasan (kunci periode longgar).
-        if (i === 170) {
+        // semua jurnal 2025 wajib beralasan (kunci periode longgar). Tunggu
+        // operasi panjar #171 menutup panjar OPEN agar guard AUD2-06 tidak
+        // memblokir kunci periode.
+        if (i === 172) {
           const tutup = tutupBuku(db, 2025, {
             sekarang: '2026-10-22',
             catatan: 'Tutup buku uji invariant',

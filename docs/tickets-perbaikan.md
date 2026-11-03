@@ -38,7 +38,7 @@
 | AUD2-03 | P0 | M | Koreksi / batalkan pertanggungjawaban Panjar `CLOSED` (buka jalan buntu koreksi panjar) | — | [x] |
 | AUD2-04 | P0 | S | Kunci akun kontrol subledger (`1040` & `2050`) dari Jurnal Umum manual + audit saldo `1040` | — | [x] |
 | AUD2-05 | P0 | M | Rekonsiliasi riil saldo GL `2050` terhadap Pinjaman LPD & validasi Saldo Awal pinjaman `BERJALAN` | AUD2-04 | [x] |
-| AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [ ] |
+| AUD2-06 | P0 | S | Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota | — | [x] |
 | AUD2-07 | P1 | S | Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal | — | [ ] |
 | AUD2-08 | P0 | S | Tolak nilai pecahan (`REAL`) pada `jurnal_baris` di trigger DB dan `auditIntegritas` | — | [ ] |
 | AUD2-09 | P1 | M | Rombak/rebuild seluruh 11 tabel aktif menjadi `STRICT` & bersihkan kolom warisan | AUD2-08 | [ ] |
@@ -161,7 +161,7 @@
   - **Bukti 2026-11-03:** `simpanPinjamanLpd` mode `BERJALAN` menghitung kredit neto `2050` dari grup jurnal `SALDO_AWAL` (kredit − debit, sehingga reversal mengurangi saldo) dan menolak simpan bila total `sisa_pokok_awal` seluruh pinjaman berjalan + pinjaman baru melebihi saldo tersebut, dengan pesan persis sesuai tiket. `hitungRekonsiliasiPinjaman` kini memakai alokasi kredit neto `2050` aktual untuk pinjaman berjalan, bukan menyalin `sisa_pokok_awal`; adapter membagi saldo pembukaan berurutan ke beberapa pinjaman berjalan sehingga pembayaran dan pinjaman lama tetap cocok. `rekonsiliasiSaldoAwal2050` dan `rekonsiliasiGl2050` memeriksa kecukupan saldo awal serta kredit neto `2050` Buku Besar terhadap outstanding seluruh pinjaman aktif (hanya kekurangan yang dilaporkan agar utang non-LPD tidak menjadi temuan palsu), dan `auditIntegritas` melaporkan `REKONSILIASI_PINJAMAN_SELISIH` termasuk saat saldo awal kurang. Test regresi mencakup penolakan tanpa `2050`, penolakan total melebihi saldo awal, alokasi beberapa pinjaman, pembayaran pokok, pemaksaan lewat `buatPinjaman`, arah debit `2050`, serta deteksi debit `2050` liar di tingkat agregat. `npm run typecheck`, 1028 test vitest, dan `npm run build` hijau.
   - **Dependency:** AUD2-04
 
-- [ ] **AUD2-06 — Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota** · P0 · S
+- [x] **AUD2-06 — Guard cut-off Panjar `OPEN` lintas tahun pada Kunci Periode & peringatan tahun nota** · P0 · S
   - **Konteks:**
     Jika panjar diserahkan Desember 2025 dan belum dipertanggungjawabkan, `tutupBuku(db, 2025)` saat ini mengizinkan tahun 2025 dikunci begitu saja. Lalu saat dipertanggungjawabkan Januari 2026 (`PANJAR_CROSS_YEAR`), beban kegiatan 2025 menyeberang ke Laba Rugi 2026.
   - **File yang disentuh:**
@@ -175,6 +175,7 @@
   - **Test:**
     - Test `previewTutupBuku` dan `tutupBuku` menolak tahun 2025 jika ada panjar `OPEN` tertanggal `2025-12-20`; setelah panjar di-close atau dibatalkan, `tutupBuku(2025)` berhasil.
   - **DoD:** Tahun buku tidak bisa dikunci selama masih ada uang panjar menggantung di tahun tersebut.
+  - **Bukti 2026-11-03:** `KonteksValidasiTutup` menerima `panjarOpenTahun`; `validasiTutupBuku()` menolak kunci periode maupun tutup ulang tahun Y selama masih ada panjar OPEN aktif bertanggal <= 31 Des Y, dengan pesan yang menyebut penerima, tanggal, dan saran menyelesaikan/membatalkan panjar. `previewTutupBuku()` dan `tutupBuku()` membaca panjar OPEN aktif (`status = 'OPEN'` dan `jurnal_batal_id` kosong) lalu meneruskannya ke validasi. Form pertanggungjawaban `PanjarTab` menampilkan kotak kuning `PeringatanTahunPertanggungjawaban` bila tahun `tanggalClose` berbeda dari tahun panjar atau tanggal nota, dan menjelaskan beban akan masuk Laba Rugi tahun `tanggalClose`. Regression test mencakup penolakan preview/simpan 2025, keberhasilan setelah panjar di-close dan setelah dibatalkan, validasi murni lintas tahun, serta peringatan UI. `npm run typecheck`, 1035 test vitest, dan `npm run build` hijau.
   - **Dependency:** —
 
 - [ ] **AUD2-07 — Konsistensi wajib alasan peringatan ($\ge 5$ karakter) di semua jalur transaksi, panjar, pinjaman, dan reversal** · P1 · S

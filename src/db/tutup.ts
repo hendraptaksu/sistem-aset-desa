@@ -89,6 +89,24 @@ function bacaTahunAdaJurnal(db: Database.Database): number[] {
 }
 
 /**
+ * AUD2-06: panjar OPEN aktif (belum dipertanggungjawabkan & belum dibatalkan)
+ * yang harus dicek sebelum tahun buku dikunci.
+ */
+function bacaPanjarOpenAktif(
+  db: Database.Database,
+): { id: string; tanggal: string; penerima: string }[] {
+  return db
+    .prepare(
+      `SELECT id, tanggal, penerima
+         FROM panjar
+        WHERE status = 'OPEN'
+          AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')
+        ORDER BY tanggal, id`,
+    )
+    .all() as { id: string; tanggal: string; penerima: string }[];
+}
+
+/**
  * Gabungkan validasi tahun dengan audit integritas. Temuan apa pun membuat
  * tutup buku diblokir, termasuk tutup ulang; konfirmasi operator tidak boleh
  * melewati kerusakan data.
@@ -149,9 +167,15 @@ export function previewTutupBuku(
 ): TutupPreview {
   const daftar = listTutupBuku(db);
   const tahunAdaJurnal = bacaTahunAdaJurnal(db);
+  const panjarOpenTahun = bacaPanjarOpenAktif(db);
   const angka = Number(tahun);
   const validasi = validasiDenganIntegritas(
-    validasiTutupBuku(angka, { sekarang, tutup: daftar, tahunAdaJurnal }),
+    validasiTutupBuku(angka, {
+      sekarang,
+      tutup: daftar,
+      tahunAdaJurnal,
+      panjarOpenTahun,
+    }),
     auditIntegritas(db),
   );
   const baris = listBarisJurnal(db);
@@ -190,12 +214,14 @@ export function tutupBuku(
   const sekarang = opsi.sekarang ?? hariIni();
   const daftar = listTutupBuku(db);
   const tahunAdaJurnal = bacaTahunAdaJurnal(db);
+  const panjarOpenTahun = bacaPanjarOpenAktif(db);
   const angka = Number(tahun);
   const validasi = validasiDenganIntegritas(
     validasiTutupBuku(angka, {
       sekarang,
       tutup: daftar,
       tahunAdaJurnal,
+      panjarOpenTahun,
       konfirmasiTimpak: opsi.konfirmasiTimpak === true,
     }),
     auditIntegritas(db),

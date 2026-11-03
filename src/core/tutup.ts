@@ -8,9 +8,17 @@
 
 import { COA, type Coa } from '../db/coa.js';
 import { labaTahun, type BarisJurnalSumber } from './reports.js';
+import { formatTanggal } from '../utils/format.js';
 import { tahunLokal } from '../utils/tanggal.js';
 
 export type TutupBukuRef = { tahun: number };
+
+/** AUD2-06: panjar OPEN aktif yang belum dipertanggungjawabkan/dibatalkan. */
+export type PanjarOpenTahun = {
+  id: string;
+  tanggal: string;
+  penerima: string;
+};
 
 export type KonteksValidasiTutup = {
   /** Tanggal hari ini (YYYY-MM-DD); dipakai untuk batas tahun berjalan. */
@@ -21,6 +29,12 @@ export type KonteksValidasiTutup = {
   tahunAdaJurnal: ReadonlyArray<number>;
   /** Operator sudah menyetujui penimpaan tahun yang sudah ditutup. */
   konfirmasiTimpak?: boolean;
+  /**
+   * AUD2-06: panjar OPEN aktif (belum CLOSED & belum dibatalkan). Tahun buku
+   * tidak boleh dikunci selama masih ada panjar dengan tanggal <= 31 Des tahun
+   * tersebut karena beban pertanggungjawabannya bisa menyeberang ke tahun lain.
+   */
+  panjarOpenTahun?: ReadonlyArray<PanjarOpenTahun>;
 };
 
 export type AksiTutup = 'TUTUP' | 'TUTUP-ULANG';
@@ -125,6 +139,24 @@ export function validasiTutupBuku(
         const daftarTahun = belumDitutup.join(', ');
         errors.push(
           `Kunci periode harus berurutan. Tahun ${daftarTahun} memiliki jurnal tetapi belum ditutup; kunci tahun tersebut lebih dulu sebelum ${angka}.`,
+        );
+      }
+    }
+
+    // AUD2-06: tahun buku tidak boleh dikunci selama masih ada uang panjar
+    // menggantung di tahun tersebut (termasuk tutup ulang). Panjar OPEN dari
+    // tahun sebelumnya juga memblokir tahun berikutnya sampai diselesaikan.
+    if (angka >= 1900 && angka <= 9999 && angka <= batasTahun) {
+      const batasTanggal = `${angka}-12-31`;
+      const panjarMenggantung = (ctx.panjarOpenTahun ?? []).filter(
+        (p) => String(p.tanggal ?? '') <= batasTanggal,
+      );
+      if (panjarMenggantung.length > 0) {
+        const rincian = panjarMenggantung
+          .map((p) => `${p.penerima} (${formatTanggal(p.tanggal)})`)
+          .join(', ');
+        errors.push(
+          `Tahun ${angka} belum bisa dikunci karena masih ada ${panjarMenggantung.length} panjar OPEN yang belum dipertanggungjawabkan/dibatalkan: ${rincian}. Selesaikan pertanggungjawaban atau batalkan panjar tersebut terlebih dahulu.`,
         );
       }
     }

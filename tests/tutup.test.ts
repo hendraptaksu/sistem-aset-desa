@@ -5,6 +5,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
+import { AKUN_MODAL } from '../src/db/coa.js';
+import {
+  batalPanjarV2,
+  closePanjarV2,
+  serahkanPanjar,
+} from '../src/db/panjar.js';
 import {
   insertJurnalTervalidasi,
   insertTutupBuku,
@@ -54,6 +60,40 @@ const keluar = (akun: string, nominal: number): JurnalBarisInput[] => [
   { akun_kode: akun, debit: nominal, kredit: 0 },
   { akun_kode: '1001', debit: 0, kredit: nominal },
 ];
+
+/**
+ * AUD2-06: DB dengan kas awal + satu panjar OPEN tertanggal 2025-12-20.
+ * Saldo awal diperlukan agar jurnal serah panjar lolos guard posting.
+ */
+function dbPanjarOpen2025(): Database.Database {
+  const db = freshDb();
+  const awal = postingJurnal(db, {
+    header: {
+      id: 'saldo-awal-2025',
+      tanggal: '2025-01-01',
+      no_bukti: 'SA-2025',
+      keterangan: 'Saldo awal uji guard panjar',
+      jenis: 'SALDO_AWAL',
+    },
+    baris: [
+      { akun_kode: '1001', debit: 10_000_000, kredit: 0 },
+      { akun_kode: AKUN_MODAL, debit: 0, kredit: 10_000_000 },
+    ],
+  });
+  expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+  const panjar = serahkanPanjar(db, {
+    id: 'p-2025',
+    jurnalId: 'j-p-2025',
+    tanggal: '2025-12-20',
+    penerima: 'Panitia Piodalan',
+    jumlah: 1_000_000,
+    akunKasSumber: '1001',
+    noBukti: 'PANJAR-2025',
+  });
+  expect(panjar.tersimpan, panjar.errors.join(' ')).toBe(true);
+  return db;
+}
 
 function audit(db: Database.Database): { aksi: string; alasan: string }[] {
   return db.prepare('SELECT aksi, alasan FROM audit_log ORDER BY rowid').all() as {
@@ -204,6 +244,51 @@ describe('P0-7 — validasi tutup buku (murni)', () => {
     const sudah = validasiTutupBuku(2025, { ...ctx, konfirmasiTimpak: true });
     expect(sudah.boleh).toBe(true);
     expect(sudah.aksi).toBe('TUTUP-ULANG');
+  });
+
+  it('AUD2-06: menolak tahun yang masih punya panjar OPEN sampai 31 Des', () => {
+    const ctx = {
+      sekarang: SEKARANG,
+      tutup: [],
+      tahunAdaJurnal: [],
+      panjarOpenTahun: [
+        { id: 'p-2025', tanggal: '2025-12-20', penerima: 'Panitia Piodalan' },
+      ],
+    };
+
+    const tutup2025 = validasiTutupBuku(2025, ctx);
+    expect(tutup2025.boleh).toBe(false);
+    expect(tutup2025.errors.join(' ')).toMatch(/panjar OPEN/i);
+    expect(tutup2025.errors.join(' ')).toContain('Panitia Piodalan');
+    expect(tutup2025.errors.join(' ')).toContain('20 Des 2025');
+    expect(tutup2025.errors.join(' ')).toMatch(/selesaikan|batalkan/i);
+
+    // Panjar OPEN tahun sebelumnya juga memblokir tahun berikutnya.
+    const tutup2026 = validasiTutupBuku(2026, {
+      ...ctx,
+      sekarang: '2027-01-02',
+    });
+    expect(tutup2026.boleh).toBe(false);
+    expect(tutup2026.errors.join(' ')).toContain('Panitia Piodalan');
+
+    // Panjar bertanggal setelah 31 Des tahun yang dikunci tidak memblokir.
+    const bedaTahun = validasiTutupBuku(2025, {
+      ...ctx,
+      panjarOpenTahun: [
+        { id: 'p-2026', tanggal: '2026-01-05', penerima: 'Panitia Lain' },
+      ],
+    });
+    expect(bedaTahun.boleh).toBe(true);
+
+    // Tutup ulang juga tidak boleh melewati panjar yang masih OPEN.
+    const ulang = validasiTutupBuku(2025, {
+      ...ctx,
+      tutup: [{ tahun: 2025 }],
+      konfirmasiTimpak: true,
+    });
+    expect(ulang.boleh).toBe(false);
+    expect(ulang.aksi).toBe('TUTUP-ULANG');
+    expect(ulang.errors.join(' ')).toMatch(/panjar OPEN/i);
   });
 });
 
@@ -381,6 +466,72 @@ describe('P0-7 — tutup buku di DB', () => {
       expect(ulang.tersimpan).toBe(true);
       expect(ulang.data?.catatan).toBe('Kedua');
       expect(audit(db).map((a) => a.aksi)).toEqual(['TUTUP 2025', 'TUTUP-ULANG 2025']);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('AUD2-06 — guard cut-off panjar OPEN lintas tahun', () => {
+  it('preview & simpan menolak 2025 selama panjar OPEN 2025-12-20', () => {
+    const db = dbPanjarOpen2025();
+    try {
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.boleh).toBe(false);
+      expect(pratinjau.errors.join(' ')).toMatch(/panjar OPEN/i);
+      expect(pratinjau.errors.join(' ')).toContain('Panitia Piodalan');
+      expect(pratinjau.errors.join(' ')).toContain('20 Des 2025');
+      expect(pratinjau.errors.join(' ')).toMatch(/selesaikan|batalkan/i);
+      expect(pratinjau.temuanIntegritas).toEqual([]);
+
+      const hasil = tutupBuku(db, 2025, {
+        sekarang: SEKARANG,
+        catatan: 'Tidak boleh tersimpan',
+      });
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toContain('Panitia Piodalan');
+      expect(hasil.errors.join(' ')).toContain('20 Des 2025');
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(audit(db).some((a) => a.aksi.startsWith('TUTUP'))).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tutup 2025 berhasil setelah panjar dipertanggungjawabkan', () => {
+    const db = dbPanjarOpen2025();
+    try {
+      const close = closePanjarV2(db, {
+        id: 'p-2025',
+        tanggalClose: '2026-01-10',
+        items: [{ akun: '5004', nominal: 1_000_000 }],
+      });
+      expect(close.tersimpan, close.errors.join(' ')).toBe(true);
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.boleh, pratinjau.errors.join(' ')).toBe(true);
+      const hasil = tutupBuku(db, 2025, { sekarang: SEKARANG });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(listTutupBuku(db).map((t) => t.tahun)).toEqual([2025]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tutup 2025 berhasil setelah panjar dibatalkan', () => {
+    const db = dbPanjarOpen2025();
+    try {
+      const batal = batalPanjarV2(db, {
+        id: 'p-2025',
+        alasan: 'Salah serah ke panitia',
+      });
+      expect(batal.tersimpan, batal.errors.join(' ')).toBe(true);
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.boleh, pratinjau.errors.join(' ')).toBe(true);
+      const hasil = tutupBuku(db, 2025, { sekarang: SEKARANG });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(listTutupBuku(db).map((t) => t.tahun)).toEqual([2025]);
     } finally {
       db.close();
     }

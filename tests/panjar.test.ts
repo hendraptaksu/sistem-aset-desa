@@ -46,7 +46,7 @@ import {
 import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
 import { AKUN_MODAL, KAS_KODES } from '../src/db/coa.js';
 import type { JurnalBarisInput, Panjar, PanjarItem } from '../src/core/types.js';
-import { PanjarTab } from '../src/renderer/components/PanjarTab.js';
+import { PanjarTab, PeringatanTahunPertanggungjawaban } from '../src/renderer/components/PanjarTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -862,6 +862,50 @@ describe('AKT-08 — UI konfirmasi overrun tanpa checkbox', () => {
     expect(html).not.toContain('Saya setuju kekurangan');
     expect(html).not.toContain('Centang persetujuan');
     expect(html).toContain('sistem akan meminta alasan minimal 5 karakter');
+  });
+});
+
+describe('AUD2-06 — peringatan tahun pertanggungjawaban', () => {
+  it('menampilkan kotak kuning saat tahun realisasi beda dari panjar & nota', () => {
+    const html = renderToStaticMarkup(
+      createElement(PeringatanTahunPertanggungjawaban, {
+        tanggalClose: '2026-01-10',
+        tanggalPanjar: '2025-12-20',
+        notaTanggal: ['2025-12-18', ''],
+      }),
+    );
+
+    expect(html).toContain('Perhatian');
+    expect(html).toContain('bg-amber-50');
+    expect(html).toContain('20 Des 2025');
+    expect(html).toContain('18 Des 2025');
+    expect(html).toContain('Laba Rugi tahun 2026');
+    expect(html).toContain('bukan tahun 2025');
+  });
+
+  it('menampilkan peringatan bila hanya tanggal nota yang beda tahun', () => {
+    const html = renderToStaticMarkup(
+      createElement(PeringatanTahunPertanggungjawaban, {
+        tanggalClose: '2026-01-10',
+        tanggalPanjar: '2026-01-05',
+        notaTanggal: ['2025-12-31'],
+      }),
+    );
+
+    expect(html).toContain('31 Des 2025');
+    expect(html).toContain('Laba Rugi tahun 2026');
+  });
+
+  it('tidak menampilkan peringatan bila semua tahun sama', () => {
+    const html = renderToStaticMarkup(
+      createElement(PeringatanTahunPertanggungjawaban, {
+        tanggalClose: '2026-01-10',
+        tanggalPanjar: '2026-01-05',
+        notaTanggal: ['2026-01-08', ''],
+      }),
+    );
+
+    expect(html).toBe('');
   });
 });
 
