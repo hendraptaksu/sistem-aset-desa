@@ -232,8 +232,6 @@ Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
 - **P2 — Lanjutan:** test integrasi dan dokumentasi.
   (Rekonsiliasi bank, aset tetap, & multi-user sudah dibatalkan.)
 
-Detail per ticket (dengan checkbox dan bukti) ada di `docs/tickets-perbaikan.md`.
-
 ## 12. Peta feedback WhatsApp v1.2.0 → solusi di arah baru
 
 | # | Feedback pengguna v1.2.0 | Solusi di rencana baru |
