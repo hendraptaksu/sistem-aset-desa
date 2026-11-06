@@ -79,7 +79,7 @@
   - Gunakan pola `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` agar definisi selalu sesuai kode.
   - Selesai bila membuka DB berulang tidak menggandakan trigger dan trigger yang hilang bisa dipulihkan.
 
-- [ ] **T1.5 — Hapus seluruh kode migrasi**
+- [x] **T1.5 — Hapus seluruh kode migrasi**
   - File: `src/db/database.ts`
   - Hapus:
     - `terapkanMigrasiSingleEntryLama`
@@ -90,7 +90,7 @@
     - `migrasi()`.
   - Selesai bila `rg "terapkanMigrasi|terapkanAturan|TABEL_DIHAPUS|TABEL_SINGLE_ENTRY|rebuildTabel" src/db/database.ts` kosong.
 
-- [ ] **T1.6 — Guard kompatibilitas DB**
+- [x] **T1.6 — Guard kompatibilitas DB**
   - File: `src/db/database.ts`
   - Tambah `cekKompatibilitas(db)` yang berjalan **sebelum** `journal_mode = WAL`:
     - `user_version > 1` → tolak;
@@ -99,7 +99,7 @@
   - Pesan error harus menyebut file DB lama/tidak kompatibel dan instruksi memindahkan/menghapus file.
   - Selesai bila file DB lama tidak berubah byte-for-byte saat ditolak.
 
-- [ ] **T1.7 — `siapkanSkema()` dan `openDb()` baru**
+- [x] **T1.7 — `siapkanSkema()` dan `openDb()` baru**
   - File: `src/db/database.ts`
   - `siapkanSkema(db)`:
     - jalankan `DDL`/index/trigger dalam satu transaksi;
