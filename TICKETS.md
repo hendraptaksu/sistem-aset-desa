@@ -114,7 +114,7 @@
   - Hapus pemanggilan `backupPraUpgrade` dari alur buka DB.
   - Selesai bila DB baru langsung v1 dan DB lama v23 ditolak.
 
-- [ ] **T1.8 — Sapu komentar migrasi di kode**
+- [x] **T1.8 — Sapu komentar migrasi di kode**
   - File: `src/db/database.ts`, `src/features/export/*.ts`, `src/main/index.ts`, `src/db/pinjaman.ts`, `src/db/tutup.ts`
   - Hapus komentar yang menjelaskan langkah migrasi v9–v23 yang sudah tidak ada.
   - Pertahankan komentar yang menjelaskan alasan invariant akuntansi saat ini.

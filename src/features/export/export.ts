@@ -159,8 +159,7 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
 }
 
 /**
- * Tabel inti model double-entry yang sudah ada sejak skema v2.
- * `audit_log` versi v2 belum punya kolom `data_baru_json`; migrasi menambahkannya.
+ * Tabel inti model double-entry (skema baseline v1).
  */
 const TABEL_WAJIB_V2 = [
   'akun',
@@ -174,8 +173,7 @@ const TABEL_WAJIB_V2 = [
 /**
  * Tabel wajib agar file dianggap backup aplikasi ini (skema v4–v19).
  * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
- * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan; backup lama yang
- * masih memilikinya tetap diterima dan akan dimigrasikan saat dibuka.
+ * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan.
  */
 export const TABEL_WAJIB_RESTORE = [
   ...TABEL_WAJIB_V2,
@@ -202,8 +200,7 @@ export const TABEL_WAJIB_RESTORE_V20 = [
  * - versi tak dikenal (<2): memakai daftar current agar file asing tetap
  *   ditolak, bukan lolos karena tidak punya tabel apa pun.
  * Tabel legacy v5–v8 (pihak, jurnal_pihak, aset, anggaran, rekonsiliasi_bank,
- * lampiran_jurnal) tidak pernah diwajibkan; backup v11 yang masih memilikinya
- * tetap diterima.
+ * lampiran_jurnal) tidak pernah diwajibkan.
  */
 export function tabelWajibRestore(versi: number): readonly string[] {
   if (Number.isInteger(versi) && versi >= 2 && versi < 4) return TABEL_WAJIB_V2;
@@ -265,7 +262,7 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
       };
 
     // DB-08: `integrity_check` tidak memeriksa foreign key. Tolak kandidat yang
-    // punya baris yatim, termasuk baris di tabel legacy yang akan dimigrasikan.
+    // punya baris yatim.
     const pelanggaranFk = kandidat.pragma('foreign_key_check') as PelanggaranFk[];
     if (pelanggaranFk.length > 0) {
       const rincian = pelanggaranFk
@@ -394,7 +391,7 @@ function tulisKunciAktif(
  *    (bila pemanggil sudah membuat cadangan lewat `preRestorePath`, path itu
  *    yang dipakai);
  * 3. tutup koneksi, buang `-wal`/`-shm`, copy ke `.tmp`, rename (atomik);
- * 4. buka ulang + jalankan migrasi versi;
+ * 4. buka ulang dengan skema v1 (`openDb`);
  * 5. tulis kembali PIN + hash kode darurat DB aktif (AUD-14/AUD-19) dalam
  *    transaksi agar kunci backup lama tidak mengganti kunci instalasi ini.
  *

@@ -8,10 +8,9 @@
 //   diturunkan dari jurnal reversal; pencairan dibatalkan bersaldo awal 0.
 //   Saldo dihitung saat membaca dan tidak disimpan sebagai kolom.
 //
-// DB-30: tabel pinjaman* dibuat pada v20, sebelum kebijakan STRICT/DEFAULT
-// untuk tabel baru. Jangan merebuild tabel ini hanya untuk menambah STRICT
-// atau default `created_at`; itu memerlukan ticket migrasi terpisah +
-// kenaikan SCHEMA_VERSION. Kontrak skema: `docs/erd-v2.md`.
+// Tabel pinjaman* adalah bagian skema baseline v1 dan sudah STRICT (lihat DDL
+// di database.ts). Jangan mengubah bentuk tabel tanpa menaikkan
+// SCHEMA_VERSION. Kontrak skema: `docs/erd-v2.md`.
 //
 // `buatPinjaman` hanya menyimpan parameter + jadwal. Jurnal pencairan dibuat
 // oleh `simpanPinjamanLpd` (mode PENCAIRAN) dalam transaksi yang sama. Mode

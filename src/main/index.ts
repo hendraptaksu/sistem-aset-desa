@@ -336,8 +336,8 @@ function mulaiAplikasi(): void {
     let backupPraUpgradeDilakukan = false;
     const dbDibuka = await bukaDbDenganPemulihan({
       buka: () => {
-        // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak
-        // hilang. Kegagalan backup tidak boleh menghalangi percobaan buka DB.
+        // Sebelum membuka DB: simpan DB lama (best-effort) agar tidak hilang.
+        // Kegagalan backup tidak boleh menghalangi percobaan buka DB.
         if (!backupPraUpgradeDilakukan) {
           backupPraUpgradeDilakukan = true;
           try {

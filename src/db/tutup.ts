@@ -1,7 +1,6 @@
 // Adapter DB untuk tutup buku (P0-7, AKT-10).
 //
-// `tutup_buku` hanya menyimpan penanda tahun + created_at + catatan. Kolom
-// legacy `backup_path` sudah dibuang oleh rebuild STRICT v23 (AUD2-09).
+// `tutup_buku` hanya menyimpan penanda tahun + created_at + catatan.
 // Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
 // dari jurnal lewat mesin laporan (P0-5).
 //

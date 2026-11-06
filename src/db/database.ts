@@ -47,9 +47,8 @@ export const PESAN_DB_TIDAK_KOMPATIBEL =
  * DDL index kanonik skema v1.
  *
  * Semua index wajib didefinisikan di sini dan diinterpolasi ke `DDL`, sehingga
- * `db.exec(DDL)` pada DB baru langsung menghasilkan tabel + index tanpa perlu
- * menjalankan fungsi migrasi. Semua `IF NOT EXISTS` membuat definisi ini aman
- * dijalankan ulang.
+ * `db.exec(DDL)` pada DB baru langsung menghasilkan tabel + index. Semua
+ * `IF NOT EXISTS` membuat definisi ini aman dijalankan ulang.
  */
 export const DDL_INDEX = `
 -- Nomor bukti unik per tahun, bukan global: nomor yang sama boleh dipakai
