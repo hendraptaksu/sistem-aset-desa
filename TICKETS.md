@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 0 | 9 |
+| 3 — Hardening | P2 | 1 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **21** | **33** |
+| **Total** |  | **22** | **33** |
 
 ## Aturan kerja
 
@@ -263,7 +263,7 @@
 
 ## Fase 3 — P2: Hardening, performa, dan dokumentasi
 
-- [ ] **T3.1 — Verifikasi isi backup sebelum mengganti backup lama**
+- [x] **T3.1 — Verifikasi isi backup sebelum mengganti backup lama**
   - **Masalah:** `backupVacuumInto` hanya mengecek file tmp ada dan ukurannya > 0. Backup yang korup tetapi berukuran wajar bisa menggantikan backup lama yang sehat.
   - **File:** `src/features/export/export.ts`, `tests/backup-restore.test.ts`.
   - **Langkah:**
@@ -272,7 +272,7 @@
     3. Bila gagal: hapus tmp, pertahankan `dest` lama, lempar error.
   - **Selesai bila:** backup korup tidak pernah menggantikan backup lama.
   - **Verifikasi:** test dengan file tmp korup/valid.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/features/export/export.ts`, `tests/backup-restore.test.ts`, `TICKETS.md`. `verifikasiFileBackup(path)` diekspor dan membuka `new Database(path, { readonly: true, fileMustExist: true })` — sengaja tanpa `openDb` agar tidak menulis WAL/DDL ke file backup — lalu memeriksa `PRAGMA integrity_check` = `ok`, `PRAGMA foreign_key_check` kosong, `user_version === SCHEMA_VERSION`, dan seluruh `TABEL_AKTIF` ada sebagai tabel di `sqlite_master`; error teknis SQLite diubah menjadi pesan Indonesia `Backup tidak valid: <tahap> gagal ...` yang menyebut tahap yang gagal. `backupVacuumInto(db, dest, verifikasi = verifikasiFileBackup)` menjalankan verifikasi pada file tmp setelah `VACUUM INTO` dan sebelum rename menimpa `dest`; bila gagal, `buangFileDb(tmp)` menghapus tmp/sidecar, `dest` lama tidak disentuh, dan error dilempar. Parameter ketiga adalah seam test; pemanggil lama (2 argumen) tetap kompatibel dan produksi memakai default. Test baru: (a) backup normal lolos `verifikasiFileBackup` dan isinya bisa dibuka; (b) file non-SQLite, SQLite korup, `user_version` salah, tabel wajib hilang, dan baris FK yatim ditolak; (c) verifier suntikan yang selalu melempar membuat `dest` lama byte-for-byte identik, tanpa sisa `.tmp-*`/`.bak-*`, dan error dilempar; (d) bila `dest` belum ada, `dest` tidak dibuat dan tmp tidak tertinggal. Verifikasi: `npm test -- tests/backup-restore.test.ts` (31 lulus), `npm run typecheck` lulus, `npm test` 90 file/1.169 test lulus, 0 gagal (baseline 90/1.163). Commit `1c5a236`.
 
 - [ ] **T3.2 — Retensi backup internal**
   - **Masalah:** `auto-*.db` dibatasi 7 file, tetapi `pre-restore-*.db` dan `pura-<tahun>.db` bisa menumpuk tanpa batas.
