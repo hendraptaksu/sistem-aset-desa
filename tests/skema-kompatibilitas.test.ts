@@ -5,6 +5,8 @@
 //   byte-for-byte tidak berubah (tidak ada `-wal`/`-shm` baru).
 // - DB `user_version = 0` yang sudah punya tabel ditolak tanpa mengubah file.
 // - DB `user_version = 1` dengan tabel asing ditolak.
+// - DB v1 yang kehilangan tabel wajib (mis. `jurnal_baris`) ditolak sebelum
+//   DDL/WAL, tanpa membuat tabel kosong dan tanpa mengubah byte file.
 // - DB v1 valid (11 tabel aktif) bisa dibuka, seed COA jalan, dan data
 //   `pengaturan` sentinel tetap.
 // - DB baru `:memory:` langsung v1, 11 tabel aktif, seluruhnya STRICT.
@@ -19,6 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DDL,
   PESAN_DB_TIDAK_KOMPATIBEL,
+  PESAN_DB_TIDAK_LENGKAP,
   SCHEMA_VERSION,
   TABEL_AKTIF,
   openDb,
@@ -135,6 +138,67 @@ describe('skema v1 — openDb menolak DB tidak kompatibel', () => {
 
     expect(tangkapPesan(() => openDb(path))).toBe(PESAN_DB_TIDAK_KOMPATIBEL);
     pastikanTidakBerubah(path, sebelum);
+  });
+});
+
+describe('skema v1 — DB v1 tidak lengkap ditolak', () => {
+  it('menolak DB v1 tanpa jurnal_baris tanpa membuat tabel kosong dan tanpa mengubah byte', () => {
+    const path = join(tmpDir('skema-v1-kurang-'), 'pura.db');
+
+    // DB v1 valid dibuat lewat jalur aplikasi, lalu ditutup agar tidak ada
+    // handle/WAL tersisa.
+    const awal = openDb(path);
+    awal
+      .prepare("INSERT INTO pengaturan (kunci, nilai) VALUES ('sentinel', 'tetap')")
+      .run();
+    awal.close();
+
+    // Tiru DB rusak: hapus satu tabel wajib langsung dari file.
+    buatDbMentah(path, (db) => {
+      db.pragma('foreign_keys = OFF');
+      db.exec('DROP TABLE jurnal_baris');
+    });
+    const sebelum = readFileSync(path);
+
+    const pesan = tangkapPesan(() => openDb(path));
+    expect(pesan).toContain(PESAN_DB_TIDAK_LENGKAP);
+    expect(pesan).toContain('jurnal_baris');
+    expect(pesan).toMatch(/backup/i);
+    pastikanTidakBerubah(path, sebelum);
+
+    // Guard berjalan sebelum DDL: tabel tidak dibuat ulang, versi tetap v1,
+    // dan data lain tidak berubah.
+    const cek = new Database(path, { readonly: true });
+    try {
+      expect(versi(cek)).toBe(SCHEMA_VERSION);
+      expect(namaTabelUser(cek)).not.toContain('jurnal_baris');
+      expect(namaTabelUser(cek)).toHaveLength(TABEL_AKTIF.length - 1);
+      expect(cek.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'sentinel'").get()).toEqual({
+        nilai: 'tetap',
+      });
+    } finally {
+      cek.close();
+    }
+  });
+
+  it('DB v1 lengkap tetap bisa dibuka dan datanya utuh', () => {
+    const path = join(tmpDir('skema-v1-lengkap-'), 'pura.db');
+    const pertama = openDb(path);
+    pertama
+      .prepare("INSERT INTO pengaturan (kunci, nilai) VALUES ('sentinel', 'tetap')")
+      .run();
+    pertama.close();
+
+    const db = openDb(path);
+    try {
+      expect(versi(db)).toBe(SCHEMA_VERSION);
+      expect(namaTabelUser(db).sort()).toEqual([...TABEL_AKTIF].sort());
+      expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'sentinel'").get()).toEqual({
+        nilai: 'tetap',
+      });
+    } finally {
+      db.close();
+    }
   });
 });
 

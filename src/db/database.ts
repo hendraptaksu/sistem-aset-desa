@@ -44,6 +44,24 @@ export const PESAN_DB_TIDAK_KOMPATIBEL =
   'tersebut, lalu jalankan aplikasi lagi.';
 
 /**
+ * Awalan pesan penolakan DB v1 yang kehilangan tabel wajib. DB seperti ini
+ * tidak boleh dibuat ulang dengan `CREATE TABLE IF NOT EXISTS` karena tabel
+ * kosong akan menutupi data yang hilang.
+ */
+export const PESAN_DB_TIDAK_LENGKAP =
+  'File database skema v1 tidak lengkap: tabel wajib tidak ditemukan:';
+
+/** Pesan penolakan DB v1 tidak lengkap; menyebut tabel yang hilang. */
+export function pesanDbTidakLengkap(tabelKurang: readonly string[]): string {
+  return (
+    `${PESAN_DB_TIDAK_LENGKAP} ${tabelKurang.join(', ')}. ` +
+    'Database tidak diubah agar data yang tersisa tidak tertimpa. ' +
+    'Pulihkan file database ini dari backup yang sehat atau hubungi pendamping; ' +
+    'jangan membuat ulang tabel kosong.'
+  );
+}
+
+/**
  * DDL index kanonik skema v1.
  *
  * Semua index wajib didefinisikan di sini dan diinterpolasi ke `DDL`, sehingga
@@ -568,9 +586,10 @@ function daftarTabelUser(db: Database.Database): string[] {
 
 /**
  * Guard kompatibilitas skema. Hanya DB baru (v0 tanpa tabel) dan DB v1 yang
- * seluruh tabelnya termasuk `TABEL_AKTIF` yang boleh dibuka. Database lama
- * tidak dimigrasikan dan tidak boleh disentuh: fungsi ini dipanggil SEBELUM
- * `journal_mode = WAL` agar file lama tidak berubah byte-for-byte.
+ * lengkap — seluruh `TABEL_AKTIF` ada dan tidak ada tabel asing — yang boleh
+ * dibuka. Database lama/tidak lengkap tidak dimigrasikan dan tidak boleh
+ * disentuh: fungsi ini dipanggil SEBELUM `journal_mode = WAL` agar file lama
+ * tidak berubah byte-for-byte.
  */
 export function cekKompatibilitas(db: Database.Database): void {
   const versi = Number(db.pragma('user_version', { simple: true }) ?? 0);
@@ -579,6 +598,13 @@ export function cekKompatibilitas(db: Database.Database): void {
   if (versi === 0 && tabel.length === 0) return;
 
   if (versi === SCHEMA_VERSION) {
+    const tabelSet = new Set(tabel);
+    const tabelKurang = TABEL_AKTIF.filter((nama) => !tabelSet.has(nama));
+    // DB v1 tanpa tabel wajib (mis. `jurnal_baris` terhapus) harus ditolak
+    // sebelum DDL, jangan sampai `CREATE TABLE IF NOT EXISTS` membuat tabel
+    // kosong dan menutupi kehilangan data.
+    if (tabelKurang.length > 0) throw new Error(pesanDbTidakLengkap(tabelKurang));
+
     const tabelAktif = new Set<string>(TABEL_AKTIF);
     const tabelAsing = tabel.filter((nama) => !tabelAktif.has(nama));
     if (tabelAsing.length === 0) return;
