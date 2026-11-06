@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 0 | 9 |
+| 2 — Kontrol & UX | P1 | 1 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **12** | **33** |
+| **Total** |  | **13** | **33** |
 
 ## Aturan kerja
 
@@ -169,7 +169,7 @@
 
 ## Fase 2 — P1: Kontrol akuntansi, keamanan, dan UX
 
-- [ ] **T2.1 — Helper backend untuk kemampuan koreksi jurnal**
+- [x] **T2.1 — Helper backend untuk kemampuan koreksi jurnal**
   - **Masalah:** UI menebak aksi yang boleh dari `jenis` dan akun, sehingga tombol Koreksi muncul untuk panjar/pinjaman/saldo awal yang pasti ditolak backend.
   - **File:** `src/db/reversal.ts`, `src/db/repository.ts`, `src/features/export/...` bila perlu.
   - **Langkah:**
@@ -178,7 +178,7 @@
     3. Untuk pinjaman, gunakan relasi tabel — bukan heuristik “jenis HUTANG + akun 2050”.
   - **Selesai bila:** helper memberi alasan yang benar untuk panjar, pinjaman pokok, pinjaman bunga saja, saldo awal, dan jurnal yang sudah dikoreksi.
   - **Verifikasi:** test unit baru.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/reversal.ts`, `tests/kemampuan-koreksi-jurnal.test.ts` (baru), `TICKETS.md`. `kemampuanKoreksiJurnal(db, jurnal)` menerima objek minimal `{ id }` (atau `Jurnal`) dan SELALU membaca ulang jurnal dari DB, sehingga `jenis` dari renderer diabaikan. Urutan aturan: tidak ditemukan → `REVERSAL`/`reversal_of` (pakai `PESAN_REVERSAL.asliBalik`) → sudah punya reversal (`SELECT 1 FROM jurnal WHERE reversal_of = ?`, pakai `PESAN_REVERSAL.sudahDibalik`) → panjar (`jurnal_open_id`/`jurnal_close_id`/`jurnal_batal_id`) → pinjaman (`pinjaman.jurnal_pencairan_id` UNION `pinjaman_bayar.jurnal_id`) → `SALDO_AWAL`; masing-masing memakai `PESAN_REVERSAL_PANJAR`, `PESAN_REVERSAL_PINJAMAN`, `PESAN_REVERSAL_SALDO_AWAL` yang sudah ada, dirangkum di `PESAN_KOREKSI_JURNAL`. `bisaDibalik` dan `bisaDikoreksi` sengaja memakai aturan yang sama karena koreksi isi ulang juga menulis reversal; perbedaan sah nanti harus diubah di helper ini, bukan di UI. `alasan` bernilai `null` bila kedua aksi boleh. Pemeriksaan panjar capability memakai fungsi terpisah yang menyertakan `jurnal_batal_id`, sehingga perilaku/pesan `reverseJurnal` publik untuk jurnal batal (DB-21, tetap "jurnal balik") tidak berubah. Deteksi pinjaman memakai relasi tabel, bukan heuristik jenis HUTANG + akun 2050; test membuktikan pembayaran bunga saja (`pokok: 0`, jurnal HUTANG berisi 5063 tanpa 2050) tetap ditolak dengan alasan pinjaman. Verifikasi: `npx vitest run tests/kemampuan-koreksi-jurnal.test.ts tests/reversal.test.ts tests/aud2-13-transaksi-terakhir.test.ts` 3 file/46 test lulus; `npm run typecheck` lulus; `npm test` 88 file/1.122 test lulus, 0 gagal. Commit kode `ecef39d`.
 
 - [ ] **T2.2 — Expose capability flags dan pakai di UI**
   - **Masalah:** `JurnalTab`/`TransaksiTab` masih memakai daftar jenis dan `jurnalTerhubungPinjaman` yang tidak lengkap.
