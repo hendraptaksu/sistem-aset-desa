@@ -12,6 +12,14 @@ import type { Jurnal, JurnalBaris } from './types.js';
 
 export const ALASAN_REVERSAL_MIN = 5;
 
+/**
+ * T1.5: saldo awal tidak boleh dibalik dari jalur umum. Saldo awal hanya
+ * dikoreksi lewat alur koreksi saldo awal agar wizard dan unique index tetap
+ * konsisten.
+ */
+export const PESAN_REVERSAL_SALDO_AWAL =
+  'Jurnal saldo awal tidak bisa dibalik dari Jurnal Umum. Saldo awal hanya boleh dikoreksi lewat alur koreksi saldo awal.';
+
 export type RencanaReversalInput = {
   /** Jurnal asli; null bila id tidak ditemukan. */
   jurnal: Jurnal | null;

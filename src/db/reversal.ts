@@ -11,7 +11,11 @@ import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { kodeKasDariDaftarAkun } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
-import { PESAN_REVERSAL, rencanaReversal } from '../core/reversal.js';
+import {
+  PESAN_REVERSAL,
+  PESAN_REVERSAL_SALDO_AWAL,
+  rencanaReversal,
+} from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
 import { validasiJurnal } from '../core/posting.js';
@@ -47,6 +51,8 @@ export type HasilKoreksi = HasilPosting & {
   reversal?: Jurnal;
   jurnalBaru?: Jurnal;
 };
+
+export { PESAN_REVERSAL_SALDO_AWAL };
 
 const idBaru = (prefix: string): string => `${prefix}-${randomUUID()}`;
 
@@ -106,6 +112,13 @@ function rencanaUntuk(
 
   // Cek sebelum menyusun rencana agar kedua jalur (reversal & isi ulang)
   // berhenti tanpa menyentuh jurnal/audit.
+  //
+  // T1.5: hanya jurnal yang berjenis SALDO_AWAL yang ditolak. Jurnal UMUM
+  // (mis. penyesuaian) dalam grup yang sama tetap boleh dikoreksi lewat jalur
+  // biasa; pengecekan per-jurnal ini sengaja tidak memblokir seluruh grup.
+  if (detail?.jurnal.jenis === 'SALDO_AWAL')
+    return { boleh: false, errors: [PESAN_REVERSAL_SALDO_AWAL] };
+
   if (terhubungPanjar(db, idAsli))
     return { boleh: false, errors: [PESAN_REVERSAL_PANJAR] };
 

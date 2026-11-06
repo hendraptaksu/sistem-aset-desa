@@ -24,7 +24,7 @@ import {
 import { postingSaldoAwal, type HasilPosting } from './posting.js';
 
 export const PESAN_SALDO_AWAL_SUDAH_ADA =
-  'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.';
+  'Saldo awal sudah pernah dibuat. Perbaikan saldo awal hanya bisa lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
 
 export type StatusSaldoAwal = {
   boleh: boolean;

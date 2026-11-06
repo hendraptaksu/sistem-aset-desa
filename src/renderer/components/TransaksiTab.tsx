@@ -110,6 +110,13 @@ const LABEL_JENIS: Record<string, string> = {
 };
 
 /**
+ * Sama dengan `PESAN_SALDO_AWAL_SUDAH_ADA` di `src/db/saldoAwal.ts`. Disalin
+ * di sini agar renderer tidak mengimpor lapisan DB (better-sqlite3).
+ */
+const PESAN_SALDO_AWAL_TERKUNCI =
+  'Saldo awal sudah pernah dibuat. Perbaikan saldo awal hanya bisa lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
+
+/**
  * Jenis yang boleh dibatalkan cepat dari halaman Transaksi. Panjar dan
  * pinjaman sengaja tidak masuk: koreksinya harus lewat modul asalnya agar
  * status dokumen ikut diperbarui.
@@ -440,8 +447,7 @@ export function TransaksiTab({
             )}
             {saldoStatus && !saldoStatus.boleh && (
               <p className="mt-2 text-sm text-stone-600">
-                {saldoStatus.alasan ??
-                  'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.'}
+                {saldoStatus.alasan ?? PESAN_SALDO_AWAL_TERKUNCI}
               </p>
             )}
             {!saldoStatus && !statusSaldoErr && (
@@ -466,7 +472,7 @@ export function TransaksiTab({
               title={
                 saldoStatus && !saldoStatus.boleh
                   ? (saldoStatus.alasan ??
-                    'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.')
+                    PESAN_SALDO_AWAL_TERKUNCI)
                   : undefined
               }
               onClick={() => setWizardOpen(true)}
@@ -600,8 +606,7 @@ export function TransaksiTab({
               ...(s ?? {}),
               boleh: false,
               jumlahJurnal: (s?.jumlahJurnal ?? 0) + 1,
-              alasan:
-                'Saldo awal sudah pernah dibuat. Gunakan koreksi/jurnal biasa.',
+              alasan: PESAN_SALDO_AWAL_TERKUNCI,
             }));
             void muatStatusSaldo();
             muatJurnal();

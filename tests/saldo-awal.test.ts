@@ -228,6 +228,11 @@ describe('P1-6 — builder saldo awal murni', () => {
 });
 
 describe('P1-6 — adapter DB & status sekali pakai', () => {
+  it('T1.5: pesan saldo awal tidak menyarankan jurnal biasa', () => {
+    expect(PESAN_SALDO_AWAL_SUDAH_ADA).toContain('alur koreksi saldo awal');
+    expect(PESAN_SALDO_AWAL_SUDAH_ADA).not.toMatch(/Gunakan koreksi|jurnal biasa\./i);
+  });
+
   it('menyimpan satu jurnal, Neraca Saldo nol, laporan jalan, audit SALDO-AWAL tercatat', () => {
     const db = openDb(':memory:');
     try {

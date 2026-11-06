@@ -62,6 +62,17 @@ const namaAkun = (coa: Coa[], kode: string): string => {
   return a ? `${a.kode} — ${a.nama}` : kode;
 };
 
+/**
+ * T1.5: saldo awal belum punya jalur koreksi yang sah (T1.8), jadi tombol
+ * Koreksi tidak ditawarkan. Jurnal UMUM di grup yang sama tetap boleh dikoreksi.
+ */
+export function bisaDikoreksiJurnal(
+  jurnal: Pick<JurnalLengkap, 'jenis' | 'reversal_of' | 'reversal_id'>,
+): boolean {
+  if (jurnal.reversal_of || jurnal.reversal_id) return false;
+  return jurnal.jenis !== 'SALDO_AWAL';
+}
+
 type BarisForm = {
   akun_kode: string;
   sisi: 'DEBIT' | 'KREDIT';
@@ -392,6 +403,7 @@ export function JurnalTab({
             <tbody>
               {pageRows.map((j) => {
                 const terkunci = Boolean(j.reversal_of) || Boolean(j.reversal_id);
+                const bisaDikoreksi = bisaDikoreksiJurnal(j);
                 // UI-12: nomor bukti dipakai sebagai konteks aksi baris. Jurnal lama
                 // bisa tanpa no. bukti; tanggal + potongan id menjaga nama tetap unik.
                 const nomorBuktiAksesibel =
@@ -427,11 +439,13 @@ export function JurnalTab({
                         <Button
                           variant="ghost"
                           aria-label={`Koreksi jurnal ${nomorBuktiAksesibel}`}
-                          disabled={terkunci}
+                          disabled={!bisaDikoreksi}
                           title={
                             terkunci
                               ? 'Jurnal balik / jurnal yang sudah dikoreksi tidak bisa dikoreksi lagi.'
-                              : undefined
+                              : j.jenis === 'SALDO_AWAL'
+                                ? 'Saldo awal hanya boleh dikoreksi lewat alur koreksi saldo awal.'
+                                : undefined
                           }
                           onClick={() => {
                             setErr(null);

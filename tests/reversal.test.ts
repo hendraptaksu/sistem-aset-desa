@@ -20,6 +20,7 @@ import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   koreksiDanIsiUlang,
   PESAN_REVERSAL_PANJAR,
+  PESAN_REVERSAL_SALDO_AWAL,
   reverseJurnal,
 } from '../src/db/reversal.js';
 import {
@@ -35,6 +36,7 @@ import {
   type RencanaReversalInput,
 } from '../src/core/reversal.js';
 import type { Jurnal, JurnalBaris, JurnalBarisInput } from '../src/core/types.js';
+import { bisaDikoreksiJurnal } from '../src/renderer/components/JurnalTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -430,6 +432,122 @@ describe('P0-6 — reversal di database', () => {
   });
 });
 
+describe('T1.5 — reversal SALDO_AWAL diblokir dari jalur umum', () => {
+  it('menolak reversal dan koreksi saldo awal tanpa menulis jurnal/audit; saldo tidak berubah', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      const sebelumJurnal = jumlahJurnal(db);
+      const sebelumAudit = listAuditLog(db).length;
+      const sebelumBaris = listBarisJurnal(db);
+      const kasAwal = saldoAkun(sebelumBaris, '1001', '2026-12-31');
+      const modalAwal = saldoAkun(sebelumBaris, '3000', '2026-12-31');
+
+      const balik = reverseJurnal(db, 'j-modal', 'Koreksi saldo awal', {
+        id: 'j-modal-balik',
+        tanggal: '2026-01-02',
+      });
+      expect(balik.tersimpan).toBe(false);
+      expect(balik.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+
+      const koreksi = koreksiDanIsiUlang(
+        db,
+        'j-modal',
+        'Nominal saldo awal salah, seharusnya 900rb',
+        {
+          header: {
+            id: 'j-modal-baru',
+            tanggal: '2026-01-01',
+            keterangan: 'Saldo awal kas (koreksi)',
+            jenis: 'UMUM',
+          },
+          baris: pasangan('1001', '3000', RP(900_000)),
+        },
+        { id: 'j-modal-balik', tanggal: '2026-01-02' },
+      );
+      expect(koreksi.tersimpan).toBe(false);
+      expect(koreksi.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+
+      expect(jumlahJurnal(db)).toBe(sebelumJurnal);
+      expect(listAuditLog(db)).toHaveLength(sebelumAudit);
+      expect(getJurnalDetail(db, 'j-modal-balik')).toBeNull();
+      expect(getJurnalDetail(db, 'j-modal-baru')).toBeNull();
+      expect(getJurnal(db, 'j-modal')).toMatchObject({
+        jenis: 'SALDO_AWAL',
+        keterangan: 'Saldo awal kas',
+      });
+
+      const sesudah = listBarisJurnal(db);
+      expect(saldoAkun(sesudah, '1001', '2026-12-31')).toBe(kasAwal);
+      expect(saldoAkun(sesudah, '3000', '2026-12-31')).toBe(modalAwal);
+      expect(neracaSaldo(sesudah, '2026-12-31').selisih).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('jurnal UMUM dalam grup yang sama dengan saldo awal tetap bisa dikoreksi', () => {
+    const db = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-awal-grup',
+          tanggal: '2026-01-01',
+          no_bukti: 'JU-2026-0001',
+          keterangan: 'Saldo awal kas',
+          jenis: 'SALDO_AWAL',
+          grup_id: 'g-pembukaan',
+        },
+        pasangan('1001', '3000', RP(1_000_000)),
+      );
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-penyesuaian',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0002',
+          keterangan: 'Penyesuaian pindah kas ke bank',
+          jenis: 'UMUM',
+          grup_id: 'g-pembukaan',
+        },
+        pasangan('1029', '1001', RP(50_000)),
+      );
+
+      const hasil = reverseJurnal(db, 'j-penyesuaian', 'Salah pindah kas', {
+        id: 'j-penyesuaian-balik',
+        tanggal: '2026-01-06',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal).toMatchObject({
+        jenis: 'REVERSAL',
+        reversal_of: 'j-penyesuaian',
+        grup_id: 'g-pembukaan',
+      });
+
+      const baris = listBarisJurnal(db);
+      expect(saldoAkun(baris, '1029', '2026-12-31')).toBe(0);
+      expect(saldoAkun(baris, '1001', '2026-12-31')).toBe(RP(1_000_000));
+      expect(getJurnal(db, 'j-awal-grup')?.jenis).toBe('SALDO_AWAL');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('UI tidak menawarkan tombol Koreksi untuk SALDO_AWAL', () => {
+    const jurnal = (
+      jenis: NonNullable<Jurnal['jenis']>,
+      over: Partial<{ reversal_of: string | null; reversal_id: string | null }> = {},
+    ) => ({ jenis, reversal_of: null, reversal_id: null, ...over });
+
+    expect(bisaDikoreksiJurnal(jurnal('UMUM'))).toBe(true);
+    expect(bisaDikoreksiJurnal(jurnal('SALDO_AWAL'))).toBe(false);
+    expect(bisaDikoreksiJurnal(jurnal('SALDO_AWAL', { reversal_id: 'rev' }))).toBe(false);
+    expect(bisaDikoreksiJurnal(jurnal('UMUM', { reversal_id: 'rev' }))).toBe(false);
+    expect(bisaDikoreksiJurnal(jurnal('UMUM', { reversal_of: 'asli' }))).toBe(false);
+  });
+});
+
 describe('P0-6 — koreksi & isi ulang', () => {
   it('membuat reversal + jurnal pengganti dalam satu alur, audit dua baris', () => {
     const db = freshDb();
@@ -570,7 +688,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
     }
   });
 
-  it('AKT-22/DB-04: SALDO_AWAL pengganti hanya untuk asli SALDO_AWAL dan tetap ditolak unique index', () => {
+  it('AKT-22/DB-04/T1.5: SALDO_AWAL pengganti hanya untuk asli SALDO_AWAL; reversal saldo awal ditolak lebih awal', () => {
     const db = freshDb();
     try {
       modal(db);
@@ -600,9 +718,9 @@ describe('P0-6 — koreksi & isi ulang', () => {
       expect(getJurnalDetail(db, 'j-parkir-jadi-awal')).toBeNull();
       expect(listAuditLog(db)).toEqual([]);
 
-      // DB-04: jurnal asli SALDO_AWAL tetap ada, sehingga pengganti bertipe
-      // SALDO_AWAL akan menjadi saldo awal kedua dan ditolak DB. Transaksi
-      // reversal + audit harus rollback utuh.
+      // T1.5: jurnal asli SALDO_AWAL ditolak lebih awal oleh jalur umum, jadi
+      // reversal + pengganti tidak pernah ditulis. Unique index DB-04 tetap
+      // menjadi penjaga terakhir bila ada yang mencoba membuat SALDO_AWAL baru.
       const ditolakDb = koreksiDanIsiUlang(
         db,
         'j-modal',
@@ -620,11 +738,26 @@ describe('P0-6 — koreksi & isi ulang', () => {
       );
 
       expect(ditolakDb.tersimpan).toBe(false);
-      expect(ditolakDb.errors.join(' ')).toMatch(/UNIQUE|saldo awal/i);
+      expect(ditolakDb.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
       expect(jumlahJurnal(db)).toBe(sebelum);
       expect(getJurnalDetail(db, 'j-modal-balik')).toBeNull();
       expect(getJurnalDetail(db, 'j-modal-baru')).toBeNull();
       expect(getJurnal(db, 'j-modal')?.jenis).toBe('SALDO_AWAL');
+      expect(listAuditLog(db)).toEqual([]);
+
+      expect(() =>
+        insertJurnalTervalidasi(
+          db,
+          {
+            id: 'j-modal-kedua',
+            tanggal: '2026-01-01',
+            keterangan: 'Saldo awal kedua',
+            jenis: 'SALDO_AWAL',
+          },
+          pasangan('1001', '3000', RP(900_000)),
+        ),
+      ).toThrow(/UNIQUE|saldo awal/i);
+      expect(jumlahJurnal(db)).toBe(sebelum);
     } finally {
       db.close();
     }

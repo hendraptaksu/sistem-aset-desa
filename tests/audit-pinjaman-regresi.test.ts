@@ -7,7 +7,11 @@ import {
   batalkanPembayaranPinjaman, batalkanPinjaman, laporanMutasiPinjaman,
   listPinjamanBayar,
 } from '../src/db/pinjaman.js';
-import { reverseJurnal, koreksiDanIsiUlang } from '../src/db/reversal.js';
+import {
+  reverseJurnal,
+  koreksiDanIsiUlang,
+  PESAN_REVERSAL_SALDO_AWAL,
+} from '../src/db/reversal.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { laporanNeraca, laporanArusKas } from '../src/db/laporan.js';
 import { rekonsiliasiPinjaman } from '../src/db/pinjamanRekonsiliasi.js';
@@ -217,7 +221,7 @@ describe('regresi audit — pinjaman dan jurnal tetap konsisten', () => {
     harapkanSaldo(db, 0);
   });
 
-  it('guard arus kas tetap mengizinkan koreksi saldo pembukaan kas dan panjar', () => {
+  it('T1.5: koreksi saldo pembukaan lewat jalur umum ditolak; arus kas memakai saldo awal asli', () => {
     const db = openDb(':memory:');
     dbs.push(db);
     const baris = (panjar: number) => [
@@ -236,18 +240,22 @@ describe('regresi audit — pinjaman dan jurnal tetap konsisten', () => {
       baris: baris(2_000_000),
     });
     expect(jurnalBiasa.tersimpan).toBe(false);
+
+    // T1.5: jalur umum tidak boleh membalik SALDO_AWAL. Sampai alur koreksi
+    // saldo awal tersedia (T1.7/T1.8), jurnal asli dan laporan tetap utuh.
+    const sebelum = jumlahJurnal(db);
     const koreksi = koreksiDanIsiUlang(db, 'pembukaan', 'Saldo panjar sebenarnya dua juta', {
       header: { id: 'pembukaan-benar', tanggal: '2025-01-01', jenis: 'UMUM', keterangan: 'Pembukaan benar' },
       baris: baris(2_000_000),
     });
-    expect(koreksi.tersimpan, koreksi.errors.join(' ')).toBe(true);
+    expect(koreksi.tersimpan).toBe(false);
+    expect(koreksi.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+    expect(jumlahJurnal(db)).toBe(sebelum);
+
     const arus = laporanArusKas(db, { mulai: '2025-01-01', sampai: '2025-12-31' });
     expect(arus.saldoAwal).toBe(RP(20_000_000));
     expect(arus.totalMasuk).toBe(0);
     expect(arus.totalKeluar).toBe(0);
-    // Pengganti tetap boleh dikoreksi ulang dalam rantai pembukaan yang sama.
-    const balik = reverseJurnal(db, 'pembukaan-benar', 'Catatan pembukaan dibatalkan');
-    expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
-    expect(laporanArusKas(db, { mulai: '2025-01-01', sampai: '2025-12-31' }).saldoAkhir).toBe(0);
+    expect(arus.saldoAkhir).toBe(RP(20_000_000));
   });
 });

@@ -28,6 +28,7 @@ import {
 } from '../src/db/pinjamanRekonsiliasi.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { insertJurnalTervalidasi } from '../src/db/repository.js';
 import { reverseJurnal } from '../src/db/reversal.js';
 import { validasiBentukPinjamanRekonsiliasi } from '../src/main/validation.js';
 import { formatRp } from '../src/utils/format.js';
@@ -504,14 +505,31 @@ describe('DB-16f — rekonsiliasi per pinjaman', () => {
     expect(simpan.errors.join(' ')).toContain(formatRp(-RP(1_000_000)));
   });
 
-  it('reversal jurnal SALDO_AWAL mengurangi kredit neto 2050', () => {
+  it('T1.5: reversal SALDO_AWAL lewat jalur umum ditolak; pembalikan internal tetap mengurangi kredit neto 2050', () => {
     const db = dbSaldoAwal2050(RP(5_000_000));
-    const balik = reverseJurnal(
+    const id = `awal-2050-${RP(5_000_000)}`;
+    const ditolak = reverseJurnal(db, id, 'Koreksi saldo awal pinjaman');
+    expect(ditolak.tersimpan).toBe(false);
+    expect(ditolak.errors.join(' ')).toMatch(/alur koreksi saldo awal/i);
+
+    // T1.7 nanti menulis jurnal balik lewat alur internal. Saldo 2050 tetap
+    // harus dihitung dari kredit neto, bukan dari status jurnal asli.
+    insertJurnalTervalidasi(
       db,
-      `awal-2050-${RP(5_000_000)}`,
-      'Koreksi saldo awal pinjaman',
+      {
+        id: 'balik-2050',
+        tanggal: '2026-01-01',
+        keterangan: 'Pembalikan saldo awal 2050',
+        jenis: 'REVERSAL',
+        grup_id: id,
+        reversal_of: id,
+      },
+      [
+        D('2050', RP(5_000_000)),
+        D(AKUN_MODAL, RP(195_000_000)),
+        K('1001', RP(200_000_000)),
+      ],
     );
-    expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
 
     const simpan = simpanPinjamanLpd(db, inputBerjalan(RP(5_000_000)));
     expect(simpan.tersimpan).toBe(false);
