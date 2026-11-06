@@ -30,7 +30,12 @@ import type {
   PinjamanBayar,
   RincianPembayaranPinjaman,
 } from '../core/types.js';
-import { AKUN_HUTANG, akunBolehDiposting } from './coa.js';
+import {
+  AKUN_BUNGA_PINJAMAN,
+  AKUN_DENDA_PINJAMAN,
+  AKUN_HUTANG,
+  akunBolehDiposting,
+} from './coa.js';
 import {
   saldoAwal2050,
   totalSisaPokokBerjalan,
@@ -50,15 +55,18 @@ import {
   type BarisMutasiJurnal,
 } from '../core/pinjamanMutasi.js';
 
-/** Akun bunga default DB-13b/DB-16a. */
-export const AKUN_BUNGA_PINJAMAN_DEFAULT = '5063';
+/**
+ * Akun bunga default DB-13b/DB-16a. Alias dari konstanta `coa.ts` agar modul
+ * pinjaman dan daftar akun sistem memakai satu sumber tanpa impor melingkar.
+ */
+export const AKUN_BUNGA_PINJAMAN_DEFAULT = AKUN_BUNGA_PINJAMAN;
 
 /**
  * Akun denda default DB-16a: 5050 BIAYA LAIN-LAIN. Ticket DB-16d memakai
  * akun ini untuk komponen denda; konfigurasi per pinjaman dapat ditambah nanti
  * tanpa mengubah skema (nominal tetap dibaca dari baris jurnal).
  */
-export const AKUN_DENDA_PINJAMAN_DEFAULT = '5050';
+export const AKUN_DENDA_PINJAMAN_DEFAULT = AKUN_DENDA_PINJAMAN;
 
 export type PinjamanAngsuranInput = {
   ke: number;

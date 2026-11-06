@@ -344,7 +344,7 @@ export const api = {
     call<Coa>('akun:ubah', input),
   /**
    * Aktif/nonaktifkan akun (DB-15: termasuk akun bawaan; nonaktif = soft
-   * delete). Akun sistem 3000/1040/1050/2050 ditolak oleh backend.
+   * delete). Akun sistem 3000/1040/1050/2050/2060/5063/5050 ditolak oleh backend.
    */
   akunSetAktif: (kode: string, aktif: boolean, alasan?: string) =>
     call<Coa>('akun:set-aktif', kode, aktif, alasan),

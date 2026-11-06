@@ -375,17 +375,20 @@ describe('DB-15 — nonaktifkan akun bawaan tanpa menghapus histori', () => {
     }
   });
 
-  it('menolak nonaktif akun sistem 3000/1040/1050/2050 dengan pesan Indonesia', () => {
+  it('menolak nonaktif akun sistem 3000/1040/1050/2050/2060/5063/5050 dengan pesan Indonesia', () => {
     const db = freshDb();
     try {
       expect([...AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF].sort()).toEqual([
         '1040',
         '1050',
         '2050',
+        '2060',
         '3000',
+        '5050',
+        '5063',
       ]);
 
-      for (const kode of ['3000', '1040', '1050', '2050']) {
+      for (const kode of ['3000', '1040', '1050', '2050', '2060', '5063', '5050']) {
         expect(() => setAkunAktif(db, kode, false)).toThrow(/akun sistem/i);
         expect(getAkun(db, kode)?.aktif, `akun ${kode} tetap aktif`).toBe(true);
       }
@@ -394,6 +397,107 @@ describe('DB-15 — nonaktifkan akun bawaan tanpa menghapus histori', () => {
       db.prepare("UPDATE akun SET aktif = 0 WHERE kode = '3000'").run();
       expect(setAkunAktif(db, '3000', true).aktif).toBe(true);
       expect(listAuditLog(db).some((a) => a.aksi === 'AKUN-AKTIF 3000')).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T2.4 — 2060/5063/5050 ditolak dengan kode+nama, tetap aktif, dan bisa dipakai alur', () => {
+    const db = freshDb();
+    try {
+      const sistem = [
+        ['2060', 'HUTANG USAHA'],
+        ['5063', 'BEBAN BUNGA PINJAMAN'],
+        ['5050', 'BIAYA LAIN-LAIN'],
+      ] as const;
+
+      for (const [kode, nama] of sistem) {
+        let pesan = '';
+        try {
+          setAkunAktif(db, kode, false);
+        } catch (e) {
+          pesan = (e as Error).message;
+        }
+        expect(pesan, `akun ${kode} harus ditolak`).toMatch(/akun sistem/i);
+        expect(pesan).toContain(kode);
+        expect(pesan).toContain(nama);
+        expect(pesan).toMatch(/tidak bisa dinonaktifkan/i);
+        expect(pesan).toMatch(/Aktifkan/i);
+        expect(getAkun(db, kode)?.aktif).toBe(true);
+      }
+
+      // Penolakan tidak menulis audit nonaktif untuk akun sistem.
+      for (const [kode] of sistem) {
+        expect(
+          listAuditLog(db).some((a) => a.aksi === `AKUN-NONAKTIF ${kode}`),
+        ).toBe(false);
+      }
+
+      // Akun non-sistem tetap boleh dinonaktifkan.
+      expect(setAkunAktif(db, '5010', false).aktif).toBe(false);
+
+      // Alur utang usaha (2060) dan pinjaman (5063/5050) tetap bisa memakai akun.
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-t24', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
+        [
+          { akun_kode: '1001', debit: RP(10_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(10_000_000) },
+        ],
+      );
+      const catatUtang = postingJurnal(db, {
+        header: {
+          id: 'j-utang-t24',
+          tanggal: '2026-02-01',
+          keterangan: 'Catat utang usaha',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '5003', debit: RP(300_000), kredit: 0 },
+          { akun_kode: '2060', debit: 0, kredit: RP(300_000) },
+        ],
+      });
+      expect(catatUtang.errors, catatUtang.errors.join(' ')).toEqual([]);
+      expect(catatUtang.tersimpan).toBe(true);
+
+      const bayarUtang = postingJurnal(db, {
+        header: {
+          id: 'j-bayar-utang-t24',
+          tanggal: '2026-02-02',
+          keterangan: 'Bayar utang usaha',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '2060', debit: RP(300_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(300_000) },
+        ],
+      });
+      expect(bayarUtang.errors, bayarUtang.errors.join(' ')).toEqual([]);
+      expect(bayarUtang.tersimpan).toBe(true);
+
+      const bayarPinjaman = postingJurnal(db, {
+        header: {
+          id: 'j-bunga-t24',
+          tanggal: '2026-02-03',
+          keterangan: 'Bayar bunga dan denda pinjaman',
+          jenis: 'BAYAR',
+        },
+        baris: [
+          { akun_kode: '5063', debit: RP(100_000), kredit: 0 },
+          { akun_kode: '5050', debit: RP(10_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(110_000) },
+        ],
+      });
+      expect(bayarPinjaman.errors, bayarPinjaman.errors.join(' ')).toEqual([]);
+      expect(bayarPinjaman.tersimpan).toBe(true);
+
+      // Reaktivasi tetap boleh bila DB lama membawa akun ini nonaktif.
+      for (const [kode] of sistem) {
+        db.prepare('UPDATE akun SET aktif = 0 WHERE kode = ?').run(kode);
+        expect(getAkun(db, kode)?.aktif).toBe(false);
+        expect(setAkunAktif(db, kode, true).aktif).toBe(true);
+        expect(listAuditLog(db).some((a) => a.aksi === `AKUN-AKTIF ${kode}`)).toBe(true);
+      }
     } finally {
       db.close();
     }

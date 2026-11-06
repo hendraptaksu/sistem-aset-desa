@@ -480,15 +480,15 @@ describe('DB-15 — nonaktifkan akun bawaan lewat IPC', () => {
     expect(statusSalah.error).toMatch(/true\/false/i);
   });
 
-  it('menolak nonaktif akun sistem 3000/1040/1050/2050', async () => {
+  it('menolak nonaktif akun sistem 3000/1040/1050/2050/2060/5063/5050', async () => {
     const env = buatEnv();
-    for (const kode of ['3000', '1040', '1050', '2050']) {
+    for (const kode of ['3000', '1040', '1050', '2050', '2060', '5063', '5050']) {
       const hasil = await env.panggil('akun:set-aktif', kode, false);
       expect(hasil.ok, `akun ${kode}`).toBe(false);
       expect(hasil.error).toMatch(/akun sistem/i);
     }
     const daftar = await env.panggil('coa:list');
-    for (const kode of ['3000', '1040', '1050', '2050']) {
+    for (const kode of ['3000', '1040', '1050', '2050', '2060', '5063', '5050']) {
       expect(
         daftar.data.find((a: { kode: string }) => a.kode === kode)?.aktif,
         `akun ${kode} tetap aktif`,

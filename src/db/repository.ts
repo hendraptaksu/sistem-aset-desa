@@ -342,7 +342,7 @@ export function setAkunAktif(
   const lama = pastikanAkunBolehUbahStatus(db, kode);
   if (!aktif && AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF.has(lama.kode))
     throw new Error(
-      `Akun ${lama.kode} ${lama.nama} adalah akun sistem yang dibutuhkan wizard/alur dan tidak bisa dinonaktifkan.`,
+      `Akun ${lama.kode} ${lama.nama} adalah akun sistem yang dibutuhkan wizard/alur (saldo awal, panjar, utang usaha, atau pinjaman) sehingga tidak bisa dinonaktifkan. Bila akun ini terlanjur nonaktif, gunakan Aktifkan untuk memulihkannya.`,
     );
   if (lama.aktif === aktif) return lama;
 

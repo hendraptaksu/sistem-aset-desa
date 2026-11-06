@@ -116,9 +116,19 @@ export const AKUN_HUTANG = '2050';
  */
 export const AKUN_HUTANG_USAHA = '2060';
 export const AKUN_MODAL = '3000';
+/**
+ * Akun bunga pinjaman LPD (DB-13b/DB-16a). Didefinisikan di sini agar daftar
+ * akun sistem tidak perlu mengimpor `db/pinjaman.ts` (menghindari siklus).
+ */
+export const AKUN_BUNGA_PINJAMAN = '5063';
+/**
+ * Akun denda/biaya lain pinjaman (DB-16a/DB-16d). 5050 BIAYA LAIN-LAIN tetap
+ * dipakai untuk biaya lain dan komponen denda pembayaran pinjaman.
+ */
+export const AKUN_DENDA_PINJAMAN = '5050';
 
 /**
- * DB-15: akun sistem yang tetap harus aktif karena alur/wizard memakainya
+ * DB-15/T2.4: akun sistem yang tetap harus aktif karena alur/wizard memakainya
  * sebagai akun tetap. Akun ini boleh dibaca di histori, tetapi TIDAK boleh
  * dinonaktifkan dari layar Daftar Akun:
  * - 3000 MODAL: baris penyeimbang otomatis Saldo Awal dan sumber setoran modal.
@@ -127,6 +137,9 @@ export const AKUN_MODAL = '3000';
  *   (legacy read; alur input baru sudah dihapus DB-23a).
  * - 2050 HUTANG LAIN-LAIN: akun pinjaman/utang yang dipakai alur utang dan
  *   modul pinjaman LPD (DB-16).
+ * - 2060 HUTANG USAHA: akun wajib alur utang usaha/pembelian kredit (AKT-20).
+ * - 5063 BEBAN BUNGA PINJAMAN: akun bunga default modul pinjaman LPD.
+ * - 5050 BIAYA LAIN-LAIN: akun denda default pembayaran pinjaman.
  *
  * Akun di luar daftar ini — termasuk akun bawaan lain — boleh dinonaktifkan
  * untuk form input baru. Reaktivasi tetap diizinkan agar DB lama yang sudah
@@ -137,6 +150,9 @@ export const AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF: ReadonlySet<string> = new Set([
   AKUN_PANJAR,
   AKUN_PIUTANG,
   AKUN_HUTANG,
+  AKUN_HUTANG_USAHA,
+  AKUN_BUNGA_PINJAMAN,
+  AKUN_DENDA_PINJAMAN,
 ]);
 
 /**

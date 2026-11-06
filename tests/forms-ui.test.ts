@@ -936,13 +936,23 @@ describe('DB-15 — akun nonaktif tidak muncul di form input baru', () => {
       '1040',
       '1050',
       '2050',
+      '2060',
       '3000',
+      '5050',
+      '5063',
     ]);
     expect(akunBolehDinonaktifkan({ kode: '5010' })).toBe(true);
     expect(akunBolehDinonaktifkan({ kode: '1001' })).toBe(true);
-    for (const kode of ['3000', '1040', '1050', '2050']) {
+    for (const kode of ['3000', '1040', '1050', '2050', '2060', '5063', '5050']) {
       expect(akunBolehDinonaktifkan({ kode }), `akun sistem ${kode}`).toBe(false);
     }
+
+    // Teks bantuan AkunTab menyebut seluruh akun sistem yang dilindungi.
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/AkunTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('3000/1040/1050/2050/2060/5063/5050');
   });
 });
 

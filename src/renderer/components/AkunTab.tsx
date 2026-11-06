@@ -279,7 +279,7 @@ export function AkunTab() {
               <b>Beban</b>, <b>Pendapatan</b>, atau <b>Kas/Bank/LPD</b> baru di sini;
               akun langsung muncul di form transaksi, Jurnal Umum, dan laporan.
               Akun bawaan yang tidak dipakai lagi boleh dinonaktifkan, kecuali akun
-              sistem <b>3000/1040/1050/2050</b>.
+              sistem <b>3000/1040/1050/2050/2060/5063/5050</b>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -425,7 +425,7 @@ export function AkunTab() {
               Akun tambahan bisa diubah namanya, dinonaktifkan, atau dihapus bila
               belum pernah dipakai. Akun bawaan boleh dinonaktifkan untuk form input
               baru, tetapi nama dan hapusnya tetap terkunci. Akun sistem{' '}
-              <b>3000/1040/1050/2050</b> tidak bisa dinonaktifkan.
+              <b>3000/1040/1050/2050/2060/5063/5050</b> tidak bisa dinonaktifkan.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
