@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { JENIS_JURNAL } from '../core/posting.js';
-import { COA, POSISI_NORMAL, metadataAkunBawaan } from './coa.js';
+import { COA, KELOMPOK_AKUN, POSISI_NORMAL, metadataAkunBawaan } from './coa.js';
 
 /**
  * Versi skema baseline di `PRAGMA user_version`.
@@ -104,6 +104,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
 `;
 
 /**
+ * Daftar kelompok akun resmi untuk CHECK DDL, dibangun dari `KELOMPOK_AKUN`
+ * agar nilai resmi tidak diduplikasi manual di skema.
+ */
+const KELOMPOK_AKUN_SQL = KELOMPOK_AKUN.map((kelompok) => `'${kelompok}'`).join(', ');
+
+/**
  * DDL tabel kanonik skema v1: 11 tabel aktif, semuanya `STRICT`.
  * Tabel modul lama (`transaksi`, `coa`, `pihak`, `jurnal_pihak`, `aset`,
  * `anggaran`, `rekonsiliasi_bank`, `lampiran_jurnal`) tidak pernah dibuat.
@@ -130,7 +136,9 @@ CREATE TABLE IF NOT EXISTS akun (
   aktif INTEGER NOT NULL DEFAULT 1,
   is_kas INTEGER NOT NULL DEFAULT 0,
   kelompok TEXT NOT NULL DEFAULT '',
-  sumber TEXT NOT NULL DEFAULT 'BAWAAN'
+  sumber TEXT NOT NULL DEFAULT 'BAWAAN',
+  CHECK (sumber IN ('BAWAAN', 'TAMBAHAN')),
+  CHECK (kelompok = '' OR kelompok IN (${KELOMPOK_AKUN_SQL}))
 ) STRICT;
 
 -- Model double-entry: jurnal = satu transaksi/bukti, jurnal_baris = debit/kredit.
@@ -162,7 +170,7 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
 -- Tutup buku: hanya penanda + kunci + catatan. Laba selalu dihitung dari
 -- jurnal, bukan disimpan sebagai sumber angka.
 CREATE TABLE IF NOT EXISTS tutup_buku (
-  tahun INTEGER PRIMARY KEY,
+  tahun INTEGER PRIMARY KEY CHECK (tahun BETWEEN 1900 AND 9999),
   created_at TEXT NOT NULL,
   catatan TEXT NOT NULL DEFAULT ''
 ) STRICT;
@@ -219,7 +227,21 @@ CREATE TABLE IF NOT EXISTS panjar (
   FOREIGN KEY (akun_kas_sumber) REFERENCES akun(kode),
   FOREIGN KEY (jurnal_open_id) REFERENCES jurnal(id),
   FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id),
-  FOREIGN KEY (jurnal_batal_id) REFERENCES jurnal(id)
+  FOREIGN KEY (jurnal_batal_id) REFERENCES jurnal(id),
+  -- OPEN belum punya jurnal close/batal; CLOSED wajib punya jurnal close dan
+  -- belum dibatalkan; DIBATALKAN wajib punya jurnal + tanggal + alasan batal.
+  CHECK (
+    (status = 'OPEN'
+      AND jurnal_close_id IS NULL
+      AND jurnal_batal_id IS NULL)
+    OR (status = 'CLOSED'
+      AND jurnal_close_id IS NOT NULL
+      AND jurnal_batal_id IS NULL)
+    OR (status = 'DIBATALKAN'
+      AND jurnal_batal_id IS NOT NULL
+      AND tanggal_batal IS NOT NULL
+      AND length(trim(alasan_batal)) >= 5)
+  )
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS panjar_item (
@@ -251,7 +273,8 @@ CREATE TABLE IF NOT EXISTS pinjaman (
   tenor_bulan INTEGER NULL CHECK (tenor_bulan > 0),
   jurnal_pencairan_id TEXT UNIQUE NULL REFERENCES jurnal(id),
   catatan TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  CHECK (sisa_pokok_awal <= pokok_awal)
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS pinjaman_angsuran (
@@ -285,6 +308,22 @@ export const PESAN_JENIS_JURNAL_DB =
 /** DB-10: pesan trigger untuk tanggal yang tidak berbentuk YYYY-MM-DD. */
 export const PESAN_TANGGAL_JURNAL_DB =
   'Tanggal jurnal harus berformat YYYY-MM-DD.';
+
+/**
+ * DB-10: pesan trigger untuk tanggal berformat benar tetapi bukan tanggal
+ * kalender nyata (mis. `2026-02-30`).
+ */
+export const PESAN_TANGGAL_KALENDER_JURNAL_DB =
+  'Tanggal jurnal harus tanggal kalender yang nyata, misalnya 2026-02-28, bukan 2026-02-30.';
+
+/**
+ * DB-10: pesan trigger untuk hubungan `jenis` dan `reversal_of` yang tidak
+ * konsisten: hanya REVERSAL yang boleh punya reversal_of, dan REVERSAL wajib
+ * menunjuk jurnal asli.
+ */
+export const PESAN_REVERSAL_JURNAL_DB =
+  'Jurnal REVERSAL wajib menunjuk jurnal asli melalui reversal_of; ' +
+  'reversal_of hanya boleh diisi untuk jurnal berjenis REVERSAL.';
 
 /** Daftar jenis jurnal resmi, disinkronkan langsung dari posting layer. */
 const JENIS_JURNAL_SQL = JENIS_JURNAL.map((jenis) => `'${jenis}'`).join(', ');
@@ -403,6 +442,15 @@ BEGIN
   WHERE NEW.jenis NOT IN (${JENIS_JURNAL_SQL});
   SELECT RAISE(ABORT, '${PESAN_TANGGAL_JURNAL_DB}')
   WHERE NEW.tanggal NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]';
+  SELECT RAISE(ABORT, '${PESAN_TANGGAL_KALENDER_JURNAL_DB}')
+  WHERE date(NEW.tanggal) IS NULL OR date(NEW.tanggal) <> NEW.tanggal;
+  SELECT RAISE(ABORT, '${PESAN_REVERSAL_JURNAL_DB}')
+  WHERE NEW.reversal_of IS NOT NULL
+    AND NEW.reversal_of <> ''
+    AND NEW.jenis <> 'REVERSAL';
+  SELECT RAISE(ABORT, '${PESAN_REVERSAL_JURNAL_DB}')
+  WHERE NEW.jenis = 'REVERSAL'
+    AND (NEW.reversal_of IS NULL OR NEW.reversal_of = '');
 END;
 
 DROP TRIGGER IF EXISTS trg_akun_validasi_insert;

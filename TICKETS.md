@@ -124,7 +124,7 @@
 
 ## Fase 2 — Hardening akuntansi (opsional, setelah Fase 1)
 
-- [ ] **T2.1 — CHECK konsistensi status panjar**
+- [x] **T2.1 — CHECK konsistensi status panjar**
   - File: `src/db/database.ts`
   - Tambah `CHECK` pada `panjar`:
     - `OPEN`: `jurnal_close_id IS NULL`, `jurnal_batal_id IS NULL`;
@@ -132,25 +132,25 @@
     - `DIBATALKAN`: `jurnal_batal_id IS NOT NULL`, `tanggal_batal IS NOT NULL`, alasan minimal 5 karakter.
   - Selesai bila insert/update status yang tidak konsisten ditolak DB.
 
-- [ ] **T2.2 — CHECK pinjaman dan tutup buku**
+- [x] **T2.2 — CHECK pinjaman dan tutup buku**
   - File: `src/db/database.ts`
   - `pinjaman.sisa_pokok_awal <= pokok_awal`.
   - `tutup_buku.tahun` dalam rentang 1900–9999.
   - Selesai bila nilai di luar batas ditolak.
 
-- [ ] **T2.3 — Validasi tanggal dan reversal di trigger jurnal**
+- [x] **T2.3 — Validasi tanggal dan reversal di trigger jurnal**
   - File: `src/db/database.ts`
   - Trigger `jurnal` menolak tanggal yang formatnya benar tetapi bukan tanggal kalender nyata.
   - `reversal_of` hanya boleh diisi bila `jenis = 'REVERSAL'`, dan `REVERSAL` wajib punya `reversal_of`.
   - Selesai bila `2026-02-30` dan reversal tidak konsisten ditolak.
 
-- [ ] **T2.4 — CHECK metadata akun**
+- [x] **T2.4 — CHECK metadata akun**
   - File: `src/db/database.ts`
   - `akun.sumber IN ('BAWAAN', 'TAMBAHAN')`.
   - Bila `kelompok` diisi, nilainya harus salah satu kelompok resmi.
   - Selesai bila nilai liar ditolak.
 
-- [ ] **T2.5 — Test hardening**
+- [x] **T2.5 — Test hardening**
   - File: `tests/skema-baseline.test.ts` atau test baru.
   - Uji setiap CHECK/trigger di T2.1–T2.4.
   - Selesai bila test gagal saat constraint dihapus.
