@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 8 | 9 |
+| 2 — Kontrol & UX | P1 | 9 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **20** | **33** |
+| **Total** |  | **21** | **33** |
 
 ## Aturan kerja
 
@@ -248,7 +248,7 @@
   - **Verifikasi:** `npm test -- tests/kunci.test.ts`.
   - **Catatan:** File disentuh: `src/main/kunci.ts`, `src/main/ipc.ts`, `src/db/repository.ts`, `tests/kunci.test.ts`, `README.md`, `TICKETS.md`. State lockout kini dipersist di tabel `pengaturan` lewat `KUNCI_KEAMANAN_GAGAL='keamanan_gagal'` dan `KUNCI_KEAMANAN_BLOKIR_SAMPAI='keamanan_blokir_sampai'` (tanpa PIN/salt/hash tambahan). `catatGagal(db)` menulis setiap kegagalan (hitungan <5) dan pada kegagalan ke-5 menulis `gagal=0` + `blokirSampai=Date.now()+60 dtk`. `muatStateBlokir(db)` dipanggil di awal `registerIpc(deps)` (bukan `index.ts`) karena selalu berjalan setelah DB dibuka, sebelum renderer meminta `lock:status`, dan jalur startup yang sama dipakai test IPC; fungsi ini menimpa penuh state memori dari DB (key tidak ada = 0), membuang blokir yang sudah kedaluwarsa, dan dipanggil ulang setelah restore agar mengikuti DB hasil restore. `statusKunci` tetap mengembalikan `gagal`/`blokirDetik`, dan ikut membersihkan nilai persisted yang kedaluwarsa. Setup PIN, unlock sukses, ubah PIN sukses, dan reset paksa sukses mereset memori + nilai persisted ke 0; PIN salah tidak pernah mereset blokir. Test baru `tests/kunci.test.ts` mencakup (a) 5x salah → `blokirDetik>0` + state tersimpan, (b) simulasi restart (memori di-reset, `muatStateBlokir`) → PIN benar tetap ditolak dengan pesan blokir, (c) blokir kedaluwarsa via fake timer → PIN benar berhasil dan state persisted 0, (d) restart setelah unlock sukses tidak memblokir, (e) setup PIN baru mereset lockout, serta muat penuh dari DB baru tanpa key tidak mewarisi state proses. Verifikasi: `npm test -- tests/kunci.test.ts` (23 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.159 test lulus, 0 gagal**. Commit `b16f8aa`. **Catatan keamanan:** ini hanya memperpanjang lockout UI setelah restart; PIN dan isi database/backup tetap **tidak terenkripsi** (dijelaskan di README bagian “Keamanan dan keterbatasan”).
 
-- [ ] **T2.9 — Matikan DevTools di build produksi**
+- [x] **T2.9 — Matikan DevTools di build produksi**
   - **Masalah:** `BrowserWindow` tidak menetapkan `devTools: false`; menu default Electron masih menyediakan Toggle Developer Tools. Di aplikasi keuangan, ini memperbesar risiko inspeksi/manipulasi renderer.
   - **File:** `src/main/index.ts`, `src/main/windowSecurity.ts`, `tests/window-security.test.ts`.
   - **Langkah:**
@@ -257,7 +257,7 @@
     3. Blokir shortcut F12 / Cmd+Alt+I / Ctrl+Shift+I lewat `before-input-event`.
   - **Selesai bila:** build produksi tidak bisa membuka DevTools lewat menu/shortcut; mode dev tetap bisa.
   - **Verifikasi:** test helper konfigurasi + smoke build.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/main/windowSecurity.ts`, `src/main/index.ts`, `tests/window-security.test.ts`, `TICKETS.md`. Helper murni tanpa import Electron: `opsiDevTools(devUrl)` mengembalikan `{ devTools: Boolean(String(devUrl ?? '').trim()) }` (true hanya saat `ELECTRON_RENDERER_URL` terisi); `shortcutDevTools(input)` menerima input `before-input-event` dan mengembalikan true hanya untuk `keyDown` F12, Ctrl/Cmd+Shift+I, dan Ctrl/Cmd+Alt+I — Ctrl+Shift+C (copy) dan Cmd+Alt+panah tetap lolos; `templateMenuProduksi()` menyusun menu `appMenu` (macOS), File (close/quit), Edit eksplisit (undo/redo/cut/copy/paste/selectAll), dan `windowMenu` tanpa role `viewMenu`/`toggleDevTools`. `index.ts` memakai `...opsiDevTools(devUrl)` pada window utama dan hidden PDF window (PDF membaca `process.env['ELECTRON_RENDERER_URL']`), memasang `before-input-event` pada kedua window yang memanggil `event.preventDefault()` hanya bila `!devUrl && shortcutDevTools(input)`, dan di produksi (`!devUrl`) memanggil `Menu.setApplicationMenu(Menu.buildFromTemplate(templateMenuProduksi()))`; di dev menu default dipertahankan sehingga DevTools tetap bisa. Test baru mencakup devTools true di dev/false di produksi/kosong, shortcut F12/Ctrl+Shift+I/Cmd+Alt+I (plus varian Ctrl+Alt+I/Cmd+Shift+I) true, shortcut lain dan `keyUp` false, serta template produksi tanpa devtools dengan cut/copy/paste/undo tetap ada. Verifikasi: `npm test -- tests/window-security.test.ts` (8 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.163 test lulus, 0 gagal** (baseline T2.8: 90/1.159), `npm run build` lulus (`out/main/index.js`, `out/preload/index.cjs`, `out/renderer/*`). Smoke GUI tidak dijalankan di lingkungan subagent; konfigurasi window/menu/shortcut tercakup helper test + build. Commit `950cfac`.
 
 ---
 
