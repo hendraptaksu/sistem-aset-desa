@@ -159,29 +159,29 @@
 
 ## Fase 3 — Backup, restore, dan pemulihan
 
-- [ ] **T3.1 — Sederhanakan daftar tabel wajib restore**
+- [x] **T3.1 — Sederhanakan daftar tabel wajib restore**
   - File: `src/features/export/export.ts`
   - Hapus `TABEL_WAJIB_V2`, `TABEL_WAJIB_RESTORE_V20`, dan parameter versi pada `tabelWajibRestore`.
   - Gunakan satu daftar 11 tabel aktif.
   - Selesai bila tidak ada lagi cabang versi 2–19.
 
-- [ ] **T3.2 — Validasi kandidat restore hanya v1**
+- [x] **T3.2 — Validasi kandidat restore hanya v1**
   - File: `src/features/export/export.ts`
   - `validasiKandidatRestore` hanya menerima `user_version === SCHEMA_VERSION`.
   - Pesan error menyebut versi file dan versi yang didukung.
   - Selesai bila backup v23 ditolak sebelum DB aktif disentuh.
 
-- [ ] **T3.3 — Hapus `backupPraUpgrade`**
+- [x] **T3.3 — Hapus `backupPraUpgrade`**
   - File: `src/features/export/export.ts`, `src/main/index.ts`
   - Hapus fungsi dan pemanggilannya.
   - Selesai bila tidak ada file `pre-upgrade-*.db` yang dibuat saat membuka DB.
 
-- [ ] **T3.4 — Manifest Backup Lengkap hanya v1**
+- [x] **T3.4 — Manifest Backup Lengkap hanya v1**
   - File: `src/features/export/restoreLengkap.ts`
   - Tolak manifest dengan `schemaVersion !== 1`.
   - Selesai bila backup lengkap lama ditolak dengan pesan jelas.
 
-- [ ] **T3.5 — Pesan layar pemulihan**
+- [x] **T3.5 — Pesan layar pemulihan**
   - File: `src/main/pemulihanDb.ts`
   - Tambah pesan khusus untuk DB tidak kompatibel:
     - jelaskan aplikasi hanya mendukung skema v1;
@@ -189,7 +189,7 @@
     - jangan menawarkan tombol reset otomatis.
   - Selesai bila pesan tidak menyebut “rusak” untuk DB lama yang sebenarnya valid.
 
-- [ ] **T3.6 — Test backup/restore**
+- [x] **T3.6 — Test backup/restore**
   - File: `tests/backup-restore.test.ts`, `tests/db-09-backup-lengkap.test.ts`, `tests/pemulihan-db.test.ts`
   - Update semua ekspektasi versi ke 1.
   - Tambah kasus backup v23 ditolak.

@@ -56,6 +56,18 @@ describe('AUD-16 — pesanGagalBukaDb', () => {
     expect(pesan).toContain('(lokasi tidak diketahui)');
     expect(pesan).toContain('Data Anda tidak dihapus');
   });
+
+  it('DB lama berskema tidak didukung memakai pesan khusus tanpa kata rusak', () => {
+    const error = new Error(
+      'File database ini dibuat oleh versi/skema lama dan tidak kompatibel. ' +
+        'Aplikasi hanya mendukung skema v1. Pindahkan atau hapus file database lama ' +
+        'tersebut, lalu jalankan aplikasi lagi.',
+    );
+    const pesan = pesanGagalBukaDb(error, DB_PATH);
+    expect(pesan).toContain('skema v1');
+    expect(pesan).toMatch(/pindahkan atau hapus/i);
+    expect(pesan).not.toMatch(/rusak/i);
+  });
 });
 
 describe('AUD-16 — alur pemulihan database', () => {

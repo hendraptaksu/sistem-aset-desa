@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { openDb } from '../src/db/database.js';
+import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import { insertJurnalTervalidasi, listJurnal } from '../src/db/repository.js';
 import { buatBackupLengkap } from '../src/features/export/backupLengkap.js';
 import { autoBackupHarian, validasiKandidatRestore } from '../src/features/export/export.js';
@@ -52,6 +52,8 @@ describe('DB-09 — backup lengkap: pura.db + manifest, tanpa file lampiran', ()
         readFileSync(join(destDir, 'manifest.json'), 'utf-8'),
       ) as Record<string, unknown>;
       expect(manifest.daftarFile).toEqual(['pura.db']);
+      expect(manifest.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(manifest.schemaVersion).toBe(1);
       expect(manifest.ukuranDb).toBe(statSync(join(destDir, 'pura.db')).size);
       expect(manifest).not.toHaveProperty('jumlahLampiran');
       expect(manifest.auditIntegritas).toMatchObject({

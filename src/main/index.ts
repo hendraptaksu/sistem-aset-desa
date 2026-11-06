@@ -15,7 +15,7 @@ import { IDLE_DEFAULT_MENIT } from '../core/pin.js';
 import { openDb } from '../db/database.js';
 import { getIdleMenit } from '../db/repository.js';
 import { seedDev } from '../db/seed-dev.js';
-import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
+import { autoBackupHarian } from '../features/export/export.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
 import { auditIntegritasSaatMulai } from './auditAwal.js';
 import { mulaiBackupPeriodik } from './backupPeriodik.js';
@@ -332,23 +332,8 @@ function mulaiAplikasi(): void {
     log?.info(
       `Aplikasi mulai v${app.getVersion()} (mode ${lokasiAktif.mode}); log: ${log.file}`,
     );
-    // Backup pra-upgrade cukup sekali; retry hanya membuka ulang database.
-    let backupPraUpgradeDilakukan = false;
     const dbDibuka = await bukaDbDenganPemulihan({
-      buka: () => {
-        // Sebelum membuka DB: simpan DB lama (best-effort) agar tidak hilang.
-        // Kegagalan backup tidak boleh menghalangi percobaan buka DB.
-        if (!backupPraUpgradeDilakukan) {
-          backupPraUpgradeDilakukan = true;
-          try {
-            const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
-            if (p) loggerMain()?.info(`[backup-upgrade] ${p}`);
-          } catch (e) {
-            loggerMain()?.warn('[backup-upgrade] gagal', e);
-          }
-        }
-        return openDb(pathDb);
-      },
+      buka: () => openDb(pathDb),
       tanya: (e) => {
         // Detail teknis hanya untuk log; layar pemulihan memakai pesan ramah.
         loggerMain()?.error('[db] gagal membuka database', e);

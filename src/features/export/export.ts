@@ -14,7 +14,7 @@ import {
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
-import { openDb, SCHEMA_VERSION } from '../../db/database.js';
+import { openDb, SCHEMA_VERSION, TABEL_AKTIF } from '../../db/database.js';
 import { auditIntegritas } from '../../db/integritas.js';
 import { auditSebelumBackup } from './auditBackup.js';
 import {
@@ -159,54 +159,14 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
 }
 
 /**
- * Tabel inti model double-entry (skema baseline v1).
+ * Tabel wajib agar file dianggap backup aplikasi ini. Hanya skema v1 yang
+ * didukung, jadi daftarnya sama dengan 11 tabel aktif resmi.
  */
-const TABEL_WAJIB_V2 = [
-  'akun',
-  'jurnal',
-  'jurnal_baris',
-  'tutup_buku',
-  'pengaturan',
-  'audit_log',
-] as const;
+export const TABEL_WAJIB_RESTORE = TABEL_AKTIF;
 
-/**
- * Tabel wajib agar file dianggap backup aplikasi ini (skema v4–v19).
- * Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset, anggaran,
- * rekonsiliasi_bank, lampiran_jurnal) tidak lagi diwajibkan.
- */
-export const TABEL_WAJIB_RESTORE = [
-  ...TABEL_WAJIB_V2,
-  'panjar',
-  'panjar_item',
-] as const;
-
-/**
- * DB-16b: tabel wajib untuk backup skema v20+ (pinjaman LPD). Dipisahkan dari
- * daftar v4–v19 agar backup lama tanpa tabel pinjaman tetap bisa direstore.
- */
-export const TABEL_WAJIB_RESTORE_V20 = [
-  ...TABEL_WAJIB_RESTORE,
-  'pinjaman',
-  'pinjaman_angsuran',
-  'pinjaman_bayar',
-] as const;
-
-/**
- * Tabel wajib untuk kandidat restore sesuai `user_version` kandidat.
- * - v2/v3: belum punya tabel panjar, jadi hanya tabel inti yang diwajibkan.
- * - v4–v19: tabel akuntansi + panjar; tabel pinjaman belum ada.
- * - v20+: tabel pinjaman LPD ikut wajib.
- * - versi tak dikenal (<2): memakai daftar current agar file asing tetap
- *   ditolak, bukan lolos karena tidak punya tabel apa pun.
- * Tabel legacy v5–v8 (pihak, jurnal_pihak, aset, anggaran, rekonsiliasi_bank,
- * lampiran_jurnal) tidak pernah diwajibkan.
- */
-export function tabelWajibRestore(versi: number): readonly string[] {
-  if (Number.isInteger(versi) && versi >= 2 && versi < 4) return TABEL_WAJIB_V2;
-  if (Number.isInteger(versi) && versi >= 4 && versi < 20)
-    return TABEL_WAJIB_RESTORE;
-  return TABEL_WAJIB_RESTORE_V20;
+/** Tabel wajib restore selalu mengikuti skema v1 aktif. */
+export function tabelWajibRestore(): readonly string[] {
+  return TABEL_WAJIB_RESTORE;
 }
 
 export type ValidasiRestore = { valid: true } | { valid: false; error: string };
@@ -220,10 +180,9 @@ type PelanggaranFk = {
 
 /**
  * Validasi kandidat restore SEBELUM menyentuh DB aktif:
- * file ada & berupa file, SQLite terbaca, `integrity_check` = ok, bukan dari
- * versi aplikasi yang lebih baru, semua tabel wajib untuk versi kandidat ada,
- * tidak ada pelanggaran foreign key, dan audit integritas akuntansi tidak
- * menemukan masalah.
+ * file ada & berupa file, SQLite terbaca, `user_version` = `SCHEMA_VERSION`,
+ * `integrity_check` = ok, semua tabel wajib skema v1 ada, tidak ada pelanggaran
+ * foreign key, dan audit integritas akuntansi tidak menemukan masalah.
  */
 export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
   let kandidat: Database.Database | null = null;
@@ -234,6 +193,13 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
     if (info.size === 0) return { valid: false, error: 'File backup kosong.' };
 
     kandidat = new Database(backupPath, { readonly: true, fileMustExist: true });
+    const versi = Number(kandidat.pragma('user_version', { simple: true }) ?? 0);
+    if (versi !== SCHEMA_VERSION)
+      return {
+        valid: false,
+        error: `File backup memakai skema v${versi}; aplikasi hanya mendukung skema v${SCHEMA_VERSION}. Pilih backup dari aplikasi versi ini.`,
+      };
+
     const hasilIntegritas = kandidat.pragma('integrity_check') as { integrity_check: string }[];
     const pesanIntegritas = hasilIntegritas.map((r) => r.integrity_check).join('; ');
     if (pesanIntegritas.toLowerCase() !== 'ok')
@@ -242,19 +208,12 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
         error: 'File backup rusak. Pilih file backup lain.',
       };
 
-    const versi = Number(kandidat.pragma('user_version', { simple: true }) ?? 0);
-    if (versi > SCHEMA_VERSION)
-      return {
-        valid: false,
-        error: 'File backup dibuat oleh aplikasi versi lebih baru. Perbarui aplikasi dulu.',
-      };
-
     const tabel = new Set(
       (kandidat.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
         name: string;
       }[]).map((r) => r.name),
     );
-    const kurang = tabelWajibRestore(versi).filter((t) => !tabel.has(t));
+    const kurang = tabelWajibRestore().filter((t) => !tabel.has(t));
     if (kurang.length > 0)
       return {
         valid: false,
@@ -463,45 +422,6 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
       throw new Error(
         'Restore gagal dan pemulihan otomatis juga gagal. Hubungi pendamping sebelum memakai aplikasi lagi.',
       );
-    }
-  }
-}
-
-/**
- * Backup otomatis SEBELUM migrasi skema. Dibuat untuk SETIAP kenaikan versi
- * (`user_version` < versi tujuan), bukan hanya bila tabel legacy tertentu ada.
- * File yang belum punya tabel (DB baru/kosong) dan DB in-memory dilewati agar
- * tidak membuat backup kosong. Mengembalikan '' bila DB belum ada, kosong,
- * atau sudah versi terbaru. Best-effort: pemanggil boleh mencatat kegagalan.
- *
- * `versiTarget` hanya untuk pengujian jalur hipotetis (mis. v13 → v14); produksi
- * selalu memakai `SCHEMA_VERSION`.
- */
-export function backupPraUpgrade(
-  dbPath: string,
-  dirBackup = join(dirname(dbPath), 'backups'),
-  stamp = new Date().toISOString().replace(/[:.]/g, '-'),
-  versiTarget = SCHEMA_VERSION,
-): string {
-  if (!dbPath || dbPath === ':memory:' || !existsSync(dbPath)) return '';
-  let probe: Database.Database | null = null;
-  try {
-    probe = new Database(dbPath, { fileMustExist: true });
-    const versi = Number(probe.pragma('user_version', { simple: true }) ?? 0);
-    if (versi >= versiTarget) return '';
-    // DB yang benar-benar kosong (baru dibuat, belum ada tabel) tidak perlu
-    // backup pra-upgrade. DB lama dengan versi rendah tetap dibackup walau
-    // tidak punya tabel legacy tertentu.
-    const adaTabel = Boolean(
-      probe.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").get(),
-    );
-    if (!adaTabel) return '';
-    return backupVacuumInto(probe, join(dirBackup, `pre-upgrade-${stamp}.db`));
-  } finally {
-    try {
-      probe?.close();
-    } catch {
-      /* koneksi probe sementara */
     }
   }
 }

@@ -145,10 +145,10 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
   if (!existsSync(dbPath) || !statSync(dbPath).isFile())
     return { valid: false, error: 'File pura.db tidak ditemukan di folder backup.' };
 
-  if (m.schemaVersion > SCHEMA_VERSION)
+  if (m.schemaVersion !== SCHEMA_VERSION)
     return {
       valid: false,
-      error: 'Backup dibuat oleh aplikasi versi lebih baru. Perbarui aplikasi dulu.',
+      error: `Manifest backup memakai skema v${m.schemaVersion}; aplikasi hanya mendukung skema v${SCHEMA_VERSION}. Pilih backup dari aplikasi versi ini.`,
     };
 
   return {

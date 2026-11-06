@@ -27,7 +27,6 @@ import {
   sudahSetupPin,
 } from '../src/db/repository.js';
 import {
-  backupPraUpgrade,
   backupVacuumInto,
   restoreDbAman,
   validasiKandidatRestore,
@@ -107,32 +106,24 @@ function buatKandidatTidakSeimbang(path: string): void {
 
 /**
  * DB-08: kandidat sehat secara akuntansi tetapi punya baris foreign key yatim
- * (`jurnal.reversal_of` menunjuk jurnal yang tidak ada). Dibuat dengan FK
- * enforcement dimatikan agar SQLite mau menyimpan baris rusak.
+ * (`jurnal_baris.jurnal_id` menunjuk jurnal yang tidak ada). Jurnal induknya
+ * valid dan seimbang agar audit akuntansi tidak ikut gagal; baris yatim dibuat
+ * dengan FK enforcement dimatikan agar SQLite mau menyimpannya.
+ *
+ * Catatan: trigger `reversal_of` sekarang menolak jurnal UMUM yang punya
+ * reversal_of, jadi jalan yatim lewat `jurnal.reversal_of` tidak dipakai lagi.
  */
 function buatKandidatFkOrphan(path: string): void {
   const db = openDb(path);
   try {
+    // Induk valid: lolos audit akuntansi, hanya baris yatim yang merusak FK.
+    insertJurnalTervalidasi(db, jurnal('j-induk').header, jurnal('j-induk').baris);
+
     db.pragma('foreign_keys = OFF');
     db.prepare(
-      `INSERT INTO jurnal
-         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
-       VALUES (?, ?, ?, ?, 'UMUM', ?, ?, ?)`,
-    ).run(
-      'j-yatim',
-      '2026-09-11',
-      'JU-DB08',
-      'Uji foreign key yatim',
-      'g-db08',
-      'j-tidak-ada',
-      '2026-09-11T00:00:00.000Z',
-    );
-    const baris = db.prepare(
       `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
        VALUES (?, ?, ?, ?, '')`,
-    );
-    baris.run('j-yatim', '1001', 10_000, 0);
-    baris.run('j-yatim', '4007', 0, 10_000);
+    ).run('j-tidak-ada', '1001', 10_000, 0);
   } finally {
     db.pragma('foreign_keys = ON');
     db.close();
@@ -406,10 +397,12 @@ describe('P0-8 — validasiKandidatRestore: file sampah ditolak', () => {
       expect(vKosong.valid).toBe(false);
       if (!vKosong.valid) expect(vKosong.error).toMatch(/kosong/i);
 
-      // SQLite valid tetapi bukan backup aplikasi (tabel wajib tidak lengkap).
+      // SQLite valid dengan `user_version = 1` tetapi hanya punya sebagian
+      // tabel: lolos cek versi, lalu gagal di cek tabel wajib.
       const lainPath = join(dir, 'lain.db');
       lain = new Database(lainPath);
       lain.exec('CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT)');
+      lain.pragma(`user_version = ${SCHEMA_VERSION}`);
       lain.close();
       lain = null;
       const vLain = validasiKandidatRestore(lainPath);
@@ -421,6 +414,49 @@ describe('P0-8 — validasiKandidatRestore: file sampah ditolak', () => {
     } finally {
       lain?.close();
       db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('P0-8 — validasiKandidatRestore: versi skema tidak didukung ditolak', () => {
+  it('menolak backup user_version = 23 dan tidak menyentuh DB aktif', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-val-versi-'));
+    let aktif: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      aktif = openDb(aktifPath);
+      insertJurnalTervalidasi(aktif, jurnal('lama').header, jurnal('lama').baris);
+
+      // Skema v1 lengkap dan sehat, hanya `user_version` dinaikkan ke 23.
+      const kandidatPath = join(dir, 'kandidat-v23.db');
+      const kandidat = new Database(kandidatPath);
+      kandidat.exec(DDL);
+      kandidat.pragma('user_version = 23');
+      kandidat.close();
+
+      const hasil = validasiKandidatRestore(kandidatPath);
+      expect(hasil.valid).toBe(false);
+      if (hasil.valid) throw new Error('backup v23 seharusnya ditolak');
+      expect(hasil.error).toContain('v23');
+      expect(hasil.error).toContain('v1');
+
+      // restoreDbAman juga menolak sebelum DB aktif disentuh.
+      const restore = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidatPath,
+        dirBackup: join(dir, 'backups'),
+        stamp: 'v23',
+      });
+      expect(restore.ok).toBe(false);
+      if (restore.ok) throw new Error('restore v23 seharusnya ditolak');
+      expect(restore.db).toBe(aktif);
+      expect(existsSync(join(dir, 'backups', 'pre-restore-v23.db'))).toBe(false);
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
+      insertJurnalTervalidasi(aktif, jurnal('baru').header, jurnal('baru').baris);
+      expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama', 'baru']);
+    } finally {
+      aktif?.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -505,62 +541,6 @@ describe('DB-08 — validasiKandidatRestore: foreign key wajib bersih', () => {
       // DB-08 memeriksa FK lebih dulu, bukan hanya mengandalkan audit akuntansi.
       expect(hasil.error).not.toContain('audit akuntansi');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('P0-8/DB-33 — backupPraUpgrade: simpan DB lama sebelum migrasi', () => {
-  it('membuat pre-upgrade untuk DB v1 dan untuk versi lama tanpa tabel legacy', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-upgrade-'));
-    let lamaDb: Database.Database | null = null;
-    let probe: Database.Database | null = null;
-    let dbV2: Database.Database | null = null;
-    let versiLamaDb: Database.Database | null = null;
-    try {
-      // DB v1 tiruan: punya tabel single-entry `transaksi`, user_version = 1.
-      const lamaPath = join(dir, 'lama.db');
-      lamaDb = new Database(lamaPath);
-      lamaDb.exec('CREATE TABLE transaksi (id TEXT PRIMARY KEY, nominal INTEGER)');
-      lamaDb.pragma('user_version = 1');
-      lamaDb.prepare('INSERT INTO transaksi (id, nominal) VALUES (?, ?)').run('t1', 500);
-      lamaDb.close();
-      lamaDb = null;
-
-      const dest = backupPraUpgrade(lamaPath, join(dir, 'backups'), 'uji');
-      expect(dest).toBe(join(dir, 'backups', 'pre-upgrade-uji.db'));
-      expect(existsSync(dest)).toBe(true);
-
-      // Backup berisi tabel lama utuh (tidak ikut dimigrasi/dibuang).
-      probe = new Database(dest, { readonly: true });
-      expect(probe.prepare('SELECT nominal FROM transaksi WHERE id = ?').get('t1')).toEqual({
-        nominal: 500,
-      });
-      probe.close();
-      probe = null;
-
-      // DB v11 tanpa tabel legacy tetap dibuatkan backup (dulu bergantung nama tabel).
-      const v11Path = join(dir, 'v11.db');
-      versiLamaDb = new Database(v11Path);
-      versiLamaDb.exec("CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT NOT NULL DEFAULT '')");
-      versiLamaDb.pragma('user_version = 11');
-      versiLamaDb.close();
-      versiLamaDb = null;
-      expect(backupPraUpgrade(v11Path, join(dir, 'backups'), 'v11')).toBe(
-        join(dir, 'backups', 'pre-upgrade-v11.db'),
-      );
-
-      // DB baru yang sudah versi terbaru tidak perlu backup pra-upgrade.
-      const v2Path = join(dir, 'v2.db');
-      dbV2 = openDb(v2Path);
-      expect(backupPraUpgrade(v2Path, join(dir, 'backups'), 'v2')).toBe('');
-      // In-memory tidak pernah menyentuh file backup.
-      expect(backupPraUpgrade(':memory:', join(dir, 'backups'), 'mem')).toBe('');
-    } finally {
-      probe?.close();
-      lamaDb?.close();
-      versiLamaDb?.close();
-      dbV2?.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -657,12 +637,11 @@ describe('P0-8 — restoreDbAman', () => {
       insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
 
       // Lolos validasi + audit (semua tabel/kolom akuntansi ada dan jurnal
-      // kosong) tetapi skemanya rusak: ada tabel yang menabrak nama index v13,
-      // sehingga openDb gagal saat migrasi.
+      // kosong) tetapi skemanya non-STRICT: openDb gagal saat
+      // `pastikanTabelAktifStrict`, sehingga DB lama harus dipulihkan.
       const kandidatPath = join(dir, 'kandidat-rusak.db');
       const rusak = new Database(kandidatPath);
-      rusak.exec(DDL);
-      rusak.exec('CREATE TABLE ux_jurnal_saldo_awal (x INTEGER);');
+      rusak.exec(DDL.replace(/\) STRICT;/g, ');'));
       rusak.pragma(`user_version = ${SCHEMA_VERSION}`);
       rusak.close();
 

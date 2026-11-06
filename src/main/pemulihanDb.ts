@@ -50,6 +50,37 @@ function petunjukAman(error: unknown): string {
   return 'File database mungkin rusak, sedang dipakai aplikasi lain, atau tidak dapat ditulis.';
 }
 
+/** Teks error hanya untuk deteksi internal; tidak pernah ditampilkan. */
+function teksError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object') {
+    const pesan = (error as { message?: unknown }).message;
+    if (typeof pesan === 'string') return pesan;
+  }
+  return '';
+}
+
+function dbTidakKompatibel(error: unknown): boolean {
+  const teks = teksError(error).toLowerCase();
+  return teks.includes('tidak kompatibel') || teks.includes('hanya mendukung skema');
+}
+
+/**
+ * Pesan khusus untuk DB lama yang valid tetapi berskema tidak didukung.
+ * Tidak menyebut "rusak" karena file lama belum tentu bermasalah: aplikasi
+ * sengaja tidak memigrasikannya.
+ */
+function pesanDbTidakKompatibel(lokasi: string): string {
+  return [
+    'Data Anda tidak dihapus oleh aplikasi.',
+    'Database ini dibuat oleh aplikasi versi lama dengan skema yang tidak didukung. Aplikasi ini hanya mendukung skema v1.',
+    `Pindahkan atau hapus file database di lokasi berikut, lalu jalankan aplikasi lagi: ${lokasiTampil(lokasi)}`,
+    'Bila data lama masih dibutuhkan, salin file tersebut ke tempat lain sebelum memindahkan atau menghapusnya.',
+    'Bila masih gagal, klik "Keluar" lalu hubungi pendamping.',
+  ].join('\n');
+}
+
 /**
  * Pesan layar pemulihan yang ramah operator.
  *
@@ -59,6 +90,7 @@ function petunjukAman(error: unknown): string {
  * ditampilkan agar operator tahu file mana yang harus dipulihkan.
  */
 export function pesanGagalBukaDb(error: unknown, lokasi: string): string {
+  if (dbTidakKompatibel(error)) return pesanDbTidakKompatibel(lokasi);
   return [
     'Data Anda tidak dihapus oleh aplikasi.',
     petunjukAman(error),
