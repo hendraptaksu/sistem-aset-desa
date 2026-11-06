@@ -199,11 +199,11 @@
 
 ## Fase 4 — Test skema
 
-- [ ] **T4.1 — Hapus test migrasi**
+- [x] **T4.1 — Hapus test migrasi**
   - Hapus `tests/migrasi-v9.test.ts` s/d `tests/migrasi-v20.test.ts`.
   - Selesai bila tidak ada file `tests/migrasi-*.test.ts`.
 
-- [ ] **T4.2 — Hapus test tabel legacy**
+- [x] **T4.2 — Hapus test tabel legacy**
   - Hapus `tests/db-06-tabel-legacy.test.ts`.
   - Selesai bila tidak ada referensi `TABEL_DIHAPUS_V12`/`TABEL_SINGLE_ENTRY_LAMA` di test.
 

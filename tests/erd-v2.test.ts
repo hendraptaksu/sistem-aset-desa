@@ -16,10 +16,20 @@ import { describe, expect, it } from 'vitest';
 import {
   SCHEMA_VERSION,
   TABEL_AKTIF,
-  TABEL_DIHAPUS_V12,
-  TABEL_SINGLE_ENTRY_LAMA,
   openDb,
 } from '../src/db/database.js';
+
+/** Tabel modul lama yang sudah dihapus dan tidak boleh muncul lagi. */
+const TABEL_LEGACY = [
+  'transaksi',
+  'coa',
+  'pihak',
+  'jurnal_pihak',
+  'aset',
+  'anggaran',
+  'rekonsiliasi_bank',
+  'lampiran_jurnal',
+] as const;
 
 const ERD = readFileSync(
   fileURLToPath(new URL('../docs/erd-v2.md', import.meta.url)),
@@ -136,7 +146,7 @@ describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
   });
 
   it('tidak mendokumentasikan tabel modul lama yang sudah dihapus', () => {
-    for (const tabel of [...TABEL_DIHAPUS_V12, ...TABEL_SINGLE_ENTRY_LAMA]) {
+    for (const tabel of TABEL_LEGACY) {
       expect(ERD, `heading tabel lama ${tabel}`).not.toContain(
         `### \`${tabel}\``,
       );

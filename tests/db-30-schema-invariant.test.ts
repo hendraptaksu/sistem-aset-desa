@@ -12,7 +12,19 @@
 
 import type Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { openDb, SCHEMA_VERSION, TABEL_DIHAPUS_V12 } from '../src/db/database.js';
+import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
+
+/** Tabel modul lama yang sudah dihapus dan tidak boleh muncul lagi. */
+const TABEL_LEGACY = [
+  'transaksi',
+  'coa',
+  'pihak',
+  'jurnal_pihak',
+  'aset',
+  'anggaran',
+  'rekonsiliasi_bank',
+  'lampiran_jurnal',
+] as const;
 
 const TABEL_AKTIF = [
   'akun',
@@ -113,7 +125,7 @@ describe('DB-30 — invariant tabel aktif', () => {
         expect(strict(db, tabel), `${tabel} harus STRICT`).toBe(1);
       }
       expect(namaTabel(db)).not.toEqual(
-        expect.arrayContaining([...TABEL_DIHAPUS_V12]),
+        expect.arrayContaining([...TABEL_LEGACY]),
       );
     } finally {
       db.close();
