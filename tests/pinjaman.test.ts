@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
+  bayarAngsuranPinjaman,
   buatPinjaman,
   catatPembayaran,
   getPembayaranPinjaman,
@@ -24,6 +25,11 @@ import {
   type PinjamanAngsuranInput,
 } from '../src/db/pinjaman.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { getJurnalDetail } from '../src/db/repository.js';
+import {
+  kemampuanKoreksiJurnal,
+  PESAN_REVERSAL_PINJAMAN,
+} from '../src/db/kemampuanKoreksi.js';
 import { AKUN_MODAL } from '../src/db/coa.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
 
@@ -582,5 +588,67 @@ describe('DB-16b — skema tersimpan & foreign key', () => {
         )
         .run(),
     ).toThrow(/FOREIGN KEY constraint failed/);
+  });
+});
+
+// T2.3 — regresi pembayaran bunga saja.
+//
+// Pembayaran bunga tanpa pokok membuat jurnal berjenis HUTANG yang TIDAK
+// memuat akun 2050. Heuristik lama (jenis HUTANG + akun 2050) karena itu
+// menganggapnya jurnal biasa dan menawarkan pembatalan dari Transaksi.
+// Capability backend harus memakai relasi `pinjaman_bayar.jurnal_id`.
+describe('T2.3 — pembayaran bunga saja', () => {
+  it('jurnal HUTANG tanpa 2050 dari API pembayaran ditolak dengan alasan Pinjaman', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const angsuran = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+    expect(angsuran).toBeDefined();
+
+    // API asli membuat jurnal pembayaran: D 5063 / K kas, tanpa D 2050.
+    const bayar = bayarAngsuranPinjaman(db, {
+      id: 'pby-bunga-saja',
+      jurnal_id: 'j-bayar-bunga-saja',
+      pinjaman_id: 'pjr-1',
+      angsuran_id: angsuran?.id,
+      tanggal: '2026-03-01',
+      akun_kas: '1001',
+      pokok: 0,
+      bunga: RP(100_000),
+    });
+    expect(bayar.tersimpan, bayar.errors.join(' ')).toBe(true);
+    expect(bayar.jurnal?.id).toBe('j-bayar-bunga-saja');
+    expect(bayar.rincian).toMatchObject({ pokok: 0, bunga: RP(100_000) });
+
+    const detail = getJurnalDetail(db, 'j-bayar-bunga-saja');
+    expect(detail).not.toBeNull();
+    expect(detail?.jurnal.jenis).toBe('HUTANG');
+    const akun = (detail?.baris ?? []).map((b) => b.akun_kode);
+    expect(akun).toContain('5063');
+    expect(akun).not.toContain('2050');
+
+    // Heuristik lama gagal mendeteksi pinjaman karena tidak ada 2050.
+    const heuristikLamaTerhubungPinjaman =
+      detail?.jurnal.jenis === 'HUTANG' && akun.includes('2050');
+    expect(heuristikLamaTerhubungPinjaman).toBe(false);
+
+    const kemampuan = kemampuanKoreksiJurnal(db, {
+      id: 'j-bayar-bunga-saja',
+    });
+    expect(kemampuan).toEqual({
+      bisaDibalik: false,
+      bisaDikoreksi: false,
+      alasan: PESAN_REVERSAL_PINJAMAN,
+    });
+    expect(kemampuan.alasan).toMatch(/Pinjaman/);
+
+    // Debt pokok tidak berubah; pembayaran tercatat sebagai bunga saja.
+    expect(getPinjaman(db, 'pjr-1')?.outstanding).toBe(RP(12_000_000));
+    expect(getPembayaranPinjaman(db, 'pby-bunga-saja')).toMatchObject({
+      jurnal_id: 'j-bayar-bunga-saja',
+      pokok: 0,
+      bunga: RP(100_000),
+      dibatalkan: false,
+    });
   });
 });
