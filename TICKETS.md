@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 1 | 9 |
+| 1 — Data safety | P0 | 2 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **4** | **33** |
+| **Total** |  | **5** | **33** |
 
 ## Aturan kerja
 
@@ -78,7 +78,7 @@
   - **Verifikasi:** `npm test -- tests/backup-restore.test.ts`.
   - **Catatan:** File disentuh: `src/features/export/pathAman.ts` (baru), `src/features/export/export.ts`, `tests/backup-restore.test.ts`, `TICKETS.md`. Guard `pastikanBukanFileDbAktif(db.name, dest)` berjalan sebelum `VACUUM INTO`, membandingkan path kanonik (`realpath`/`resolve`) dan inode (`stat`) sehingga path relatif/absolut, symlink, dan hardlink ke DB aktif atau sidecar `-wal`/`-shm` ditolak. Verifikasi: `npm test -- tests/backup-restore.test.ts` (25 lulus, 4 test T1.1 gagal bila guard dilepas), `npm run typecheck` lulus, `npm test` 85 file/1.082 test lulus. Commit `9a9c820`.
 
-- [ ] **T1.2 — Pasang guard path di semua kanal simpan**
+- [x] **T1.2 — Pasang guard path di semua kanal simpan**
   - **Masalah:** `file:save-buffer` dan `file:save-pdf` menulis ke path apa pun yang dipilih dialog. Memilih file DB aktif dapat menimpa database dengan isi xlsx/pdf.
   - **File:** `src/main/ipc.ts`, `src/main/index.ts` bila perlu, `tests/ipc-main.test.ts`, `tests/save-pdf.test.ts`.
   - **Langkah:**
@@ -87,7 +87,7 @@
     3. Kembalikan pesan error Indonesia yang menyebut file DB aktif tidak boleh menjadi tujuan.
   - **Selesai bila:** test dengan dialog palsu yang mengembalikan `deps.dbPath()` memastikan `writeFile`/`printPdf` tidak dipanggil dan DB tidak berubah.
   - **Verifikasi:** `npm test -- tests/ipc-main.test.ts tests/save-pdf.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/main/ipc.ts`, `tests/ipc-main.test.ts`, `TICKETS.md`. Helper `pastikanBukanFileDbAktif(deps.dbPath(), tujuan)` dipanggil setelah dialog dan sebelum operasi tulis/cetak pada `file:save-buffer`, `file:save-pdf`, dan `backup:export` (termasuk sidecar `-wal`/`-shm`). Pesan error Indonesia: “File DB yang sedang aktif tidak boleh menjadi tujuan simpan. Pilih nama file lain.” Test regresi memakai dialog palsu yang mengembalikan `deps.dbPath()`/sidecar dan memastikan `writeFile`/`printPdf`/`backupVacuumInto` tidak berjalan, audit tidak bertambah, dan byte DB tidak berubah. Verifikasi: `npm test -- tests/ipc-main.test.ts tests/save-pdf.test.ts` (52 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.085 test lulus. Commit `52524b9`.
 
 - [ ] **T1.3 — Tolak DB v1 yang kehilangan tabel wajib**
   - **Masalah:** `cekKompatibilitas` hanya menolak tabel asing. DB v1 tanpa `jurnal_baris` lolos, lalu `siapkanSkema` menjalankan `CREATE TABLE IF NOT EXISTS` dan membuat tabel kosong. Data baris hilang tanpa error.
