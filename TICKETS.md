@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 2 | 9 |
+| 1 — Data safety | P0 | 3 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **5** | **33** |
+| **Total** |  | **6** | **33** |
 
 ## Aturan kerja
 
@@ -89,7 +89,7 @@
   - **Verifikasi:** `npm test -- tests/ipc-main.test.ts tests/save-pdf.test.ts`.
   - **Catatan:** File disentuh: `src/main/ipc.ts`, `tests/ipc-main.test.ts`, `TICKETS.md`. Helper `pastikanBukanFileDbAktif(deps.dbPath(), tujuan)` dipanggil setelah dialog dan sebelum operasi tulis/cetak pada `file:save-buffer`, `file:save-pdf`, dan `backup:export` (termasuk sidecar `-wal`/`-shm`). Pesan error Indonesia: “File DB yang sedang aktif tidak boleh menjadi tujuan simpan. Pilih nama file lain.” Test regresi memakai dialog palsu yang mengembalikan `deps.dbPath()`/sidecar dan memastikan `writeFile`/`printPdf`/`backupVacuumInto` tidak berjalan, audit tidak bertambah, dan byte DB tidak berubah. Verifikasi: `npm test -- tests/ipc-main.test.ts tests/save-pdf.test.ts` (52 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.085 test lulus. Commit `52524b9`.
 
-- [ ] **T1.3 — Tolak DB v1 yang kehilangan tabel wajib**
+- [x] **T1.3 — Tolak DB v1 yang kehilangan tabel wajib**
   - **Masalah:** `cekKompatibilitas` hanya menolak tabel asing. DB v1 tanpa `jurnal_baris` lolos, lalu `siapkanSkema` menjalankan `CREATE TABLE IF NOT EXISTS` dan membuat tabel kosong. Data baris hilang tanpa error.
   - **File:** `src/db/database.ts`, `tests/skema-kompatibilitas.test.ts`.
   - **Langkah:**
@@ -98,7 +98,7 @@
     3. Pastikan pengecekan berjalan sebelum `journal_mode = WAL` dan sebelum `DDL`.
   - **Selesai bila:** test menghapus `jurnal_baris` dari DB v1, lalu `openDb` melempar error; file tetap byte-for-byte sama; tidak ada `-wal`/`-shm`; tabel tidak dibuat ulang.
   - **Verifikasi:** `npm test -- tests/skema-kompatibilitas.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/database.ts`, `tests/skema-kompatibilitas.test.ts`, `TICKETS.md`. `cekKompatibilitas` kini menghitung `TABEL_AKTIF` yang hilang saat `user_version === SCHEMA_VERSION` dan melempar `PESAN_DB_TIDAK_LENGKAP` (menyebut nama tabel + instruksi memulihkan dari backup) sebelum `journal_mode = WAL` dan sebelum DDL. DB baru v0 tanpa tabel dan DB v1 lengkap tetap bisa dibuka; penolakan tabel asing/versi lama tidak berubah. Test regresi membuat DB v1 valid via `openDb`, menghapus `jurnal_baris` langsung dengan better-sqlite3 (`foreign_keys = OFF`), lalu memastikan `openDb` ditolak, byte file identik, tanpa `-wal`/`-shm`, versi tetap v1, dan tabel tidak muncul kembali; kasus DB v1 lengkap juga diuji. Verifikasi: `npm test -- tests/skema-kompatibilitas.test.ts` (8 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.087 test lulus. Commit `19c9654`.
 
 - [ ] **T1.4 — Tolak DB v1 yang kehilangan kolom wajib**
   - **Masalah:** tabel yang ada tetapi kehilangan kolom tidak terdeteksi. `CREATE TABLE IF NOT EXISTS` tidak menambah kolom; error baru muncul jauh di lapisan query.
