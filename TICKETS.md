@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 1 | 9 |
+| 3 — Hardening | P2 | 2 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **22** | **33** |
+| **Total** |  | **23** | **33** |
 
 ## Aturan kerja
 
@@ -274,7 +274,7 @@
   - **Verifikasi:** test dengan file tmp korup/valid.
   - **Catatan:** File disentuh: `src/features/export/export.ts`, `tests/backup-restore.test.ts`, `TICKETS.md`. `verifikasiFileBackup(path)` diekspor dan membuka `new Database(path, { readonly: true, fileMustExist: true })` — sengaja tanpa `openDb` agar tidak menulis WAL/DDL ke file backup — lalu memeriksa `PRAGMA integrity_check` = `ok`, `PRAGMA foreign_key_check` kosong, `user_version === SCHEMA_VERSION`, dan seluruh `TABEL_AKTIF` ada sebagai tabel di `sqlite_master`; error teknis SQLite diubah menjadi pesan Indonesia `Backup tidak valid: <tahap> gagal ...` yang menyebut tahap yang gagal. `backupVacuumInto(db, dest, verifikasi = verifikasiFileBackup)` menjalankan verifikasi pada file tmp setelah `VACUUM INTO` dan sebelum rename menimpa `dest`; bila gagal, `buangFileDb(tmp)` menghapus tmp/sidecar, `dest` lama tidak disentuh, dan error dilempar. Parameter ketiga adalah seam test; pemanggil lama (2 argumen) tetap kompatibel dan produksi memakai default. Test baru: (a) backup normal lolos `verifikasiFileBackup` dan isinya bisa dibuka; (b) file non-SQLite, SQLite korup, `user_version` salah, tabel wajib hilang, dan baris FK yatim ditolak; (c) verifier suntikan yang selalu melempar membuat `dest` lama byte-for-byte identik, tanpa sisa `.tmp-*`/`.bak-*`, dan error dilempar; (d) bila `dest` belum ada, `dest` tidak dibuat dan tmp tidak tertinggal. Verifikasi: `npm test -- tests/backup-restore.test.ts` (31 lulus), `npm run typecheck` lulus, `npm test` 90 file/1.169 test lulus, 0 gagal (baseline 90/1.163). Commit `1c5a236`.
 
-- [ ] **T3.2 — Retensi backup internal**
+- [x] **T3.2 — Retensi backup internal**
   - **Masalah:** `auto-*.db` dibatasi 7 file, tetapi `pre-restore-*.db` dan `pura-<tahun>.db` bisa menumpuk tanpa batas.
   - **File:** `src/features/export/export.ts`, `src/main/ipc.ts`, `tests/backup-auto.test.ts`.
   - **Langkah:**
@@ -283,7 +283,7 @@
     3. Jangan pernah menghapus backup yang sedang dipakai rollback.
   - **Selesai bila:** jumlah file internal terkendali dan test retensi lulus.
   - **Verifikasi:** `npm test -- tests/backup-auto.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/features/export/export.ts`, `src/main/ipc.ts`, `tests/backup-auto.test.ts`, `TICKETS.md`. Batas retensi internal diekspor sebagai `RETENSI_AUTO = 7`, `RETENSI_PRE_RESTORE = 5`, dan `RETENSI_TUTUP_BUKU = 10`. Helper `rapikanBackupInternal(dir, jenis, keep, lindungi?)` hanya menyentuh pola nama persis (`^auto-.*\.db$`, `^pre-restore-.*\.db$`, `^pura-\d{4}\.db$`), mengurutkan nama naik, menghapus yang tertua sampai tersisa `keep`, melewati path di `lindungi` (dibandingkan via `resolve`), dan menelan error hapus per file agar backup utama tidak gagal. `autoBackupHarian` memakai helper dengan `keep` parameter dan selalu melindungi `dest`; retensi baru berjalan setelah `VACUUM INTO` + verifikasi sukses (atau file hari itu sudah ada). `backup:auto` (tutup buku) merapikan `pura-<tahun>` dengan `RETENSI_TUTUP_BUKU` setelah backup + audit sukses, melindungi `dest`. `restoreDbAman` merapikan `pre-restore` dengan `RETENSI_PRE_RESTORE` hanya setelah restore benar-benar sukses (setelah `tulisKunciAktif`), melindungi `preRestorePath`; jalur gagal/rollback tidak merapikan apa pun. Backup Lengkap di folder pilihan pengguna tidak pernah disentuh. Test baru mencakup pre-restore 8→5 dengan pola lain utuh, `pura-<tahun>` 12→10, path `lindungi` tetap walau di luar batas, backup auto gagal (VACUUM ditolak dalam transaksi) tidak memicu pruning, serta restore sukses memicu retensi sedangkan restore gagal tidak. Verifikasi: `npm test -- tests/backup-auto.test.ts tests/backup-restore.test.ts` 42 lulus; `npm run typecheck` lulus; `npm test` **90 file / 1.175 test lulus, 0 gagal** (baseline T3.1: 90/1.169). Commit `63d68a9`.
 
 - [ ] **T3.3 — Keputusan enkripsi backup**
   - **Masalah:** backup `.db` tidak terenkripsi; PIN hanya melindungi UI, bukan isi file. Ini risiko nyata bila backup disalin ke USB/cloud.
