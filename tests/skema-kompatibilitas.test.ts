@@ -7,6 +7,9 @@
 // - DB `user_version = 1` dengan tabel asing ditolak.
 // - DB v1 yang kehilangan tabel wajib (mis. `jurnal_baris`) ditolak sebelum
 //   DDL/WAL, tanpa membuat tabel kosong dan tanpa mengubah byte file.
+// - DB v1 yang tabelnya ada tetapi kehilangan kolom wajib (mis.
+//   `pengaturan.nilai`) ditolak sebelum DDL/WAL tanpa menambah kolom.
+// - Peta `KOLOM_WAJIB` sinkron dengan `PRAGMA table_info` DB baru.
 // - DB v1 valid (11 tabel aktif) bisa dibuka, seed COA jalan, dan data
 //   `pengaturan` sentinel tetap.
 // - DB baru `:memory:` langsung v1, 11 tabel aktif, seluruhnya STRICT.
@@ -20,6 +23,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DDL,
+  KOLOM_WAJIB,
+  PESAN_DB_KOLOM_TIDAK_LENGKAP,
   PESAN_DB_TIDAK_KOMPATIBEL,
   PESAN_DB_TIDAK_LENGKAP,
   SCHEMA_VERSION,
@@ -52,6 +57,10 @@ function namaTabelUser(db: Database.Database): string[] {
       )
       .all() as { name: string }[]
   ).map((row) => row.name);
+}
+
+function kolomTabel(db: Database.Database, tabel: string): string[] {
+  return (db.pragma(`table_info(${tabel})`) as { name: string }[]).map((row) => row.name);
 }
 
 function tangkapPesan(fn: () => unknown): string {
@@ -196,6 +205,64 @@ describe('skema v1 — DB v1 tidak lengkap ditolak', () => {
       expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'sentinel'").get()).toEqual({
         nilai: 'tetap',
       });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('skema v1 — DB v1 kehilangan kolom wajib ditolak', () => {
+  it('menolak DB v1 tanpa pengaturan.nilai tanpa menambah kolom dan tanpa mengubah byte', () => {
+    const path = join(tmpDir('skema-v1-kolom-kurang-'), 'pura.db');
+
+    const awal = openDb(path);
+    awal
+      .prepare("INSERT INTO pengaturan (kunci, nilai) VALUES ('sentinel', 'tetap')")
+      .run();
+    awal
+      .prepare(
+        "INSERT INTO tutup_buku (tahun, created_at, catatan) VALUES (2025, '2026-01-01', 'lama')",
+      )
+      .run();
+    awal.close();
+
+    // Tiru DB rusak: hapus satu kolom wajib langsung dari file. `pengaturan`
+    // tidak punya index/trigger sehingga aman untuk ALTER TABLE DROP COLUMN.
+    buatDbMentah(path, (db) => {
+      db.exec('ALTER TABLE pengaturan DROP COLUMN nilai');
+    });
+    const sebelum = readFileSync(path);
+
+    const pesan = tangkapPesan(() => openDb(path));
+    expect(pesan).toContain(PESAN_DB_KOLOM_TIDAK_LENGKAP);
+    expect(pesan).toContain('pengaturan.nilai');
+    expect(pesan).toMatch(/backup/i);
+    pastikanTidakBerubah(path, sebelum);
+
+    // Guard berjalan sebelum DDL: kolom tidak ditambahkan kembali, versi tetap
+    // v1, dan data lain tidak berubah.
+    const cek = new Database(path, { readonly: true });
+    try {
+      expect(versi(cek)).toBe(SCHEMA_VERSION);
+      expect(kolomTabel(cek, 'pengaturan')).toEqual(['kunci']);
+      expect(cek.prepare('SELECT kunci FROM pengaturan').all()).toEqual([{ kunci: 'sentinel' }]);
+      expect(cek.prepare('SELECT catatan FROM tutup_buku WHERE tahun = 2025').get()).toEqual({
+        catatan: 'lama',
+      });
+    } finally {
+      cek.close();
+    }
+  });
+
+  it('KOLOM_WAJIB sinkron dengan PRAGMA table_info DB baru', () => {
+    const db = openDb(':memory:');
+    try {
+      expect(Object.keys(KOLOM_WAJIB).sort()).toEqual([...TABEL_AKTIF].sort());
+      for (const tabel of TABEL_AKTIF) {
+        expect(kolomTabel(db, tabel), `kolom wajib ${tabel}`).toEqual([
+          ...KOLOM_WAJIB[tabel],
+        ]);
+      }
     } finally {
       db.close();
     }

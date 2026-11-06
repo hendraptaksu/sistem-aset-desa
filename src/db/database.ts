@@ -35,6 +35,98 @@ export const TABEL_AKTIF = [
 ] as const;
 
 /**
+ * T1.4 — peta kolom kanonik wajib per tabel aktif, disalin dari DDL tabel di
+ * bawah. `CREATE TABLE IF NOT EXISTS` tidak menambah kolom, sehingga DB v1
+ * yang tabelnya ada tetapi kolomnya hilang harus ditolak sebelum DDL. Peta ini
+ * dijaga tetap sinkron oleh test penjaga di
+ * `tests/skema-kompatibilitas.test.ts` yang membandingkannya dengan
+ * `PRAGMA table_info` pada DB baru.
+ */
+export const KOLOM_WAJIB: Record<(typeof TABEL_AKTIF)[number], readonly string[]> = {
+  akun: ['kode', 'nama', 'tipe', 'posisi_normal', 'aktif', 'is_kas', 'kelompok', 'sumber'],
+  jurnal: [
+    'id',
+    'tanggal',
+    'no_bukti',
+    'keterangan',
+    'jenis',
+    'grup_id',
+    'reversal_of',
+    'created_at',
+  ],
+  jurnal_baris: ['id', 'jurnal_id', 'akun_kode', 'debit', 'kredit', 'keterangan'],
+  tutup_buku: ['tahun', 'created_at', 'catatan'],
+  audit_log: [
+    'id',
+    'tanggal',
+    'aksi',
+    'alasan',
+    'data_lama_json',
+    'data_baru_json',
+    'ref_type',
+    'ref_id',
+  ],
+  pengaturan: ['kunci', 'nilai'],
+  panjar: [
+    'id',
+    'tanggal',
+    'penerima',
+    'jumlah',
+    'akun_kas_sumber',
+    'status',
+    'tanggal_close',
+    'jurnal_open_id',
+    'jurnal_close_id',
+    'created_at',
+    'jurnal_batal_id',
+    'tanggal_batal',
+    'alasan_batal',
+  ],
+  panjar_item: [
+    'id',
+    'panjar_id',
+    'kategori_baga',
+    'nominal',
+    'jurnal_id',
+    'nota_nomor',
+    'nota_tanggal',
+    'toko',
+    'keterangan',
+  ],
+  pinjaman: [
+    'id',
+    'kreditur',
+    'akun_kas',
+    'akun_bunga',
+    'pokok_awal',
+    'sisa_pokok_awal',
+    'tanggal_mulai',
+    'tenor_bulan',
+    'jurnal_pencairan_id',
+    'catatan',
+    'created_at',
+  ],
+  pinjaman_angsuran: [
+    'id',
+    'pinjaman_id',
+    'ke',
+    'jatuh_tempo',
+    'pokok',
+    'bunga',
+    'catatan',
+  ],
+  pinjaman_bayar: [
+    'id',
+    'pinjaman_id',
+    'angsuran_id',
+    'jurnal_id',
+    'tanggal',
+    'catatan',
+    'created_at',
+  ],
+};
+
+/**
  * Pesan penolakan DB dengan skema lama/tidak dikenal. Tidak ada jalur migrasi:
  * operator harus memindahkan atau menghapus file DB lalu menjalankan ulang.
  */
@@ -58,6 +150,27 @@ export function pesanDbTidakLengkap(tabelKurang: readonly string[]): string {
     'Database tidak diubah agar data yang tersisa tidak tertimpa. ' +
     'Pulihkan file database ini dari backup yang sehat atau hubungi pendamping; ' +
     'jangan membuat ulang tabel kosong.'
+  );
+}
+
+/**
+ * Awalan pesan penolakan DB v1 yang tabelnya ada tetapi kehilangan kolom
+ * wajib. DB seperti ini juga tidak boleh diperbaiki otomatis: `ALTER TABLE`
+ * bisa menambah kolom kosong dan menutupi data yang hilang.
+ */
+export const PESAN_DB_KOLOM_TIDAK_LENGKAP =
+  'File database skema v1 tidak lengkap: kolom wajib tidak ditemukan:';
+
+/** Pesan penolakan DB v1 yang kolomnya hilang; menyebut tabel + kolom. */
+export function pesanDbKolomTidakLengkap(
+  kolomKurang: readonly { tabel: string; kolom: string }[],
+): string {
+  const rincian = kolomKurang.map(({ tabel, kolom }) => `${tabel}.${kolom}`).join(', ');
+  return (
+    `${PESAN_DB_KOLOM_TIDAK_LENGKAP} ${rincian}. ` +
+    'Database tidak diubah agar data yang tersisa tidak tertimpa. ' +
+    'Pulihkan file database ini dari backup yang sehat atau hubungi pendamping; ' +
+    'jangan menambah kolom kosong secara manual.'
   );
 }
 
@@ -585,11 +698,30 @@ function daftarTabelUser(db: Database.Database): string[] {
 }
 
 /**
+ * T1.4 — daftar kolom wajib yang hilang dari tabel aktif. `PRAGMA table_info`
+ * adalah sumber kebenaran; peta `KOLOM_WAJIB` hanya daftar kolom yang
+ * seharusnya ada.
+ */
+export function kolomWajibHilang(
+  db: Database.Database,
+): { tabel: string; kolom: string }[] {
+  const kurang: { tabel: string; kolom: string }[] = [];
+  for (const tabel of TABEL_AKTIF) {
+    const info = db.pragma(`table_info(${tabel})`) as { name: string }[];
+    const ada = new Set(info.map((row) => String(row.name)));
+    for (const kolom of KOLOM_WAJIB[tabel]) {
+      if (!ada.has(kolom)) kurang.push({ tabel, kolom });
+    }
+  }
+  return kurang;
+}
+
+/**
  * Guard kompatibilitas skema. Hanya DB baru (v0 tanpa tabel) dan DB v1 yang
- * lengkap — seluruh `TABEL_AKTIF` ada dan tidak ada tabel asing — yang boleh
- * dibuka. Database lama/tidak lengkap tidak dimigrasikan dan tidak boleh
- * disentuh: fungsi ini dipanggil SEBELUM `journal_mode = WAL` agar file lama
- * tidak berubah byte-for-byte.
+ * lengkap — seluruh `TABEL_AKTIF` ada beserta kolom wajibnya, dan tidak ada
+ * tabel asing — yang boleh dibuka. Database lama/tidak lengkap tidak
+ * dimigrasikan dan tidak boleh disentuh: fungsi ini dipanggil SEBELUM
+ * `journal_mode = WAL` agar file lama tidak berubah byte-for-byte.
  */
 export function cekKompatibilitas(db: Database.Database): void {
   const versi = Number(db.pragma('user_version', { simple: true }) ?? 0);
@@ -602,8 +734,12 @@ export function cekKompatibilitas(db: Database.Database): void {
     const tabelKurang = TABEL_AKTIF.filter((nama) => !tabelSet.has(nama));
     // DB v1 tanpa tabel wajib (mis. `jurnal_baris` terhapus) harus ditolak
     // sebelum DDL, jangan sampai `CREATE TABLE IF NOT EXISTS` membuat tabel
-    // kosong dan menutupi kehilangan data.
+    // kosong dan menutupi kehilangan data. Cek tabel lebih dulu agar DB yang
+    // tabelnya hilang tetap memakai pesan T1.3.
     if (tabelKurang.length > 0) throw new Error(pesanDbTidakLengkap(tabelKurang));
+
+    const kolomKurang = kolomWajibHilang(db);
+    if (kolomKurang.length > 0) throw new Error(pesanDbKolomTidakLengkap(kolomKurang));
 
     const tabelAktif = new Set<string>(TABEL_AKTIF);
     const tabelAsing = tabel.filter((nama) => !tabelAktif.has(nama));
