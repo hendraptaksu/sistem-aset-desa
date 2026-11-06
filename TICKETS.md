@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 3 | 9 |
+| 2 — Kontrol & UX | P1 | 4 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **15** | **33** |
+| **Total** |  | **16** | **33** |
 
 ## Aturan kerja
 
@@ -199,7 +199,7 @@
   - **Verifikasi:** `npm test -- tests/pinjaman-pembatalan-validation.test.ts`.
   - **Catatan:** File disentuh: `tests/pinjaman-pembatalan-validation.test.ts`, `tests/pinjaman.test.ts`, `TICKETS.md`. Test memakai API pinjaman asli: `simpanPinjamanLpd` (pencairan + jadwal 2 angsuran) lalu `bayarAngsuranPinjaman` dengan `pokok: 0`, `bunga: RP(100_000)` sehingga jurnal pembayaran berjenis `HUTANG` hanya berisi D 5063 / K kas **tanpa baris 2050**. Assertion: capability `kemampuanKoreksiJurnal` memberi `bisaDibalik=false`, `bisaDikoreksi=false`, dan `alasan` persis `PESAN_REVERSAL_PINJAMAN` (mengarah ke “menu Pinjaman LPD”); DTO `listJurnalLengkap` membawa flag yang sama; `reverseJurnal` generik ditolak tanpa jurnal baru, sedangkan `batalkanPembayaranPinjaman` di modul Pinjaman berhasil menandai pembayaran `dibatalkan`. Test negatif juga menegaskan heuristik lama (`jenis HUTANG` + akun 2050) gagal mendeteksi jurnal ini. Bukti regresi: dengan patch sementara yang mengembalikan heuristik lama, kedua test T2.3 **gagal** (`bisaDibalik: true`); setelah dipulihkan keduanya lulus. Verifikasi: `npm test -- tests/pinjaman-pembatalan-validation.test.ts tests/pinjaman.test.ts` (2 file/16 test lulus), `npm run typecheck` lulus, `npm test` **88 file/1.131 test lulus, 0 gagal**. Commit `67810a2`.
 
-- [ ] **T2.4 — Lindungi akun sistem 2060, 5063, dan 5050**
+- [x] **T2.4 — Lindungi akun sistem 2060, 5063, dan 5050**
   - **Masalah:** `AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF` hanya berisi 3000/1040/1050/2050. Menonaktifkan 2060 (utang usaha), 5063 (bunga pinjaman), atau 5050 (denda) memutus alur wizard/utang/pinjaman.
   - **File:** `src/db/coa.ts`, `src/db/pinjaman.ts`, `src/db/repository.ts`, `src/renderer/components/AkunTab.tsx`, `tests/akun.test.ts`.
   - **Langkah:**
@@ -208,7 +208,7 @@
     3. Perbarui teks bantuan AkunTab.
   - **Selesai bila:** deaktivasi ketiga akun ditolak dengan pesan jelas; reaktivasi tetap boleh.
   - **Verifikasi:** `npm test -- tests/akun.test.ts tests/utang-usaha.test.ts tests/pinjaman.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/coa.ts`, `src/db/pinjaman.ts`, `src/db/repository.ts`, `src/renderer/components/AkunTab.tsx`, `src/renderer/lib/api.ts`, `tests/akun.test.ts`, `tests/forms-ui.test.ts`, `tests/ipc-main.test.ts`, `TICKETS.md`. `coa.ts` kini mendefinisikan `AKUN_BUNGA_PINJAMAN = '5063'` dan `AKUN_DENDA_PINJAMAN = '5050'`; `pinjaman.ts` memakai konstanta itu dan tetap mengekspor alias `AKUN_BUNGA_PINJAMAN_DEFAULT`/`AKUN_DENDA_PINJAMAN_DEFAULT` (tanpa impor balik ke `pinjaman.ts`, jadi tidak ada siklus). `AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF` berisi 3000/1040/1050/2050/2060/5063/5050 sehingga badge “Sistem”, tombol nonaktif, dan penolakan backend otomatis berlaku. Pesan `setAkunAktif` menyebut kode+nama, alasan (wizard/alur: saldo awal, panjar, utang usaha, atau pinjaman), dan arahan memakai **Aktifkan**; reaktivasi `aktif=true` tetap lolos meski akun terlanjur nonaktif. Teks bantuan AkunTab dan komentar API diperbarui. Test: daftar set diperluas di `tests/akun.test.ts` + `tests/forms-ui.test.ts`; test baru menolak 2060/5063/5050 dengan pesan kode+nama, memastikan tetap aktif tanpa audit nonaktif, 5010 tetap bisa dinonaktifkan, alur utang usaha (2060) & bunga/denda pinjaman (5063/5050) tetap bisa diposting, dan reaktivasi ketiganya berhasil. `tests/ipc-main.test.ts` ikut menguji ketiga kode lewat IPC. Verifikasi: `npm test -- tests/akun.test.ts tests/utang-usaha.test.ts tests/pinjaman.test.ts tests/forms-ui.test.ts tests/ipc-main.test.ts` (5 file/132 test lulus), `npm run typecheck` lulus, `npm test` **88 file/1.132 test lulus, 0 gagal**. Commit `46311dd`.
 
 - [ ] **T2.5 — Matriks test alur dengan akun sistem nonaktif**
   - **Masalah:** akun tetap lain di wizard/template bisa dinonaktifkan dan baru ketahuan saat dipakai.
