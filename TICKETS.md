@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 2 | 9 |
+| 2 — Kontrol & UX | P1 | 3 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **14** | **33** |
+| **Total** |  | **15** | **33** |
 
 ## Aturan kerja
 
@@ -191,13 +191,13 @@
   - **Verifikasi:** `npm test -- tests/reversal.test.ts tests/aud2-13-transaksi-terakhir.test.ts tests/ui-audit`.
   - **Catatan:** File disentuh: `src/db/kemampuanKoreksi.ts` (baru), `src/db/reversal.ts`, `src/db/repository.ts`, `src/db/laporan.ts`, `src/renderer/lib/api.ts`, `src/renderer/components/JurnalTab.tsx`, `src/renderer/components/TransaksiTab.tsx`, `tests/kemampuan-koreksi-jurnal.test.ts`, `tests/reversal.test.ts`, `tests/aud2-13-transaksi-terakhir.test.ts`, `TICKETS.md`. `kemampuanKoreksiJurnal` + pesan panjar/pinjaman dipindah ke `src/db/kemampuanKoreksi.ts` yang hanya bergantung pada `Database` + `core/reversal`; `reversal.ts` mengimpor dan me-re-export helper/tipe/pesan lama sehingga test/API T2.1 tetap kompatibel, `repository.ts` mengimpor modul baru tanpa siklus. `JurnalLengkap` (DB + renderer) kini membawa `bisa_dibalik`, `bisa_dikoreksi`, `alasan_tidak_bisa`; `listJurnalLengkap` mengisi ketiganya per baris lewat helper (jurnal dibaca ulang dari DB), dan `laporanDetailJurnal` yang mengonstruksi DTO manual ikut dilengkapi. `JurnalTab` memakai `bisa_dikoreksi`/`alasan_tidak_bisa` lebih dulu (tooltip pada tombol Koreksi nonaktif), dengan fallback lama untuk objek tanpa field; `TransaksiTab` memakai `bisa_dibalik`/`alasan_tidak_bisa` lebih dulu, menampilkan alasan sebagai teks kecil di bawah status dan hanya menampilkan tombol Batalkan bila boleh, dengan `JENIS_BISA_DIBATALKAN`/`jurnalTerhubungPinjaman` dipertahankan sebagai fallback objek lama. Test baru mencakup flag DTO untuk UMUM aktif, `SALDO_AWAL`, panjar open/close, pinjaman pencairan/pokok/bunga saja, `REVERSAL`, dan jurnal sudah dikoreksi; pure function UI memakai flag + fallback; SSR kartu Transaksi menampilkan alasan tanpa tombol; test sumber memastikan `JurnalTab` memakai alasan capability pada `title`. Verifikasi: `npx vitest run tests/reversal.test.ts tests/aud2-13-transaksi-terakhir.test.ts tests/kemampuan-koreksi-jurnal.test.ts` 3 file/52 test lulus; `npm run typecheck` lulus; `npm test` **88 file/1.128 test lulus, 0 gagal**. `tests/ui-audit` tidak ada sebagai test vitest (audit UI adalah e2e `npm run audit:ui`); `npm run audit:ui` dijalankan: 1024x768 dan 1024x680 lulus, 1280x800 gagal pada assertion nav lama (`Jumlah tombol nav tidak sesuai setelah grup Laporan dibuka: 15 !== 16`) yang sudah tercatat sebagai kegagalan pre-existing di T1.8, bukan akibat perubahan ini. Commit kode `7d487f6`.
 
-- [ ] **T2.3 — Regression pembayaran pinjaman bunga saja**
+- [x] **T2.3 — Regression pembayaran pinjaman bunga saja**
   - **Masalah:** pembayaran bunga tanpa pokok tidak selalu memuat akun 2050, sehingga deteksi lama menganggapnya boleh dibatalkan dari Transaksi. Pembatalan harus lewat modul Pinjaman.
   - **File:** `tests/pinjaman-pembatalan-validation.test.ts`, `tests/pinjaman.test.ts`.
   - **Langkah:** buat pinjaman, catat pembayaran dengan `pokok: 0` dan `bunga > 0`, lalu pastikan capability `bisaDibalik=false` dan alasan menunjuk modul Pinjaman.
   - **Selesai bila:** test gagal pada implementasi lama dan lulus setelah T2.1/T2.2.
   - **Verifikasi:** `npm test -- tests/pinjaman-pembatalan-validation.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `tests/pinjaman-pembatalan-validation.test.ts`, `tests/pinjaman.test.ts`, `TICKETS.md`. Test memakai API pinjaman asli: `simpanPinjamanLpd` (pencairan + jadwal 2 angsuran) lalu `bayarAngsuranPinjaman` dengan `pokok: 0`, `bunga: RP(100_000)` sehingga jurnal pembayaran berjenis `HUTANG` hanya berisi D 5063 / K kas **tanpa baris 2050**. Assertion: capability `kemampuanKoreksiJurnal` memberi `bisaDibalik=false`, `bisaDikoreksi=false`, dan `alasan` persis `PESAN_REVERSAL_PINJAMAN` (mengarah ke “menu Pinjaman LPD”); DTO `listJurnalLengkap` membawa flag yang sama; `reverseJurnal` generik ditolak tanpa jurnal baru, sedangkan `batalkanPembayaranPinjaman` di modul Pinjaman berhasil menandai pembayaran `dibatalkan`. Test negatif juga menegaskan heuristik lama (`jenis HUTANG` + akun 2050) gagal mendeteksi jurnal ini. Bukti regresi: dengan patch sementara yang mengembalikan heuristik lama, kedua test T2.3 **gagal** (`bisaDibalik: true`); setelah dipulihkan keduanya lulus. Verifikasi: `npm test -- tests/pinjaman-pembatalan-validation.test.ts tests/pinjaman.test.ts` (2 file/16 test lulus), `npm run typecheck` lulus, `npm test` **88 file/1.131 test lulus, 0 gagal**. Commit `67810a2`.
 
 - [ ] **T2.4 — Lindungi akun sistem 2060, 5063, dan 5050**
   - **Masalah:** `AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF` hanya berisi 3000/1040/1050/2050. Menonaktifkan 2060 (utang usaha), 5063 (bunga pinjaman), atau 5050 (denda) memutus alur wizard/utang/pinjaman.
