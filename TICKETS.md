@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 8 | 9 |
+| 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **11** | **33** |
+| **Total** |  | **12** | **33** |
 
 ## Aturan kerja
 
@@ -156,14 +156,14 @@
   - **Verifikasi:** `npm test -- tests/saldo-awal.test.ts tests/forms-ui.test.ts` + audit UI.
   - **Catatan:** File disentuh: `src/db/saldoAwal.ts`, `src/main/ipc.ts`, `src/renderer/components/SaldoAwalWizard.tsx`, `src/renderer/components/TransaksiTab.tsx`, `src/renderer/lib/api.ts`, `tests/saldo-awal.test.ts`, `tests/forms-ui.test.ts`, `tests/ipc-main.test.ts`, `TICKETS.md`. `saldoAwalSaatIni(db)` membaca jurnal grup pembukaan aktif dan menjumlahkan seluruh baris grup (jurnal asli + balik + penyesuaian), sehingga prefill tetap benar setelah koreksi berulang; akun `3000 MODAL` sengaja tidak dikembalikan. IPC baru `saldo-awal:saat-ini` mengembalikan `{ tanggal, saldo, keterangan, tanggalMaksimal? }` dan menolak dengan pesan jelas bila belum ada saldo awal. `TransaksiTab` memilih tombol **Koreksi Saldo Awal** hanya setelah status termuat dan `boleh:false` (status `null` tetap menampilkan wizard biasa nonaktif), memuat prefill lebih dulu, lalu membuka `SaldoAwalWizard` mode `koreksi`. Wizard prefills tanggal/saldo/keterangan, mewajibkan alasan koreksi >=5 karakter (trim), menjelaskan jurnal lama tersimpan di audit, menampilkan pratinjau selisih + baris penyeimbang `3000`, dan mengirim `api.saldoAwalKoreksi(form, { alasan, ...opsi })` ke IPC `saldo-awal:koreksi`. Setelah sukses, status dimuat ulang dari DB; mode awal tetap optimistis terkunci, sedangkan koreksi tidak pernah membuat status `boleh:true`. Form biasa tetap terkunci saat `boleh:false`. Review menemukan dan memperbaiki satu cacat: batas tanggal koreksi kini memakai jurnal non-pembukaan paling awal, bukan `statusSaldoAwal.tanggalMaksimal` yang masih menunjuk `SALDO_AWAL` lama setelah tanggal mulai dipindahkan, sehingga prefill tidak terjepit kembali ke tanggal lama. `src/preload/index.ts` tidak perlu diubah karena memakai `invoke` generik. Verifikasi: `npm test -- tests/saldo-awal.test.ts tests/forms-ui.test.ts tests/saldo-awal-koreksi.test.ts tests/ipc-main.test.ts` 124 lulus; `npm run typecheck` lulus; `npm test` 86 file/1.112 test lulus. `npm run audit:ui`: 1024x768 dan 1024x680 lulus; 1280x800 gagal pada assertion lama jumlah tombol nav `15 !== 16` di `e2e/ui-audit.test.mjs` (jumlah item nav saat ini memang 12 item + 3 header grup = 15; `App.tsx`/e2e tidak disentuh T1.8 dan kegagalan reproducible, jadi di luar lingkup tiket; test tidak diubah). Commit kode `72d4260`.
 
-- [ ] **T1.9 — Regression P0 & smoke manual**
+- [x] **T1.9 — Regression P0 & smoke manual**
   - **Langkah:**
     1. Pastikan empat reproduksi baseline punya test permanen.
     2. Jalankan `npm run typecheck` dan `npm test`.
     3. Smoke manual: backup ke DB aktif ditolak; DB tanpa tabel ditolak; reversal saldo awal diblokir; koreksi saldo awal berhasil; DB dibuka ulang tanpa kehilangan data.
   - **Selesai bila:** semua test P0 lulus dan tidak ada data hilang pada skenario manual.
   - **Verifikasi:** hasil test + catatan smoke di tiket.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `tests/regresi-p0.test.ts` (baru), `TICKETS.md`. Empat reproduksi baseline sudah punya test permanen yang menguji perilaku, bukan smoke: (a) `tests/backup-restore.test.ts:300` menolak `dest === db.name` sebelum `VACUUM INTO`, byte DB tidak berubah, tidak ada tmp/bak, lalu jurnal baru tetap ada setelah close/reopen; (b) `tests/skema-kompatibilitas.test.ts:154` menghapus `jurnal_baris`, `openDb` ditolak tanpa membuat tabel kosong, byte file identik, tanpa `-wal`/`-shm`, versi tetap v1; (c) `tests/reversal.test.ts:436` + `tests/saldo-awal-koreksi.test.ts:356` menolak reversal/isi-ulang `SALDO_AWAL` tanpa jurnal/audit baru dan saldo tetap; (d) `tests/saldo-awal-koreksi.test.ts:65` dan `:155` membuktikan laporan berubah, audit bertambah, dan koreksi kedua membalik `UMUM` aktif sehingga unique index tidak dilanggar. Celah yang ditutup `tests/regresi-p0.test.ts`: hasil koreksi dan penolakan reversal diuji pada DB **file** yang ditutup lalu dibuka ulang (persistensi sesi), termasuk koreksi berulang setelah reopen (5 jurnal, 1 `SALDO_AWAL`, audit 2, neraca seimbang) dan reversal yang tetap tidak mengubah jurnal/audit/saldo setelah reopen. Verifikasi: `npm run typecheck` lulus; `npm test` **87 file / 1.114 test lulus, 0 gagal** (baseline 85/1.078; sebelumnya 86/1.112) — 5 file fokus P0 = 70 test lulus. Smoke manual terotomatisasi `npx tsx` (DB di temp dir, skrip dihapus setelah lulus) **5/5 skenario lulus**: (1) backup ke DB aktif ditolak, DB tetap bisa menulis, jurnal baru bertahan setelah reopen; (2) DB v1 tanpa `jurnal_baris` ditolak, byte file & sentinel tetap, tanpa sidecar; (3) reversal saldo awal diblokir, jumlah jurnal/audit dan saldo tidak berubah; (4) koreksi saldo awal mengubah laporan (kas 5jt→8jt, neraca seimbang) dan audit bertambah; (5) DB dibuka ulang setelah koreksi tanpa data hilang, koreksi kedua setelah reopen tetap sah (unique index aman). Commit test `98604d9`.
 
 ---
 
