@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
-import { openDb, migrasi, SCHEMA_VERSION } from '../src/db/database.js';
+import { openDb } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
 import {
   simpanPinjamanLpd, bayarAngsuranPinjaman, getPinjaman,
@@ -194,17 +194,25 @@ describe('regresi audit — pinjaman dan jurnal tetap konsisten', () => {
     });
   });
 
-  it('migrasi v21 melepas unique angsuran, mempertahankan jurnal dan dapat diulang', () => {
+  it('baseline v1: index angsuran non-unique dan pembayaran kedua untuk angsuran sama dapat disimpan', () => {
     const { db, bayar } = fixture();
     expect(bayar('lama', 4_000_000, 100_000).tersimpan).toBe(true);
-    db.exec('DROP INDEX idx_pinjaman_bayar_angsuran');
-    db.exec('CREATE UNIQUE INDEX ux_pinjaman_bayar_angsuran ON pinjaman_bayar(angsuran_id) WHERE angsuran_id IS NOT NULL');
-    db.pragma('user_version = 21');
+
+    const index = db
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_pinjaman_bayar_angsuran'",
+      )
+      .get() as { sql: string } | undefined;
+    expect(index?.sql).toBeTruthy();
+    expect(index!.sql).toMatch(/CREATE INDEX/i);
+    expect(index!.sql).not.toMatch(/UNIQUE/i);
+
     const jumlah = jumlahJurnal(db);
-    expect(migrasi(db)).toBe(SCHEMA_VERSION);
-    expect(migrasi(db)).toBe(SCHEMA_VERSION);
-    expect(jumlahJurnal(db)).toBe(jumlah);
     expect(bayar('lanjutan', 6_000_000, 0).tersimpan).toBe(true);
+    expect(jumlahJurnal(db)).toBe(jumlah + 1);
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM jurnal WHERE id IN ('j-lama', 'j-lanjutan')").get(),
+    ).toEqual({ n: 2 });
     expect(listPinjamanBayar(db, 'loan')).toHaveLength(2);
     harapkanSaldo(db, 0);
   });

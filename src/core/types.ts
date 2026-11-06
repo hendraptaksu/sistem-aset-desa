@@ -8,9 +8,8 @@ export type Panjar = {
   jumlah: number; // sen
   akun_kas_sumber: string;
   /**
-   * Status publik. Sejak v23 (AUD2-09) `DIBATALKAN` disimpan resmi di
-   * `panjar.status`; baris legacy dengan `jurnal_batal_id` tetap dibaca
-   * sebagai DIBATALKAN.
+   * Status publik. `DIBATALKAN` disimpan resmi di `panjar.status`; baris
+   * legacy dengan `jurnal_batal_id` tetap dibaca sebagai DIBATALKAN.
    */
   status: 'OPEN' | 'CLOSED' | 'DIBATALKAN';
   /** Tanggal pertanggungjawaban; null selama masih OPEN. */

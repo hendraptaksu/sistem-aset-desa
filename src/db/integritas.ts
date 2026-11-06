@@ -770,7 +770,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       'jurnal_id',
     ]);
   const panjarLengkap = panjarV2 && panjarItemV2;
-  // Baris legacy yang dibatalkan sebelum v23 masih berstatus OPEN tetapi punya
+  // Baris legacy yang dibatalkan masih berstatus OPEN tetapi punya
   // jurnal_batal_id. Jangan perlakukan sebagai panjar OPEN aktif.
   const filterBatal = kolomPanjar.has('jurnal_batal_id')
     ? " AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')"
@@ -889,10 +889,9 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   // yang tidak konsisten dilaporkan tanpa perbaikan otomatis. Panjar OPEN
   // non-batal tetap memakai pemeriksaan lama di atas.
   //
-  // Audit juga dipakai untuk memvalidasi backup lama SEBELUM migrasi. Karena
-  // kolom v19 belum tentu ada di sana, bagian batal dilewati bila kolomnya
-  // belum lengkap (bukan error); backup lama tetap bisa dipulihkan dan
-  // migrasi v19 akan menambah kolom setelah restore.
+  // Audit juga dipakai untuk memvalidasi kandidat backup. Bagian batal
+  // dilewati bila kolomnya belum lengkap (bukan error) agar audit tetap aman
+  // pada file yang belum memiliki metadata pembatalan.
   const adaKolomBatal =
     panjarLengkap &&
     ['jurnal_batal_id', 'tanggal_batal', 'alasan_batal'].every((k) =>

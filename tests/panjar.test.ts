@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { DDL, openDb, SCHEMA_VERSION } from '../src/db/database.js';
+import { openDb } from '../src/db/database.js';
 import {
   batalPanjarV2,
   batalkanPertanggungjawabanPanjar,
@@ -704,108 +704,66 @@ describe('P1-4 — builder murni buatJurnalPanjarClose', () => {
 });
 
 describe('P1-4/DB-06 — metadata panjar v2 dipertahankan saat DB dibuka ulang', () => {
-  it('tidak membuang panjar dari DB v8 hanya karena versinya lama', () => {
+  it('metadata & item panjar baseline v1 tetap utuh dan versi tetap 1', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-panjar-'));
     const path = join(dir, 'pura.db');
     try {
-      // DB v8: skema panjar v2 sudah ada, termasuk metadata jurnal.
-      const lama = new Database(path);
-      lama.exec(DDL);
-      const insAkun = lama.prepare(
-        `INSERT INTO akun (kode, nama, tipe, posisi_normal, aktif)
-         VALUES (?, ?, ?, ?, 1)`,
-      );
-      insAkun.run('1001', 'KAS', 'ASET', 'DEBIT');
-      insAkun.run('1040', 'UANG PANJAR', 'ASET', 'DEBIT');
-      insAkun.run('5004', 'BEBAN KONSUMSI', 'BEBAN', 'DEBIT');
-      lama
-        .prepare(
-          `INSERT INTO jurnal
-             (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
-           VALUES ('j-p-lama', '2025-01-01', '', 'Panjar lama', 'PANJAR',
-                   'j-p-lama', NULL, '2025-01-01T00:00:00.000Z')`,
-        )
-        .run();
-      lama
-        .prepare(
-          `INSERT INTO panjar
-             (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
-              tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
-           VALUES ('p-lama', '2025-01-01', 'Lama', 100, '1001', 'OPEN',
-                   NULL, 'j-p-lama', NULL, '2025-01-01T00:00:00.000Z')`,
-        )
-        .run();
-      lama
-        .prepare(
-          `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
-           VALUES ('p-lama', '5004', 50, 'j-p-lama')`,
-        )
-        .run();
-      lama.pragma('user_version = 8');
-      lama.close();
-
       const db = openDb(path);
       try {
-        expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        expect(getPanjar(db, 'p-lama')).toMatchObject({
-          status: 'OPEN',
-          jurnal_open_id: 'j-p-lama',
-        });
-        expect(listPanjarV2(db).map((p) => p.id)).toEqual(['p-lama']);
-        expect(listPanjarItemsV2(db, 'p-lama')).toHaveLength(1);
-
+        expect(Number(db.pragma('user_version', { simple: true }))).toBe(1);
         expect(
           postingJurnal(db, {
             header: {
-              id: 'm-awal',
+              id: 'awal',
               tanggal: '2026-01-01',
-              no_bukti: 'P1-4-M000',
-              keterangan: 'Modal',
+              no_bukti: 'P1-4-0000',
+              keterangan: 'Saldo awal uji panjar',
               jenis: 'SALDO_AWAL',
             },
-            baris: [D('1001', RP(5_000_000)), K(AKUN_MODAL, RP(5_000_000))],
+            baris: [D('1001', RP(10_000_000)), K(AKUN_MODAL, RP(10_000_000))],
           }).tersimpan,
         ).toBe(true);
-        expect(
-          serahkanPanjar(db, {
-            id: 'p-v4',
-            jurnalId: 'j-v4',
-            tanggal: '2026-02-01',
-            penerima: 'Panitia V4',
-            jumlah: RP(500_000),
-            akunKasSumber: '1001',
-          }).tersimpan,
-        ).toBe(true);
+        expect(serah(db).tersimpan).toBe(true);
+        const close = closePanjarV2(db, {
+          id: 'p1',
+          tanggalClose: '2026-03-01',
+          items: [
+            {
+              kategori_baga: '5004',
+              nominal: RP(600_000),
+              nota_nomor: 'N-001',
+              toko: 'Toko Uji',
+            },
+          ],
+        });
+        expect(close.tersimpan, close.errors.join(' ')).toBe(true);
       } finally {
         db.close();
       }
 
-      // Buka ulang: migrasi idempoten, metadata & item panjar v4 tidak hilang.
+      // Buka ulang: skema baseline v1 tidak dimigrasikan dan data panjar utuh.
       const db2 = openDb(path);
       try {
-        expect(Number(db2.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        expect(getPanjar(db2, 'p-v4')).toMatchObject({
-          status: 'OPEN',
-          jumlah: RP(500_000),
-          jurnal_open_id: 'j-v4',
+        expect(Number(db2.pragma('user_version', { simple: true }))).toBe(1);
+        expect(getPanjar(db2, 'p1')).toMatchObject({
+          status: 'CLOSED',
+          jumlah: RP(1_000_000),
+          penerima: 'Panitia Piodalan',
+          akun_kas_sumber: '1001',
+          jurnal_open_id: 'j-p1',
+          tanggal_close: '2026-03-01',
         });
-        expect(
-          closePanjarV2(db2, {
-            id: 'p-v4',
-            tanggalClose: '2026-03-01',
-            items: [{ kategori_baga: '5004', nominal: RP(200_000) }],
-          }).tersimpan,
-        ).toBe(true);
+        expect(listPanjarV2(db2).map((p) => p.id)).toEqual(['p1']);
+        expect(listPanjarItemsV2(db2, 'p1')).toEqual([
+          expect.objectContaining({
+            kategori_baga: '5004',
+            nominal: RP(600_000),
+            nota_nomor: 'N-001',
+            toko: 'Toko Uji',
+          }),
+        ]);
       } finally {
         db2.close();
-      }
-
-      const db3 = openDb(path);
-      try {
-        expect(getPanjar(db3, 'p-v4')?.status).toBe('CLOSED');
-        expect(listPanjarItemsV2(db3, 'p-v4')).toHaveLength(1);
-      } finally {
-        db3.close();
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -1253,7 +1211,7 @@ describe('DB-21 — pembatalan panjar OPEN', () => {
     }
   });
 
-  it('migrasi/link batal lama tetap dibaca sebagai DIBATALKAN', () => {
+  it('link batal lama tetap dibaca sebagai DIBATALKAN', () => {
     const db = dbKas();
     try {
       expect(serah(db).tersimpan).toBe(true);
@@ -1264,8 +1222,14 @@ describe('DB-21 — pembatalan panjar OPEN', () => {
           jurnalId: 'j-batal-p1',
         }).tersimpan,
       ).toBe(true);
-      // Simulasi DB lama: link sudah ada, kolom status tetap OPEN.
-      db.prepare("UPDATE panjar SET status = 'OPEN' WHERE id = 'p1'").run();
+      // Simulasi DB lama: link sudah ada, kolom status tetap OPEN. CHECK baru
+      // menolak kombinasi ini, jadi matikan sementara untuk meniru baris legacy.
+      db.pragma('ignore_check_constraints = ON');
+      try {
+        db.prepare("UPDATE panjar SET status = 'OPEN' WHERE id = 'p1'").run();
+      } finally {
+        db.pragma('ignore_check_constraints = OFF');
+      }
       expect(getPanjar(db, 'p1')).toMatchObject({
         status: 'DIBATALKAN',
         jurnal_batal_id: 'j-batal-p1',

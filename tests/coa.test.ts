@@ -38,7 +38,7 @@ import { getAkun, listAkun } from '../src/db/repository.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CSV_PATH = join(ROOT, 'KODE AKUN.csv');
 const XLSX_PATH = join(ROOT, 'docs', 'KODE AKUN.xlsx');
-const DOKUMEN_SUMBER_COA = join(ROOT, 'docs', 'sumber-coa.md');
+const DOKUMEN_SUMBER_COA = join(ROOT, 'docs', 'skema.md');
 
 /**
  * Arsip xlsx client adalah baseline 48 akun. Hash byte menjaga file biner ini
@@ -306,7 +306,7 @@ describe('COA P0-1', () => {
   });
 
   it('dokumentasi sumber COA mencatat keputusan DB-13a', () => {
-    expect(existsSync(DOKUMEN_SUMBER_COA), 'docs/sumber-coa.md harus ada').toBe(true);
+    expect(existsSync(DOKUMEN_SUMBER_COA), 'docs/skema.md harus ada').toBe(true);
     const dokumen = readFileSync(DOKUMEN_SUMBER_COA, 'utf8');
     for (const istilah of [
       'KODE AKUN.csv',
@@ -327,7 +327,7 @@ describe('COA P0-1', () => {
       'tambahan',
       XLSX_BASELINE_SHA256,
     ]) {
-      expect(dokumen, `docs/sumber-coa.md harus menyebut "${istilah}"`).toContain(istilah);
+      expect(dokumen, `docs/skema.md harus menyebut "${istilah}"`).toContain(istilah);
     }
   });
 

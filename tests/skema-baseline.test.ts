@@ -1,6 +1,6 @@
 // T4.8 — baseline skema v1 baru.
 //
-// Test ini mengunci kontrak skema aktif setelah migrasi dihapus:
+// Test ini mengunci kontrak skema baseline v1:
 // - DB baru (memory & file) langsung `user_version = 1`, tepat 11 tabel aktif
 //   STRICT, tanpa tabel legacy;
 // - seluruh index dan trigger wajib ada tepat satu;

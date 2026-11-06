@@ -832,7 +832,7 @@ export function saranNomorBukti(db: Database.Database, tanggal: string): string 
 }
 
 export function listTutupBuku(db: Database.Database): TutupBuku[] {
-  // AUD2-09: `tutup_buku.backup_path` sudah dibuang dari skema v23.
+  // Skema v1 tidak memiliki `tutup_buku.backup_path`.
   const rows = db
     .prepare('SELECT tahun, created_at, catatan FROM tutup_buku ORDER BY tahun')
     .all() as Record<string, unknown>[];
@@ -848,7 +848,7 @@ export function listTutupBuku(db: Database.Database): TutupBuku[] {
  * laba selalu jurnal (P0-7). Pemanggil wajib sudah memvalidasi penimpaan.
  */
 export function insertTutupBuku(db: Database.Database, t: TutupBuku): void {
-  // AUD2-09: `backup_path` tidak ada lagi di skema v23.
+  // `backup_path` tidak ada di skema v1.
   db.prepare(
     `INSERT INTO tutup_buku (tahun, created_at, catatan)
      VALUES (?, ?, ?)

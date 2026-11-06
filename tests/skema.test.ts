@@ -1,6 +1,6 @@
-// DB-30 — kontrak dokumentasi ERD v2 terhadap skema aktif.
+// T4.9 — kontrak dokumentasi skema baseline v1 terhadap skema aktif.
 //
-// Test ini membaca `docs/erd-v2.md` lalu membandingkannya dengan database baru
+// Test ini membaca `docs/skema.md` lalu membandingkannya dengan database baru
 // (`openDb(':memory:')`), bukan dengan database dev/produksi. Tujuannya:
 // - setiap tabel dan kolom yang didokumentasikan benar-benar ada;
 // - tidak ada tabel/kolom aktif yang lupa didokumentasikan;
@@ -31,20 +31,20 @@ const TABEL_LEGACY = [
   'lampiran_jurnal',
 ] as const;
 
-const ERD = readFileSync(
-  fileURLToPath(new URL('../docs/erd-v2.md', import.meta.url)),
+const SKEMA = readFileSync(
+  fileURLToPath(new URL('../docs/skema.md', import.meta.url)),
   'utf-8',
 );
 
-interface TabelErd {
+interface TabelSkema {
   nama: string;
   kolom: string[];
 }
 
 /** Ambil heading tabel + kolom dari tabel Markdown di bawah heading tersebut. */
-function parseTabelErd(markdown: string): TabelErd[] {
-  const hasil: TabelErd[] = [];
-  let aktif: TabelErd | undefined;
+function parseTabelSkema(markdown: string): TabelSkema[] {
+  const hasil: TabelSkema[] = [];
+  let aktif: TabelSkema | undefined;
   let dalamTabelKolom = false;
 
   for (const baris of markdown.split(/\r?\n/)) {
@@ -100,15 +100,15 @@ function strictTabel(db: Database.Database, tabel: string): number {
   return Number(row?.strict ?? -1);
 }
 
-describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
+describe('Skema baseline — docs/skema.md cocok dengan skema aktif', () => {
   it('mendokumentasikan tepat 11 tabel aktif dan tidak ada tabel lain', () => {
     const db = openDb(':memory:');
     try {
       const diDb = namaTabelAktif(db);
-      const diErd = parseTabelErd(ERD).map((t) => t.nama);
+      const diSkema = parseTabelSkema(SKEMA).map((t) => t.nama);
 
       expect(diDb).toHaveLength(11);
-      expect([...diErd].sort()).toEqual(diDb);
+      expect([...diSkema].sort()).toEqual(diDb);
     } finally {
       db.close();
     }
@@ -126,17 +126,17 @@ describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
         'created_at',
         'catatan',
       ]);
-      expect(ERD).not.toContain('| `backup_path` |');
+      expect(SKEMA).not.toContain('| `backup_path` |');
     } finally {
       db.close();
     }
   });
 
-  it('setiap tabel di ERD memuat seluruh kolom yang benar-benar ada, tanpa kolom hantu', () => {
+  it('setiap tabel di dokumen memuat seluruh kolom yang benar-benar ada, tanpa kolom hantu', () => {
     const db = openDb(':memory:');
     try {
-      for (const tabel of parseTabelErd(ERD)) {
-        expect(tabel.kolom, `kolom ERD ${tabel.nama}`).toEqual(
+      for (const tabel of parseTabelSkema(SKEMA)) {
+        expect(tabel.kolom, `kolom skema ${tabel.nama}`).toEqual(
           kolomTabel(db, tabel.nama),
         );
       }
@@ -147,10 +147,10 @@ describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
 
   it('tidak mendokumentasikan tabel modul lama yang sudah dihapus', () => {
     for (const tabel of TABEL_LEGACY) {
-      expect(ERD, `heading tabel lama ${tabel}`).not.toContain(
+      expect(SKEMA, `heading tabel lama ${tabel}`).not.toContain(
         `### \`${tabel}\``,
       );
-      expect(ERD, `nama tabel lama ${tabel}`).not.toContain(`\`${tabel}\``);
+      expect(SKEMA, `nama tabel lama ${tabel}`).not.toContain(`\`${tabel}\``);
     }
   });
 
@@ -170,12 +170,14 @@ describe('DB-30 — docs/erd-v2.md cocok dengan skema aktif', () => {
       'ux_akun_nama_nocase',
       'COLLATE NOCASE',
     ]) {
-      expect(ERD, `ERD memuat "${istilah}"`).toContain(istilah);
+      expect(SKEMA, `dokumen skema memuat "${istilah}"`).toContain(istilah);
     }
   });
 
-  it('menyebut versi skema aktif yang sedang dipakai aplikasi', () => {
-    expect(ERD).toContain('Skema Aktif');
-    expect(ERD).toContain(`SCHEMA_VERSION = ${SCHEMA_VERSION}`);
+  it('menyebut skema baseline v1 dan versi skema aktif aplikasi', () => {
+    expect(SKEMA).toContain('Skema baseline');
+    expect(SKEMA).toContain('Skema aktif');
+    expect(SKEMA).toContain(`SCHEMA_VERSION = ${SCHEMA_VERSION}`);
+    expect(SCHEMA_VERSION).toBe(1);
   });
 });

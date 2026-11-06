@@ -258,7 +258,7 @@
     - seed COA tidak menggandakan akun.
   - Selesai bila test gagal jika satu tabel/index/trigger dihapus.
 
-- [ ] **T4.9 — Test dokumentasi dan path**
+- [x] **T4.9 — Test dokumentasi dan path**
   - Update test yang membaca dokumen:
     - `tests/erd-v2.test.ts` → `tests/skema.test.ts` (baca `docs/skema.md`);
     - `tests/coa.test.ts` → `docs/skema.md`;
@@ -267,7 +267,7 @@
     - `tests/dokumentasi.test.ts` → daftar dokumen kanonik baru.
   - Selesai bila tidak ada test yang membaca path dokumen lama.
 
-- [ ] **T4.10 — Suite lengkap**
+- [x] **T4.10 — Suite lengkap**
   - Jalankan `npm run typecheck` dan `npm test`.
   - Perbaiki semua kegagalan yang disebabkan reset.
   - Selesai bila seluruh suite hijau.
@@ -314,7 +314,7 @@
   - Update bagian restore: hanya backup skema v1 yang didukung.
   - Selesai bila tidak ada instruksi lama yang bertentangan dengan reset.
 
-- [ ] **T5.7 — Kecilkan test dokumentasi**
+- [x] **T5.7 — Kecilkan test dokumentasi**
   - File: `tests/dokumentasi.test.ts`
   - Hapus assertion historis per tiket (DB-31, DB-24, DB-25, DB-23a/b, DB-37, dsb.).
   - Pertahankan:
@@ -324,7 +324,7 @@
   - Tambah test bahwa daftar file `docs/*.md` sama dengan daftar kanonik.
   - Selesai bila menambah markdown historis baru akan menggagalkan test.
 
-- [ ] **T5.8 — Sapu referensi lama**
+- [x] **T5.8 — Sapu referensi lama**
   - Jalankan:
     ```bash
     rg "migrasi|pre-upgrade|v22|v23|erd-v2|sumber-coa|sumber-data-pinjaman|TABEL_DIHAPUS|TABEL_SINGLE_ENTRY" README.md docs src tests

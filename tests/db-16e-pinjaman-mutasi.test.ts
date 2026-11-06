@@ -509,7 +509,6 @@ describe('DB-16e — validasi, IPC, API, UI, dan dokumentasi', () => {
 
   it('panduan pengguna menjelaskan kartu hutang dan sumber jurnalnya', () => {
     expect(PANDUAN).toContain('Kartu hutang');
-    expect(PANDUAN).toContain('DB-16e');
     expect(PANDUAN).toContain('mutasi bulanan');
     expect(PANDUAN).toContain('2050');
     expect(PANDUAN).toContain('tidak disimpan');

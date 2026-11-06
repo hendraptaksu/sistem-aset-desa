@@ -9,7 +9,7 @@
 // - STRICT/trigger menolak debit/kredit bukan INTEGER (mis. 0.5) pada INSERT
 //   dan UPDATE, termasuk nilai negatif dan dua sisi nol.
 // - Aturan satu sisi (debit dan kredit sekaligus) tetap berlaku.
-// - Trigger baru diterapkan ke DB lama/current lewat `migrasi()`.
+// - DB v1 baru langsung memasang trigger satu sisi (tanpa migrasi).
 // - `auditIntegritas` melaporkan baris pecahan pada tabel legacy non-STRICT.
 
 import Database from 'better-sqlite3';
@@ -17,7 +17,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DDL, SCHEMA_VERSION, migrasi, openDb } from '../src/db/database.js';
+import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 
 const WAKTU = '2026-11-03T00:00:00.000Z';
@@ -53,27 +53,6 @@ function buatBaris(
     `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
      VALUES (?, ?, ?, ?, '')`,
   ).run(jurnalId, akun, debit, kredit);
-}
-
-/** Trigger satu sisi lama (pra-AUD2-08), untuk menguji migrasi DB existing. */
-function pasangTriggerSatuSisiLama(db: Database.Database): void {
-  db.exec(`
-    DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
-    CREATE TRIGGER trg_jurnal_baris_satu_sisi_insert
-    BEFORE INSERT ON jurnal_baris
-    WHEN NEW.debit > 0 AND NEW.kredit > 0
-    BEGIN
-      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
-    END;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
-    CREATE TRIGGER trg_jurnal_baris_satu_sisi_update
-    BEFORE UPDATE ON jurnal_baris
-    WHEN NEW.debit > 0 AND NEW.kredit > 0
-    BEGIN
-      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.');
-    END;
-  `);
 }
 
 describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
@@ -213,16 +192,8 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
     }
   });
 
-  it('migrasi menerapkan trigger baru ke DB existing yang masih memakai body lama', () => {
-    const path = tmpDb('pura-aud208-migrasi-');
-    const lama = new Database(path);
-    try {
-      lama.exec(DDL.replace(/\) STRICT;/g, ');'));
-      pasangTriggerSatuSisiLama(lama);
-      lama.pragma(`user_version = ${SCHEMA_VERSION}`);
-    } finally {
-      lama.close();
-    }
+  it('DB v1 baru langsung punya trigger satu sisi yang menolak pecahan dan tidak menggandakan saat dibuka ulang', () => {
+    const path = tmpDb('pura-aud208-baseline-');
 
     const db = openDb(path);
     try {
@@ -242,12 +213,28 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
       }
 
       buatJurnal(db);
-      expect(() => buatBaris(db, 'j-aud208', '1001', 0.5, 0)).toThrow(
-        PESAN_PECAHAN,
-      );
-      expect(migrasi(db)).toBe(SCHEMA_VERSION);
+      expect(() => buatBaris(db, 'j-aud208', '1001', 0.5, 0)).toThrow(PESAN_PECAHAN);
+      expect(() => buatBaris(db, 'j-aud208', '4001', 0, 0.5)).toThrow(PESAN_PECAHAN);
     } finally {
       db.close();
+    }
+
+    // Membuka ulang DB v1 yang sama menjalankan DDL lagi, tetapi trigger tetap
+    // berjumlah dua (tidak berganda) dan masih menolak pecahan.
+    const db2 = openDb(path);
+    try {
+      expect(Number(db2.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
+      const trigger = db2
+        .prepare(
+          `SELECT name FROM sqlite_master
+            WHERE type = 'trigger' AND name LIKE 'trg_jurnal_baris_satu_sisi_%'
+            ORDER BY name`,
+        )
+        .all() as { name: string }[];
+      expect(trigger).toHaveLength(2);
+      expect(() => buatBaris(db2, 'j-aud208', '1001', 0.5, 0)).toThrow(PESAN_PECAHAN);
+    } finally {
+      db2.close();
     }
   });
 });

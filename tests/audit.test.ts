@@ -188,42 +188,55 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
   });
 });
 
-describe('T10b migrasi audit_log v2 → v3', () => {
-  it('menambah data_baru_json idempoten tanpa menghapus audit lama', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-audit-migrasi-'));
+describe('T10b audit_log skema v1 baru', () => {
+  it('langsung punya data_baru_json; audit lama utuh dan append-only', () => {
+    const db = dbKosong();
     try {
-      const path = join(dir, 'lama.db');
-      const lama = new Database(path);
-      lama.exec(`
-        CREATE TABLE audit_log (
-          id TEXT PRIMARY KEY,
-          tanggal TEXT NOT NULL,
-          aksi TEXT NOT NULL,
-          alasan TEXT NOT NULL,
-          data_lama_json TEXT NOT NULL DEFAULT ''
-        );
-        PRAGMA user_version = 2;
-      `);
-      lama
-        .prepare('INSERT INTO audit_log (id, tanggal, aksi, alasan, data_lama_json) VALUES (?, ?, ?, ?, ?)')
-        .run('audit-lama', '2026-01-01T00:00:00.000Z', 'CREATE j-lama', 'Lama', '{"x":1}');
-      lama.close();
+      expect(SCHEMA_VERSION).toBe(1);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
-      const db = openDb(path);
-      try {
-        const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map((k) => k.name);
-        expect(kolom).toContain('data_baru_json');
-        expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        expect(listAuditLog(db)[0]).toMatchObject({
+      const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map((k) => k.name);
+      expect(kolom).toContain('data_baru_json');
+
+      // Audit lama (sebelum kolom baru terisi) tetap utuh; entri baru hanya
+      // ditambahkan, bukan menimpa riwayat.
+      insertAuditLog(
+        db,
+        auditRow({
           id: 'audit-lama',
+          tanggal: '2026-01-01T00:00:00.000Z',
+          aksi: 'CREATE j-lama',
+          alasan: 'Lama',
           data_lama_json: '{"x":1}',
-          data_baru_json: '',
-        });
-      } finally {
-        db.close();
-      }
+        }),
+      );
+      catatAudit(db, {
+        id: 'audit-baru',
+        tanggal: '2026-01-02T00:00:00.000Z',
+        aksi: 'CREATE j-baru',
+        alasan: 'Baru',
+        lama: { x: 1 },
+        baru: { x: 2 },
+      });
+
+      expect(listAuditLog(db)).toHaveLength(2);
+      expect(listAuditLog(db).find((a) => a.id === 'audit-lama')).toMatchObject({
+        id: 'audit-lama',
+        data_lama_json: '{"x":1}',
+        data_baru_json: '',
+      });
+      expect(listAuditLog(db).find((a) => a.id === 'audit-baru')?.data_baru_json).not.toBe('');
+
+      expect(() =>
+        db.prepare("UPDATE audit_log SET alasan = 'diubah' WHERE id = 'audit-lama'").run(),
+      ).toThrow(/tidak boleh diubah/i);
+      expect(() =>
+        db.prepare("DELETE FROM audit_log WHERE id = 'audit-lama'").run(),
+      ).toThrow(/tidak boleh dihapus/i);
+      expect(listAuditLog(db)).toHaveLength(2);
+      expect(listAuditLog(db).find((a) => a.id === 'audit-lama')?.alasan).toBe('Lama');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      db.close();
     }
   });
 });

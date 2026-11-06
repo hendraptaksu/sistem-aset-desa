@@ -36,6 +36,16 @@ function tanpaFk<T>(db: Database.Database, fn: () => T): T {
   }
 }
 
+/** Jalankan seed yang sengaja melanggar CHECK skema (data legacy/rusak). */
+function tanpaCheck<T>(db: Database.Database, fn: () => T): T {
+  db.pragma('ignore_check_constraints = ON');
+  try {
+    return fn();
+  } finally {
+    db.pragma('ignore_check_constraints = OFF');
+  }
+}
+
 function buatJurnal(
   db: Database.Database,
   id: string,
@@ -43,11 +53,13 @@ function buatJurnal(
   noBukti = '',
   reversalOf: string | null = null,
 ): void {
+  // Trigger jurnal mewajibkan reversal_of hanya untuk jenis REVERSAL.
+  const jenis = reversalOf ? 'REVERSAL' : 'UMUM';
   db.prepare(
     `INSERT INTO jurnal
        (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
-     VALUES (?, ?, ?, ?, 'UMUM', ?, ?, ?)`,
-  ).run(id, tanggal, noBukti, `Uji ${id}`, id, reversalOf, WAKTU);
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, tanggal, noBukti, `Uji ${id}`, jenis, id, reversalOf, WAKTU);
 }
 
 function buatBaris(
@@ -358,11 +370,13 @@ describe('AKT-09 — audit integritas akuntansi', () => {
       buatJurnal(db, 'j-panjar-open', '2026-02-01', 'PJ-002');
       buatBaris(db, 'j-panjar-open', '1040', 100_000, 0);
       buatBaris(db, 'j-panjar-open', '1001', 0, 100_000);
-      buatPanjar(db, {
-        id: 'p-closed-tidak-lengkap',
-        status: 'CLOSED',
-        jurnalOpenId: 'j-panjar-open',
-      });
+      tanpaCheck(db, () =>
+        buatPanjar(db, {
+          id: 'p-closed-tidak-lengkap',
+          status: 'CLOSED',
+          jurnalOpenId: 'j-panjar-open',
+        }),
+      );
 
       const hasil = auditIntegritas(db);
       const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_CLOSED_TIDAK_LENGKAP');
@@ -388,13 +402,15 @@ describe('AKT-09 — audit integritas akuntansi', () => {
       buatJurnal(db, 'j-panjar-close', '2026-02-02', 'PJ-004');
       buatBaris(db, 'j-panjar-close', '5001', 100_000, 0);
       buatBaris(db, 'j-panjar-close', '1040', 0, 100_000);
-      buatPanjar(db, {
-        id: 'p-open-punya-close',
-        status: 'OPEN',
-        jurnalOpenId: 'j-panjar-open',
-        jurnalCloseId: 'j-panjar-close',
-        tanggalClose: '2026-02-02',
-      });
+      tanpaCheck(db, () =>
+        buatPanjar(db, {
+          id: 'p-open-punya-close',
+          status: 'OPEN',
+          jurnalOpenId: 'j-panjar-open',
+          jurnalCloseId: 'j-panjar-close',
+          tanggalClose: '2026-02-02',
+        }),
+      );
 
       const hasil = auditIntegritas(db);
       const temuan = hasil.temuan.find((t) => t.kode === 'PANJAR_OPEN_PUNYA_CLOSE');
@@ -604,7 +620,7 @@ describe('DB-12 — perluasan audit integritas', () => {
       db.prepare("UPDATE akun SET posisi_normal = 'DEBIT' WHERE kode = '4001'").run();
       db.prepare("UPDATE akun SET posisi_normal = 'SALAH' WHERE kode = '4002'").run();
       db.prepare('UPDATE akun SET aktif = 2 WHERE kode = ?').run('4003');
-      // STRICT v23 menolak teks pada kolom INTEGER; nilai 2 di atas sudah cukup
+      // Skema v1 STRICT menolak teks pada kolom INTEGER; nilai 2 di atas sudah cukup
       // untuk menguji audit AKUN_AKTIF_TIDAK_VALID.
 
       const hasil = auditIntegritas(db);
@@ -967,7 +983,9 @@ describe('DB-21 — audit integritas pembatalan panjar', () => {
                ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
-      opsi.status ?? 'OPEN',
+      // Default DIBATALKAN adalah state resmi; baris legacy OPEN + batal
+      // hanya dibuat test yang memang ingin mensimulasikan data lama.
+      opsi.status ?? 'DIBATALKAN',
       opsi.tanggalClose ?? null,
       openId,
       opsi.closeId ?? null,
@@ -1030,10 +1048,12 @@ describe('DB-21 — audit integritas pembatalan panjar', () => {
   it('mendeteksi status/close/item dan jenis jurnal batal yang tidak konsisten', () => {
     denganDb((db) => {
       // Status tersimpan CLOSED padahal punya jurnal batal.
-      panjarBatal(db, 'p-batal-closed', {
-        status: 'CLOSED',
-        tanggalClose: '2026-02-03',
-      });
+      tanpaCheck(db, () =>
+        panjarBatal(db, 'p-batal-closed', {
+          status: 'CLOSED',
+          tanggalClose: '2026-02-03',
+        }),
+      );
       // Jurnal batal ada tetapi bukan REVERSAL dan tidak membalik jurnal serah.
       panjarBatal(db, 'p-batal-jenis');
       buatJurnalLengkap(db, 'j-batal-salah', {
@@ -1650,15 +1670,18 @@ describe('AUD2-04 — rekonsiliasi saldo GL 1040 vs panjar OPEN', () => {
           ['1001', 100_000, 0],
         ],
       });
-      db.prepare(
-        `INSERT INTO panjar
-           (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
-            tanggal_close, jurnal_open_id, jurnal_close_id,
-            jurnal_batal_id, tanggal_batal, alasan_batal, created_at)
-         VALUES ('p-batal-aud204', '2026-02-03', 'Penerima Uji', 100000, '1001', 'OPEN',
-                 NULL, 'j-open-batal-aud204', NULL,
-                 'j-batal-aud204', '2026-02-04', 'Salah serah', ?)`,
-      ).run(WAKTU);
+      // State legacy: status OPEN tetapi sudah punya jurnal batal.
+      tanpaCheck(db, () =>
+        db.prepare(
+          `INSERT INTO panjar
+             (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+              tanggal_close, jurnal_open_id, jurnal_close_id,
+              jurnal_batal_id, tanggal_batal, alasan_batal, created_at)
+           VALUES ('p-batal-aud204', '2026-02-03', 'Penerima Uji', 100000, '1001', 'OPEN',
+                   NULL, 'j-open-batal-aud204', NULL,
+                   'j-batal-aud204', '2026-02-04', 'Salah serah', ?)`,
+        ).run(WAKTU),
+      );
 
       const hasil = auditIntegritas(db);
       expect(hasil.temuan).toEqual([]);

@@ -1,4 +1,4 @@
-// DB-38: migrasi pembukuan di tengah tahun (cut-over).
+// DB-38: cut-over pembukuan di tengah tahun.
 //
 // Skenario nyata: pura mulai memakai aplikasi pada 2026-07-01. Tahun buku tetap
 // Januari–Desember, sehingga 2026 adalah **tahun pertama (parsial)**: hanya
@@ -221,7 +221,7 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
   it('data lama P&L pra-cut-over tidak dihitung sebagai laba 2026', () => {
     const db = dbMulaiTengahTahun();
     try {
-      // Simulasi data lama/migrasi yang lolos dari guard posting: P&L Juni
+      // Simulasi data lama/cut-over yang lolos dari guard posting: P&L Juni
       // sebelum saldo awal 1 Juli. Entri ini tidak boleh menjadi laba 2026.
       insertJurnalTervalidasi(
         db,
@@ -378,8 +378,8 @@ describe('DB-38 — dokumentasi cut-over', () => {
   const baca = (nama: string): string =>
     readFileSync(fileURLToPath(new URL(`../docs/${nama}`, import.meta.url)), 'utf-8');
 
-  it('panduan pengguna dan arah akuntansi menjelaskan cut-over + tahun parsial', () => {
-    for (const dokumen of ['panduan-pengguna.md', 'arah-akuntansi.md']) {
+  it('panduan pengguna dan prinsip akuntansi menjelaskan cut-over + tahun parsial', () => {
+    for (const dokumen of ['panduan-pengguna.md', 'prinsip-akuntansi.md']) {
       const teks = baca(dokumen);
       expect(teks, dokumen).toContain('tahun pertama (parsial)');
       expect(teks, dokumen).toMatch(/cut-over/i);

@@ -537,7 +537,6 @@ describe('DB-16d — validasi bentuk, IPC, API, UI, dan dokumentasi', () => {
 
   it('panduan pengguna menjelaskan form bayar, konfirmasi selisih, dan link-only', () => {
     expect(PANDUAN).toContain('Bayar Angsuran');
-    expect(PANDUAN).toContain('DB-16d');
     expect(PANDUAN).toContain('selisih');
     expect(PANDUAN).toContain('denda');
     expect(PANDUAN).toContain('jurnal');

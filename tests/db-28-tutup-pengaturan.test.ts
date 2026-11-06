@@ -1,7 +1,7 @@
 // DB-28 — hapus `tutup_buku.backup_path` & `awal_tahun_buku` dari UI.
 //
 // Fokus:
-// - kolom backup_path sudah dibuang dari skema v23 (AUD2-09);
+// - kolom backup_path tidak ada di skema v1;
 // - penulisan baru tidak menyimpan/mengekspos path backup;
 // - pengaturan lama non-Januari tetap terbaca tanpa auto-rewrite;
 // - save pengaturan dari kontrak publik (tanpa awal tahun) menulis Januari;

@@ -32,7 +32,7 @@ const E2E = baca('e2e/ui-audit.test.mjs');
 const README = baca('README.md');
 const PENGGUNA = baca('docs/panduan-pengguna.md');
 const PEMERIKSAAN = baca('docs/panduan-pemeriksaan.md');
-const ARAH = baca('docs/arah-akuntansi.md');
+const ARAH = baca('docs/prinsip-akuntansi.md');
 
 const LABEL_TAB = [
   'Dashboard',

@@ -179,7 +179,7 @@ function rowToPanjar(r: RowPanjar, totalRealisasi: number): Panjar {
       ? null
       : String(r.jurnal_batal_id);
   // Status publik mengikuti kolom `status` resmi (OPEN/CLOSED/DIBATALKAN).
-  // Baris legacy yang dibatalkan sebelum v23 masih menyimpan status OPEN +
+  // Baris legacy yang dibatalkan masih bisa menyimpan status OPEN +
   // `jurnal_batal_id`; keduanya tetap dibaca sebagai DIBATALKAN.
   const statusDb = String(r.status);
   const status: Panjar['status'] =
@@ -580,8 +580,8 @@ export function closePanjarV2(
  *    ubah `status` menjadi DIBATALKAN, dan tulis audit `PANJAR-BATAL`.
  *    Jurnal asli tidak pernah diubah/dihapus.
  *
- * Sejak v23 CHECK `panjar.status` resmi menerima DIBATALKAN; baris legacy
- * dengan status OPEN + jurnal_batal_id tetap dibaca sebagai DIBATALKAN.
+ * CHECK `panjar.status` menerima DIBATALKAN; baris legacy dengan status OPEN
+ * + jurnal_batal_id tetap dibaca sebagai DIBATALKAN.
  */
 export function batalPanjarV2(
   db: Database.Database,

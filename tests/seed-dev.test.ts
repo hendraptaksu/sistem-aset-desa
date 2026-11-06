@@ -1,5 +1,5 @@
-// P0-3: reset DB POC + seed dev v2 (tanpa migrasi single-entry).
-// Fokus: skema v2 bersih, seed jurnal deterministik & seimbang, tidak menimpa data.
+// P0-3: seed dev pada skema baseline v1.
+// Fokus: skema v1 bersih, seed jurnal deterministik & seimbang, tidak menimpa data.
 
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,7 +48,7 @@ function semuaBaris(db: ReturnType<typeof openDb>): unknown[] {
     .all();
 }
 
-const TABEL_DIHAPUS = [
+const TABEL_LEGACY = [
   'rekonsiliasi_bank',
   'anggaran',
   'aset',
@@ -61,7 +61,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
+describe('P0-3 — skema v1 fresh tanpa tabel single-entry', () => {
   it('hanya membuat tabel model baru + pengaturan yang dipertahankan', () => {
     const { db } = freshDb();
     try {
@@ -82,11 +82,11 @@ describe('P0-3 — skema v2 fresh tanpa tabel single-entry', () => {
           'panjar_item',
         ]),
       );
-      // DB-33: tabel modul lama sudah dibuang oleh migrasi v12.
-      for (const lama of TABEL_DIHAPUS) {
+      // Tabel modul lama tidak pernah dibuat pada skema v1.
+      for (const lama of TABEL_LEGACY) {
         expect(tabel, `tabel ${lama} seharusnya tidak ada`).not.toContain(lama);
       }
-      // tutup_buku v2 tidak menyimpan laba sebagai sumber angka.
+      // tutup_buku tidak menyimpan laba sebagai sumber angka.
       const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
       expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'catatan']));
       expect(kolom).not.toContain('backup_path');
@@ -265,7 +265,7 @@ describe('DB-23b/DB-33 — seed dev hutang tanpa tabel pihak', () => {
       }
 
       const tabel = namaTabel(db);
-      for (const lama of TABEL_DIHAPUS) {
+      for (const lama of TABEL_LEGACY) {
         expect(tabel).not.toContain(lama);
       }
       expect(saldoAkun(listBarisJurnal(db), '1050')).toBe(0);

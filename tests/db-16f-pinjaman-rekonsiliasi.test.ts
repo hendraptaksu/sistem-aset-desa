@@ -228,10 +228,11 @@ describe('DB-16f — rekonsiliasi per pinjaman', () => {
 
   it('mendeteksi saldo awal/jadwal yang tidak cocok dengan kredit 2050', () => {
     const { db, pinjamanId } = siapkanFixture();
-    db.prepare('UPDATE pinjaman SET sisa_pokok_awal = ? WHERE id = ?').run(
-      RP(12_500_000),
-      pinjamanId,
-    );
+    // Naikkan pokok dan sisa bersama-sama agar tetap lolos CHECK
+    // `sisa_pokok_awal <= pokok_awal`; drift tetap terlihat dari GL jurnal.
+    db.prepare(
+      'UPDATE pinjaman SET pokok_awal = ?, sisa_pokok_awal = ? WHERE id = ?',
+    ).run(RP(12_500_000), RP(12_500_000), pinjamanId);
 
     const hasil = rekonsiliasiPinjaman(db, pinjamanId)!;
     expect(hasil).toMatchObject({
@@ -616,10 +617,11 @@ describe('DB-16f — rekonsiliasi per pinjaman', () => {
 
   it('tidak mengubah jurnal/data dan tidak menulis koreksi otomatis', () => {
     const { db, pinjamanId } = siapkanFixture();
-    db.prepare('UPDATE pinjaman SET sisa_pokok_awal = ? WHERE id = ?').run(
-      RP(12_500_000),
-      pinjamanId,
-    );
+    // Naikkan pokok dan sisa bersama-sama agar tetap lolos CHECK
+    // `sisa_pokok_awal <= pokok_awal`; drift tetap terlihat dari GL jurnal.
+    db.prepare(
+      'UPDATE pinjaman SET pokok_awal = ?, sisa_pokok_awal = ? WHERE id = ?',
+    ).run(RP(12_500_000), RP(12_500_000), pinjamanId);
 
     const tabel = [
       'jurnal',
@@ -661,7 +663,7 @@ describe('DB-16f — validasi, IPC, API, UI, dan dokumentasi', () => {
   const API = baca('src/renderer/lib/api.ts');
   const UI = baca('src/renderer/components/PinjamanTab.tsx');
   const PANDUAN = baca('docs/panduan-pengguna.md');
-  const SUMBER = baca('docs/sumber-data-pinjaman.md');
+  const SUMBER = baca('docs/skema.md');
 
   it('memvalidasi ID pinjaman opsional dan menolak bentuk yang salah', () => {
     expect(validasiBentukPinjamanRekonsiliasi(undefined)).toEqual({
@@ -728,7 +730,6 @@ describe('DB-16f — validasi, IPC, API, UI, dan dokumentasi', () => {
   });
 
   it('dokumen menjelaskan rumus, batas per pinjaman, dan audit DB-16f', () => {
-    expect(PANDUAN).toContain('DB-16f');
     expect(PANDUAN).toContain('Rekonsiliasi 2050');
     expect(PANDUAN).toContain('tidak mengoreksi otomatis');
     expect(PANDUAN).toContain('Saldo Awal');
