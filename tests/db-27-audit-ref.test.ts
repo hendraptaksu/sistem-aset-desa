@@ -1,18 +1,15 @@
-// DB-27 — referensi audit terstruktur (`ref_type`/`ref_id`).
+// DB-27 — referensi audit terstruktur (`ref_type`/`ref_id`) pada skema v1.
 //
 // Fokus:
 // - setiap aksi baru menyimpan referensi objek atomik bersama aksinya;
 // - filter ref memakai kolom terstruktur (bukan LIKE pada aksi) dan tetap
 //   menghormati tanggal/pagination;
-// - baris audit legacy tanpa referensi tetap tampil;
-// - migrasi v20 → v21 aditif, mempertahankan data, dan append-only tetap aktif.
+// - baris audit tanpa referensi tetap tampil;
+// - `audit_log` tetap append-only.
 
-import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import type Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
+import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import { AKUN_MODAL } from '../src/db/coa.js';
 import {
   AKUN_BUNGA_PINJAMAN_DEFAULT,
@@ -50,7 +47,6 @@ const K = (akun: string, nominal: number): JurnalBarisInput => ({
 });
 
 const dbTerbuka: Database.Database[] = [];
-const dirs: string[] = [];
 
 function dbKas(): Database.Database {
   const db = openDb(':memory:');
@@ -87,7 +83,6 @@ afterEach(() => {
       /* sudah ditutup */
     }
   }
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe('DB-27 — referensi aksi baru', () => {
@@ -375,59 +370,28 @@ describe('DB-27 — filter referensi', () => {
   });
 });
 
-describe('DB-27 — migrasi v20 → v21', () => {
-  function buatFixtureV20(path: string): void {
-    const db = new Database(path);
+describe('DB-27 — audit append-only pada skema v1', () => {
+  it('mencatat versi skema 1 dan menolak perubahan/penghapusan baris audit', () => {
+    const db = openDb(':memory:');
     try {
-      db.exec(`
-        CREATE TABLE audit_log (
-          id TEXT PRIMARY KEY,
-          tanggal TEXT NOT NULL,
-          aksi TEXT NOT NULL,
-          alasan TEXT NOT NULL,
-          data_lama_json TEXT NOT NULL DEFAULT '',
-          data_baru_json TEXT NOT NULL DEFAULT ''
-        );
-        CREATE INDEX idx_audit_tanggal ON audit_log(tanggal);
-        CREATE INDEX idx_audit_aksi ON audit_log(aksi);
-        PRAGMA user_version = 20;
-      `);
-      db.prepare(
-        `INSERT INTO audit_log
-           (id, tanggal, aksi, alasan, data_lama_json, data_baru_json)
-         VALUES ('audit-v20', '2026-01-01T00:00:00.000Z', 'CREATE j-lama',
-                 'Audit lama', '{"x":1}', '{"y":2}')`,
-      ).run();
-    } finally {
-      db.close();
-    }
-  }
+      expect(SCHEMA_VERSION).toBe(1);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(1);
 
-  it('menambah kolom/index tanpa menghapus data dan tetap append-only', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-audit-ref-'));
-    dirs.push(dir);
-    const path = join(dir, 'pura.db');
-    buatFixtureV20(path);
-
-    const db = openDb(path);
-    try {
-      expect(SCHEMA_VERSION).toBe(23);
-      expect(Number(db.pragma('user_version', { simple: true }))).toBe(23);
-
-      const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map(
-        (k) => k.name,
+      insertAuditLog(
+        db,
+        auditRow({
+          id: 'audit-v1',
+          tanggal: '2026-01-01T00:00:00.000Z',
+          aksi: 'CREATE j-lama',
+          alasan: 'Audit lama',
+          data_lama_json: '{"x":1}',
+          data_baru_json: '{"y":2}',
+        }),
       );
-      expect(kolom).toEqual(expect.arrayContaining(['ref_type', 'ref_id']));
-      const index = db
-        .prepare(
-          "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_audit_ref'",
-        )
-        .get() as { sql: string } | undefined;
-      expect(index?.sql).toContain('ref_type, ref_id');
 
-      const lama = listAuditLog(db)[0]!;
-      expect(lama).toMatchObject({
-        id: 'audit-v20',
+      const tersimpan = listAuditLog(db)[0]!;
+      expect(tersimpan).toMatchObject({
+        id: 'audit-v1',
         aksi: 'CREATE j-lama',
         alasan: 'Audit lama',
         data_lama_json: '{"x":1}',
@@ -436,25 +400,15 @@ describe('DB-27 — migrasi v20 → v21', () => {
         ref_id: '',
       });
 
-      // Append-only AKT-26 tetap berlaku setelah migrasi.
       expect(() =>
-        db.prepare("UPDATE audit_log SET alasan = 'diubah' WHERE id = 'audit-v20'").run(),
+        db.prepare("UPDATE audit_log SET alasan = 'diubah' WHERE id = 'audit-v1'").run(),
       ).toThrow(/tidak boleh diubah/i);
       expect(() =>
-        db.prepare("DELETE FROM audit_log WHERE id = 'audit-v20'").run(),
+        db.prepare("DELETE FROM audit_log WHERE id = 'audit-v1'").run(),
       ).toThrow(/tidak boleh dihapus/i);
       expect(listAuditLog(db)).toHaveLength(1);
     } finally {
       db.close();
-    }
-
-    // Idempoten: buka ulang tidak menambah kolom/data atau menurunkan versi.
-    const db2 = openDb(path);
-    try {
-      expect(Number(db2.pragma('user_version', { simple: true }))).toBe(23);
-      expect(listAuditLog(db2)).toHaveLength(1);
-    } finally {
-      db2.close();
     }
   });
 });

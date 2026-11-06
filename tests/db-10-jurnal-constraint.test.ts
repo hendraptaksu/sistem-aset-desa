@@ -1,13 +1,13 @@
-// DB-10 — constraint jurnal di tingkat database.
+// DB-10 — constraint jurnal pada skema aktif v1.
 //
-// Fokus:
-// - DB v13 sehat naik ke versi saat ini: partial unique index `ux_jurnal_reversal` dan
-//   trigger validasi `BEFORE INSERT` terpasang, data lama tetap utuh.
-// - Migrasi idempoten: index/trigger tidak dobel setelah openDb/migrasi berulang.
-// - DB v13 dengan `reversal_of` duplikat menghentikan migrasi v14 dengan pesan
-//   Indonesia, rollback penuh, `user_version` tetap 13, dan data tidak berubah.
+// Fokus (hanya skema v1, tanpa jalur migrasi/rollback versi lama):
+// - DB baru langsung punya partial unique index `ux_jurnal_reversal` dan
+//   trigger validasi `BEFORE INSERT` pada jurnal.
+// - Dua REVERSAL untuk jurnal asli yang sama ditolak unique index.
+// - Trigger menolak jenis/tanggal/reversal_of yang tidak valid.
 // - Trigger memakai daftar `JENIS_JURNAL` dari posting layer, bukan salinan
 //   terpisah yang bisa melenceng.
+// - Buka ulang DB tetap menyisakan tepat satu index dan satu trigger.
 
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -16,10 +16,11 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { JENIS_JURNAL } from '../src/core/posting.js';
 import {
-  DDL,
-  PESAN_DUPLIKAT_REVERSAL,
+  PESAN_JENIS_JURNAL_DB,
+  PESAN_REVERSAL_JURNAL_DB,
+  PESAN_TANGGAL_JURNAL_DB,
+  PESAN_TANGGAL_KALENDER_JURNAL_DB,
   SCHEMA_VERSION,
-  migrasi,
   openDb,
 } from '../src/db/database.js';
 
@@ -58,62 +59,49 @@ function triggerValidasi(db: Database.Database): { name: string; sql: string } |
     .get() as { name: string; sql: string } | undefined;
 }
 
-/**
- * Fixture v13 memakai DDL produksi lalu menurunkan `user_version`. Index
- * `ux_jurnal_saldo_awal` dan `ux_jurnal_reversal` sengaja belum ada karena
- * keduanya baru dibuat migrasi v13/v14.
- */
-function buatFixtureV13(
-  path: string,
-  opsi: { reversalOfDuplikat?: boolean } = {},
-): void {
-  const db = new Database(path);
-  try {
-    db.pragma('foreign_keys = OFF');
-    db.exec(DDL);
+type JurnalInput = {
+  id: string;
+  tanggal?: string;
+  jenis?: string;
+  reversal_of?: string | null;
+};
 
-    const insJurnal = db.prepare(
-      `INSERT INTO jurnal
-         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
-       VALUES (?, ?, '', ?, ?, ?, ?, ?)`,
-    );
-    insJurnal.run('j-asli', '2026-01-02', 'Jurnal asli', 'UMUM', 'j-asli', null, WAKTU);
-    insJurnal.run(
-      'j-balik-1',
-      '2026-01-03',
-      'Reversal pertama',
-      'REVERSAL',
-      'j-asli',
-      'j-asli',
+function insJurnal(db: Database.Database): (j: JurnalInput) => void {
+  const ins = db.prepare(
+    `INSERT INTO jurnal
+       (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+     VALUES (?, ?, '', ?, ?, ?, ?, ?)`,
+  );
+  return (j) => {
+    const jenis = j.jenis ?? 'UMUM';
+    ins.run(
+      j.id,
+      j.tanggal ?? '2026-01-02',
+      `Keterangan ${j.id}`,
+      jenis,
+      jenis === 'REVERSAL' ? (j.reversal_of ?? 'j-asli') : j.id,
+      j.reversal_of ?? null,
       WAKTU,
     );
-    if (opsi.reversalOfDuplikat) {
-      insJurnal.run(
-        'j-balik-2',
-        '2026-01-04',
-        'Reversal kedua',
-        'REVERSAL',
-        'j-asli',
-        'j-asli',
-        WAKTU,
-      );
-    }
-
-    db.pragma('user_version = 13');
-  } finally {
-    db.close();
-  }
+  };
 }
 
-describe('DB-10 — migrasi v14', () => {
-  it('DB v13 sehat naik ke versi skema saat ini, data utuh, index/trigger idempoten', () => {
-    const path = tmpDb('pura-db10-naik-');
-    buatFixtureV13(path, { reversalOfDuplikat: false });
+function hitungObjek(db: Database.Database, nama: string): number {
+  return Number(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ?')
+        .get(nama) as { n: number }
+    ).n,
+  );
+}
 
-    const db = openDb(path);
+describe('DB-10 — constraint jurnal skema v1', () => {
+  it('DB v1 baru langsung punya index reversal parsial dan trigger validasi insert', () => {
+    const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(23);
-      expect(versi(db)).toBe(23);
+      expect(SCHEMA_VERSION).toBe(1);
+      expect(versi(db)).toBe(1);
 
       const index = indeksReversal(db);
       expect(index?.name).toBe('ux_jurnal_reversal');
@@ -127,36 +115,8 @@ describe('DB-10 — migrasi v14', () => {
       expect(trigger?.sql).toMatch(
         /GLOB '\[0-9\]\[0-9\]\[0-9\]\[0-9\]-\[0-9\]\[0-9\]-\[0-9\]\[0-9\]'/,
       );
-
-      expect(
-        db.prepare('SELECT id, reversal_of FROM jurnal ORDER BY id').all(),
-      ).toEqual([
-        { id: 'j-asli', reversal_of: null },
-        { id: 'j-balik-1', reversal_of: 'j-asli' },
-      ]);
-
-      // Migrasi berulang tidak menggandakan index/trigger.
-      expect(migrasi(db)).toBe(23);
-      expect(migrasi(db)).toBe(23);
-      expect(
-        db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM sqlite_master
-             WHERE name IN ('ux_jurnal_reversal', 'trg_jurnal_validasi_insert')`,
-          )
-          .get(),
-      ).toEqual({ n: 2 });
     } finally {
       db.close();
-    }
-
-    const db2 = openDb(path);
-    try {
-      expect(versi(db2)).toBe(23);
-      expect(indeksReversal(db2)?.name).toBe('ux_jurnal_reversal');
-      expect(triggerValidasi(db2)?.name).toBe('trg_jurnal_validasi_insert');
-    } finally {
-      db2.close();
     }
   });
 
@@ -167,49 +127,115 @@ describe('DB-10 — migrasi v14', () => {
       for (const jenis of JENIS_JURNAL) {
         expect(sql, `trigger harus mengenal ${jenis}`).toContain(`'${jenis}'`);
       }
-      // Tidak ada salinan daftar liar di luar posting layer.
-      expect(JENIS_JURNAL).toHaveLength(9);
     } finally {
       db.close();
     }
   });
 
-  it('reversal_of duplikat di DB v13 membatalkan migrasi tanpa mengubah data', () => {
-    const path = tmpDb('pura-db10-duplikat-');
-    buatFixtureV13(path, { reversalOfDuplikat: true });
-
-    const db = new Database(path);
+  it('dua REVERSAL untuk jurnal asli yang sama ditolak unique index', () => {
+    const db = openDb(':memory:');
     try {
-      expect(() => migrasi(db)).toThrow(PESAN_DUPLIKAT_REVERSAL);
-      expect(() => migrasi(db)).toThrow(/Migrasi v14 dibatalkan/);
-      expect(() => migrasi(db)).toThrow(/reversal_of/);
+      const ins = insJurnal(db);
+      ins({ id: 'j-asli' });
+      ins({ id: 'j-balik-1', tanggal: '2026-01-03', jenis: 'REVERSAL', reversal_of: 'j-asli' });
 
-      // Rollback penuh: versi, data, index, dan trigger tetap seperti v13.
-      expect(versi(db)).toBe(13);
-      expect(indeksReversal(db)).toBeUndefined();
-      expect(triggerValidasi(db)).toBeUndefined();
-      expect(
-        db.prepare("SELECT name FROM sqlite_master WHERE name = 'ux_jurnal_saldo_awal'").get(),
-      ).toBeUndefined();
-      expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual({ n: 3 });
+      expect(() =>
+        ins({ id: 'j-balik-2', tanggal: '2026-01-04', jenis: 'REVERSAL', reversal_of: 'j-asli' }),
+      ).toThrow(/UNIQUE constraint failed.*reversal_of/i);
+
       expect(
         db.prepare("SELECT COUNT(*) AS n FROM jurnal WHERE reversal_of = 'j-asli'").get(),
-      ).toEqual({ n: 2 });
+      ).toEqual({ n: 1 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak jenis jurnal tak dikenal', () => {
+    const db = openDb(':memory:');
+    try {
+      expect(() => insJurnal(db)({ id: 'j-jenis', jenis: 'ANEH' })).toThrow(
+        PESAN_JENIS_JURNAL_DB,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak tanggal yang bukan format YYYY-MM-DD', () => {
+    const db = openDb(':memory:');
+    try {
+      expect(() => insJurnal(db)({ id: 'j-tanggal', tanggal: '01-01-2026' })).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(() => insJurnal(db)({ id: 'j-tanggal-2', tanggal: '2026-1-01' })).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak tanggal kalender mustahil seperti 2026-02-30', () => {
+    const db = openDb(':memory:');
+    try {
+      expect(() => insJurnal(db)({ id: 'j-kalender', tanggal: '2026-02-30' })).toThrow(
+        PESAN_TANGGAL_KALENDER_JURNAL_DB,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak REVERSAL tanpa reversal_of', () => {
+    const db = openDb(':memory:');
+    try {
+      expect(() =>
+        insJurnal(db)({ id: 'j-reversal', jenis: 'REVERSAL', reversal_of: null }),
+      ).toThrow(PESAN_REVERSAL_JURNAL_DB);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak non-REVERSAL yang mengisi reversal_of', () => {
+    const db = openDb(':memory:');
+    try {
+      const ins = insJurnal(db);
+      ins({ id: 'j-asli' });
+      expect(() => ins({ id: 'j-umum', jenis: 'UMUM', reversal_of: 'j-asli' })).toThrow(
+        PESAN_REVERSAL_JURNAL_DB,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('buka ulang DB tetap menyisakan tepat satu index dan satu trigger', () => {
+    const path = tmpDb('pura-db10-idempoten-');
+
+    const db = openDb(path);
+    try {
+      insJurnal(db)({ id: 'j-asli' });
+      expect(hitungObjek(db, 'ux_jurnal_reversal')).toBe(1);
+      expect(hitungObjek(db, 'trg_jurnal_validasi_insert')).toBe(1);
     } finally {
       db.close();
     }
 
-    // Jalur produksi `openDb` juga menolak dan menutup koneksi tanpa mengubah file.
-    expect(() => openDb(path)).toThrow(PESAN_DUPLIKAT_REVERSAL);
-
-    const cek = new Database(path, { readonly: true });
-    try {
-      expect(versi(cek)).toBe(13);
-      expect(indeksReversal(cek)).toBeUndefined();
-      expect(triggerValidasi(cek)).toBeUndefined();
-      expect(cek.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual({ n: 3 });
-    } finally {
-      cek.close();
+    for (let i = 0; i < 2; i += 1) {
+      const buka = openDb(path);
+      try {
+        expect(versi(buka)).toBe(1);
+        expect(hitungObjek(buka, 'ux_jurnal_reversal')).toBe(1);
+        expect(hitungObjek(buka, 'trg_jurnal_validasi_insert')).toBe(1);
+        expect(indeksReversal(buka)?.sql).toMatch(/WHERE reversal_of IS NOT NULL/);
+        expect(buka.prepare("SELECT id FROM jurnal WHERE id = 'j-asli'").get()).toEqual({
+          id: 'j-asli',
+        });
+      } finally {
+        buka.close();
+      }
     }
   });
 });

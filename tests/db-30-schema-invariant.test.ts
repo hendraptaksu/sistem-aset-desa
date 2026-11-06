@@ -1,4 +1,4 @@
-// DB-30 — invariant ringan skema aktif (v23).
+// DB-30 — invariant ringan skema baseline v1.
 //
 // Fokus:
 // - set tabel aktif tepat 11; tidak ada tabel modul lama yang muncul kembali;
@@ -12,7 +12,11 @@
 
 import type Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
+import {
+  openDb,
+  SCHEMA_VERSION,
+  TABEL_AKTIF,
+} from '../src/db/database.js';
 
 /** Tabel modul lama yang sudah dihapus dan tidak boleh muncul lagi. */
 const TABEL_LEGACY = [
@@ -24,20 +28,6 @@ const TABEL_LEGACY = [
   'anggaran',
   'rekonsiliasi_bank',
   'lampiran_jurnal',
-] as const;
-
-const TABEL_AKTIF = [
-  'akun',
-  'audit_log',
-  'jurnal',
-  'jurnal_baris',
-  'panjar',
-  'panjar_item',
-  'pengaturan',
-  'pinjaman',
-  'pinjaman_angsuran',
-  'pinjaman_bayar',
-  'tutup_buku',
 ] as const;
 
 function namaTabel(db: Database.Database): string[] {
@@ -119,8 +109,9 @@ describe('DB-30 — invariant tabel aktif', () => {
   it('memakai tepat 11 tabel aktif dan tidak menghidupkan tabel lama', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(23);
-      expect(namaTabel(db)).toEqual([...TABEL_AKTIF]);
+      expect(SCHEMA_VERSION).toBe(1);
+      expect(TABEL_AKTIF).toHaveLength(11);
+      expect(namaTabel(db)).toEqual([...TABEL_AKTIF].sort());
       for (const tabel of TABEL_AKTIF) {
         expect(strict(db, tabel), `${tabel} harus STRICT`).toBe(1);
       }

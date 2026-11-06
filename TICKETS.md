@@ -207,7 +207,7 @@
   - Hapus `tests/db-06-tabel-legacy.test.ts`.
   - Selesai bila tidak ada referensi `TABEL_DIHAPUS_V12`/`TABEL_SINGLE_ENTRY_LAMA` di test.
 
-- [ ] **T4.3 — Ganti test versi baru**
+- [x] **T4.3 — Ganti test versi baru**
   - Ganti `tests/db-05-versi-baru.test.ts` dengan `tests/skema-kompatibilitas.test.ts`.
   - Kasus:
     - DB v23 ditolak dan file tidak berubah;
@@ -217,13 +217,13 @@
     - DB baru terbuka.
   - Selesai bila semua kasus lulus.
 
-- [ ] **T4.4 — Ganti test strict migration**
+- [x] **T4.4 — Ganti test strict migration**
   - Ganti `tests/aud2-09-strict-migration.test.ts` dengan `tests/skema-strict.test.ts`.
   - Uji bahwa DB baru langsung punya 11 tabel `STRICT`.
   - Hapus skenario rebuild tabel lama.
   - Selesai bila test tidak lagi memakai fixture non-STRICT.
 
-- [ ] **T4.5 — Rewrite test invariant jurnal**
+- [x] **T4.5 — Rewrite test invariant jurnal**
   - File: `tests/db-04-saldo-awal-unik.test.ts`, `tests/db-07-trigger.test.ts`
   - Hapus fixture versi lama.
   - Pertahankan uji:
@@ -234,19 +234,19 @@
     - `tutup_buku` tidak bisa dihapus.
   - Selesai bila test hanya memakai DB baseline v1.
 
-- [ ] **T4.6 — Rewrite test constraint jurnal dan akun**
+- [x] **T4.6 — Rewrite test constraint jurnal dan akun**
   - File: `tests/db-10-jurnal-constraint.test.ts`, `tests/db-11-akun-constraint.test.ts`
   - Hapus skenario migrasi/rollback versi lama.
   - Pertahankan uji unique reversal, validasi jenis/tanggal, unique nama akun NOCASE, dan validasi akun.
   - Selesai bila test hanya menguji skema aktif.
 
-- [ ] **T4.7 — Rewrite test audit ref dan schema invariant**
+- [x] **T4.7 — Rewrite test audit ref dan schema invariant**
   - File: `tests/db-27-audit-ref.test.ts`, `tests/db-30-schema-invariant.test.ts`
   - Hapus referensi v21/v23 dan tabel legacy.
   - Uji kolom/index audit ref dan invariant 11 tabel aktif.
   - Selesai bila test lulus pada DB baru.
 
-- [ ] **T4.8 — Test baseline baru**
+- [x] **T4.8 — Test baseline baru**
   - File baru: `tests/skema-baseline.test.ts`
   - Uji:
     - `user_version === 1`;
