@@ -196,3 +196,110 @@ Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
 Rekonsiliasi 2050 vs jadwal bersifat baca-saja: membandingkan outstanding GL
 dari jurnal tertaut dengan sisa jadwal, tanpa koreksi otomatis dan tanpa
 menyimpan saldo. Batas, rumus, dan validasi input dijelaskan di `docs/skema.md`.
+
+## 10. Koreksi saldo awal
+
+**Keputusan (T1.6): Opsi A — reversal `SALDO_AWAL` lama + jurnal penyesuaian
+`UMUM` bertanggal sama, tanpa perubahan skema.**
+
+Saldo awal tetap hanya dibuat sekali dan dijaga unique index
+`ux_jurnal_saldo_awal`. Reversal generik atas `SALDO_AWAL` tetap diblokir agar
+status wizard tidak menyesatkan (T1.5). Karena itu koreksi saldo awal memakai
+jalur khusus: **bukan** edit/hapus jurnal, **bukan** reversal dari Jurnal Umum,
+dan **bukan** `SALDO_AWAL` kedua. Wizard menampilkan tombol **Koreksi Saldo
+Awal**, bukan mengizinkan edit biasa.
+
+### 10.1 Apa yang terjadi saat koreksi
+
+Seluruh langkah berjalan dalam **satu transaksi DB yang atomik**:
+
+1. Baca jurnal saldo awal yang aktif beserta barisnya.
+2. Buat jurnal balik `REVERSAL` yang membalik persis jurnal tersebut
+   (`reversal_of` = jurnal saldo awal, `grup_id` sama, keterangan
+   `KOREKSI: ...`).
+3. Susun jurnal penyesuaian berjenis `UMUM` dari input koreksi memakai
+   builder/validator saldo awal yang sama: hanya akun aset, kewajiban, dan
+   ekuitas; selisih aktiva − kewajiban menjadi baris penyeimbang `3000 MODAL`.
+   Header memakai `jenis = UMUM`, `grup_id` sama dengan jurnal saldo awal, dan
+   tanggal yang sama.
+4. Tulis audit `KOREKSI-SALDO-AWAL` berisi jurnal lama, jurnal balik, jurnal
+   penyesuaian, dan alasan.
+5. Bila salah satu langkah gagal (validasi, kunci periode, unique index,
+   penulisan setting), **seluruh transaksi dibatalkan**; tidak ada koreksi
+   setengah jadi.
+
+| Jurnal | Jenis | Tanggal | Isi |
+|---|---|---|---|
+| Saldo awal lama | `SALDO_AWAL` | `T` | Tidak diubah dan tidak dihapus; tetap menjadi histori |
+| Jurnal balik | `REVERSAL` | `T` | Kebalikan persis saldo awal lama; `reversal_of` = saldo awal lama |
+| Jurnal penyesuaian | `UMUM` | `T` | Saldo hasil koreksi **penuh** (bukan delta), selisih ke `3000 MODAL` |
+
+Jurnal penyesuaian memuat saldo hasil koreksi secara penuh, bukan hanya
+selisihnya, karena wizard memuat ulang dan menampilkan pratinjau saldo akhir
+yang akan dipakai. Efek bersih di laporan adalah:
+
+```text
+SALDO_AWAL lama + REVERSAL + UMUM penyesuaian = saldo awal hasil koreksi
+```
+
+Koreksi berikutnya membalik jurnal penyesuaian `UMUM` yang sedang aktif, lalu
+membuat penyesuaian baru. Jurnal `SALDO_AWAL` lama tidak dibalik dua kali;
+`ux_jurnal_reversal` tetap menjadi penjaga terakhir. Dengan demikian selalu ada
+satu rangkaian: saldo awal asli → balik → penyesuaian → balik → penyesuaian,
+dan seterusnya, semuanya dalam `grup_id` yang sama.
+
+### 10.2 Mengapa tidak mengubah skema/unique index
+
+- **Praktik akuntansi standar.** Koreksi saldo awal adalah *reverse and
+  re-post*: balik jurnal lama, lalu posting ulang. Jurnal lama tidak pernah
+  diedit/dihapus, sehingga jejak audit utuh.
+- **`ux_jurnal_saldo_awal` adalah penjaga murah dan jelas.** Index parsial ini
+  memastikan tidak pernah ada dua jurnal `SALDO_AWAL`, sehingga
+  `sudahAdaSaldoAwal`/`statusSaldoAwal` tetap sederhana: wizard normal terkunci
+  setelah saldo awal pertama.
+- **Opsi B berbiaya besar tanpa manfaat pengguna.** Mengganti index dengan
+  trigger berarti perubahan skema, keputusan reset/migrasi DB, perubahan
+  `DDL_INDEX`, penyesuaian test skema (`db-04`, `skema-baseline`, `db-30`,
+  `skema-strict`, `skema-hardening`) dan `docs/skema.md`, sementara hasil yang
+  dilihat pengguna sama.
+- **Risiko double count.** Bila `SALDO_AWAL` kedua diizinkan, laporan yang
+  menjumlahkan `jurnal_baris` bisa menghitung saldo awal dua kali dan aturan
+  "saldo awal hanya sekali" menjadi kabur.
+
+Konsekuensinya: **tidak ada perubahan skema, tidak ada migrasi, dan
+`ux_jurnal_saldo_awal` tetap dipakai apa adanya.**
+
+### 10.3 Bagaimana audit dan laporan membaca hasilnya
+
+- Audit `KOREKSI-SALDO-AWAL` ditulis atomik bersama jurnal. Audit lama
+  `SALDO-AWAL` tetap ada; audit bersifat append-only dan tidak bisa dihapus.
+- Laporan selalu dihitung ulang dari `jurnal_baris`, tanpa cache. Karena saldo
+  awal lama, jurnal balik, dan penyesuaian bertanggal sama, jumlah bersihnya
+  langsung menjadi saldo awal hasil koreksi tanpa menggeser periode atau laba
+  tahun berjalan.
+- Buku Besar/drill-down menampilkan tiga jurnal dalam satu grup, sehingga
+  pemeriksa bisa melihat jurnal asli, jurnal balik, dan penyesuaian beserta
+  alasannya.
+- `jumlahJurnal` bertambah, tetapi `statusSaldoAwal.boleh` tetap `false` karena
+  jurnal `SALDO_AWAL` masih ada. Tombol **Koreksi Saldo Awal** adalah jalur
+  terpisah dari wizard biasa.
+- `KUNCI_AKUNTANSI_TANGGAL_MULAI` tidak berubah karena tanggal saldo awal tidak
+  berubah. Bila layanan koreksi kelak menerima tanggal berbeda, setting wajib
+  diperbarui dalam transaksi yang sama dan tanggal baru tetap tidak boleh
+  setelah transaksi paling awal.
+
+### 10.4 Batasan
+
+- Jurnal lama **tidak pernah dihapus atau diedit**; trigger immutable tetap
+  berlaku.
+- Reversal generik atas `SALDO_AWAL` **tetap diblokir** (`PESAN_REVERSAL_SALDO_AWAL`).
+  Koreksi hanya lewat IPC khusus `saldo-awal:koreksi` dengan validasi bentuk
+  input dan alasan wajib; jalur Jurnal Umum dan wizard biasa tidak boleh
+  membuat `SALDO_AWAL` baru.
+- Koreksi hanya boleh memakai akun aset, kewajiban, dan ekuitas; akun
+  PENDAPATAN/BEBAN ditolak. Akun kontrol `1040`/`2050` hanya boleh disentuh
+  lewat konteks koreksi ini, bukan Jurnal Umum biasa.
+- Satu jurnal hanya boleh dibalik sekali. Koreksi berulang selalu membalik
+  jurnal pembukaan yang sedang aktif, bukan mengulang reversal jurnal yang sama.
+- Bila tanggal jatuh di periode terkunci, aturan kunci periode dan alasan tetap
+  berlaku seperti jurnal biasa.
