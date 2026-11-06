@@ -17,93 +17,12 @@ import {
 } from './coa.js';
 
 /**
- * Versi skema di `PRAGMA user_version`.
- * - 0/v1 = model single-entry lama (transaksi + kategori).
- * - 2    = model double-entry (jurnal + jurnal_baris). Tabel single-entry lama
- *          (`transaksi`/`coa`) dibersihkan hanya dari DB asli v0–v2 oleh
- *          migrasi eksplisit DB-06; tidak ada migrasi data (K6).
- * - 3    = audit log lengkap (P0-9): kolom `data_baru_json` (sebelum/sesudah).
- * - 4    = metadata panjar v2 (P1-4): `panjar` + `panjar_item` menyimpan
- *          dokumen serah/pertanggungjawaban, bukan saldo/laba. Jurnal tetap
- *          satu-satunya sumber angka.
- * - 5    = master pihak + penghubung jurnal-pihak (P1-5). Fitur dihapus dari
- *          UI/API pada DB-23b; tabelnya dibuang oleh migrasi v12 (DB-33).
- * - 6    = pagu anggaran per tahun (P2-1). Modul dihapus pada DB-24; tabelnya
- *          dibuang oleh migrasi v12 (DB-33).
- * - 7    = rekonsiliasi bank (P2-2). Modul dihapus pada DB-31; tabelnya
- *          dibuang oleh migrasi v12 (DB-33).
- * - 8    = tabel legacy `lampiran_jurnal` (P2-4). Modul dihapus pada DB-37;
- *          tabelnya dibuang oleh migrasi v12 (DB-33).
- * - 9    = integritas jurnal (AUD-23): trigger menolak baris debit+kredit
- *          sekaligus dan menolak update/delete jurnal; nomor bukti unik per
- *          tahun (bukan global).
- * - 10   = pemisahan akun utang usaha (AKT-20): COA statis 2060 HUTANG USAHA
- *          di-seed idempoten (tanpa DDL baru); 2050 tetap pinjaman/legacy.
- *          Versi ini juga mencegah aplikasi v9 membuka backup v10.
- * - 11   = audit log append-only + tutup buku tidak bisa dihapus (AKT-26):
- *          trigger menolak update/delete `audit_log` dan delete `tutup_buku`.
- *          Update `tutup_buku` tetap diizinkan karena tutup ulang memakai
- *          `ON CONFLICT DO UPDATE`.
- * - 12   = drop tabel modul yang sudah dihapus (DB-33): rekonsiliasi_bank,
- *          anggaran, aset, lampiran_jurnal, jurnal_pihak, lalu pihak.
- *          Jurnal/panjar/tutup buku/audit/pengaturan tetap dipertahankan.
- * - 13   = satu jurnal SALDO_AWAL (DB-04): partial unique index
- *          `ux_jurnal_saldo_awal`; migrasi berhenti bila DB lama sudah berisi
- *          lebih dari satu SALDO_AWAL agar data tidak dihapus/diubah diam-diam.
- * - 14   = constraint jurnal di DB (DB-10): partial unique index
- *          `ux_jurnal_reversal` (satu jurnal hanya boleh punya satu reversal)
- *          + trigger `BEFORE INSERT` yang menolak `jenis` tak dikenal dan
- *          tanggal yang tidak berbentuk YYYY-MM-DD. Migrasi berhenti bila DB
- *          lama sudah berisi `reversal_of` duplikat; data tidak diubah.
- * - 15   = constraint akun di DB (DB-11): unique index `ux_akun_nama_nocase`
- *          (nama unik tanpa membedakan huruf besar/kecil) + trigger
- *          `BEFORE INSERT/UPDATE` yang menolak kode bukan 4 digit, nama kosong,
- *          tipe/posisi_normal tidak valid atau tidak cocok, dan aktif bukan 0/1.
- *          Migrasi berhenti bila DB lama sudah berisi nama akun duplikat;
- *          data tidak diubah.
- * - 16   = metadata akun (DB-14): kolom `akun.is_kas`, `akun.kelompok`, dan
- *          `akun.sumber` (BAWAAN/TAMBAHAN). Migrasi aditif + backfill idempoten
- *          dari COA statis; akun di luar COA menjadi TAMBAHAN. Tabel tidak
- *          direbuild. Upsert COA saat `openDb` hanya memperbarui baris BAWAAN.
- * - 17   = detail nota panjar (DB-18): kolom aditif `panjar_item.nota_nomor`,
- *          `nota_tanggal`, `toko`, `keterangan` (default ''). Baris lama tetap
- *          sah dengan nilai kosong; jurnal close tetap agregat per akun.
- * - 18   = link jurnal panjar unik (DB-20): unique index `ux_panjar_jurnal_open`
- *          pada `panjar(jurnal_open_id)` dan partial unique index
- *          `ux_panjar_jurnal_close` pada `panjar(jurnal_close_id)` bila tidak
- *          NULL. Satu jurnal serah/close hanya boleh dipakai satu dokumen
- *          panjar. Migrasi berhenti bila DB lama sudah berisi link duplikat;
- *          data tidak diubah/dihapus.
- * - 19   = pembatalan panjar OPEN (DB-21): kolom aditif
- *          `panjar.jurnal_batal_id`, `tanggal_batal`, `alasan_batal` + partial
- *          unique index `ux_panjar_jurnal_batal`. Status kolom tetap
- *          OPEN/CLOSED (CHECK lama tidak diubah); status publik DIBATALKAN
- *          diturunkan dari `jurnal_batal_id`. Jurnal serah asli tidak dihapus.
- * - 20   = pinjaman LPD (DB-16b): tabel baru `pinjaman`,
- *          `pinjaman_angsuran`, dan `pinjaman_bayar`. Jadwal adalah rencana;
- *          `pinjaman_bayar` hanya menautkan jurnal + angsuran dan TIDAK
- *          menyimpan nominal pokok/bunga/denda. Outstanding dan status lunas
- *          dihitung dari jurnal. Migrasi aditif/idempoten, tanpa rebuild.
- * - 21   = referensi audit terstruktur (DB-27): kolom aditif
- *          `audit_log.ref_type`/`ref_id` (default '') + index
- *          `idx_audit_ref(ref_type, ref_id)`. Baris audit lama tetap sah
- *          dengan referensi kosong; TIDAK di-backfill karena trigger
- *          append-only v11 menolak UPDATE audit_log.
- *
- * - 22   = pembayaran sebagian: beberapa pembayaran per angsuran; jurnal_id
- *          tetap unik. Riwayat pembatalan diturunkan dari jurnal reversal.
- * - 23   = seluruh 11 tabel aktif menjadi STRICT (AUD2-09): tabel non-STRICT
- *          direbuild atomik (tabel baru -> salin kolom -> drop lama -> rename)
- *          dengan foreign key dimatikan sementara. `tutup_buku.backup_path`
- *          dibuang dan CHECK `panjar.status` diperlebar ke
- *          OPEN/CLOSED/DIBATALKAN. Index + trigger dipasang ulang setelah
- *          rebuild; data lama tidak diubah/dihapus selain normalisasi status
- *          panjar yang sudah punya `jurnal_batal_id` menjadi DIBATALKAN.
- *
- * DB-30 (hygiene/ERD v2) TIDAK menaikkan versi: tidak ada DDL, rebuild, atau
- * perubahan data. Kontrak skema aktif didokumentasikan di `docs/erd-v2.md`.
+ * Versi skema baseline di `PRAGMA user_version`.
+ * Aplikasi hanya mendukung skema v1. Database dengan skema lama ditolak dan
+ * tidak dimigrasikan: pindahkan atau hapus file DB lama, lalu jalankan
+ * aplikasi lagi.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 1;
 
 /**
  * AUD2-09 — daftar resmi 11 tabel aktif yang wajib `STRICT`.
@@ -126,6 +45,15 @@ export const TABEL_AKTIF = [
 /** DB-05: pesan penolakan DB yang dibuat aplikasi versi lebih baru. */
 export const PESAN_DB_VERSI_BARU =
   'Database dibuat aplikasi versi lebih baru. Perbarui aplikasi.';
+
+/**
+ * Pesan penolakan DB dengan skema lama/tidak dikenal. Tidak ada jalur migrasi:
+ * operator harus memindahkan atau menghapus file DB lalu menjalankan ulang.
+ */
+export const PESAN_DB_TIDAK_KOMPATIBEL =
+  'File database ini dibuat oleh versi/skema lama dan tidak kompatibel. ' +
+  'Aplikasi hanya mendukung skema v1. Pindahkan atau hapus file database lama ' +
+  'tersebut, lalu jalankan aplikasi lagi.';
 
 /**
  * DB-16b — tabel pinjaman LPD. Tabel baru sehingga `CHECK` boleh dipakai.

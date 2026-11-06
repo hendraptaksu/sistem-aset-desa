@@ -39,7 +39,7 @@
 
 ## Fase 1 — Skema baseline v1
 
-- [ ] **T1.1 — Konstanta skema**
+- [x] **T1.1 — Konstanta skema**
   - File: `src/db/database.ts`
   - Ubah `SCHEMA_VERSION` menjadi `1`.
   - Pertahankan `TABEL_AKTIF` berisi 11 tabel aktif.
