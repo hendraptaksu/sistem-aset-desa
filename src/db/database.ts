@@ -117,7 +117,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
 `;
 
 /**
- * DDL kanonik skema v1: 11 tabel aktif, semuanya `STRICT`.
+ * DDL tabel kanonik skema v1: 11 tabel aktif, semuanya `STRICT`.
  * Tabel modul lama (`transaksi`, `coa`, `pihak`, `jurnal_pihak`, `aset`,
  * `anggaran`, `rekonsiliasi_bank`, `lampiran_jurnal`) tidak pernah dibuat.
  *
@@ -134,7 +134,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
  *   Outstanding = `sisa_pokok_awal` dikurangi debit 2050 pada jurnal
  *   pembayaran tertaut, dihitung saat dibaca.
  */
-export const DDL = `
+const DDL_TABEL = `
 CREATE TABLE IF NOT EXISTS akun (
   kode TEXT PRIMARY KEY,
   nama TEXT NOT NULL,
@@ -338,18 +338,9 @@ function terapkanMigrasiSingleEntryLama(
 }
 
 /**
- * AUD-23 / DB-07 — aturan integritas v9. Dijalankan setiap `migrasi()` agar DB
- * lama (v8) ikut terlindungi dan DB yang sudah v9 tetap konsisten bila trigger
- * hilang. Semua trigger selalu dibuat ulang dengan `DROP TRIGGER IF EXISTS` +
- * `CREATE TRIGGER` (bukan varian `IF NOT EXISTS`) supaya perubahan isi trigger
- * di versi aplikasi baru benar-benar berlaku pada DB lama. DROP dan
- * CREATE berjalan di dalam transaksi `migrasi()`; bila langkah berikutnya gagal,
- * rollback mengembalikan definisi trigger lama, bukan menghilangkannya.
- * Semua perintah idempoten:
- * - index global lama dibuang (nomor bukti kini unik PER TAHUN);
- * - trigger menolak baris dengan debit & kredit sekaligus;
- * - AUD2-08: trigger menolak nilai pecahan/REAL, negatif, dan dua sisi nol;
- * - trigger menolak update/delete jurnal dan barisnya (koreksi lewat reversal).
+ * AUD-23 / DB-07 — sisa aturan integritas v9. Trigger integritas kini
+ * didefinisikan sekali di `DDL_TRIGGER`; fungsi ini hanya mempertahankan
+ * pembersihan index global lama (nomor bukti kini unik PER TAHUN).
  */
 function terapkanAturanV9(db: Database.Database): void {
   db.exec(`
@@ -358,72 +349,6 @@ function terapkanAturanV9(db: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_jurnal_no_bukti_tahun
       ON jurnal(substr(tanggal, 1, 4), no_bukti COLLATE NOCASE)
       WHERE no_bukti <> '';
-
-    DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
-    CREATE TRIGGER trg_jurnal_baris_satu_sisi_insert
-    BEFORE INSERT ON jurnal_baris
-    WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
-      OR NEW.debit < 0 OR NEW.kredit < 0
-      OR (NEW.debit = 0 AND NEW.kredit = 0)
-      OR (NEW.debit > 0 AND NEW.kredit > 0)
-    BEGIN
-      SELECT CASE
-        WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
-          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal harus bilangan bulat (integer), bukan pecahan.')
-        WHEN NEW.debit < 0 OR NEW.kredit < 0
-          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal tidak boleh negatif.')
-        WHEN NEW.debit = 0 AND NEW.kredit = 0
-          THEN RAISE(ABORT, 'Baris jurnal harus mengisi salah satu sisi: debit atau kredit lebih dari 0.')
-        ELSE RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.')
-      END;
-    END;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
-    CREATE TRIGGER trg_jurnal_baris_satu_sisi_update
-    BEFORE UPDATE ON jurnal_baris
-    WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
-      OR NEW.debit < 0 OR NEW.kredit < 0
-      OR (NEW.debit = 0 AND NEW.kredit = 0)
-      OR (NEW.debit > 0 AND NEW.kredit > 0)
-    BEGIN
-      SELECT CASE
-        WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
-          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal harus bilangan bulat (integer), bukan pecahan.')
-        WHEN NEW.debit < 0 OR NEW.kredit < 0
-          THEN RAISE(ABORT, 'Nilai debit/kredit jurnal tidak boleh negatif.')
-        WHEN NEW.debit = 0 AND NEW.kredit = 0
-          THEN RAISE(ABORT, 'Baris jurnal harus mengisi salah satu sisi: debit atau kredit lebih dari 0.')
-        ELSE RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.')
-      END;
-    END;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_immutable_update;
-    CREATE TRIGGER trg_jurnal_immutable_update
-    BEFORE UPDATE ON jurnal
-    BEGIN
-      SELECT RAISE(ABORT, 'Jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
-    END;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_immutable_delete;
-    CREATE TRIGGER trg_jurnal_immutable_delete
-    BEFORE DELETE ON jurnal
-    BEGIN
-      SELECT RAISE(ABORT, 'Jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
-    END;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_update;
-    CREATE TRIGGER trg_jurnal_baris_immutable_update
-    BEFORE UPDATE ON jurnal_baris
-    BEGIN
-      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
-    END;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_delete;
-    CREATE TRIGGER trg_jurnal_baris_immutable_delete
-    BEFORE DELETE ON jurnal_baris
-    BEGIN
-      SELECT RAISE(ABORT, 'Baris jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
-    END;
   `);
 }
 
@@ -447,36 +372,12 @@ function terapkanKontrakV10(db: Database.Database): void {
 }
 
 /**
- * AKT-26 — aturan v11: audit log append-only dan `tutup_buku` tidak bisa
- * dihapus. Trigger selalu dibuat ulang (DROP + CREATE) agar DB lama ikut
- * terlindungi dan perubahan definisi trigger di masa depan ikut diterapkan.
- * Update `tutup_buku` sengaja TIDAK diblokir: tutup ulang memakai upsert
- * `ON CONFLICT(tahun) DO UPDATE`.
+ * AKT-26 — aturan v11 (audit log append-only dan `tutup_buku` tidak bisa
+ * dihapus) kini dipasang oleh `DDL_TRIGGER`. Update `tutup_buku` sengaja TIDAK
+ * diblokir: tutup ulang memakai upsert `ON CONFLICT(tahun) DO UPDATE`.
+ * Fungsi ini dipertahankan sampai T1.5.
  */
-function terapkanAturanV11(db: Database.Database): void {
-  db.exec(`
-    DROP TRIGGER IF EXISTS trg_audit_log_immutable_update;
-    CREATE TRIGGER trg_audit_log_immutable_update
-    BEFORE UPDATE ON audit_log
-    BEGIN
-      SELECT RAISE(ABORT, 'Audit log tidak boleh diubah.');
-    END;
-
-    DROP TRIGGER IF EXISTS trg_audit_log_immutable_delete;
-    CREATE TRIGGER trg_audit_log_immutable_delete
-    BEFORE DELETE ON audit_log
-    BEGIN
-      SELECT RAISE(ABORT, 'Audit log tidak boleh dihapus.');
-    END;
-
-    DROP TRIGGER IF EXISTS trg_tutup_buku_immutable_delete;
-    CREATE TRIGGER trg_tutup_buku_immutable_delete
-    BEFORE DELETE ON tutup_buku
-    BEGIN
-      SELECT RAISE(ABORT, 'Tutup buku tidak boleh dihapus.');
-    END;
-  `);
-}
+function terapkanAturanV11(_db: Database.Database): void {}
 
 /**
  * DB-33 — tabel modul yang sudah dihapus dan disetujui untuk dibuang pada v12.
@@ -556,13 +457,12 @@ const JENIS_JURNAL_SQL = JENIS_JURNAL.map((jenis) => `'${jenis}'`).join(', ');
  *    tidak naik dan tidak ada data yang dihapus/diubah.
  * 2. Pasang partial unique index agar dua reversal untuk jurnal yang sama
  *    ditolak DB, termasuk INSERT mentah yang melewati repository.
- * 3. Pasang ulang trigger validasi `BEFORE INSERT` dengan pola DROP + CREATE
- *    (DB-07). Trigger hanya pertahanan terakhir: `jenis` wajib salah satu dari
- *    `JENIS_JURNAL` dan `tanggal` wajib berbentuk `YYYY-MM-DD`. Tabel `jurnal`
- *    TIDAK direbuild di sini.
+ * 3. Trigger validasi `BEFORE INSERT` (`jenis` resmi dan `tanggal`
+ *    `YYYY-MM-DD`) kini didefinisikan di `DDL_TRIGGER`. Tabel `jurnal` TIDAK
+ *    direbuild di sini.
  *
- * Idempoten: index memakai `IF NOT EXISTS`, trigger selalu dibuat ulang, dan
- * pemeriksaan duplikat aman dijalankan berulang.
+ * Idempoten: index memakai `IF NOT EXISTS` dan pemeriksaan duplikat aman
+ * dijalankan berulang.
  */
 function terapkanMigrasiV14(db: Database.Database): void {
   const duplikat = db
@@ -581,16 +481,6 @@ function terapkanMigrasiV14(db: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_reversal
       ON jurnal(reversal_of)
       WHERE reversal_of IS NOT NULL;
-
-    DROP TRIGGER IF EXISTS trg_jurnal_validasi_insert;
-    CREATE TRIGGER trg_jurnal_validasi_insert
-    BEFORE INSERT ON jurnal
-    BEGIN
-      SELECT RAISE(ABORT, '${PESAN_JENIS_JURNAL_DB}')
-      WHERE NEW.jenis NOT IN (${JENIS_JURNAL_SQL});
-      SELECT RAISE(ABORT, '${PESAN_TANGGAL_JURNAL_DB}')
-      WHERE NEW.tanggal NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]';
-    END;
   `);
 }
 
@@ -631,6 +521,154 @@ const POSISI_NORMAL_SQL = Object.entries(POSISI_NORMAL)
   .join(' ');
 
 /**
+ * DDL trigger kanonik skema v1.
+ *
+ * Semua trigger didefinisikan di sini lalu diinterpolasi ke `DDL` melalui
+ * `DDL_TRIGGER`, sehingga `db.exec(DDL)` pada DB baru langsung membuat tabel +
+ * index + trigger. Pola `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` (bukan
+ * `IF NOT EXISTS`) membuat definisi selalu mengikuti kode, aman dijalankan
+ * ulang, dan memulihkan trigger yang hilang.
+ */
+export const DDL_TRIGGER = `
+DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_insert;
+CREATE TRIGGER trg_jurnal_baris_satu_sisi_insert
+BEFORE INSERT ON jurnal_baris
+WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+  OR NEW.debit < 0 OR NEW.kredit < 0
+  OR (NEW.debit = 0 AND NEW.kredit = 0)
+  OR (NEW.debit > 0 AND NEW.kredit > 0)
+BEGIN
+  SELECT CASE
+    WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+      THEN RAISE(ABORT, 'Nilai debit/kredit jurnal harus bilangan bulat (integer), bukan pecahan.')
+    WHEN NEW.debit < 0 OR NEW.kredit < 0
+      THEN RAISE(ABORT, 'Nilai debit/kredit jurnal tidak boleh negatif.')
+    WHEN NEW.debit = 0 AND NEW.kredit = 0
+      THEN RAISE(ABORT, 'Baris jurnal harus mengisi salah satu sisi: debit atau kredit lebih dari 0.')
+    ELSE RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.')
+  END;
+END;
+
+DROP TRIGGER IF EXISTS trg_jurnal_baris_satu_sisi_update;
+CREATE TRIGGER trg_jurnal_baris_satu_sisi_update
+BEFORE UPDATE ON jurnal_baris
+WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+  OR NEW.debit < 0 OR NEW.kredit < 0
+  OR (NEW.debit = 0 AND NEW.kredit = 0)
+  OR (NEW.debit > 0 AND NEW.kredit > 0)
+BEGIN
+  SELECT CASE
+    WHEN typeof(NEW.debit) <> 'integer' OR typeof(NEW.kredit) <> 'integer'
+      THEN RAISE(ABORT, 'Nilai debit/kredit jurnal harus bilangan bulat (integer), bukan pecahan.')
+    WHEN NEW.debit < 0 OR NEW.kredit < 0
+      THEN RAISE(ABORT, 'Nilai debit/kredit jurnal tidak boleh negatif.')
+    WHEN NEW.debit = 0 AND NEW.kredit = 0
+      THEN RAISE(ABORT, 'Baris jurnal harus mengisi salah satu sisi: debit atau kredit lebih dari 0.')
+    ELSE RAISE(ABORT, 'Baris jurnal tidak boleh mengisi debit dan kredit sekaligus. Isi salah satu saja.')
+  END;
+END;
+
+DROP TRIGGER IF EXISTS trg_jurnal_immutable_update;
+CREATE TRIGGER trg_jurnal_immutable_update
+BEFORE UPDATE ON jurnal
+BEGIN
+  SELECT RAISE(ABORT, 'Jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
+END;
+
+DROP TRIGGER IF EXISTS trg_jurnal_immutable_delete;
+CREATE TRIGGER trg_jurnal_immutable_delete
+BEFORE DELETE ON jurnal
+BEGIN
+  SELECT RAISE(ABORT, 'Jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
+END;
+
+DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_update;
+CREATE TRIGGER trg_jurnal_baris_immutable_update
+BEFORE UPDATE ON jurnal_baris
+BEGIN
+  SELECT RAISE(ABORT, 'Baris jurnal tidak boleh diubah. Koreksi dilakukan dengan jurnal balik (reversal).');
+END;
+
+DROP TRIGGER IF EXISTS trg_jurnal_baris_immutable_delete;
+CREATE TRIGGER trg_jurnal_baris_immutable_delete
+BEFORE DELETE ON jurnal_baris
+BEGIN
+  SELECT RAISE(ABORT, 'Baris jurnal tidak boleh dihapus. Koreksi dilakukan dengan jurnal balik (reversal).');
+END;
+
+DROP TRIGGER IF EXISTS trg_jurnal_validasi_insert;
+CREATE TRIGGER trg_jurnal_validasi_insert
+BEFORE INSERT ON jurnal
+BEGIN
+  SELECT RAISE(ABORT, '${PESAN_JENIS_JURNAL_DB}')
+  WHERE NEW.jenis NOT IN (${JENIS_JURNAL_SQL});
+  SELECT RAISE(ABORT, '${PESAN_TANGGAL_JURNAL_DB}')
+  WHERE NEW.tanggal NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]';
+END;
+
+DROP TRIGGER IF EXISTS trg_akun_validasi_insert;
+CREATE TRIGGER trg_akun_validasi_insert
+BEFORE INSERT ON akun
+BEGIN
+  SELECT RAISE(ABORT, '${PESAN_KODE_AKUN_DB}')
+  WHERE NEW.kode IS NULL OR NEW.kode NOT GLOB '[0-9][0-9][0-9][0-9]';
+  SELECT RAISE(ABORT, '${PESAN_NAMA_AKUN_DB}')
+  WHERE NEW.nama IS NULL OR length(trim(NEW.nama)) = 0;
+  SELECT RAISE(ABORT, '${PESAN_TIPE_AKUN_DB}')
+  WHERE NEW.tipe IS NULL OR NEW.tipe NOT IN (${TIPE_AKUN_SQL});
+  SELECT RAISE(ABORT, '${PESAN_POSISI_AKUN_DB}')
+  WHERE NEW.posisi_normal IS NULL
+     OR NEW.posisi_normal <> CASE NEW.tipe ${POSISI_NORMAL_SQL} END;
+  SELECT RAISE(ABORT, '${PESAN_AKTIF_AKUN_DB}')
+  WHERE NEW.aktif IS NULL OR NEW.aktif NOT IN (0, 1);
+END;
+
+DROP TRIGGER IF EXISTS trg_akun_validasi_update;
+CREATE TRIGGER trg_akun_validasi_update
+BEFORE UPDATE ON akun
+BEGIN
+  SELECT RAISE(ABORT, '${PESAN_KODE_AKUN_DB}')
+  WHERE NEW.kode IS NULL OR NEW.kode NOT GLOB '[0-9][0-9][0-9][0-9]';
+  SELECT RAISE(ABORT, '${PESAN_NAMA_AKUN_DB}')
+  WHERE NEW.nama IS NULL OR length(trim(NEW.nama)) = 0;
+  SELECT RAISE(ABORT, '${PESAN_TIPE_AKUN_DB}')
+  WHERE NEW.tipe IS NULL OR NEW.tipe NOT IN (${TIPE_AKUN_SQL});
+  SELECT RAISE(ABORT, '${PESAN_POSISI_AKUN_DB}')
+  WHERE NEW.posisi_normal IS NULL
+     OR NEW.posisi_normal <> CASE NEW.tipe ${POSISI_NORMAL_SQL} END;
+  SELECT RAISE(ABORT, '${PESAN_AKTIF_AKUN_DB}')
+  WHERE NEW.aktif IS NULL OR NEW.aktif NOT IN (0, 1);
+END;
+
+DROP TRIGGER IF EXISTS trg_audit_log_immutable_update;
+CREATE TRIGGER trg_audit_log_immutable_update
+BEFORE UPDATE ON audit_log
+BEGIN
+  SELECT RAISE(ABORT, 'Audit log tidak boleh diubah.');
+END;
+
+DROP TRIGGER IF EXISTS trg_audit_log_immutable_delete;
+CREATE TRIGGER trg_audit_log_immutable_delete
+BEFORE DELETE ON audit_log
+BEGIN
+  SELECT RAISE(ABORT, 'Audit log tidak boleh dihapus.');
+END;
+
+DROP TRIGGER IF EXISTS trg_tutup_buku_immutable_delete;
+CREATE TRIGGER trg_tutup_buku_immutable_delete
+BEFORE DELETE ON tutup_buku
+BEGIN
+  SELECT RAISE(ABORT, 'Tutup buku tidak boleh dihapus.');
+END;
+`;
+
+/**
+ * DDL kanonik skema v1: 11 tabel + seluruh index + seluruh trigger.
+ * `DDL_TABEL` memuat tabel dan `${DDL_INDEX}`; `DDL_TRIGGER` memuat trigger.
+ */
+export const DDL = DDL_TABEL + DDL_TRIGGER;
+
+/**
  * DB-11 — constraint akun v15.
  *
  * 1. Periksa nama akun duplikat dengan `COLLATE NOCASE` SEBELUM membuat unique
@@ -638,13 +676,12 @@ const POSISI_NORMAL_SQL = Object.entries(POSISI_NORMAL)
  *    `user_version` tidak naik dan tidak ada data yang dihapus/diubah.
  * 2. Pasang unique index agar nama akun unik tanpa membedakan huruf besar/kecil,
  *    termasuk INSERT/UPDATE mentah yang melewati repository.
- * 3. Pasang ulang trigger `BEFORE INSERT` dan `BEFORE UPDATE` dengan pola
- *    DROP + CREATE (DB-07). Trigger adalah pertahanan terakhir: kode tepat
- *    4 digit, nama tidak kosong, tipe resmi, posisi normal cocok dengan tipe,
- *    dan aktif hanya 0/1. Tabel `akun` TIDAK direbuild di sini.
+ * 3. Trigger `BEFORE INSERT`/`BEFORE UPDATE` (kode 4 digit, nama tidak kosong,
+ *    tipe resmi, posisi normal cocok, aktif 0/1) kini didefinisikan di
+ *    `DDL_TRIGGER`. Tabel `akun` TIDAK direbuild di sini.
  *
- * Idempoten: index memakai `IF NOT EXISTS`, trigger selalu dibuat ulang, dan
- * pemeriksaan duplikat aman dijalankan berulang.
+ * Idempoten: index memakai `IF NOT EXISTS` dan pemeriksaan duplikat aman
+ * dijalankan berulang.
  */
 function terapkanMigrasiV15(db: Database.Database): void {
   const duplikat = db
@@ -661,40 +698,6 @@ function terapkanMigrasiV15(db: Database.Database): void {
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
       ON akun(nama COLLATE NOCASE);
-
-    DROP TRIGGER IF EXISTS trg_akun_validasi_insert;
-    CREATE TRIGGER trg_akun_validasi_insert
-    BEFORE INSERT ON akun
-    BEGIN
-      SELECT RAISE(ABORT, '${PESAN_KODE_AKUN_DB}')
-      WHERE NEW.kode IS NULL OR NEW.kode NOT GLOB '[0-9][0-9][0-9][0-9]';
-      SELECT RAISE(ABORT, '${PESAN_NAMA_AKUN_DB}')
-      WHERE NEW.nama IS NULL OR length(trim(NEW.nama)) = 0;
-      SELECT RAISE(ABORT, '${PESAN_TIPE_AKUN_DB}')
-      WHERE NEW.tipe IS NULL OR NEW.tipe NOT IN (${TIPE_AKUN_SQL});
-      SELECT RAISE(ABORT, '${PESAN_POSISI_AKUN_DB}')
-      WHERE NEW.posisi_normal IS NULL
-         OR NEW.posisi_normal <> CASE NEW.tipe ${POSISI_NORMAL_SQL} END;
-      SELECT RAISE(ABORT, '${PESAN_AKTIF_AKUN_DB}')
-      WHERE NEW.aktif IS NULL OR NEW.aktif NOT IN (0, 1);
-    END;
-
-    DROP TRIGGER IF EXISTS trg_akun_validasi_update;
-    CREATE TRIGGER trg_akun_validasi_update
-    BEFORE UPDATE ON akun
-    BEGIN
-      SELECT RAISE(ABORT, '${PESAN_KODE_AKUN_DB}')
-      WHERE NEW.kode IS NULL OR NEW.kode NOT GLOB '[0-9][0-9][0-9][0-9]';
-      SELECT RAISE(ABORT, '${PESAN_NAMA_AKUN_DB}')
-      WHERE NEW.nama IS NULL OR length(trim(NEW.nama)) = 0;
-      SELECT RAISE(ABORT, '${PESAN_TIPE_AKUN_DB}')
-      WHERE NEW.tipe IS NULL OR NEW.tipe NOT IN (${TIPE_AKUN_SQL});
-      SELECT RAISE(ABORT, '${PESAN_POSISI_AKUN_DB}')
-      WHERE NEW.posisi_normal IS NULL
-         OR NEW.posisi_normal <> CASE NEW.tipe ${POSISI_NORMAL_SQL} END;
-      SELECT RAISE(ABORT, '${PESAN_AKTIF_AKUN_DB}')
-      WHERE NEW.aktif IS NULL OR NEW.aktif NOT IN (0, 1);
-    END;
   `);
 }
 
@@ -722,10 +725,10 @@ function terapkanMigrasiV16(db: Database.Database): void {
   if (!kolom.has('sumber'))
     db.exec("ALTER TABLE akun ADD COLUMN sumber TEXT NOT NULL DEFAULT 'BAWAAN'");
 
-  // Trigger v15 ikut memvalidasi baris LAMA saat UPDATE. DB sebelum v15 mungkin
-  // masih berisi tipe legacy yang tidak baku; backfill metadata tidak boleh
-  // gagal karenanya. Trigger update dilepas sementara lalu dipasang ulang oleh
-  // `terapkanMigrasiV15` di akhir fungsi ini (dalam transaksi yang sama).
+  // Trigger validasi akun ikut memvalidasi baris LAMA saat UPDATE. DB sebelum
+  // v15 mungkin masih berisi tipe legacy yang tidak baku; backfill metadata
+  // tidak boleh gagal karenanya. Trigger update dilepas sementara; `DDL_TRIGGER`
+  // dipasang lagi oleh `db.exec(DDL)` setelah seluruh langkah migrasi.
   db.exec('DROP TRIGGER IF EXISTS trg_akun_validasi_update');
 
   const kodeBawaan = new Set(COA.map((a) => a.kode));
@@ -758,7 +761,8 @@ function terapkanMigrasiV16(db: Database.Database): void {
     updateTambahan.run(isKas, valid, 'TAMBAHAN', kode);
   }
 
-  // Pasang kembali trigger validasi akun v15 yang sempat dilepas.
+  // Ulangi pemeriksaan duplikat + index nama akun; trigger dipulihkan oleh
+  // `db.exec(DDL)` berikutnya.
   terapkanMigrasiV15(db);
 }
 
@@ -992,7 +996,7 @@ function ddlTargetTabel(nama: string): string {
   const pola = new RegExp(
     `CREATE TABLE IF NOT EXISTS ${nama} \\([\\s\\S]*?\\n\\) STRICT;`,
   );
-  const hasil = DDL.match(pola);
+  const hasil = DDL_TABEL.match(pola);
   if (!hasil) throw new Error(`DDL STRICT untuk tabel ${nama} tidak ditemukan.`);
   return hasil[0];
 }

@@ -67,7 +67,7 @@
     - seluruh index pinjaman.
   - Selesai bila index dibuat dari DDL, bukan dari fungsi migrasi.
 
-- [ ] **T1.4 — DDL trigger kanonik**
+- [x] **T1.4 — DDL trigger kanonik**
   - File: `src/db/database.ts`
   - Pindahkan semua trigger ke `DDL`/`DDL_TRIGGER`:
     - trigger satu sisi + integer + non-negatif pada `jurnal_baris`;
