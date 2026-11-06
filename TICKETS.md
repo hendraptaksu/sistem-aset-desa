@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 4 | 9 |
+| 1 — Data safety | P0 | 5 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **7** | **33** |
+| **Total** |  | **8** | **33** |
 
 ## Aturan kerja
 
@@ -111,7 +111,7 @@
   - **Verifikasi:** `npm test -- tests/skema-kompatibilitas.test.ts tests/skema-strict.test.ts`.
   - **Catatan:** File disentuh: `src/db/database.ts`, `tests/skema-kompatibilitas.test.ts`, `TICKETS.md`. `KOLOM_WAJIB` memetakan 11 `TABEL_AKTIF` ke seluruh kolom kanonik DDL; `kolomWajibHilang` membandingkannya dengan `PRAGMA table_info`. `cekKompatibilitas` mengecek tabel hilang lebih dulu (pesan T1.3 tetap dipakai), lalu kolom hilang, dan melempar `PESAN_DB_KOLOM_TIDAK_LENGKAP` yang menyebut `tabel.kolom` + instruksi memakai backup — sebelum `journal_mode = WAL`/DDL dan tanpa `ALTER TABLE`. Test regresi membuat DB v1 valid, menghapus `pengaturan.nilai` via better-sqlite3, lalu memastikan `openDb` ditolak, byte file identik, tanpa `-wal`/`-shm`, kolom tidak ditambahkan kembali, dan data lain utuh; kasus DB v1 lengkap tetap terbuka. Test penjaga sinkronisasi membandingkan `KOLOM_WAJIB` dengan `PRAGMA table_info` DB baru. Verifikasi: `npm test -- tests/skema-kompatibilitas.test.ts tests/skema-strict.test.ts` (12 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.089 test lulus. Commit `b001349`.
 
-- [ ] **T1.5 — Blokir reversal `SALDO_AWAL` dari jalur umum**
+- [x] **T1.5 — Blokir reversal `SALDO_AWAL` dari jalur umum**
   - **Masalah:** `reverseJurnal` mengizinkan `SALDO_AWAL` dibalik. Dampaknya saldo awal menjadi nol, wizard tetap terkunci karena jurnal `SALDO_AWAL` masih ada, dan saldo awal baru tetap ditolak unique index. Pesan `PESAN_SALDO_AWAL_SUDAH_ADA` menyesatkan karena menyarankan “koreksi/jurnal biasa”.
   - **File:** `src/db/reversal.ts`, `src/core/reversal.ts`, `src/db/saldoAwal.ts`, `src/renderer/components/JurnalTab.tsx`, `src/renderer/components/TransaksiTab.tsx`, `tests/reversal.test.ts`, `tests/saldo-awal.test.ts`.
   - **Langkah:**
@@ -121,7 +121,7 @@
     4. Sembunyikan/nonaktifkan tombol Koreksi untuk saldo awal sampai T1.8 selesai.
   - **Selesai bila:** reversal saldo awal ditolak tanpa menulis jurnal/audit; saldo awal tidak berubah; UI tidak menawarkan aksi yang selalu gagal.
   - **Verifikasi:** `npm test -- tests/reversal.test.ts tests/saldo-awal.test.ts`.
-  - **Catatan:** test `tests/reversal.test.ts:573-631` perlu disesuaikan karena perilaku yang diharapkan berubah.
+  - **Catatan:** File disentuh: `src/core/reversal.ts`, `src/db/reversal.ts`, `src/db/saldoAwal.ts`, `src/renderer/components/JurnalTab.tsx`, `src/renderer/components/TransaksiTab.tsx`, `tests/reversal.test.ts`, `tests/saldo-awal.test.ts`, `tests/audit-pinjaman-regresi.test.ts`, `tests/db-16f-pinjaman-rekonsiliasi.test.ts`, `TICKETS.md`. `PESAN_REVERSAL_SALDO_AWAL` ditambahkan dan diekspor ulang dari `src/db/reversal.ts`; `rencanaUntuk` menolak hanya jurnal berjenis `SALDO_AWAL` sebelum menyusun rencana, sehingga `reverseJurnal` dan `koreksiDanIsiUlang` berhenti tanpa menulis jurnal/audit. Jurnal `UMUM` di grup yang sama tetap bisa dikoreksi (diuji). `PESAN_SALDO_AWAL_SUDAH_ADA` kini mengarah ke alur koreksi saldo awal, bukan jurnal biasa. `JurnalTab` memakai helper `bisaDikoreksiJurnal` untuk menonaktifkan tombol Koreksi pada saldo awal; `TransaksiTab` memakai teks status yang sama. Test lama disesuaikan: `tests/reversal.test.ts:573-631` (dulu mengharapkan rollback unique index, kini mengharapkan penolakan awal + unique index tetap diuji terpisah), `tests/audit-pinjaman-regresi.test.ts` (koreksi saldo pembukaan via jalur umum kini ditolak), dan `tests/db-16f-pinjaman-rekonsiliasi.test.ts` (pembalikan internal disimulasikan lewat insert tervalidasi agar cakupan kredit neto 2050 tetap terjaga). Test regresi baru: penolakan reversal & isi ulang saldo awal tanpa perubahan jurnal/audit/saldo, UMUM satu grup tetap bisa dikoreksi, helper UI menolak saldo awal, dan pesan tidak menyarankan jurnal biasa. Verifikasi: `npm test -- tests/reversal.test.ts tests/saldo-awal.test.ts` (48 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.093 test lulus. Commit `ab19105`.
 
 - [ ] **T1.6 — Putuskan mekanisme koreksi saldo awal**
   - **Masalah:** belum ada alur koreksi yang sah. Dua opsi perlu dipilih sebelum implementasi:
