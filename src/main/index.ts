@@ -3,9 +3,11 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   powerMonitor,
   screen,
   shell,
+  type MenuItemConstructorOptions,
 } from 'electron';
 import { config as loadEnv } from 'dotenv';
 import { basename, isAbsolute, join } from 'path';
@@ -39,7 +41,12 @@ import {
   type AksiPemulihanDb,
 } from './pemulihanDb.js';
 import { opsiUkuranJendela } from './ukuranJendela.js';
-import { urlDiizinkan } from './windowSecurity.js';
+import {
+  opsiDevTools,
+  shortcutDevTools,
+  templateMenuProduksi,
+  urlDiizinkan,
+} from './windowSecurity.js';
 
 let db: Database.Database;
 let win: BrowserWindow | null = null;
@@ -164,6 +171,7 @@ async function printPdfKeFile(
   landscape = false,
 ): Promise<void> {
   let pdfWin: BrowserWindow | null = null;
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
   try {
     pdfWin = new BrowserWindow({
       show: false,
@@ -172,7 +180,12 @@ async function printPdfKeFile(
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // T2.9: hidden window pencetak PDF juga tidak membuka DevTools di produksi.
+        ...opsiDevTools(devUrl),
       },
+    });
+    pdfWin.webContents.on('before-input-event', (event, input) => {
+      if (!devUrl && shortcutDevTools(input)) event.preventDefault();
     });
     await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     const pdf = await pdfWin.webContents.printToPDF({
@@ -291,9 +304,15 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // T2.9: DevTools hanya aktif saat dev; build produksi tidak bisa inspeksi.
+      ...opsiDevTools(devUrl),
     },
   });
 
+  // T2.9: blokir shortcut DevTools di produksi (menu default sudah diganti).
+  win.webContents.on('before-input-event', (event, input) => {
+    if (!devUrl && shortcutDevTools(input)) event.preventDefault();
+  });
   // Cegah window baru (target=_blank/window.open) dari renderer.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // Hanya izinkan navigasi ke dev server aplikasi atau file renderer sendiri.
@@ -326,6 +345,15 @@ function mulaiAplikasi(): void {
   });
 
   void app.whenReady().then(async () => {
+    // T2.9: menu produksi tanpa View/Toggle DevTools. Di dev, menu default
+    // dipertahankan agar DevTools tetap bisa dibuka saat pengembangan.
+    if (!process.env['ELECTRON_RENDERER_URL']) {
+      Menu.setApplicationMenu(
+        Menu.buildFromTemplate(
+          templateMenuProduksi() as unknown as MenuItemConstructorOptions[],
+        ),
+      );
+    }
     const lokasiAktif = lokasiData();
     const pathDb = lokasiAktif.dbPath;
     const log = loggerMain();

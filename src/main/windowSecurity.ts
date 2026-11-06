@@ -59,3 +59,90 @@ export function pengirimDiizinkan(
   const url = senderFrame?.url;
   return typeof url === 'string' && url.length > 0 && urlDiizinkan(url, ctx);
 }
+
+/**
+ * T2.9: DevTools hanya untuk mode dev. `devUrl` hanya diisi
+ * `ELECTRON_RENDERER_URL` saat `electron-vite dev`, sehingga build produksi
+ * (termasuk build portable) mendapat `devTools: false`.
+ */
+export function opsiDevTools(devUrl?: string): { devTools: boolean } {
+  return { devTools: Boolean(String(devUrl ?? '').trim()) };
+}
+
+/** Bentuk minimal input `before-input-event` Electron yang dibutuhkan. */
+export type InputPapanKetik = {
+  type?: string;
+  key?: string;
+  control?: boolean;
+  meta?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+};
+
+/**
+ * T2.9: shortcut pembuka DevTools yang harus diblokir di produksi.
+ * Hanya `keyDown` agar tidak memblokir keyUp dan tidak menelan shortcut lain
+ * seperti Ctrl+Shift+C (copy) atau Cmd+Alt+panah (navigasi kata).
+ */
+export function shortcutDevTools(input: InputPapanKetik): boolean {
+  if (input?.type !== 'keyDown') return false;
+  const key = String(input.key ?? '').toLowerCase();
+  const ctrl = Boolean(input.control);
+  const meta = Boolean(input.meta);
+  const alt = Boolean(input.alt);
+  const shift = Boolean(input.shift);
+
+  if (key === 'f12') return true;
+  if (key !== 'i') return false;
+
+  // Ctrl+Shift+I (Windows/Linux), Cmd+Shift+I (macOS).
+  if (shift && !alt && (ctrl || meta)) return true;
+  // Cmd+Alt+I (macOS), Ctrl+Alt+I (Windows/Linux).
+  if (alt && !shift && (ctrl || meta)) return true;
+  return false;
+}
+
+/** Item menu minimal yang cukup untuk `Menu.buildFromTemplate` Electron. */
+export type ItemMenuProduksi = {
+  role?: string;
+  label?: string;
+  accelerator?: string;
+  type?: string;
+  submenu?: ItemMenuProduksi[];
+};
+
+/**
+ * T2.9: template menu produksi tanpa `viewMenu`/`toggleDevTools`. Menu default
+ * Electron menyertakan Toggle Developer Tools; template ini mempertahankan
+ * menu aplikasi, edit (undo/cut/copy/paste/select all), dan window agar
+ * pengguna tetap bisa bekerja normal.
+ */
+export function templateMenuProduksi(): ItemMenuProduksi[] {
+  const template: ItemMenuProduksi[] = [];
+
+  if (process.platform === 'darwin') template.push({ role: 'appMenu' });
+
+  template.push({
+    label: 'File',
+    submenu: process.platform === 'darwin'
+      ? [{ role: 'close' }]
+      : [{ role: 'quit' }],
+  });
+  // Menu edit ditulis eksplisit agar tidak mewarisi item DevTools dan mudah
+  // diuji: copy/paste tetap tersedia untuk pekerjaan operator.
+  template.push({
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+      { role: 'selectAll' },
+    ],
+  });
+  template.push({ role: 'windowMenu' });
+
+  return template;
+}
