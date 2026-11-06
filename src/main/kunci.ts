@@ -1,6 +1,8 @@
 // Kunci aplikasi (main process saja — butuh node:crypto).
 // Model: single laptop, PIN 6 digit. Hash scrypt + salt per-DB, sesi di memori
 // (selalu terkunci saat app dibuka). Brute-force dibatasi: 5x salah → blokir 60 dtk.
+// T2.8: jumlah gagal & waktu blokir ikut disimpan di tabel `pengaturan` agar
+// menutup aplikasi tidak mereset lockout. Ini perlindungan UI, BUKAN enkripsi DB.
 // Reset lupa PIN memakai kode darurat per-install (scrypt + salt). Kode hanya
 // ditampilkan sekali saat dibuat; database tidak pernah menyimpan plaintext.
 
@@ -15,6 +17,8 @@ import {
 } from '../core/pin.js';
 import {
   KUNCI_IDLE_MENIT,
+  KUNCI_KEAMANAN_BLOKIR_SAMPAI,
+  KUNCI_KEAMANAN_GAGAL,
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
   KUNCI_RESET_HASH,
@@ -105,6 +109,56 @@ export function sisaBlokirDetik(kini = Date.now()): number {
   return Math.max(0, Math.ceil((sesi.blokirSampai - kini) / 1000));
 }
 
+// --- Persistensi lockout (T2.8) ---
+// Nilai disimpan sebagai string di tabel `pengaturan`; tidak ada PIN/hash di sini.
+
+function bacaAngkaKeamanan(db: Database.Database, kunci: string): number {
+  const nilai = getPengaturan(db, kunci);
+  if (nilai === null) return 0;
+  const n = Number(nilai);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+/** Tulis state lockout ke DB (0 = bersih). Dipakai `catatGagal` & reset sukses. */
+export function simpanStateBlokir(
+  db: Database.Database,
+  gagal: number,
+  blokirSampai: number,
+): void {
+  setPengaturan(db, KUNCI_KEAMANAN_GAGAL, String(Math.max(0, Math.trunc(gagal))));
+  setPengaturan(
+    db,
+    KUNCI_KEAMANAN_BLOKIR_SAMPAI,
+    String(Math.max(0, Math.trunc(blokirSampai))),
+  );
+}
+
+/** Reset lockout di memori + DB setelah setup/unlock/reset PIN yang sah. */
+export function resetStateBlokir(db: Database.Database): void {
+  sesi.gagal = 0;
+  sesi.blokirSampai = 0;
+  simpanStateBlokir(db, 0, 0);
+}
+
+/**
+ * Muat state lockout dari DB saat startup. Selalu menimpa penuh state memori
+ * (nilai tidak ada = 0) supaya proses/DB baru tidak mewarisi state lama.
+ * Blokir yang sudah kedaluwarsa dibersihkan dari DB agar UI tidak menampilkan
+ * sisa blokir palsu setelah restart.
+ */
+export function muatStateBlokir(db: Database.Database, kini = Date.now()): void {
+  const gagal = Math.min(bacaAngkaKeamanan(db, KUNCI_KEAMANAN_GAGAL), MAKS_GAGAL - 1);
+  const blokirSampai = bacaAngkaKeamanan(db, KUNCI_KEAMANAN_BLOKIR_SAMPAI);
+  if (blokirSampai > 0 && blokirSampai <= kini) {
+    sesi.gagal = 0;
+    sesi.blokirSampai = 0;
+    simpanStateBlokir(db, 0, 0);
+    return;
+  }
+  sesi.gagal = gagal;
+  sesi.blokirSampai = blokirSampai;
+}
+
 /** Catat aktivitas sesi yang sah. Tidak pernah menyimpan PIN atau data sensitif. */
 export function sentuhAktivitas(kini = Date.now()): void {
   sesi.terakhirAktivitas = kini;
@@ -159,6 +213,9 @@ export function statusKunci(db: Database.Database): {
   blokirDetik: number;
   kodeDaruratDiatur: boolean;
 } {
+  // Blokir yang sudah lewat dibersihkan juga dari DB agar restart berikutnya
+  // tidak menampilkan sisa blokir lama.
+  if (sesi.blokirSampai > 0 && sisaBlokirDetik() === 0) resetStateBlokir(db);
   return {
     sudahSetup: sudahSetupPin(db),
     terbuka: sesi.terbuka,
@@ -174,13 +231,16 @@ const cekBlokir = (): string | null => {
   return sisa > 0 ? `Terlalu banyak salah. Coba lagi dalam ${sisa} detik.` : null;
 };
 
-const catatGagal = (): string => {
+const catatGagal = (db: Database.Database): string => {
   sesi.gagal += 1;
   if (sesi.gagal >= MAKS_GAGAL) {
     sesi.blokirSampai = Date.now() + TUNDA_BLOKIR_MS;
     sesi.gagal = 0;
+    simpanStateBlokir(db, 0, sesi.blokirSampai);
     return `Terlalu banyak salah. Terkunci ${TUNDA_BLOKIR_MS / 1000} detik.`;
   }
+  // Simpan juga saat belum mencapai batas agar restart tidak mereset hitungan.
+  simpanStateBlokir(db, sesi.gagal, 0);
   return `PIN salah. Sisa coba: ${MAKS_GAGAL - sesi.gagal}x.`;
 };
 
@@ -239,6 +299,7 @@ export function setupPin(db: Database.Database, pin: string): string | null {
       'PENGATURAN-KODE-DARURAT',
       'Kode darurat dibuat saat setup PIN',
     );
+    simpanStateBlokir(db, 0, 0);
   });
   tx();
   kodeDaruratSekali = kode;
@@ -275,10 +336,9 @@ export function bukaKunci(db: Database.Database, pin: string): string | null {
   const salt = getPengaturan(db, KUNCI_PIN_SALT);
   const hash = getPengaturan(db, KUNCI_PIN_HASH);
   if (!salt || !hash) return 'Data PIN rusak. Pakai kode darurat untuk reset.';
-  if (!verifikasiHash(pin, salt, hash)) return catatGagal();
+  if (!verifikasiHash(pin, salt, hash)) return catatGagal(db);
   sesi.terbuka = true;
-  sesi.gagal = 0;
-  sesi.blokirSampai = 0;
+  resetStateBlokir(db);
   sentuhAktivitas();
   return null;
 }
@@ -298,8 +358,11 @@ export function ubahPin(db: Database.Database, lama: string, baru: string): stri
   const tx = db.transaction(() => {
     simpanPin(db, baru);
     catatAuditPin(db, 'PENGATURAN-PIN', 'PIN diganti');
+    simpanStateBlokir(db, 0, 0);
   });
   tx();
+  sesi.gagal = 0;
+  sesi.blokirSampai = 0;
   return null;
 }
 
@@ -334,6 +397,7 @@ export function resetPaksa(db: Database.Database, kode: string, pinBaru: string)
   const tx = db.transaction(() => {
     simpanPin(db, pinBaru);
     catatAuditPin(db, 'PENGATURAN-RESET-PIN', 'PIN direset dengan kode darurat');
+    simpanStateBlokir(db, 0, 0);
   });
   tx();
   sesi.terbuka = true;

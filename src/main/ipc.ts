@@ -140,6 +140,7 @@ import {
   bukaKunci,
   gantiKodeDarurat,
   kunciLagi,
+  muatStateBlokir,
   resetPaksa,
   sentuhAktivitas,
   sesi,
@@ -193,6 +194,11 @@ export type IpcDeps = {
 export function registerIpc(deps: IpcDeps): void {
   const sekarang = (): Date => deps.now?.() ?? new Date();
   const tanggalSekarang = (): string => tanggalLokal(sekarang());
+
+  // T2.8: muat lockout PIN yang dipersist sebelum renderer meminta lock:status.
+  // Dipilih di sini (bukan index.ts) karena registerIpc selalu berjalan setelah
+  // DB dibuka dan menjadi satu-satunya jalur startup yang juga dipakai test IPC.
+  muatStateBlokir(deps.db());
 
   const ok = <T>(data: T) => ({ ok: true as const, data });
   const fail = (error: string, perluAlasan = false, perluKonfirmasi = false) => ({
@@ -1797,6 +1803,8 @@ export function registerIpc(deps: IpcDeps): void {
         deps.log?.warn('[restore] gagal menulis audit', e);
       }
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
+      // T2.8: lockout mengikuti DB hasil restore, bukan state DB lama.
+      muatStateBlokir(deps.db());
       kunciLagi();
       deps.log?.info(
         `Restore berhasil dari ${basename(src)}; cadangan pra-restore: ${basename(hasil.preRestorePath)}`,
@@ -1848,6 +1856,8 @@ export function registerIpc(deps: IpcDeps): void {
         deps.log?.warn('[restore-lengkap] gagal menulis audit', e);
       }
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
+      // T2.8: lockout mengikuti DB hasil restore, bukan state DB lama.
+      muatStateBlokir(deps.db());
       kunciLagi();
       deps.log?.info(
         `Restore lengkap berhasil dari ${basename(sumber)}; cadangan pra-restore: ${basename(hasil.preRestorePath)}`,

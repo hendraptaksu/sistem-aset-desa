@@ -1051,6 +1051,9 @@ export const KUNCI_PIN_HASH = 'pin_hash';
 export const KUNCI_RESET_SALT = 'reset_salt';
 export const KUNCI_RESET_HASH = 'reset_hash';
 export const KUNCI_IDLE_MENIT = 'idle_menit';
+/** T2.8: lockout PIN bertahan setelah restart (bukan enkripsi DB). */
+export const KUNCI_KEAMANAN_GAGAL = 'keamanan_gagal';
+export const KUNCI_KEAMANAN_BLOKIR_SAMPAI = 'keamanan_blokir_sampai';
 
 export function getPengaturan(db: Database.Database, kunci: string): string | null {
   const r = db.prepare('SELECT nilai FROM pengaturan WHERE kunci = ?').get(kunci) as {

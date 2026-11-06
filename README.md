@@ -164,6 +164,12 @@ Rincian ada di `docs/panduan-portable.md`.
 
 - **PIN = kunci akses, bukan enkripsi.** Hash PIN disimpan di database; isi
   database tetap teks/SQLite biasa. PIN tidak melindungi file yang dicuri.
+- **Lockout PIN bertahan setelah restart, tetapi tetap bukan enkripsi.** Setelah
+  5 kali PIN salah, aplikasi memblokir percobaan selama 60 detik dan menyimpan
+  hitungan gagal/waktu blokir di tabel `pengaturan`. Menutup lalu membuka
+  aplikasi tidak mereset lockout, sehingga tebak PIN tidak bisa diulang tanpa
+  batas. Perlindungan ini hanya untuk UI; isi database dan backup tetap tidak
+  terenkripsi dan harus diamankan di level OS/media.
 - **Kode darurat dibuat per-install.** Saat setup PIN pertama, aplikasi membuat
   kode acak 4 grup, menyimpan hash+salt scrypt, dan menampilkan kode itu **sekali**
   untuk dicatat di dokumen fisik. Tidak ada kode default/global atau override
