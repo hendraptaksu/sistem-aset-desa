@@ -100,18 +100,129 @@ function buangFileDb(path: string): void {
   buangSidecarDb(path);
 }
 
+/** Penanda error verifikasi backup; pesannya sudah siap tampil ke operator. */
+class BackupTidakValidError extends Error {}
+
+/** Error verifikasi berbahasa Indonesia yang menyebut tahap yang gagal. */
+function gagalVerifikasiBackup(tahap: string, rincian?: string): BackupTidakValidError {
+  const ekstra = rincian ? ` (${rincian})` : '';
+  return new BackupTidakValidError(
+    `Backup tidak valid: ${tahap} gagal${ekstra}. Backup lama tidak diganti.`,
+  );
+}
+
+/**
+ * Jalankan satu tahap verifikasi; error teknis SQLite diubah menjadi pesan
+ * Indonesia yang menyebut tahapnya, sedangkan error verifikasi diteruskan.
+ */
+function tahapVerifikasi<T>(nama: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof BackupTidakValidError) throw e;
+    throw gagalVerifikasiBackup(nama, pesanError(e, 'tidak bisa dibaca'));
+  }
+}
+
+/**
+ * T3.1 — verifikasi isi file backup sebelum menggantikan backup lama.
+ *
+ * Membuka file dengan koneksi readonly (`fileMustExist`) supaya tidak menulis
+ * WAL/DDL ke kandidat backup, lalu memeriksa:
+ * 1. `PRAGMA integrity_check` = `ok`;
+ * 2. `PRAGMA foreign_key_check` kosong (tidak ada baris yatim);
+ * 3. `user_version` = `SCHEMA_VERSION`;
+ * 4. seluruh `TABEL_AKTIF` ada sebagai tabel di `sqlite_master`.
+ *
+ * Melempar `Error` Indonesia yang menyebut backup tidak valid dan tahap yang
+ * gagal. Sengaja tidak memakai `openDb` karena fungsi itu bisa menulis WAL/DDL
+ * ke file backup.
+ */
+export function verifikasiFileBackup(path: string): void {
+  let db: Database.Database | null = null;
+  try {
+    db = tahapVerifikasi('membuka file backup', () =>
+      new Database(path, { readonly: true, fileMustExist: true }),
+    );
+    const koneksi = db;
+
+    tahapVerifikasi('integrity_check', () => {
+      const hasil = koneksi.pragma('integrity_check') as {
+        integrity_check: string;
+      }[];
+      const pesan = hasil.map((r) => String(r.integrity_check)).join('; ');
+      if (pesan.toLowerCase() !== 'ok')
+        throw gagalVerifikasiBackup('integrity_check', pesan || 'tidak ada hasil');
+    });
+
+    tahapVerifikasi('foreign_key_check', () => {
+      const pelanggaran = koneksi.pragma('foreign_key_check') as PelanggaranFk[];
+      if (pelanggaran.length > 0) {
+        const rincian = pelanggaran
+          .slice(0, 5)
+          .map((r) => `tabel ${r.table} baris ${r.rowid ?? '-'} -> ${r.parent}`)
+          .join(', ');
+        throw gagalVerifikasiBackup(
+          'foreign_key_check',
+          `${pelanggaran.length} baris yatim: ${rincian}`,
+        );
+      }
+    });
+
+    tahapVerifikasi('versi skema (user_version)', () => {
+      const versi = Number(koneksi.pragma('user_version', { simple: true }) ?? 0);
+      if (versi !== SCHEMA_VERSION)
+        throw gagalVerifikasiBackup(
+          'versi skema (user_version)',
+          `ditemukan v${versi}, seharusnya v${SCHEMA_VERSION}`,
+        );
+    });
+
+    tahapVerifikasi('tabel wajib', () => {
+      const tabel = new Set(
+        (
+          koneksi
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .all() as { name: string }[]
+        ).map((r) => r.name),
+      );
+      const kurang = TABEL_AKTIF.filter((t) => !tabel.has(t));
+      if (kurang.length > 0)
+        throw gagalVerifikasiBackup(
+          'tabel wajib',
+          `tabel ${kurang.join(', ')} tidak ditemukan`,
+        );
+    });
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* kandidat readonly; aman diabaikan */
+    }
+  }
+}
+
 /**
  * Backup aman dari koneksi yang sedang terbuka: `VACUUM INTO` menghasilkan
  * satu file konsisten (termasuk isi WAL), tanpa menghentikan aplikasi.
  *
  * Hasil VACUUM ditulis ke file sementara `<dest>.tmp-<pid>-<timestamp>` lebih
- * dulu. Setelah tmp valid, backup lama dipindahkan ke `<dest>.bak-<pid>` lalu
- * tmp di-rename menjadi `<dest>`. Dengan urutan ini kegagalan VACUUM atau
- * rename tidak menghapus backup lama. Bila rename gagal, backup lama
+ * dulu. T3.1: isi tmp diverifikasi (`verifikasiFileBackup`) sebelum menyentuh
+ * `dest`; bila verifikasi gagal, tmp dibuang dan backup lama tidak disentuh.
+ * Setelah tmp valid, backup lama dipindahkan ke `<dest>.bak-<pid>` lalu tmp
+ * di-rename menjadi `<dest>`. Dengan urutan ini kegagalan VACUUM, verifikasi,
+ * atau rename tidak menghapus backup lama. Bila rename gagal, backup lama
  * dikembalikan dan tmp dipertahankan untuk diagnosis. Path di-escape agar aman
  * untuk nama folder yang mengandung tanda kutip.
+ *
+ * Parameter `verifikasi` adalah seam test (T3.1); pemanggil produksi cukup
+ * memakai default `verifikasiFileBackup`.
  */
-export function backupVacuumInto(db: Database.Database, dest: string): string {
+export function backupVacuumInto(
+  db: Database.Database,
+  dest: string,
+  verifikasi: (path: string) => void = verifikasiFileBackup,
+): string {
   // T1.1: jangan pernah menimpa DB aktif (atau sidecar WAL/SHM-nya). Koneksi
   // SQLite tetap menulis ke inode lama, sehingga jurnal baru hilang saat dibuka
   // ulang. Guard harus berjalan sebelum VACUUM INTO menyentuh apa pun.
@@ -124,8 +235,11 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
     db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
     if (!existsSync(tmp) || !statSync(tmp).isFile() || statSync(tmp).size === 0)
       throw new Error('VACUUM INTO tidak menghasilkan file backup yang valid.');
+    // T3.1: verifikasi isi tmp sebelum menimpa `dest`. Bila gagal, tmp dibuang
+    // dan backup lama tetap utuh (lihat catch di bawah).
+    verifikasi(tmp);
   } catch (e) {
-    // Jangan tinggalkan file sementara/parsial saat VACUUM gagal.
+    // Jangan tinggalkan file sementara/parsial saat VACUUM/verifikasi gagal.
     buangFileDb(tmp);
     throw e;
   }
