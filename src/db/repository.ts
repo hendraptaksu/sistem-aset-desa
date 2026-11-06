@@ -18,6 +18,7 @@ import {
 } from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
 import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
+import { kemampuanKoreksiJurnal } from './kemampuanKoreksi.js';
 import {
   AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
   COA,
@@ -759,12 +760,19 @@ export type JurnalLengkap = Jurnal & {
   total_debit: number;
   /** ID jurnal balik yang sudah ada untuk jurnal ini (null = belum dikoreksi). */
   reversal_id: string | null;
+  /** T2.2: capability dari backend, bukan tebakan UI dari `jenis`/akun. */
+  bisa_dibalik: boolean;
+  bisa_dikoreksi: boolean;
+  /** Alasan Indonesia bila aksi tidak boleh; null bila keduanya boleh. */
+  alasan_tidak_bisa: string | null;
 };
 
 /**
  * Daftar jurnal beserta barisnya untuk layar Jurnal Umum (P0-6).
- * `reversal_id` menandai jurnal yang sudah dikoreksi agar tombol Koreksi bisa
- * dinonaktifkan tanpa query tambahan di UI.
+ * `reversal_id` menandai jurnal yang sudah dikoreksi, sedangkan
+ * `bisa_dibalik`/`bisa_dikoreksi`/`alasan_tidak_bisa` (T2.2) memberi tombol
+ * aksi aturan yang sama dengan backend. Jurnal dibaca ulang oleh helper agar
+ * data renderer yang basi tidak membuka aksi yang pasti gagal.
  */
 export function listJurnalLengkap(
   db: Database.Database,
@@ -779,11 +787,15 @@ export function listJurnalLengkap(
   return listJurnal(db, filter).map((jurnal) => {
     const baris = (ambilBaris.all(jurnal.id) as Record<string, unknown>[]).map(rowToJurnalBaris);
     const reversal = ambilReversal.get(jurnal.id) as { id: string } | undefined;
+    const kemampuan = kemampuanKoreksiJurnal(db, { id: jurnal.id });
     return {
       ...jurnal,
       baris,
       total_debit: baris.reduce((s, b) => s + b.debit, 0),
       reversal_id: reversal ? String(reversal.id) : null,
+      bisa_dibalik: kemampuan.bisaDibalik,
+      bisa_dikoreksi: kemampuan.bisaDikoreksi,
+      alasan_tidak_bisa: kemampuan.alasan,
     };
   });
 }

@@ -63,14 +63,37 @@ const namaAkun = (coa: Coa[], kode: string): string => {
 };
 
 /**
- * T1.5: saldo awal belum punya jalur koreksi yang sah (T1.8), jadi tombol
- * Koreksi tidak ditawarkan. Jurnal UMUM di grup yang sama tetap boleh dikoreksi.
+ * T2.2: capability dari backend dipakai lebih dulu. Fallback lama hanya untuk
+ * objek tanpa field (test/layar lama) agar saldo awal, jurnal balik, dan
+ * jurnal yang sudah dikoreksi tetap tidak menawarkan aksi yang pasti gagal.
  */
+type CapabilityKoreksi = Partial<
+  Pick<JurnalLengkap, 'bisa_dikoreksi' | 'alasan_tidak_bisa'>
+>;
+
 export function bisaDikoreksiJurnal(
-  jurnal: Pick<JurnalLengkap, 'jenis' | 'reversal_of' | 'reversal_id'>,
+  jurnal: Pick<JurnalLengkap, 'jenis' | 'reversal_of' | 'reversal_id'> &
+    CapabilityKoreksi,
 ): boolean {
+  if (typeof jurnal.bisa_dikoreksi === 'boolean') return jurnal.bisa_dikoreksi;
   if (jurnal.reversal_of || jurnal.reversal_id) return false;
   return jurnal.jenis !== 'SALDO_AWAL';
+}
+
+/** Alasan tombol Koreksi nonaktif; undefined bila aksi boleh/objek legacy. */
+export function alasanTidakBisaKoreksi(
+  jurnal: Pick<JurnalLengkap, 'jenis' | 'reversal_of' | 'reversal_id'> &
+    CapabilityKoreksi,
+): string | undefined {
+  if (typeof jurnal.bisa_dikoreksi === 'boolean') {
+    if (jurnal.bisa_dikoreksi) return undefined;
+    return jurnal.alasan_tidak_bisa ?? 'Jurnal ini tidak bisa dikoreksi.';
+  }
+  if (jurnal.reversal_of || jurnal.reversal_id)
+    return 'Jurnal balik / jurnal yang sudah dikoreksi tidak bisa dikoreksi lagi.';
+  if (jurnal.jenis === 'SALDO_AWAL')
+    return 'Saldo awal hanya boleh dikoreksi lewat alur koreksi saldo awal.';
+  return undefined;
 }
 
 type BarisForm = {
@@ -402,8 +425,8 @@ export function JurnalTab({
             </thead>
             <tbody>
               {pageRows.map((j) => {
-                const terkunci = Boolean(j.reversal_of) || Boolean(j.reversal_id);
                 const bisaDikoreksi = bisaDikoreksiJurnal(j);
+                const alasanKoreksi = alasanTidakBisaKoreksi(j);
                 // UI-12: nomor bukti dipakai sebagai konteks aksi baris. Jurnal lama
                 // bisa tanpa no. bukti; tanggal + potongan id menjaga nama tetap unik.
                 const nomorBuktiAksesibel =
@@ -440,13 +463,7 @@ export function JurnalTab({
                           variant="ghost"
                           aria-label={`Koreksi jurnal ${nomorBuktiAksesibel}`}
                           disabled={!bisaDikoreksi}
-                          title={
-                            terkunci
-                              ? 'Jurnal balik / jurnal yang sudah dikoreksi tidak bisa dikoreksi lagi.'
-                              : j.jenis === 'SALDO_AWAL'
-                                ? 'Saldo awal hanya boleh dikoreksi lewat alur koreksi saldo awal.'
-                                : undefined
-                          }
+                          title={alasanKoreksi}
                           onClick={() => {
                             setErr(null);
                             setInfo(null);

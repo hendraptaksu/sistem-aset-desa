@@ -35,6 +35,7 @@ import {
   TransaksiTerakhirCard,
   alasanPembatalanCukup,
   batalkanJurnal,
+  alasanTidakBisaDibatalkan,
   bisaDibatalkan,
   muatTransaksiTerakhir,
   nominalJurnal,
@@ -76,6 +77,9 @@ function jurnal(
     ],
     total_debit: nominal,
     reversal_id: null,
+    bisa_dibalik: true,
+    bisa_dikoreksi: true,
+    alasan_tidak_bisa: null,
     ...over,
   };
 }
@@ -109,7 +113,13 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
   it('menampilkan kolom, nominal, status, dan aksi untuk jurnal aktif', () => {
     const html = renderKartu([
       jurnal('j1', { jenis: 'TERIMA', no_bukti: 'JU-2026-0001' }),
-      jurnal('j2', { jenis: 'PANJAR', no_bukti: 'PJ-2026-0001' }),
+      jurnal('j2', {
+        jenis: 'PANJAR',
+        no_bukti: 'PJ-2026-0001',
+        bisa_dibalik: false,
+        bisa_dikoreksi: false,
+        alasan_tidak_bisa: 'Gunakan modul Panjar.',
+      }),
     ]);
 
     expect(html).toContain('Transaksi Terakhir yang Dicatat');
@@ -129,12 +139,40 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
 
   it('menandai jurnal balik / sudah dikoreksi tanpa tombol pembatalan', () => {
     const html = renderKartu([
-      jurnal('rev', { jenis: 'REVERSAL', reversal_of: 'j1' }),
-      jurnal('lama', { reversal_id: 'rev' }),
+      jurnal('rev', {
+        jenis: 'REVERSAL',
+        reversal_of: 'j1',
+        bisa_dibalik: false,
+        bisa_dikoreksi: false,
+        alasan_tidak_bisa: 'Jurnal balik tidak bisa dibatalkan.',
+      }),
+      jurnal('lama', {
+        reversal_id: 'rev',
+        bisa_dibalik: false,
+        bisa_dikoreksi: false,
+        alasan_tidak_bisa: 'Jurnal sudah dikoreksi.',
+      }),
     ]);
 
     expect(html).toContain('Jurnal balik');
     expect(html).toContain('Sudah dikoreksi');
+    expect(html).not.toContain('Batalkan / Salah Input');
+  });
+
+  it('menampilkan alasan tidak bisa dibatalkan tanpa tombol yang selalu gagal', () => {
+    const html = renderKartu([
+      jurnal('bunga', {
+        jenis: 'HUTANG',
+        bisa_dibalik: false,
+        bisa_dikoreksi: false,
+        alasan_tidak_bisa:
+          'Jurnal ini terhubung ke pinjaman. Gunakan menu Pinjaman LPD.',
+      }),
+    ]);
+
+    expect(html).toContain(
+      'Jurnal ini terhubung ke pinjaman. Gunakan menu Pinjaman LPD.',
+    );
     expect(html).not.toContain('Batalkan / Salah Input');
   });
 
@@ -158,39 +196,62 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
 });
 
 describe('AUD2-13 — aturan pembatalan cepat', () => {
-  it('hanya jurnal aktif non-panjar/pinjaman yang boleh dibatalkan', () => {
+  it('memakai capability flag backend lebih dulu', () => {
     expect(bisaDibatalkan(jurnal('umum'))).toBe(true);
     expect(
-      bisaDibatalkan(jurnal('terima', { jenis: 'TERIMA' })),
+      bisaDibatalkan(jurnal('panjar', { jenis: 'PANJAR', bisa_dibalik: true })),
     ).toBe(true);
-    expect(bisaDibatalkan(jurnal('panjar', { jenis: 'PANJAR' }))).toBe(false);
     expect(
-      bisaDibatalkan(jurnal('saldo-awal', { jenis: 'SALDO_AWAL' })),
+      bisaDibatalkan(
+        jurnal('umum', {
+          bisa_dibalik: false,
+          alasan_tidak_bisa: 'Gunakan modul Pinjaman.',
+        }),
+      ),
     ).toBe(false);
     expect(
-      bisaDibatalkan(jurnal('balik', { jenis: 'REVERSAL', reversal_of: 'x' })),
-    ).toBe(false);
-    expect(bisaDibatalkan(jurnal('koreksi', { reversal_id: 'rev' }))).toBe(
-      false,
-    );
+      alasanTidakBisaDibatalkan(
+        jurnal('umum', {
+          bisa_dibalik: false,
+          alasan_tidak_bisa: 'Gunakan modul Pinjaman.',
+        }),
+      ),
+    ).toBe('Gunakan modul Pinjaman.');
+    expect(alasanTidakBisaDibatalkan(jurnal('umum'))).toBeUndefined();
+  });
+
+  it('fallback daftar jenis untuk objek tanpa field capability', () => {
+    const lama = (
+      jenis: JurnalLengkap['jenis'],
+      over: Partial<
+        Pick<JurnalLengkap, 'baris' | 'reversal_of' | 'reversal_id'>
+      > = {},
+    ) => ({
+      jenis,
+      baris: [] as JurnalBaris[],
+      reversal_of: null as string | null,
+      reversal_id: null as string | null,
+      ...over,
+    });
+
+    expect(bisaDibatalkan(lama('UMUM'))).toBe(true);
+    expect(bisaDibatalkan(lama('TERIMA'))).toBe(true);
+    expect(bisaDibatalkan(lama('PANJAR'))).toBe(false);
+    expect(bisaDibatalkan(lama('SALDO_AWAL'))).toBe(false);
+    expect(bisaDibatalkan(lama('REVERSAL', { reversal_of: 'x' }))).toBe(false);
+    expect(bisaDibatalkan(lama('UMUM', { reversal_id: 'rev' }))).toBe(false);
 
     // HUTANG 2050 = pinjaman LPD; HUTANG 2060 = utang usaha biasa.
     expect(
       bisaDibatalkan(
-        jurnal('pinjaman', {
-          jenis: 'HUTANG',
-          baris: [baris(AKUN_HUTANG, 150_000)],
-        }),
+        lama('HUTANG', { baris: [baris(AKUN_HUTANG, 150_000)] }),
       ),
     ).toBe(false);
     expect(
-      bisaDibatalkan(
-        jurnal('utang-usaha', {
-          jenis: 'HUTANG',
-          baris: [baris('2060', 150_000)],
-        }),
-      ),
+      bisaDibatalkan(lama('HUTANG', { baris: [baris('2060', 150_000)] })),
     ).toBe(true);
+    // Objek lama tanpa alasan tidak mengarang alasan.
+    expect(alasanTidakBisaDibatalkan(lama('PANJAR'))).toBeUndefined();
   });
 
   it('menghitung nominal dari total debit baris', () => {

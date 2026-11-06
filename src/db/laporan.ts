@@ -13,6 +13,7 @@ import {
 } from './repository.js';
 import type { JurnalJenis } from '../core/types.js';
 import { kodeKasDariDaftarAkun } from './coa.js';
+import { kemampuanKoreksiJurnal } from './kemampuanKoreksi.js';
 import {
   arusKas,
   bukuBesar,
@@ -230,11 +231,15 @@ export function laporanDetailJurnal(
   const reversal = db
     .prepare('SELECT id FROM jurnal WHERE reversal_of = ? ORDER BY rowid LIMIT 1')
     .get(jurnalId) as { id: string } | undefined;
+  const kemampuan = kemampuanKoreksiJurnal(db, { id: jurnalId });
   return {
     ...detail.jurnal,
     baris: detail.baris,
     total_debit: detail.baris.reduce((s, b) => s + b.debit, 0),
     reversal_id: reversal ? String(reversal.id) : null,
+    bisa_dibalik: kemampuan.bisaDibalik,
+    bisa_dikoreksi: kemampuan.bisaDikoreksi,
+    alasan_tidak_bisa: kemampuan.alasan,
   };
 }
 

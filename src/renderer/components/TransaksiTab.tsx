@@ -153,13 +153,32 @@ export function jurnalTerhubungPinjaman(
   );
 }
 
-/** Hanya jurnal aktif dan bukan dokumen panjar/pinjaman yang boleh dibatalkan. */
+type CapabilityPembatalan = Partial<
+  Pick<JurnalLengkap, 'bisa_dibalik' | 'alasan_tidak_bisa'>
+>;
+
+/**
+ * T2.2: capability backend dipakai lebih dulu. Daftar jenis + heuristik akun
+ * hanya fallback untuk objek tanpa field (test/layar lama).
+ */
 export function bisaDibatalkan(
-  jurnal: Pick<JurnalLengkap, 'jenis' | 'baris' | 'reversal_of' | 'reversal_id'>,
+  jurnal: Pick<JurnalLengkap, 'jenis' | 'baris' | 'reversal_of' | 'reversal_id'> &
+    CapabilityPembatalan,
 ): boolean {
+  if (typeof jurnal.bisa_dibalik === 'boolean') return jurnal.bisa_dibalik;
   if (jurnal.reversal_of || jurnal.reversal_id) return false;
   if (!JENIS_BISA_DIBATALKAN.has(jurnal.jenis)) return false;
   return !jurnalTerhubungPinjaman(jurnal);
+}
+
+/** Alasan baris tidak bisa dibatalkan; undefined bila aksi boleh/objek legacy. */
+export function alasanTidakBisaDibatalkan(
+  jurnal: Pick<JurnalLengkap, 'jenis' | 'baris' | 'reversal_of' | 'reversal_id'> &
+    CapabilityPembatalan,
+): string | undefined {
+  if (typeof jurnal.bisa_dibalik !== 'boolean') return undefined;
+  if (jurnal.bisa_dibalik) return undefined;
+  return jurnal.alasan_tidak_bisa ?? undefined;
 }
 
 export function alasanPembatalanCukup(alasan: string): boolean {
@@ -265,6 +284,8 @@ export function TransaksiTerakhirCard({
               const konteks =
                 jurnal.no_bukti?.trim() ||
                 `${formatTanggal(jurnal.tanggal)} ${jurnal.id.slice(0, 12)}`;
+              const bisaBatal = bisaDibatalkan(jurnal);
+              const alasanBatal = alasanTidakBisaDibatalkan(jurnal);
               return (
                 <tr key={jurnal.id} className="border-b align-top last:border-0">
                   <td className="whitespace-nowrap py-2 pr-3">
@@ -288,6 +309,11 @@ export function TransaksiTerakhirCard({
                     ) : (
                       <Badge tone="stone">Aktif</Badge>
                     )}
+                    {!bisaBatal && alasanBatal && (
+                      <p className="mt-1 max-w-64 text-xs text-stone-500">
+                        {alasanBatal}
+                      </p>
+                    )}
                   </td>
                   <td className="py-2 text-right">
                     <div className="flex flex-wrap justify-end gap-2">
@@ -298,7 +324,7 @@ export function TransaksiTerakhirCard({
                       >
                         Lihat
                       </Button>
-                      {bisaDibatalkan(jurnal) && (
+                      {bisaBatal && (
                         <Button
                           variant="danger-outline"
                           aria-label={`Batalkan transaksi ${konteks}`}

@@ -54,6 +54,11 @@ export type JurnalLengkap = Jurnal & {
   baris: JurnalBaris[];
   total_debit: number;
   reversal_id: string | null;
+  /** T2.2: capability dari backend, bukan tebakan dari `jenis`/akun. */
+  bisa_dibalik: boolean;
+  bisa_dikoreksi: boolean;
+  /** Alasan Indonesia bila aksi tidak boleh; null bila keduanya boleh. */
+  alasan_tidak_bisa: string | null;
 };
 
 /** Filter layar Buku Besar / daftar jurnal per akun (P1-8). */

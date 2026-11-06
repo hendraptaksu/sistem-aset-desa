@@ -8,7 +8,10 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { insertJurnalTervalidasi } from '../src/db/repository.js';
+import {
+  insertJurnalTervalidasi,
+  listJurnalLengkap,
+} from '../src/db/repository.js';
 import { PESAN_REVERSAL } from '../src/core/reversal.js';
 import {
   kemampuanKoreksiJurnal,
@@ -326,6 +329,70 @@ describe('T2.1 — kemampuan koreksi jurnal', () => {
       bisaDikoreksi: false,
       alasan: PESAN_REVERSAL_PINJAMAN,
     });
+  });
+
+  it('DTO listJurnalLengkap membawa flag untuk UMUM, SALDO_AWAL, REVERSAL, dan yang sudah dikoreksi', () => {
+    const db = freshDb();
+    saldoAwal(db);
+    jurnalUmum(db);
+    jurnalUmum(db, 'j-umum-2', '2026-01-04');
+    const balik = reverseJurnal(db, 'j-umum', 'Salah input nominal', {
+      id: 'j-umum-balik',
+      tanggal: '2026-01-03',
+    });
+    expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
+
+    const rows = listJurnalLengkap(db);
+    const cari = (id: string) => {
+      const row = rows.find((j) => j.id === id);
+      expect(row, `jurnal ${id} harus ada`).toBeDefined();
+      return row!;
+    };
+
+    expect(cari('j-umum-2')).toMatchObject({
+      bisa_dibalik: true,
+      bisa_dikoreksi: true,
+      alasan_tidak_bisa: null,
+    });
+    expect(cari('j-modal')).toMatchObject({
+      bisa_dibalik: false,
+      bisa_dikoreksi: false,
+      alasan_tidak_bisa: PESAN_REVERSAL_SALDO_AWAL,
+    });
+    expect(cari('j-umum-balik')).toMatchObject({
+      bisa_dibalik: false,
+      bisa_dikoreksi: false,
+      alasan_tidak_bisa: PESAN_REVERSAL.asliBalik,
+    });
+    expect(cari('j-umum')).toMatchObject({
+      bisa_dibalik: false,
+      bisa_dikoreksi: false,
+      alasan_tidak_bisa: PESAN_REVERSAL.sudahDibalik,
+    });
+  });
+
+  it('DTO flag menolak panjar dan pinjaman (termasuk bunga saja)', () => {
+    const dbPanjar = freshDb();
+    siapkanPanjar(dbPanjar, { tutup: true });
+    const panjarRows = listJurnalLengkap(dbPanjar);
+    for (const id of ['j-p1-open', 'j-p1-close']) {
+      expect(panjarRows.find((j) => j.id === id)).toMatchObject({
+        bisa_dibalik: false,
+        bisa_dikoreksi: false,
+        alasan_tidak_bisa: PESAN_REVERSAL_PANJAR,
+      });
+    }
+
+    const dbPinjaman = freshDb();
+    siapkanPinjaman(dbPinjaman);
+    const pinjamanRows = listJurnalLengkap(dbPinjaman);
+    for (const id of ['j-cair', 'j-bayar-pokok', 'j-bayar-bunga']) {
+      expect(pinjamanRows.find((j) => j.id === id)).toMatchObject({
+        bisa_dibalik: false,
+        bisa_dikoreksi: false,
+        alasan_tidak_bisa: PESAN_REVERSAL_PINJAMAN,
+      });
+    }
   });
 
   it('jurnal UMUM di grup saldo awal tetap boleh dikoreksi', () => {

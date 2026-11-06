@@ -3,7 +3,7 @@
 // reversal ganda/reversal atas reversal ditolak, kunci periode dihormati,
 // dan alur isi ulang atomik (gagal = tidak ada koreksi setengah jadi).
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -36,7 +36,10 @@ import {
   type RencanaReversalInput,
 } from '../src/core/reversal.js';
 import type { Jurnal, JurnalBaris, JurnalBarisInput } from '../src/core/types.js';
-import { bisaDikoreksiJurnal } from '../src/renderer/components/JurnalTab.js';
+import {
+  alasanTidakBisaKoreksi,
+  bisaDikoreksiJurnal,
+} from '../src/renderer/components/JurnalTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -534,7 +537,7 @@ describe('T1.5 — reversal SALDO_AWAL diblokir dari jalur umum', () => {
     }
   });
 
-  it('UI tidak menawarkan tombol Koreksi untuk SALDO_AWAL', () => {
+  it('UI tidak menawarkan tombol Koreksi untuk SALDO_AWAL (fallback objek lama)', () => {
     const jurnal = (
       jenis: NonNullable<Jurnal['jenis']>,
       over: Partial<{ reversal_of: string | null; reversal_id: string | null }> = {},
@@ -545,6 +548,57 @@ describe('T1.5 — reversal SALDO_AWAL diblokir dari jalur umum', () => {
     expect(bisaDikoreksiJurnal(jurnal('SALDO_AWAL', { reversal_id: 'rev' }))).toBe(false);
     expect(bisaDikoreksiJurnal(jurnal('UMUM', { reversal_id: 'rev' }))).toBe(false);
     expect(bisaDikoreksiJurnal(jurnal('UMUM', { reversal_of: 'asli' }))).toBe(false);
+    expect(alasanTidakBisaKoreksi(jurnal('SALDO_AWAL'))).toContain('saldo awal');
+  });
+
+  it('UI memakai capability flag backend dan menampilkan alasannya', () => {
+    const capability = (
+      over: Partial<{
+        jenis: NonNullable<Jurnal['jenis']>;
+        reversal_of: string | null;
+        reversal_id: string | null;
+        bisa_dikoreksi: boolean;
+        alasan_tidak_bisa: string | null;
+      }> = {},
+    ) => ({
+      jenis: 'UMUM' as NonNullable<Jurnal['jenis']>,
+      reversal_of: null,
+      reversal_id: null,
+      bisa_dikoreksi: true,
+      alasan_tidak_bisa: null,
+      ...over,
+    });
+
+    // Flag backend menang atas tebakan jenis lama (mis. panjar berjenis UMUM).
+    expect(
+      bisaDikoreksiJurnal(
+        capability({
+          bisa_dikoreksi: false,
+          alasan_tidak_bisa: 'Gunakan modul Panjar.',
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      alasanTidakBisaKoreksi(
+        capability({
+          bisa_dikoreksi: false,
+          alasan_tidak_bisa: 'Gunakan modul Panjar.',
+        }),
+      ),
+    ).toBe('Gunakan modul Panjar.');
+    expect(
+      bisaDikoreksiJurnal(capability({ jenis: 'SALDO_AWAL' })),
+    ).toBe(true);
+    expect(alasanTidakBisaKoreksi(capability())).toBeUndefined();
+  });
+
+  it('JurnalTab memakai alasan capability untuk tooltip tombol Koreksi', () => {
+    const sumber = readFileSync(
+      new URL('../src/renderer/components/JurnalTab.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(sumber).toContain('alasanTidakBisaKoreksi(j)');
+    expect(sumber).toContain('title={alasanKoreksi}');
   });
 });
 

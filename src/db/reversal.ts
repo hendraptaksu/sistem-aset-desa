@@ -21,7 +21,6 @@ import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
 import { validasiJurnal } from '../core/posting.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 import {
-  getJurnal,
   getJurnalDetail,
   insertAuditLog,
   insertJurnalTervalidasi,
@@ -32,6 +31,23 @@ import {
   postingJurnal,
   type HasilPosting,
 } from './posting.js';
+import {
+  PESAN_REVERSAL_PANJAR,
+  PESAN_REVERSAL_PINJAMAN,
+  terhubungPanjar,
+  terhubungPinjaman,
+} from './kemampuanKoreksi.js';
+
+// T2.1/T2.2: helper dipindah ke modul bebas-impor-melingkar. Re-export
+// dipertahankan agar pemanggil/test lama tetap memakai jalur yang sama.
+export {
+  kemampuanKoreksiJurnal,
+  PESAN_KOREKSI_JURNAL,
+  PESAN_REVERSAL_PANJAR,
+  PESAN_REVERSAL_PINJAMAN,
+  type JurnalUntukKoreksi,
+  type KemampuanKoreksiJurnal,
+} from './kemampuanKoreksi.js';
 
 export type OpsiReversal = {
   /** ID jurnal balik; default dibuat otomatis. */
@@ -53,47 +69,11 @@ export type HasilKoreksi = HasilPosting & {
   jurnalBaru?: Jurnal;
 };
 
-/** Cukup `{ id }`; `jenis` boleh ikut tetapi selalu diabaikan (dibaca ulang dari DB). */
-export type JurnalUntukKoreksi = Pick<Jurnal, 'id'> &
-  Partial<Pick<Jurnal, 'jenis'>>;
-
-/**
- * T2.1: hasil capability untuk UI. `alasan` null berarti kedua aksi boleh;
- * selain itu berisi pesan Indonesia yang siap ditampilkan sebagai tooltip.
- */
-export type KemampuanKoreksiJurnal = {
-  bisaDibalik: boolean;
-  bisaDikoreksi: boolean;
-  alasan: string | null;
-};
-
 export { PESAN_REVERSAL_SALDO_AWAL };
 
 const idBaru = (prefix: string): string => `${prefix}-${randomUUID()}`;
 
 const hariIni = (): string => tanggalLokal();
-
-/** Pesan saat jurnal merupakan bagian dari dokumen panjar (AUD-07). */
-export const PESAN_REVERSAL_PANJAR =
-  'Jurnal ini terhubung ke dokumen panjar. Reversal dari Jurnal Umum diblokir ' +
-  'agar status panjar tidak basi. Gunakan modul Panjar.';
-
-export const PESAN_REVERSAL_PINJAMAN =
-  'Jurnal ini terhubung ke pinjaman. Gunakan Batalkan catatan pembayaran ' +
-  'atau Batalkan catatan pencairan di menu Pinjaman LPD, lalu input ulang.';
-
-/**
- * Pesan capability (T2.1). Isinya sengaja memakai pesan jalur reversal yang
- * sudah ada agar UI dan backend tidak memberi alasan yang berbeda.
- */
-export const PESAN_KOREKSI_JURNAL = {
-  tidakDitemukan: PESAN_REVERSAL.tidakDitemukan,
-  jurnalBalik: PESAN_REVERSAL.asliBalik,
-  sudahDikoreksi: PESAN_REVERSAL.sudahDibalik,
-  saldoAwal: PESAN_REVERSAL_SALDO_AWAL,
-  panjar: PESAN_REVERSAL_PANJAR,
-  pinjaman: PESAN_REVERSAL_PINJAMAN,
-} as const;
 
 function hasilGagal(errors: string[]): HasilValidasiJurnal & { tersimpan: false } {
   return { boleh: false, errors, peringatan: [], perluKonfirmasi: false, tersimpan: false };
@@ -109,70 +89,6 @@ function anggotaSaldoAwal(db: Database.Database, jurnal: Jurnal): boolean {
   return Boolean(db.prepare(
     "SELECT 1 FROM jurnal WHERE jenis = 'SALDO_AWAL' AND grup_id = ? LIMIT 1",
   ).get(jurnal.grup_id));
-}
-
-/**
- * Jurnal serah/pertanggungjawaban panjar tidak boleh direversal dari Jurnal
- * Umum: status `panjar` akan basi (mis. tetap CLOSED padahal 1040 bersaldo).
- * Koreksi panjar harus lewat modul Panjar.
- */
-function terhubungPanjar(db: Database.Database, idJurnal: string): boolean {
-  return Boolean(
-    db
-      .prepare(
-        `SELECT 1 FROM panjar
-         WHERE jurnal_open_id = ? OR jurnal_close_id = ?
-         LIMIT 1`,
-      )
-      .get(idJurnal, idJurnal),
-  );
-}
-
-/**
- * T2.1: versi pemeriksaan panjar untuk capability. `jurnal_batal_id` ikut
- * diperiksa agar jurnal pembatalan panjar tidak pernah ditawarkan sebagai
- * jurnal biasa. Fungsi terpisah dipakai supaya pesan `reverseJurnal` publik
- * untuk jurnal batal (yang memang REVERSAL) tidak berubah (DB-21).
- */
-function terhubungPanjarTermasukBatal(
-  db: Database.Database,
-  idJurnal: string,
-): boolean {
-  return Boolean(
-    db
-      .prepare(
-        `SELECT 1 FROM panjar
-         WHERE jurnal_open_id = ? OR jurnal_close_id = ? OR jurnal_batal_id = ?
-         LIMIT 1`,
-      )
-      .get(idJurnal, idJurnal, idJurnal),
-  );
-}
-
-/** Jurnal sudah punya balik? Dipakai capability dan koreksi isi ulang. */
-function punyaReversal(db: Database.Database, idJurnal: string): boolean {
-  return Boolean(
-    db
-      .prepare('SELECT 1 FROM jurnal WHERE reversal_of = ? LIMIT 1')
-      .get(idJurnal),
-  );
-}
-
-/**
- * Relasi tabel adalah satu-satunya sumber kebenaran pinjaman (T2.1/T2.3).
- * Jangan menebak dari `jenis === 'HUTANG'` atau akun 2050: pembayaran bunga
- * saja berjenis HUTANG tanpa baris 2050, tetapi tetap milik modul Pinjaman.
- */
-function terhubungPinjaman(db: Database.Database, idJurnal: string): boolean {
-  return Boolean(
-    db
-      .prepare(
-        `SELECT 1 FROM pinjaman WHERE jurnal_pencairan_id = ?
-         UNION ALL SELECT 1 FROM pinjaman_bayar WHERE jurnal_id = ?
-         LIMIT 1`,
-      )
-      .get(idJurnal, idJurnal),
-  );
 }
 
 function rencanaUntuk(
@@ -212,51 +128,6 @@ function rencanaUntuk(
     alasan,
     no_bukti: opsi.no_bukti,
   });
-}
-
-/**
- * T2.1: satu sumber aturan untuk UI/IPC — jangan menebak dari `jenis` dan akun.
- *
- * Parameter boleh objek ringkas `{ id, jenis }` atau `Jurnal`. Nilai `jenis`
- * dari renderer selalu diabaikan: jurnal dibaca ulang dari DB agar data render
- * yang basi/dimanipulasi tidak membuka tombol yang pasti ditolak backend.
- *
- * `bisaDibalik` dan `bisaDikoreksi` memakai aturan yang sama untuk sekarang:
- * koreksi isi ulang juga menulis jurnal balik (`koreksiDanIsiUlang`), jadi
- * keduanya selalu ditolak/diizinkan bersama. Bila nanti ada jalur koreksi yang
- * tidak memerlukan reversal, pisahkan aturannya di sini — bukan di UI.
- */
-export function kemampuanKoreksiJurnal(
-  db: Database.Database,
-  jurnal: JurnalUntukKoreksi | null | undefined,
-): KemampuanKoreksiJurnal {
-  const tolak = (alasan: string): KemampuanKoreksiJurnal => ({
-    bisaDibalik: false,
-    bisaDikoreksi: false,
-    alasan,
-  });
-
-  const id = String(jurnal?.id ?? '').trim();
-  const asli = id ? getJurnal(db, id) : null;
-  if (!asli) return tolak(PESAN_KOREKSI_JURNAL.tidakDitemukan);
-
-  // Reversal tidak boleh dibalik lagi, termasuk jurnal batal panjar/pinjaman.
-  if (asli.jenis === 'REVERSAL' || asli.reversal_of)
-    return tolak(PESAN_KOREKSI_JURNAL.jurnalBalik);
-  if (punyaReversal(db, asli.id))
-    return tolak(PESAN_KOREKSI_JURNAL.sudahDikoreksi);
-
-  // Subledger: koreksi wajib lewat modul asalnya agar status dokumen tidak basi.
-  if (terhubungPanjarTermasukBatal(db, asli.id))
-    return tolak(PESAN_KOREKSI_JURNAL.panjar);
-  if (terhubungPinjaman(db, asli.id))
-    return tolak(PESAN_KOREKSI_JURNAL.pinjaman);
-
-  // Saldo awal hanya boleh dikoreksi lewat wizard koreksi saldo awal (T1.8).
-  if (asli.jenis === 'SALDO_AWAL')
-    return tolak(PESAN_KOREKSI_JURNAL.saldoAwal);
-
-  return { bisaDibalik: true, bisaDikoreksi: true, alasan: null };
 }
 
 /** Gabungkan dua daftar tanpa duplikat (menjaga pesan peringatan tetap ringkas). */
