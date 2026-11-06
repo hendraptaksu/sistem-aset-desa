@@ -56,6 +56,67 @@ export const PESAN_DB_TIDAK_KOMPATIBEL =
   'tersebut, lalu jalankan aplikasi lagi.';
 
 /**
+ * DDL index kanonik skema v1.
+ *
+ * Semua index wajib didefinisikan di sini dan diinterpolasi ke `DDL`, sehingga
+ * `db.exec(DDL)` pada DB baru langsung menghasilkan tabel + index tanpa perlu
+ * menjalankan fungsi migrasi. Semua `IF NOT EXISTS` membuat definisi ini aman
+ * dijalankan ulang.
+ */
+export const DDL_INDEX = `
+-- Nomor bukti unik per tahun, bukan global: nomor yang sama boleh dipakai
+-- pada tahun berbeda.
+CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
+CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
+CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jurnal_no_bukti_tahun
+  ON jurnal(substr(tanggal, 1, 4), no_bukti COLLATE NOCASE)
+  WHERE no_bukti <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_saldo_awal
+  ON jurnal(jenis)
+  WHERE jenis = 'SALDO_AWAL';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_reversal
+  ON jurnal(reversal_of)
+  WHERE reversal_of IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
+CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
+
+CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
+CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
+CREATE INDEX IF NOT EXISTS idx_audit_ref ON audit_log(ref_type, ref_id);
+
+CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
+CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
+CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_open
+  ON panjar(jurnal_open_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_close
+  ON panjar(jurnal_close_id)
+  WHERE jurnal_close_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_batal
+  ON panjar(jurnal_batal_id)
+  WHERE jurnal_batal_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pinjaman_tanggal ON pinjaman(tanggal_mulai);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_kreditur ON pinjaman(kreditur);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_pinjaman
+  ON pinjaman_angsuran(pinjaman_id);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_jatuh_tempo
+  ON pinjaman_angsuran(jatuh_tempo);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_pinjaman
+  ON pinjaman_bayar(pinjaman_id);
+CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
+  ON pinjaman_bayar(tanggal);
+-- Pembayaran dapat dicicil; satu jurnal tetap hanya dimiliki satu pembayaran.
+CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
+  ON pinjaman_bayar(angsuran_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
+  ON akun(nama COLLATE NOCASE);
+`;
+
+/**
  * DDL kanonik skema v1: 11 tabel aktif, semuanya `STRICT`.
  * Tabel modul lama (`transaksi`, `coa`, `pihak`, `jurnal_pihak`, `aset`,
  * `anggaran`, `rekonsiliasi_bank`, `lampiran_jurnal`) tidak pernah dibuat.
@@ -97,11 +158,6 @@ CREATE TABLE IF NOT EXISTS jurnal (
   created_at TEXT NOT NULL,
   FOREIGN KEY (reversal_of) REFERENCES jurnal(id)
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
-CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
-CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
--- Nomor bukti unik per tahun, bukan global: nomor yang sama boleh dipakai
--- pada tahun berbeda.
 
 CREATE TABLE IF NOT EXISTS jurnal_baris (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,8 +171,6 @@ CREATE TABLE IF NOT EXISTS jurnal_baris (
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
   FOREIGN KEY (akun_kode) REFERENCES akun(kode)
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
-CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 
 -- Tutup buku: hanya penanda + kunci + catatan. Laba selalu dihitung dari
 -- jurnal, bukan disimpan sebagai sumber angka.
@@ -139,8 +193,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ref_type TEXT NOT NULL DEFAULT '',
   ref_id TEXT NOT NULL DEFAULT ''
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
-CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
 
 CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
@@ -182,8 +234,6 @@ CREATE TABLE IF NOT EXISTS panjar (
   FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id),
   FOREIGN KEY (jurnal_batal_id) REFERENCES jurnal(id)
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
-CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
 
 CREATE TABLE IF NOT EXISTS panjar_item (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +250,6 @@ CREATE TABLE IF NOT EXISTS panjar_item (
   FOREIGN KEY (kategori_baga) REFERENCES akun(kode),
   FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
 
 -- Pinjaman LPD. Rencana angsuran dan pembayaran adalah dua hal terpisah:
 -- rencana tidak pernah menjadi angka buku, pembayaran selalu tertaut jurnal.
@@ -217,8 +266,6 @@ CREATE TABLE IF NOT EXISTS pinjaman (
   catatan TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_pinjaman_tanggal ON pinjaman(tanggal_mulai);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_kreditur ON pinjaman(kreditur);
 
 CREATE TABLE IF NOT EXISTS pinjaman_angsuran (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,10 +277,6 @@ CREATE TABLE IF NOT EXISTS pinjaman_angsuran (
   catatan TEXT NOT NULL DEFAULT '',
   UNIQUE (pinjaman_id, ke)
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_pinjaman
-  ON pinjaman_angsuran(pinjaman_id);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_jatuh_tempo
-  ON pinjaman_angsuran(jatuh_tempo);
 
 CREATE TABLE IF NOT EXISTS pinjaman_bayar (
   id TEXT PRIMARY KEY,
@@ -244,13 +287,8 @@ CREATE TABLE IF NOT EXISTS pinjaman_bayar (
   catatan TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 ) STRICT;
-CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_pinjaman
-  ON pinjaman_bayar(pinjaman_id);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
-  ON pinjaman_bayar(tanggal);
--- Pembayaran dapat dicicil; satu jurnal tetap hanya dimiliki satu pembayaran.
-CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
-  ON pinjaman_bayar(angsuran_id);
+
+${DDL_INDEX}
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {

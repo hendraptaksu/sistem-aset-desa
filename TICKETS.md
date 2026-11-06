@@ -53,7 +53,7 @@
   - Hapus pemisahan `DDL_PINJAMAN` bila tidak diperlukan; inline ke `DDL`.
   - Selesai bila DB baru `openDb(':memory:')` punya 11 tabel dan semuanya `STRICT`.
 
-- [ ] **T1.3 — DDL index kanonik**
+- [x] **T1.3 — DDL index kanonik**
   - File: `src/db/database.ts`
   - Pindahkan semua index ke `DDL`/`DDL_INDEX`:
     - `idx_jurnal_tanggal`, `idx_jurnal_grup`, `idx_jurnal_reversal`
