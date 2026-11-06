@@ -85,6 +85,7 @@ import {
   stampBackupLokal,
 } from '../features/export/backupLengkap.js';
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
+import { pastikanBukanFileDbAktif } from '../features/export/pathAman.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
 import {
   catatanTahunPertamaParsial,
@@ -276,6 +277,20 @@ export function registerIpc(deps: IpcDeps): void {
   const GAGAL_BACKUP = 'Gagal membuat cadangan. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_RESTORE =
     'Gagal memulihkan data. Data lama tetap dipakai; coba lagi atau hubungi pendamping.';
+  // T1.2: pesan simpan sengaja tidak memuat kata teknis (mis. "database")
+  // agar tidak diganti pesan generik oleh `pesanError`. Guard berlaku untuk
+  // semua kanal simpan, bukan hanya backup.
+  const PESAN_SIMPAN_KE_DB_AKTIF =
+    'File DB yang sedang aktif tidak boleh menjadi tujuan simpan. Pilih nama file lain.';
+
+  /** Tolak tujuan simpan yang menunjuk DB aktif atau sidecar `-wal`/`-shm`. */
+  const pastikanTujuanBukanDbAktif = (filePath: string): void => {
+    try {
+      pastikanBukanFileDbAktif(deps.dbPath(), filePath);
+    } catch {
+      throw new Error(PESAN_SIMPAN_KE_DB_AKTIF);
+    }
+  };
 
   daftarkan('coa:list', () => ok(listAkun(deps.db())));
   daftarkan('akun:tambah', (_e, input: unknown) => {
@@ -1495,6 +1510,7 @@ export function registerIpc(deps: IpcDeps): void {
           filters: req.filters,
         });
         if (canceled || !filePath) return ok({ saved: false, path: '' });
+        pastikanTujuanBukanDbAktif(filePath);
         deps.writeFile(filePath, Buffer.from(req.bufferB64, 'base64'));
         return ok({ saved: true, path: filePath });
       } catch (e) {
@@ -1519,6 +1535,7 @@ export function registerIpc(deps: IpcDeps): void {
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
         });
         if (canceled || !filePath) return ok({ saved: false, path: '' });
+        pastikanTujuanBukanDbAktif(filePath);
         await deps.printPdf(html, filePath, req.landscape === true);
         return ok({ saved: true, path: filePath });
       } catch (e) {
@@ -1538,6 +1555,7 @@ export function registerIpc(deps: IpcDeps): void {
         filters: [{ name: 'SQLite DB', extensions: ['db'] }],
       });
       if (canceled || !filePath) return ok({ saved: false, path: '' });
+      pastikanTujuanBukanDbAktif(filePath);
       backupVacuumInto(deps.db(), filePath);
       catatAudit(deps.db(), {
         aksi: 'BACKUP-EXPORT',

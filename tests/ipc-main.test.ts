@@ -37,6 +37,9 @@ type Env = {
   saveQueue: { canceled: boolean; filePath?: string }[];
   openQueue: { canceled: boolean; filePaths: string[] }[];
   openPaths: string[];
+  /** T1.2: path yang benar-benar ditulis lewat deps.writeFile/printPdf. */
+  writePaths: string[];
+  printPaths: string[];
   panggil: (channel: string, ...args: any[]) => Promise<JawabanIpc>;
   panggilDari: (
     channel: string,
@@ -59,6 +62,8 @@ function buatEnv(): Env {
   const saveQueue: { canceled: boolean; filePath?: string }[] = [];
   const openQueue: { canceled: boolean; filePaths: string[] }[] = [];
   const openPaths: string[] = [];
+  const writePaths: string[] = [];
+  const printPaths: string[] = [];
   const lokasi = {
     mode: 'INSTALLED' as const,
     dataDir,
@@ -80,8 +85,12 @@ function buatEnv(): Env {
       showSaveDialog: async () => saveQueue.shift() ?? { canceled: true },
       showOpenDialog: async () => openQueue.shift() ?? { canceled: true, filePaths: [] },
     },
-    writeFile: (path, data) => writeFileSync(path, data),
+    writeFile: (path, data) => {
+      writePaths.push(path);
+      writeFileSync(path, data);
+    },
     printPdf: async (html, path) => {
+      printPaths.push(path);
       writeFileSync(path, Buffer.from(html, 'utf-8'));
     },
     openPath: async (path) => {
@@ -107,6 +116,8 @@ function buatEnv(): Env {
     saveQueue,
     openQueue,
     openPaths,
+    writePaths,
+    printPaths,
     panggil: async (channel, ...args) => {
       const handler = handlers.get(channel);
       if (!handler) throw new Error(`Channel ${channel} tidak terdaftar.`);
@@ -2374,5 +2385,73 @@ describe('AUD2-01 — IPC laporan, kunci periode, dan saldo awal memakai akun DB
     expect(riwayat.ok, riwayat.error).toBe(true);
     expect(riwayat.data).toHaveLength(1);
     expect(riwayat.data[0]).toMatchObject({ tahun: 2025, laba: -250_000 });
+  });
+});
+
+describe('T1.2 — guard path DB aktif di semua kanal simpan', () => {
+  const POLA_PESAN = /File DB yang sedang aktif tidak boleh menjadi tujuan simpan/i;
+
+  it('file:save-buffer menolak DB aktif/sidecar tanpa memanggil writeFile', async () => {
+    const env = buatEnv();
+    const dbFile = join(env.dir, 'data', 'pura.db');
+    const sebelum = readFileSync(dbFile);
+    const req = {
+      bufferB64: Buffer.from('isi laporan, bukan isi DB').toString('base64'),
+      defaultName: 'laporan.xlsx',
+    };
+
+    for (const tujuan of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
+      env.saveQueue.push({ canceled: false, filePath: tujuan });
+      const hasil = await env.panggil('file:save-buffer', req);
+      expect(hasil.ok, tujuan).toBe(false);
+      expect(hasil.error, tujuan).toMatch(POLA_PESAN);
+    }
+
+    expect(env.writePaths).toEqual([]);
+    expect(readFileSync(dbFile).equals(sebelum)).toBe(true);
+  });
+
+  it('file:save-pdf menolak DB aktif/sidecar tanpa memanggil printPdf', async () => {
+    const env = buatEnv();
+    const dbFile = join(env.dir, 'data', 'pura.db');
+    const sebelum = readFileSync(dbFile);
+    const req = {
+      htmlB64: Buffer.from('<p>Laporan uji</p>').toString('base64'),
+      defaultName: 'laporan',
+    };
+
+    for (const tujuan of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
+      env.saveQueue.push({ canceled: false, filePath: tujuan });
+      const hasil = await env.panggil('file:save-pdf', req);
+      expect(hasil.ok, tujuan).toBe(false);
+      expect(hasil.error, tujuan).toMatch(POLA_PESAN);
+    }
+
+    expect(env.printPaths).toEqual([]);
+    expect(readFileSync(dbFile).equals(sebelum)).toBe(true);
+  });
+
+  it('backup:export menolak DB aktif/sidecar sebelum VACUUM INTO dan audit', async () => {
+    const env = buatEnv();
+    const dbFile = join(env.dir, 'data', 'pura.db');
+    const sebelum = readFileSync(dbFile);
+    const auditSebelum = await env.panggil('audit:list', { aksi: 'BACKUP-EXPORT' });
+    expect(auditSebelum.ok, auditSebelum.error).toBe(true);
+
+    for (const tujuan of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
+      env.saveQueue.push({ canceled: false, filePath: tujuan });
+      const hasil = await env.panggil('backup:export');
+      expect(hasil.ok, tujuan).toBe(false);
+      expect(hasil.error, tujuan).toMatch(POLA_PESAN);
+    }
+
+    expect(readFileSync(dbFile).equals(sebelum)).toBe(true);
+    const auditSesudah = await env.panggil('audit:list', { aksi: 'BACKUP-EXPORT' });
+    expect(auditSesudah.data.total).toBe(auditSebelum.data.total);
+    expect(
+      readdirSync(join(env.dir, 'data')).filter(
+        (f) => f.includes('.tmp-') || f.endsWith('.bak-'),
+      ),
+    ).toEqual([]);
   });
 });
