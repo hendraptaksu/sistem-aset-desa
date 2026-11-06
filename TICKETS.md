@@ -282,7 +282,7 @@
   - Hapus folder `docs/audit/`.
   - Selesai bila `rg "docs/audit"` kosong.
 
-- [ ] **T5.2 — Buat `docs/skema.md`**
+- [x] **T5.2 — Buat `docs/skema.md`**
   - Gabungkan dan pangkas:
     - `docs/erd-v2.md` — tabel, kolom, relasi, index, trigger, invariant;
     - `docs/sumber-coa.md` — sumber COA, 56 akun, metadata akun;
@@ -291,24 +291,24 @@
   - Status dokumen: skema baseline v1.
   - Selesai bila `docs/skema.md` menjadi satu-satunya kontrak skema.
 
-- [ ] **T5.3 — Buat `docs/prinsip-akuntansi.md`**
+- [x] **T5.3 — Buat `docs/prinsip-akuntansi.md`**
   - Dari `docs/arah-akuntansi.md`.
   - Buang §1 “Kenapa arah berubah”, §4 “Yang berubah”, §11 roadmap, §12 feedback WhatsApp.
   - Hapus ID tiket dari heading; pertahankan prinsip double-entry, K1–K6, cut-over, aturan panjar/pinjaman.
   - Selesai bila dokumen hanya berisi prinsip yang masih berlaku.
 
-- [ ] **T5.4 — Hapus dokumen lama**
+- [x] **T5.4 — Hapus dokumen lama**
   - Hapus `docs/erd-v2.md`, `docs/arah-akuntansi.md`, `docs/sumber-coa.md`, `docs/sumber-data-pinjaman.md`.
   - Selesai bila tidak ada referensi ke empat path tersebut.
 
-- [ ] **T5.5 — Update `README.md`**
+- [x] **T5.5 — Update `README.md`**
   - Ganti bagian skema v22/migrasi menjadi baseline v1.
   - Hapus `pre-upgrade`, migrasi 2–22, dan klaim kompatibilitas DB lama.
   - Update daftar dokumentasi ke `docs/skema.md` + `docs/prinsip-akuntansi.md`.
   - Tambah arahan agent: baca dua dokumen itu dulu; panduan pengguna/pemeriksaan hanya bila relevan.
   - Selesai bila `README.md` tidak menyebut v22/v23/migrasi lama.
 
-- [ ] **T5.6 — Rapikan panduan operasional**
+- [x] **T5.6 — Rapikan panduan operasional**
   - File: `docs/panduan-pengguna.md`, `docs/panduan-pemeriksaan.md`, `docs/panduan-portable.md`, `docs/hardening-electron.md`, `docs/template-cetak.md`.
   - Hapus ID tiket yang tidak perlu.
   - Update bagian restore: hanya backup skema v1 yang didukung.

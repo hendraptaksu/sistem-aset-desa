@@ -1,4 +1,4 @@
-# Hardening Electron (P1-15)
+# Hardening Electron
 
 Perubahan ini menjaga aplikasi tetap satu instance, memblokir window baru, dan
 memasang CSP produksi yang ketat tanpa merusak alur dev.
@@ -75,7 +75,7 @@ diblokir Chromium. Script/form/popup tetap dinonaktifkan. `frame-src` dan
 `style-src` di atas mengizinkan pratinjau; dokumen cetak tidak memuat inline
 script/auto-print.
 
-## 4. Catatan untuk P2-8 (SOP operator)
+## 4. Catatan untuk SOP operator
 
 - Operator cukup membuka aplikasi **sekali**. Bila terasa "tidak terbuka",
   cek taskbar/dock: kemungkinan window lama hanya ter-minimize dan instance

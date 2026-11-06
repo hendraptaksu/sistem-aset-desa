@@ -1,4 +1,4 @@
-# Template Cetak Resmi & Pratinjau (P1-16)
+# Template Cetak Resmi & Pratinjau
 
 Dokumen ini menjadi acuan tata letak cetak laporan Pura Dalem Puri Peliatan.
 Semua laporan memakai model dokumen yang sama (`src/features/export/printDoc.ts`)
@@ -7,12 +7,12 @@ dihitung ulang di lapisan cetak.
 
 ## 1. Contoh dokumen resmi yang dijadikan acuan
 
-Contoh berikut berasal dari kop yang sudah dipakai di kode export (P1-10),
-bukan contoh baru yang dikarang:
+Contoh berikut berasal dari kop yang sudah dipakai di kode export, bukan
+contoh baru yang dikarang:
 
 1. **Buku Besar / BKU**
    - Acuan di kode: `PURA DALEM PURI / BUKU BESAR / BULAN JANUARI S.D JUNI 2026`.
-   - Implementasi P1-16: `PURA DALEM PURI PELIATAN` / `BUKU BESAR — 1001 KAS` /
+   - Implementasi aplikasi: `PURA DALEM PURI PELIATAN` / `BUKU BESAR — 1001 KAS` /
      `PERIODE 01-01-2026 s/d 30-06-2026`.
    - Asumsi: nama organisasi kanonis mengikuti `KOP_ORG_NAMA`
      (`PURA DALEM PURI PELIATAN`), dan periode ditulis sebagai rentang tanggal
@@ -20,7 +20,7 @@ bukan contoh baru yang dikarang:
 
 2. **Neraca**
    - Acuan di kode: `PURA DALEM PURI PELIATAN / NERACA / PER 30 Juni 2026`.
-   - Implementasi P1-16: `PURA DALEM PURI PELIATAN` / `NERACA` /
+   - Implementasi aplikasi: `PURA DALEM PURI PELIATAN` / `NERACA` /
      `PER 30-06-2026 — SEIMBANG` (atau `SELISIH`).
    - Asumsi: status seimbang/selisih ikut dicetak di subjudul agar pembaca
      langsung tahu kondisi Neraca.
@@ -28,7 +28,7 @@ bukan contoh baru yang dikarang:
 3. **Laporan bulanan (Jurnal Umum, Laba Rugi, Arus Kas, Panjar)**
    - Acuan: kop organisasi + judul laporan + periode, seperti contoh
      `BUKU BESAR / BULAN ...` di atas.
-   - Implementasi P1-16: `PURA DALEM PURI PELIATAN` / `JURNAL UMUM` (atau
+   - Implementasi aplikasi: `PURA DALEM PURI PELIATAN` / `JURNAL UMUM` (atau
      `LABA RUGI`, `ARUS KAS`, `PANJAR (UANG MUKA)`) / `PERIODE ...`.
    - Untuk laporan per tanggal (Neraca Saldo/Neraca) dipakai `PER <tanggal>`.
 
@@ -74,11 +74,11 @@ dibutuhkan, tambahkan sebagai blok baru di model cetak.
 4. Tekan **Cetak** untuk membuka dialog printer. Dialog **tidak** terbuka
    otomatis saat modal dibuka. Pemanggilan dilakukan dari React (parent) ke
    `iframe.contentWindow.print()`; dokumen cetak tidak memuat inline script
-   (aman untuk CSP P1-15).
+   (aman untuk CSP produksi).
 5. Tekan **Simpan PDF** untuk menyimpan PDF. PDF memakai HTML paginator yang
    **sama** dengan pratinjau (`renderPrintDocument`), tanpa script/auto-print
    dan dengan orientasi yang sama. Jadi hasil PDF identik dengan pratinjau.
-6. **Export Excel** tetap tersedia dan tidak berubah (XLSX numerik P1-10).
+6. **Export Excel** tetap tersedia dan tidak berubah (XLSX numerik).
 
 ## 4. API untuk pengembang
 
@@ -92,13 +92,13 @@ dibutuhkan, tambahkan sebagai blok baru di model cetak.
 - Komponen: `PratinjauCetakModal` (`judul`, `html`, `jumlahHalaman`,
   `orientasi`, `onClose`) dan `ExportActions` (`buatWorkbook`, `buatDokumen`).
 
-## 5. Catatan untuk P1-15 (CSP) dan P2-8 (SOP)
+## 5. Catatan untuk CSP dan SOP operator
 
 - Dokumen cetak **tidak boleh** ditambahi `<script>` atau
   `onclick="window.print()"`. Semua aksi cetak berasal dari parent React.
 - CSP renderer perlu mengizinkan iframe `srcDoc` dan style dokumen cetak.
   Jangan memblokir `frame-src` untuk dokumen internal ini.
-- SOP operator (P2-8) dijelaskan di `docs/panduan-pengguna.md` §8: pilih
+- SOP operator dijelaskan di `docs/panduan-pengguna.md` §8: pilih
   periode → **Pratinjau Cetak** → periksa halaman → **Cetak** atau **Simpan
   PDF**. Tidak perlu mengatur orientation manual; sistem sudah memilih
   portrait/landscape per laporan.

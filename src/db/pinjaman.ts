@@ -10,7 +10,7 @@
 //
 // Tabel pinjaman* adalah bagian skema baseline v1 dan sudah STRICT (lihat DDL
 // di database.ts). Jangan mengubah bentuk tabel tanpa menaikkan
-// SCHEMA_VERSION. Kontrak skema: `docs/erd-v2.md`.
+// SCHEMA_VERSION. Kontrak skema: `docs/skema.md`.
 //
 // `buatPinjaman` hanya menyimpan parameter + jadwal. Jurnal pencairan dibuat
 // oleh `simpanPinjamanLpd` (mode PENCAIRAN) dalam transaksi yang sama. Mode

@@ -71,8 +71,8 @@ angka turunan yang disimpan mati.
                 │                               │
 ┌───────────────▼──────────────┐  ┌─────────────▼─────────────────────┐
 │ src/core/* — logika murni    │  │ src/db/* — akses SQLite           │
-│ forms, posting, reports,     │  │ database.ts (DDL + migrasi 2–22), │
-│ reversal, periode, pin,      │  │ repository, jurnal, panjar,       │
+│ forms, posting, reports,     │  │ database.ts (DDL + guard skema    │
+│ reversal, periode, pin,      │  │ v1), repository, jurnal, panjar,  │
 │ tutup, pengaturan            │  │ laporan, seed-dev                 │
 └──────────────────────────────┘  └─────────────┬─────────────────────┘
                                                  │
@@ -93,24 +93,15 @@ Prinsip yang dijaga:
    dari jurnal, bukan dari tabel saldo/laba tersimpan.
 3. **Logika akuntansi murni** ada di `src/core/` supaya mudah diuji tanpa
    Electron. Lapisan `src/db/` mengurus SQL; `src/main/` mengurus IPC/OS.
-4. **Skema v22** (lihat `SCHEMA_VERSION` di `src/db/database.ts`; kontrak
-   lengkap di `docs/erd-v2.md`). Ada 11 tabel aktif: `akun`, `jurnal`,
-   `jurnal_baris`, `tutup_buku`, `audit_log`, `pengaturan`, `panjar`,
-   `panjar_item`, `pinjaman`, `pinjaman_angsuran`, dan `pinjaman_bayar`.
-   Tabel single-entry lama (`transaksi`/`coa`) hanya dibersihkan dari DB asli
-   v0–v2; tabel modul yang sudah dihapus dibuang oleh migrasi v12 idempoten.
-   `panjar`, `panjar_item`, dan `tutup_buku` tidak pernah dibuang berdasarkan
-   bentuk kolom. Backup pra-upgrade (`pre-upgrade-*.db`) dibuat untuk setiap
-   kenaikan versi sebelum migrasi berjalan. Sejak v13 hanya boleh ada satu
-   jurnal `SALDO_AWAL`; sejak v14 satu jurnal hanya boleh punya satu reversal
-   dan DB menolak insert dengan jenis/tanggal tidak valid; sejak v15 nama akun
-   unik tanpa membedakan huruf besar/kecil dan trigger menolak akun dengan
-   kode/nama/tipe/posisi/aktif tidak valid; v20 menambah tabel pinjaman LPD;
-   v21 menambah referensi audit terstruktur; v22 mengizinkan pembayaran sebagian
-   per angsuran dan pembatalan melalui modul Pinjaman LPD. Migrasi berhenti tanpa mengubah
-   data bila DB lama berisi duplikat. Tabel baru setelah DB-30 wajib `STRICT`
-   dengan `DEFAULT` eksplisit (termasuk `created_at` ISO); tabel pinjaman
-   adalah warisan v20 dan tidak direbuild tanpa ticket migrasi terpisah.
+4. **Skema baseline v1** (lihat `SCHEMA_VERSION = 1` di
+   `src/db/database.ts`; kontrak lengkap di `docs/skema.md`). Ada 11 tabel
+   aktif: `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`, `audit_log`,
+   `pengaturan`, `panjar`, `panjar_item`, `pinjaman`, `pinjaman_angsuran`, dan
+   `pinjaman_bayar`. Seluruh tabel aktif memakai `STRICT` dengan `DEFAULT`
+   eksplisit bila diperlukan (termasuk `created_at` ISO). **Tidak ada
+   migrasi/pre-upgrade**: database dengan skema lain ditolak sebelum file diubah.
+   Operator memindahkan atau menghapus file database lama, lalu menjalankan
+   aplikasi lagi agar database baru dengan skema baseline v1 dibuat.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
    di mesin yang sama.
 
@@ -156,21 +147,16 @@ Rincian ada di `docs/panduan-portable.md`.
 - **Backup Lengkap** menghasilkan satu folder berisi `pura.db` dan
   `manifest.json`. Pakai ini untuk arsip jangka panjang atau pindah laptop.
 - **Restore Import .db** memulihkan database dari satu file; **Restore Lengkap**
-  memulihkan database dari folder hasil Backup Lengkap. Keduanya memvalidasi
-  kandidat (termasuk foreign key dan tabel wajib sesuai versi skema) dan
-  mencadangkan database aktif lebih dulu.
+  memulihkan database dari folder hasil Backup Lengkap. Keduanya hanya menerima
+  backup dengan skema baseline v1, memvalidasi kandidat (termasuk foreign key,
+  tabel wajib, dan audit akuntansi), lalu mencadangkan database aktif lebih dulu.
 - Backup **tidak terenkripsi**. Simpan di media yang aman dan pisahkan dari
   laptop (flashdisk/Drive) secara rutin.
-- **Migrasi skema.** Saat database lama dibuka, aplikasi membuat
-  `pre-upgrade-*.db` di folder `backups` lebih dulu, lalu menjalankan migrasi
-  idempoten. Skema v22 membuang tabel modul yang sudah dihapus pada v12,
-  menegakkan satu jurnal saldo awal (v13), satu reversal per jurnal dan validasi
-  jenis/tanggal insert jurnal (v14), unique nama akun dan validasi
-  kode/nama/tipe/posisi/aktif akun (v15), menambah metadata akun (v16), detail
-  nota panjar (v17), link jurnal panjar (v18), pembatalan panjar (v19), tabel
-  pinjaman LPD (v20), dan referensi audit terstruktur (v21); `jurnal`,
-  `jurnal_baris`, `panjar`, `panjar_item`, `tutup_buku`, `audit_log`, dan
-  `pengaturan` tidak ikut dibuang.
+- **Hanya skema baseline v1 yang didukung.** Tidak ada migrasi/pre-upgrade.
+  Database atau backup dari skema lama ditolak tanpa mengubah file;
+  pindahkan atau hapus file database lama tersebut, lalu jalankan aplikasi lagi.
+  Backup yang dibuat aplikasi versi ini selalu dapat dipulihkan pada aplikasi
+  versi ini.
 
 ---
 
@@ -191,18 +177,25 @@ Rincian ada di `docs/panduan-portable.md`.
 
 ## Dokumentasi
 
+Dokumen kanonik utama:
+
+- `docs/skema.md` — kontrak skema baseline v1: 11 tabel `STRICT`, kolom,
+  relasi, index, trigger, sumber COA, dan aturan sumber angka.
+- `docs/prinsip-akuntansi.md` — prinsip double-entry, koreksi/reversal, kunci
+  periode, cut-over, dan batas yang masih berlaku.
+
+Panduan pendukung:
+
 - `docs/panduan-pengguna.md` — panduan operator harian.
 - `docs/panduan-pemeriksaan.md` — panduan akuntan/pemeriksa.
 - `docs/panduan-portable.md` — installer vs portable dan pindah laptop.
-- `docs/arah-akuntansi.md` — keputusan arah double-entry.
-- `docs/sumber-coa.md` — sumber mesin COA (CSV), arsip xlsx, dan ekstensi sistem.
-- `docs/sumber-data-pinjaman.md` — sumber data pinjaman LPD (rencana vs jurnal).
-- `docs/erd-v2.md` — ERD skema aktif v22: tabel, kolom, relasi, index, trigger,
-  dan aturan sumber angka.
 - `docs/hardening-electron.md` — single-instance, CSP, dan keamanan window.
 - `docs/debugging.md` — smoke test, debug Electron, dan data terisolasi.
 - `docs/template-cetak.md` — tata letak cetak, pratinjau, dan Simpan PDF.
 - `docs/rilis.md` — icon aplikasi dan signing installer Windows.
+
+> **Agent:** baca `docs/skema.md` dan `docs/prinsip-akuntansi.md` lebih dulu;
+> panduan pengguna/pemeriksaan hanya bila relevan.
 
 Arsip tiket yang sudah selesai tidak disimpan di working tree; riwayatnya tetap
 tersedia di git.

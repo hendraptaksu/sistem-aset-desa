@@ -11,7 +11,8 @@
 // menerima akun baru. Enam akun tambahan sudah ditambahkan ke CSV lalu ke COA:
 // lima akun DB-13 (5060/5061/5062/4060/4006) dan 5063 BEBAN BUNGA PINJAMAN
 // (DB-13b), sehingga persamaan tetap CSV (54 baris) + 2 ekstensi = 56 akun.
-// Rincian keputusan ada di `docs/sumber-coa.md`.
+// Rincian keputusan ada di `docs/skema.md` (sumber COA) dan
+// `docs/prinsip-akuntansi.md`.
 //
 // Catatan:
 // - Tidak ada kode 1000. Kas tunai = 1001 KAS.
@@ -141,7 +142,7 @@ export const AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF: ReadonlySet<string> = new Set([
 /**
  * Kode akun yang sengaja berada di luar `KODE AKUN.csv` (ekstensi sistem).
  * Test COA menegakkan `COA = baris CSV + tepat daftar ini`; menambah kode di
- * sini juga wajib menambah akun di `COA` dan dokumentasi `docs/sumber-coa.md`.
+ * sini juga wajib menambah akun di `COA` dan dokumentasi `docs/skema.md`.
  */
 export const KODE_EKSTENSI_SISTEM: readonly string[] = [AKUN_PANJAR, AKUN_HUTANG_USAHA];
 

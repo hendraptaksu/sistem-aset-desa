@@ -185,9 +185,9 @@ Saldo `2060` dihitung dari jurnal dan bisa diperiksa di Buku Besar atau Neraca.
 Tidak ada tabel saldo per pihak yang disimpan.
 
 `2050 HUTANG LAIN-LAIN` adalah pinjaman atau saldo lama; pembayarannya masuk
-kelompok **Pendanaan**. Pinjaman LPD memakai menu **Pinjaman LPD** tersendiri
-(DB-16c), dan angsuran dibayar lewat tombol **Bayar Angsuran** di detail jadwal
-(DB-16d). Jangan membuat pinjaman baru lewat Jurnal Umum kecuali untuk koreksi
+kelompok **Pendanaan**. Pinjaman LPD memakai menu **Pinjaman LPD** tersendiri,
+dan angsuran dibayar lewat tombol **Bayar Angsuran** di detail jadwal.
+Jangan membuat pinjaman baru lewat Jurnal Umum kecuali untuk koreksi
 oleh akuntan pendamping; saldo 2050 lama tetap terbaca di laporan.
 
 ### 2.5a Pinjaman LPD (jadwal dan pembayaran)
@@ -239,7 +239,7 @@ lalu pilih salah satu mode:
    pencairan bisa dibuka lewat menu **Jurnal Umum**; pinjaman mode berjalan
    ditandai **Saldo awal** dan tidak memiliki jurnal pencairan.
 
-#### Langkah membayar angsuran (DB-16d)
+#### Langkah membayar angsuran
 
 1. Buka **Lihat jadwal** pada pinjaman yang akan dibayar. Angsuran **BELUM**
    menampilkan tombol **Bayar Angsuran**; angsuran **SEBAGIAN** menampilkan
@@ -278,7 +278,7 @@ dibatalkan, masukkan kembali pembayaran yang benar melalui **Bayar Angsuran**.
 > ada pembayaran aktif yang terkait. Pinjaman **Sudah berjalan** tidak memiliki
 > jurnal pencairan baru untuk dibatalkan.
 
-#### Kartu hutang / mutasi bulanan (DB-16e)
+#### Kartu hutang / mutasi bulanan
 
 Bagian **Kartu Hutang / Mutasi Bulanan** di menu **Pinjaman LPD** menampilkan
 mutasi pokok, bunga, denda, dan kas keluar setiap bulan. Pilih pinjaman, tahun,
@@ -298,7 +298,7 @@ dan bulan (kosongkan bulan untuk satu tahun penuh; default tahun berjalan).
   tanggal link pembayaran, dan ID jurnal untuk drill-down. Semua angka dibaca
   dari baris jurnal; total bulanan/saldo **tidak disimpan** di tabel pembayaran.
 
-#### Rekonsiliasi 2050 vs jadwal pinjaman (DB-16f)
+#### Rekonsiliasi 2050 vs jadwal pinjaman
 
 Bagian **Rekonsiliasi 2050 vs Jadwal Pinjaman** di menu **Pinjaman LPD**
 menampilkan status setiap pinjaman: **Cocok** atau **Selisih**, beserta
@@ -334,7 +334,7 @@ berubah lewat setoran/penarikan modal atau wizard Saldo Awal.
 
 ### 2.6 Jurnal Umum (untuk akuntan pendamping)
 
-> **Mode lanjutan (DB-26).** Menu **Jurnal Umum** tidak tampil untuk operator
+> **Mode lanjutan.** Menu **Jurnal Umum** tidak tampil untuk operator
 > harian. Akuntan/pendamping membukanya lewat **Pengaturan → Mode lanjutan**,
 > lalu menekan **Aktifkan Mode lanjutan** dan menyetujui konfirmasi. Setelah
 > aktif, menu Jurnal Umum muncul di grup **Data & Sistem**. Ini adalah tampilan
@@ -451,9 +451,9 @@ Untuk akun yang sudah ada:
 - **Ubah** — memperbaiki nama akun **tambahan**. Kode dan jenis akun tetap agar
   histori jurnal tidak berubah. Perubahan nama tercatat di audit.
 - **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal
-  dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**. Sejak DB-15,
-  akun **bawaan** juga boleh dinonaktifkan (mis. `5010` yang digantikan
-  `5060`), tanpa mengubah namanya.
+  dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**. Akun
+  **bawaan** juga boleh dinonaktifkan (mis. `5010` yang digantikan `5060`),
+  tanpa mengubah namanya.
 - **Hapus** — hanya untuk akun **tambahan** dan hanya berhasil bila akun belum
   pernah dipakai di jurnal atau panjar. Bila sudah dipakai, sistem menolak dan
   menyarankan **Nonaktifkan** agar histori tidak hilang.
@@ -588,12 +588,17 @@ Langkah umum:
    `.db`, pilih **Restore Import .db** dan baca peringatan lanjutannya.
 3. Baca peringatan, lalu pilih folder backup lengkap atau file `.db`.
 4. Sistem memvalidasi isi backup sebelum menyentuh data aktif: file SQLite
-   terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim, versi
-   skema tidak lebih baru dari aplikasi, tabel wajib untuk versi backup tersedia,
-   dan audit akuntansi tidak menemukan masalah. Restore Lengkap juga memeriksa
-   `manifest.json`; Restore Import .db tidak. Setelah lolos, sistem membuat
-   cadangan data lama (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
+   terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim,
+   **skema harus baseline v1**, 11 tabel wajib tersedia, dan audit akuntansi
+   tidak menemukan masalah. Restore Lengkap juga memeriksa `manifest.json`;
+   Restore Import .db tidak. Setelah lolos, sistem membuat cadangan data lama
+   (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
 5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
+
+**Hanya backup dengan skema baseline v1 yang didukung.** Backup dari skema lama
+ditolak; tidak ada migrasi atau pre-upgrade. Bila aplikasi menolak database lama
+saat dibuka, pindahkan atau hapus file `pura.db` lama, lalu jalankan aplikasi
+lagi agar database baru dengan skema v1 dibuat. Jangan menimpa backup yang sah.
 
 ### 5.3 Ganti laptop
 
@@ -651,7 +656,7 @@ menyalin file `.exe`.
 | **Aplikasi terkunci** | Sesi PIN habis karena idle. | Masukkan PIN kembali. |
 | **Terlalu banyak salah** | PIN salah 5 kali. | Tunggu 60 detik, lalu coba lagi dengan hati-hati. |
 | **Backup gagal** | Media penyimpanan penuh/tidak bisa ditulis. | Ganti lokasi simpan, pastikan flashdisk tidak dikunci, coba lagi. |
-| **Database dibuat versi lebih baru** | File backup berasal dari aplikasi versi lebih baru. | Perbarui aplikasi di laptop ini, jangan memaksa restore. |
+| **Database tidak kompatibel** | File database/backup memakai skema lama atau bukan skema baseline v1. | Pindahkan atau hapus file database lama, lalu jalankan aplikasi lagi. Untuk backup, pilih backup berskema v1 buatan aplikasi versi ini. |
 | **Tahun belum boleh dikunci** | Kunci periode hanya untuk tahun yang sudah selesai. | Kunci tahun lalu lebih dulu; tahun berjalan jangan dikunci. |
 
 ---

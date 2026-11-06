@@ -36,7 +36,7 @@ transaksi aslinya.
 
 ## 2. Jurnal Umum
 
-> **Membuka Jurnal Umum (DB-26).** Menu ini sengaja tersembunyi dari operator
+> **Membuka Jurnal Umum.** Menu ini sengaja tersembunyi dari operator
 > harian. Buka **Pengaturan → Mode lanjutan**, tekan **Aktifkan Mode lanjutan**,
 > dan setujui konfirmasi yang menjelaskan tampilan debit/kredit mentah untuk
 > pemeriksaan. Menu Jurnal Umum lalu muncul di grup **Data & Sistem**. Matikan
@@ -249,7 +249,7 @@ Aturan penting:
   **Batalkan** untuk panjar OPEN yang salah serah (membuat jurnal balik
   `D kas / K 1040`, wajib alasan, status menjadi DIBATALKAN), atau alur
   pertanggungjawaban untuk panjar yang benar. Panjar CLOSED belum bisa
-  dibatalkan lewat DB-21.
+  dibatalkan lewat modul Panjar.
 - Panjar yang dibatalkan tetap menyimpan jurnal serah asli dan jurnal balik;
   tidak ada jurnal yang dihapus. Audit `PANJAR-BATAL` mencatat alasan dan link
   `jurnal_batal_id`.
