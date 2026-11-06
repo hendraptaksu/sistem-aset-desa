@@ -76,7 +76,7 @@
     3. Tolak juga path relatif yang menunjuk file yang sama (mis. `./data/pura.db` vs path absolut).
   - **Selesai bila:** backup ke path DB aktif ditolak sebelum `VACUUM INTO`; DB tetap bisa dipakai; data jurnal baru masih ada setelah close/reopen.
   - **Verifikasi:** `npm test -- tests/backup-restore.test.ts`.
-  - **Catatan:** File disentuh: `src/features/export/pathAman.ts` (baru), `src/features/export/export.ts`, `tests/backup-restore.test.ts`, `TICKETS.md`. Guard `pastikanBukanFileDbAktif(db.name, dest)` berjalan sebelum `VACUUM INTO`, membandingkan path kanonik (`realpath`/`resolve`) dan inode (`stat`) sehingga path relatif/absolut, symlink, dan hardlink ke DB aktif atau sidecar `-wal`/`-shm` ditolak. Verifikasi: `npm test -- tests/backup-restore.test.ts` (25 lulus, 4 test T1.1 gagal bila guard dilepas), `npm run typecheck` lulus, `npm test` 85 file/1.082 test lulus. Commit `c15d7a0`.
+  - **Catatan:** File disentuh: `src/features/export/pathAman.ts` (baru), `src/features/export/export.ts`, `tests/backup-restore.test.ts`, `TICKETS.md`. Guard `pastikanBukanFileDbAktif(db.name, dest)` berjalan sebelum `VACUUM INTO`, membandingkan path kanonik (`realpath`/`resolve`) dan inode (`stat`) sehingga path relatif/absolut, symlink, dan hardlink ke DB aktif atau sidecar `-wal`/`-shm` ditolak. Verifikasi: `npm test -- tests/backup-restore.test.ts` (25 lulus, 4 test T1.1 gagal bila guard dilepas), `npm run typecheck` lulus, `npm test` 85 file/1.082 test lulus. Commit `9a9c820`.
 
 - [ ] **T1.2 — Pasang guard path di semua kanal simpan**
   - **Masalah:** `file:save-buffer` dan `file:save-pdf` menulis ke path apa pun yang dipilih dialog. Memilih file DB aktif dapat menimpa database dengan isi xlsx/pdf.
