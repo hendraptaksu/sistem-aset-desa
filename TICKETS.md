@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 0 | 9 |
+| 1 — Data safety | P0 | 1 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **3** | **33** |
+| **Total** |  | **4** | **33** |
 
 ## Aturan kerja
 
@@ -67,7 +67,7 @@
 
 ## Fase 1 — P0: Data safety
 
-- [ ] **T1.1 — Guard backup agar tidak menimpa DB aktif**
+- [x] **T1.1 — Guard backup agar tidak menimpa DB aktif**
   - **Masalah:** `backupVacuumInto(db, dest)` memindahkan file lama lalu me-rename hasil VACUUM ke `dest`. Bila `dest` adalah path DB aktif, koneksi SQLite tetap menulis ke inode lama; jurnal baru tidak ada saat DB dibuka ulang.
   - **File:** `src/features/export/export.ts`, helper baru mis. `src/features/export/pathAman.ts`, `tests/backup-restore.test.ts`.
   - **Langkah:**
@@ -76,7 +76,7 @@
     3. Tolak juga path relatif yang menunjuk file yang sama (mis. `./data/pura.db` vs path absolut).
   - **Selesai bila:** backup ke path DB aktif ditolak sebelum `VACUUM INTO`; DB tetap bisa dipakai; data jurnal baru masih ada setelah close/reopen.
   - **Verifikasi:** `npm test -- tests/backup-restore.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/features/export/pathAman.ts` (baru), `src/features/export/export.ts`, `tests/backup-restore.test.ts`, `TICKETS.md`. Guard `pastikanBukanFileDbAktif(db.name, dest)` berjalan sebelum `VACUUM INTO`, membandingkan path kanonik (`realpath`/`resolve`) dan inode (`stat`) sehingga path relatif/absolut, symlink, dan hardlink ke DB aktif atau sidecar `-wal`/`-shm` ditolak. Verifikasi: `npm test -- tests/backup-restore.test.ts` (25 lulus, 4 test T1.1 gagal bila guard dilepas), `npm run typecheck` lulus, `npm test` 85 file/1.082 test lulus. Commit `c15d7a0`.
 
 - [ ] **T1.2 — Pasang guard path di semua kanal simpan**
   - **Masalah:** `file:save-buffer` dan `file:save-pdf` menulis ke path apa pun yang dipilih dialog. Memilih file DB aktif dapat menimpa database dengan isi xlsx/pdf.

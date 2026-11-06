@@ -2,12 +2,14 @@
 import Database from 'better-sqlite3';
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -288,6 +290,137 @@ describe('AUD-15 — backupVacuumInto: tulis via tmp + rename tanpa kehilangan b
     } finally {
       kontrolRename.gagalTmp = false;
       cek?.close();
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('T1.1 — guard backup: path DB aktif tidak boleh menjadi tujuan', () => {
+  it('menolak dest === db.name sebelum VACUUM INTO; DB tetap utuh dan jurnal baru bertahan', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t11-aktif-'));
+    let db: Database.Database | null = null;
+    let cek: Database.Database | null = null;
+    try {
+      const dbPath = join(dir, 'pura.db');
+      db = openDb(dbPath);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
+      const isiSebelum = readFileSync(dbPath);
+
+      expect(() => backupVacuumInto(db!, dbPath)).toThrow(/database yang sedang aktif/i);
+
+      // Guard berjalan sebelum VACUUM: file aktif tidak tersentuh dan tidak ada
+      // tmp/backup yang lahir.
+      expect(readFileSync(dbPath)).toEqual(isiSebelum);
+      expect(
+        readdirSync(dir).filter((f) => f.includes('.tmp-') || f.includes('.bak-')),
+      ).toEqual([]);
+
+      // Koneksi tetap bisa dipakai; jurnal baru selamat setelah close/reopen.
+      insertJurnalTervalidasi(db, jurnal('baru').header, jurnal('baru').baris);
+      db.close();
+      db = null;
+      cek = openDb(dbPath);
+      expect(listJurnal(cek).map((j) => j.id)).toEqual(['lama', 'baru']);
+    } finally {
+      cek?.close();
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('menolak sidecar -wal dan -shm milik DB aktif', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t11-sidecar-'));
+    let db: Database.Database | null = null;
+    try {
+      const dbPath = join(dir, 'pura.db');
+      db = openDb(dbPath);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
+
+      for (const akhiran of ['-wal', '-shm']) {
+        expect(() => backupVacuumInto(db!, `${dbPath}${akhiran}`)).toThrow(
+          /database yang sedang aktif/i,
+        );
+      }
+      expect(
+        readdirSync(dir).filter((f) => f.includes('.tmp-') || f.includes('.bak-')),
+      ).toEqual([]);
+
+      // DB dan sidecar-nya tetap bisa dipakai setelah penolakan.
+      insertJurnalTervalidasi(db, jurnal('baru').header, jurnal('baru').baris);
+      expect(listJurnal(db).map((j) => j.id)).toEqual(['lama', 'baru']);
+    } finally {
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('menolak path relatif dan absolut yang menunjuk file DB aktif yang sama', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t11-relatif-'));
+    const cwdAsli = process.cwd();
+    let db: Database.Database | null = null;
+    let dbAbs: Database.Database | null = null;
+    try {
+      process.chdir(dir);
+      // DB dibuka lewat path relatif `./pura.db`, tujuan absolut.
+      db = openDb('./pura.db');
+      insertJurnalTervalidasi(db, jurnal('relatif').header, jurnal('relatif').baris);
+      const dbPathAbsolut = join(process.cwd(), 'pura.db');
+      expect(() => backupVacuumInto(db!, dbPathAbsolut)).toThrow(
+        /database yang sedang aktif/i,
+      );
+
+      // Arah sebaliknya: DB dibuka absolut, tujuan relatif `./lain.db`.
+      dbAbs = openDb(join(process.cwd(), 'lain.db'));
+      insertJurnalTervalidasi(dbAbs, jurnal('absolut').header, jurnal('absolut').baris);
+      expect(() => backupVacuumInto(dbAbs!, './lain.db')).toThrow(
+        /database yang sedang aktif/i,
+      );
+
+      // Kedua DB tetap bisa menulis setelah penolakan.
+      insertJurnalTervalidasi(db, jurnal('baru-rel').header, jurnal('baru-rel').baris);
+      expect(listJurnal(db).map((j) => j.id)).toEqual(['relatif', 'baru-rel']);
+      insertJurnalTervalidasi(dbAbs, jurnal('baru-abs').header, jurnal('baru-abs').baris);
+      expect(listJurnal(dbAbs).map((j) => j.id)).toEqual(['absolut', 'baru-abs']);
+    } finally {
+      dbAbs?.close();
+      db?.close();
+      process.chdir(cwdAsli);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('menolak symlink dan hardlink ke DB aktif', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t11-tautan-'));
+    let db: Database.Database | null = null;
+    try {
+      const dbPath = join(dir, 'pura.db');
+      db = openDb(dbPath);
+      insertJurnalTervalidasi(db, jurnal('lama').header, jurnal('lama').baris);
+
+      // Symlink tidak selalu bisa dibuat di Windows tanpa hak khusus; hardlink
+      // tetap wajib diuji di semua platform.
+      const tautan = join(dir, 'tautan.db');
+      let adaSymlink = true;
+      try {
+        symlinkSync(dbPath, tautan);
+      } catch {
+        adaSymlink = false;
+      }
+      if (adaSymlink) {
+        expect(() => backupVacuumInto(db!, tautan)).toThrow(/database yang sedang aktif/i);
+      }
+
+      const keras = join(dir, 'keras.db');
+      linkSync(dbPath, keras);
+      expect(() => backupVacuumInto(db!, keras)).toThrow(/database yang sedang aktif/i);
+
+      expect(
+        readdirSync(dir).filter((f) => f.includes('.tmp-') || f.includes('.bak-')),
+      ).toEqual([]);
+      insertJurnalTervalidasi(db, jurnal('baru').header, jurnal('baru').baris);
+      expect(listJurnal(db).map((j) => j.id)).toEqual(['lama', 'baru']);
+    } finally {
       db?.close();
       rmSync(dir, { recursive: true, force: true });
     }

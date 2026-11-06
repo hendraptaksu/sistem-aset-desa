@@ -17,6 +17,7 @@ import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION, TABEL_AKTIF } from '../../db/database.js';
 import { auditIntegritas } from '../../db/integritas.js';
 import { auditSebelumBackup } from './auditBackup.js';
+import { pastikanBukanFileDbAktif } from './pathAman.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
@@ -111,6 +112,10 @@ function buangFileDb(path: string): void {
  * untuk nama folder yang mengandung tanda kutip.
  */
 export function backupVacuumInto(db: Database.Database, dest: string): string {
+  // T1.1: jangan pernah menimpa DB aktif (atau sidecar WAL/SHM-nya). Koneksi
+  // SQLite tetap menulis ke inode lama, sehingga jurnal baru hilang saat dibuka
+  // ulang. Guard harus berjalan sebelum VACUUM INTO menyentuh apa pun.
+  pastikanBukanFileDbAktif(db.name, dest);
   mkdirSync(dirname(dest), { recursive: true });
   const tmp = `${dest}.tmp-${process.pid}-${Date.now()}`;
   const bak = `${dest}.bak-${process.pid}`;
