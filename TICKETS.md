@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 7 | 9 |
+| 1 — Data safety | P0 | 8 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **10** | **33** |
+| **Total** |  | **11** | **33** |
 
 ## Aturan kerja
 
@@ -144,7 +144,7 @@
   - **Verifikasi:** test baru untuk sukses, rollback, dan penolakan tanggal.
   - **Catatan:** File disentuh: `src/db/saldoAwal.ts`, `src/main/ipc.ts`, `src/renderer/lib/api.ts`, `tests/saldo-awal-koreksi.test.ts` (baru), `tests/ipc-main.test.ts`, `TICKETS.md`. `koreksiSaldoAwal(db, input, opsi)` mencari jurnal pembukaan aktif di grup `SALDO_AWAL` yang belum punya reversal (koreksi pertama = `SALDO_AWAL`, berikutnya = `UMUM` pengganti terakhir), lalu dalam SATU transaksi menulis jurnal `REVERSAL` bertanggal jurnal aktif + jurnal pengganti `UMUM` bertanggal input (baris saldo penuh, `grup_id` sama), audit `KOREKSI-SALDO-AWAL` (data lama aktif + baris; data baru pengganti + reversal; `ref_type`/`ref_id` jurnal aktif), dan memperbarui `KUNCI_AKUNTANSI_TANGGAL_MULAI`. Kedua jurnal divalidasi lewat `validasiJurnal` dengan konteks DB `koreksiSaldoAwal: true`; batas bawah KUNCI lama dikecualikan agar koreksi yang memindahkan tanggal mulai lebih awal tidak salah ditolak, sedangkan tanggal setelah transaksi non-pembukaan paling awal dan tanggal masa depan tetap ditolak. Alasan wajib >=5 karakter; `konfirmasiPeringatan`/`alasanPeringatan` didukung seperti jalur posting. IPC `saldo-awal:koreksi` memakai `validasiBentukSaldoAwal` + `buatJurnalSaldoAwal` yang sama, mengembalikan `{ jurnal, reversal }`, dan status saldo awal tetap `boleh:false`. `reverseJurnal`/`jurnal:reverse` publik tidak diubah sehingga reversal `SALDO_AWAL` tetap diblokir. Test baru mencakup koreksi sukses + laporan/neraca + audit + status terkunci, koreksi kedua membalik `UMUM` aktif, rollback atomik lewat trigger audit, penolakan tanggal setelah transaksi paling awal, penerimaan tanggal lebih awal dari KUNCI lama, alasan <5 karakter, belum ada `SALDO_AWAL`, reversal generik tetap ditolak, dan IPC sukses/validasi alasan/bentuk. Verifikasi: `npm test -- tests/saldo-awal-koreksi.test.ts tests/saldo-awal.test.ts tests/reversal.test.ts tests/ipc-main.test.ts` (106 lulus), `npm run typecheck` lulus, `npm test` 86 file/1.101 test lulus. Commit kode `9d67f92`.
 
-- [ ] **T1.8 — UI koreksi saldo awal di wizard**
+- [x] **T1.8 — UI koreksi saldo awal di wizard**
   - **Masalah:** wizard hanya punya status terkunci tanpa jalan keluar.
   - **File:** `src/renderer/components/SaldoAwalWizard.tsx`, `src/renderer/lib/api.ts`, `src/preload/*`, test UI terkait.
   - **Langkah:**
@@ -154,7 +154,7 @@
     4. Kirim ke IPC T1.7 dan muat ulang status setelah sukses.
   - **Selesai bila:** pengguna bisa memperbaiki saldo awal tanpa menghapus jurnal; form biasa tetap terkunci; pesan sukses jelas.
   - **Verifikasi:** `npm test -- tests/saldo-awal.test.ts tests/forms-ui.test.ts` + audit UI.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/saldoAwal.ts`, `src/main/ipc.ts`, `src/renderer/components/SaldoAwalWizard.tsx`, `src/renderer/components/TransaksiTab.tsx`, `src/renderer/lib/api.ts`, `tests/saldo-awal.test.ts`, `tests/forms-ui.test.ts`, `tests/ipc-main.test.ts`, `TICKETS.md`. `saldoAwalSaatIni(db)` membaca jurnal grup pembukaan aktif dan menjumlahkan seluruh baris grup (jurnal asli + balik + penyesuaian), sehingga prefill tetap benar setelah koreksi berulang; akun `3000 MODAL` sengaja tidak dikembalikan. IPC baru `saldo-awal:saat-ini` mengembalikan `{ tanggal, saldo, keterangan, tanggalMaksimal? }` dan menolak dengan pesan jelas bila belum ada saldo awal. `TransaksiTab` memilih tombol **Koreksi Saldo Awal** hanya setelah status termuat dan `boleh:false` (status `null` tetap menampilkan wizard biasa nonaktif), memuat prefill lebih dulu, lalu membuka `SaldoAwalWizard` mode `koreksi`. Wizard prefills tanggal/saldo/keterangan, mewajibkan alasan koreksi >=5 karakter (trim), menjelaskan jurnal lama tersimpan di audit, menampilkan pratinjau selisih + baris penyeimbang `3000`, dan mengirim `api.saldoAwalKoreksi(form, { alasan, ...opsi })` ke IPC `saldo-awal:koreksi`. Setelah sukses, status dimuat ulang dari DB; mode awal tetap optimistis terkunci, sedangkan koreksi tidak pernah membuat status `boleh:true`. Form biasa tetap terkunci saat `boleh:false`. Review menemukan dan memperbaiki satu cacat: batas tanggal koreksi kini memakai jurnal non-pembukaan paling awal, bukan `statusSaldoAwal.tanggalMaksimal` yang masih menunjuk `SALDO_AWAL` lama setelah tanggal mulai dipindahkan, sehingga prefill tidak terjepit kembali ke tanggal lama. `src/preload/index.ts` tidak perlu diubah karena memakai `invoke` generik. Verifikasi: `npm test -- tests/saldo-awal.test.ts tests/forms-ui.test.ts tests/saldo-awal-koreksi.test.ts tests/ipc-main.test.ts` 124 lulus; `npm run typecheck` lulus; `npm test` 86 file/1.112 test lulus. `npm run audit:ui`: 1024x768 dan 1024x680 lulus; 1280x800 gagal pada assertion lama jumlah tombol nav `15 !== 16` di `e2e/ui-audit.test.mjs` (jumlah item nav saat ini memang 12 item + 3 header grup = 15; `App.tsx`/e2e tidak disentuh T1.8 dan kegagalan reproducible, jadi di luar lingkup tiket; test tidak diubah). Commit kode `72d4260`.
 
 - [ ] **T1.9 — Regression P0 & smoke manual**
   - **Langkah:**
