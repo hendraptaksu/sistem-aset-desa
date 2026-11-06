@@ -177,6 +177,8 @@ function AppShell() {
   const tabSebelumnya = useRef<TabId>('dashboard');
   const perluGulirAktif = useRef(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
+  // T2.7: pesan restore ditampilkan di layar kunci sampai PIN berhasil dibuka.
+  const [pesanRestore, setPesanRestore] = useState<string | null>(null);
   // AUD-19: plaintext kode darurat hanya hidup di state ini sampai modal ditutup.
   const [kodeDaruratBaru, setKodeDaruratBaru] = useState<string | null>(null);
   const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
@@ -366,6 +368,8 @@ function AppShell() {
   /** Sukses setup/unlock/reset: optimistis buka UI, lalu sinkronkan status main. */
   const tanganiTerbuka = useCallback(
     (kodeDarurat?: string) => {
+      // T2.7: pesan restore hanya untuk layar kunci; PIN benar = sudah dibaca.
+      setPesanRestore(null);
       if (kodeDarurat) setKodeDaruratBaru(kodeDarurat);
       setLock((l) =>
         l
@@ -377,6 +381,16 @@ function AppShell() {
             }
           : l,
       );
+      void refreshLock();
+    },
+    [refreshLock],
+  );
+
+  // T2.7: setelah restore sukses, main sudah mengunci sesi. Simpan pesan dan
+  // sinkronkan status kunci segera agar layar PIN muncul tanpa menunggu polling.
+  const tanganiRestoreSelesai = useCallback(
+    (pesan: string) => {
+      setPesanRestore(pesan);
       void refreshLock();
     },
     [refreshLock],
@@ -466,11 +480,23 @@ function AppShell() {
     return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;
   }
   if (lock.sudahSetup && !lock.terbuka) {
-    return <LockScreen sudahSetup={lock.sudahSetup} onTerbuka={tanganiTerbuka} />;
+    return (
+      <LockScreen
+        sudahSetup={lock.sudahSetup}
+        onTerbuka={tanganiTerbuka}
+        pesan={pesanRestore ?? undefined}
+      />
+    );
   }
   // Belum setup PIN → wajib buat dulu (gembok depan aktif sejak awal).
   if (!lock.sudahSetup) {
-    return <LockScreen sudahSetup={false} onTerbuka={tanganiTerbuka} />;
+    return (
+      <LockScreen
+        sudahSetup={false}
+        onTerbuka={tanganiTerbuka}
+        pesan={pesanRestore ?? undefined}
+      />
+    );
   }
 
   const renderItem = (id: TabId) => {
@@ -633,6 +659,7 @@ function AppShell() {
               <DashboardTab
                 onBukaTab={bukaDariDashboard}
                 modeLanjutan={modeLanjutan}
+                onRestoreSelesai={tanganiRestoreSelesai}
               />
             </div>
           </>

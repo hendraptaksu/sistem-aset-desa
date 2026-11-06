@@ -726,6 +726,14 @@ describe('AUD-12 / DB-37 — IPC restore lengkap (database)', () => {
 
     // AUD-14: sesi terkunci lagi setelah restore; PIN aktif tetap berlaku.
     expect(sesi.terbuka).toBe(false);
+    // T2.7: renderer membaca lock:status setelah restore dan harus melihat
+    // sesi terkunci, bukan tetap terbuka sampai polling berikutnya.
+    const statusSetelahRestore = await env.panggil('lock:status');
+    expect(statusSetelahRestore.ok, statusSetelahRestore.error).toBe(true);
+    expect(statusSetelahRestore.data).toMatchObject({
+      sudahSetup: true,
+      terbuka: false,
+    });
     const terkunci = await env.panggil('audit:list', { aksi: 'RESTORE-LENGKAP' });
     expect(terkunci.ok).toBe(false);
     expect(terkunci.error).toMatch(/terkunci/i);
@@ -2008,6 +2016,10 @@ describe('DB-09 — restore .db wajib konfirmasi lanjutan eksplisit', () => {
     });
     expect(hasil.ok, hasil.error).toBe(true);
     expect(hasil.data).toMatchObject({ restored: true });
+    // T2.7: lock:status langsung terkunci setelah restore .db.
+    const statusImpor = await env.panggil('lock:status');
+    expect(statusImpor.ok, statusImpor.error).toBe(true);
+    expect(statusImpor.data.terbuka).toBe(false);
     expect(env.setDbCalls).toHaveLength(1);
     expect((await env.panggil('jurnal:list', {})).data.map((j: { id: string }) => j.id)).toEqual([
       'j-db09-awal',

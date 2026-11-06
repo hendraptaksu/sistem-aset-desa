@@ -31,6 +31,22 @@ export type DashboardFormTransaksi =
   | 'CATAT_UTANG'
   | 'BAYAR_UTANG';
 
+/** Jenis jalur restore yang dipakai untuk menyusun pesan sukses. */
+export type JenisRestore = 'db' | 'lengkap';
+
+/**
+ * T2.7: pesan sukses restore yang dibawa ke layar kunci. Main sudah memanggil
+ * `kunciLagi()` setelah restore, jadi renderer tidak boleh memuat dashboard
+ * lagi; pesan ini memastikan pengguna tahu data lama sudah dicadangkan.
+ */
+export function pesanRestoreSukses(
+  jenis: JenisRestore,
+  preRestorePath?: string | null,
+): string {
+  const label = jenis === 'lengkap' ? 'Restore lengkap' : 'Restore';
+  return `${label} OK. Cadangan data lama: ${preRestorePath ?? '-'}. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.`;
+}
+
 /** Banner amber AUD-13: backup lebih tua dari 2 hari. Null = tidak tampil. */
 export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
   const pesan = pesanBackupBasi(usiaHari);
@@ -52,10 +68,16 @@ export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
 export function DashboardTab({
   onBukaTab,
   modeLanjutan = false,
+  onRestoreSelesai,
 }: {
   onBukaTab: (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => void;
   /** DB-26: pintasan Jurnal Umum hanya tersedia setelah Mode lanjutan aktif. */
   modeLanjutan?: boolean;
+  /**
+   * T2.7: dipanggil tepat setelah restore sukses agar App langsung memuat
+   * ulang status kunci dan menampilkan layar PIN tanpa menunggu polling.
+   */
+  onRestoreSelesai?: (pesan: string) => void;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<DashboardHasil | null>(null);
@@ -146,10 +168,12 @@ export function DashboardTab({
         // DB-09: konfirmasi eksplisit wajib; main menolak tanpa ini.
         const r = await api.backupImport(true);
         if (r.restored) {
-          setInfo(
-            `Restore OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
-          );
-          await muatData(cutoff);
+          // T2.7: main sudah mengunci sesi. Jangan memuat dashboard lagi
+          // (permintaan akan ditolak atau menampilkan data stale); langsung
+          // serahkan pesan ke App agar layar kunci muncul.
+          const pesan = pesanRestoreSukses('db', r.preRestorePath);
+          setInfo(pesan);
+          onRestoreSelesai?.(pesan);
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -168,10 +192,11 @@ export function DashboardTab({
       try {
         const r = await api.backupRestoreLengkap();
         if (r.restored) {
-          setInfo(
-            `Restore lengkap OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
-          );
-          await muatData(cutoff);
+          // T2.7: sama seperti restore .db — sesi dikunci main, jadi jangan
+          // panggil `muatData`; App akan segera menampilkan layar kunci.
+          const pesan = pesanRestoreSukses('lengkap', r.preRestorePath);
+          setInfo(pesan);
+          onRestoreSelesai?.(pesan);
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));

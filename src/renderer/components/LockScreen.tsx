@@ -9,10 +9,13 @@ type Mode = 'buka' | 'setup' | 'reset';
 export function LockScreen({
   sudahSetup,
   onTerbuka,
+  pesan,
 }: {
   sudahSetup: boolean;
   /** Setup mengirim kode darurat plaintext sekali agar App bisa menampilkan modal. */
   onTerbuka: (kodeDarurat?: string) => void;
+  /** T2.7: info restore sukses yang ditampilkan sebelum form PIN. */
+  pesan?: string;
 }) {
   const [mode, setMode] = useState<Mode>(sudahSetup ? 'buka' : 'setup');
   const [pin, setPin] = useState('');
@@ -104,6 +107,15 @@ export function LockScreen({
               ? 'Reset PIN dengan kode darurat dari dokumen bendahara.'
               : 'Masukkan PIN 6 digit — terbuka otomatis.'}
         </p>
+        {pesan && (
+          <div
+            role="status"
+            data-testid="pesan-restore"
+            className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-left text-sm text-emerald-900"
+          >
+            {pesan}
+          </div>
+        )}
         <div className="mt-4 space-y-3 text-left">
           <ErrorBox msg={err} />
           {mode === 'reset' && (

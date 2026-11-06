@@ -614,13 +614,18 @@ export const api = {
   /**
    * Restore `.db` (jalur lanjutan). Main menolak panggilan tanpa konfirmasi
    * eksplisit karena hanya database yang dipulihkan, tanpa validasi manifest.
+   * T2.7: setelah sukses main mengunci sesi — renderer harus menampilkan layar
+   * kunci, bukan memanggil `dashboard()` lagi.
    */
   backupImport: (konfirmasiRestoreDb: boolean) =>
     call<{ restored: boolean; path: string; preRestorePath?: string }>(
       'backup:import',
       { konfirmasiRestoreDb },
     ),
-  /** Restore lengkap: DB + manifest dari satu folder backup. */
+  /**
+   * Restore lengkap: DB + manifest dari satu folder backup.
+   * T2.7: sama seperti `backupImport`, sesi dikunci ulang setelah sukses.
+   */
   backupRestoreLengkap: () =>
     call<{
       restored: boolean;
