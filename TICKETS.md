@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 3 | 9 |
+| 1 — Data safety | P0 | 4 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **6** | **33** |
+| **Total** |  | **7** | **33** |
 
 ## Aturan kerja
 
@@ -100,7 +100,7 @@
   - **Verifikasi:** `npm test -- tests/skema-kompatibilitas.test.ts`.
   - **Catatan:** File disentuh: `src/db/database.ts`, `tests/skema-kompatibilitas.test.ts`, `TICKETS.md`. `cekKompatibilitas` kini menghitung `TABEL_AKTIF` yang hilang saat `user_version === SCHEMA_VERSION` dan melempar `PESAN_DB_TIDAK_LENGKAP` (menyebut nama tabel + instruksi memulihkan dari backup) sebelum `journal_mode = WAL` dan sebelum DDL. DB baru v0 tanpa tabel dan DB v1 lengkap tetap bisa dibuka; penolakan tabel asing/versi lama tidak berubah. Test regresi membuat DB v1 valid via `openDb`, menghapus `jurnal_baris` langsung dengan better-sqlite3 (`foreign_keys = OFF`), lalu memastikan `openDb` ditolak, byte file identik, tanpa `-wal`/`-shm`, versi tetap v1, dan tabel tidak muncul kembali; kasus DB v1 lengkap juga diuji. Verifikasi: `npm test -- tests/skema-kompatibilitas.test.ts` (8 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.087 test lulus. Commit `19c9654`.
 
-- [ ] **T1.4 — Tolak DB v1 yang kehilangan kolom wajib**
+- [x] **T1.4 — Tolak DB v1 yang kehilangan kolom wajib**
   - **Masalah:** tabel yang ada tetapi kehilangan kolom tidak terdeteksi. `CREATE TABLE IF NOT EXISTS` tidak menambah kolom; error baru muncul jauh di lapisan query.
   - **File:** `src/db/database.ts`, `tests/skema-kompatibilitas.test.ts`.
   - **Langkah:**
@@ -109,7 +109,7 @@
     3. Tolak dengan pesan yang menyebut tabel dan kolom yang hilang; jangan `ALTER TABLE` otomatis.
   - **Selesai bila:** DB v1 dengan satu kolom hilang ditolak sebelum DDL; DB valid tetap bisa dibuka.
   - **Verifikasi:** `npm test -- tests/skema-kompatibilitas.test.ts tests/skema-strict.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/database.ts`, `tests/skema-kompatibilitas.test.ts`, `TICKETS.md`. `KOLOM_WAJIB` memetakan 11 `TABEL_AKTIF` ke seluruh kolom kanonik DDL; `kolomWajibHilang` membandingkannya dengan `PRAGMA table_info`. `cekKompatibilitas` mengecek tabel hilang lebih dulu (pesan T1.3 tetap dipakai), lalu kolom hilang, dan melempar `PESAN_DB_KOLOM_TIDAK_LENGKAP` yang menyebut `tabel.kolom` + instruksi memakai backup — sebelum `journal_mode = WAL`/DDL dan tanpa `ALTER TABLE`. Test regresi membuat DB v1 valid, menghapus `pengaturan.nilai` via better-sqlite3, lalu memastikan `openDb` ditolak, byte file identik, tanpa `-wal`/`-shm`, kolom tidak ditambahkan kembali, dan data lain utuh; kasus DB v1 lengkap tetap terbuka. Test penjaga sinkronisasi membandingkan `KOLOM_WAJIB` dengan `PRAGMA table_info` DB baru. Verifikasi: `npm test -- tests/skema-kompatibilitas.test.ts tests/skema-strict.test.ts` (12 lulus), `npm run typecheck` lulus, `npm test` 85 file/1.089 test lulus. Commit `b001349`.
 
 - [ ] **T1.5 — Blokir reversal `SALDO_AWAL` dari jalur umum**
   - **Masalah:** `reverseJurnal` mengizinkan `SALDO_AWAL` dibalik. Dampaknya saldo awal menjadi nol, wizard tetap terkunci karena jurnal `SALDO_AWAL` masih ada, dan saldo awal baru tetap ditolak unique index. Pesan `PESAN_SALDO_AWAL_SUDAH_ADA` menyesatkan karena menyarankan “koreksi/jurnal biasa”.
