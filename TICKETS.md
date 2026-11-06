@@ -27,11 +27,11 @@
 | Fase | Prioritas | Selesai | Total |
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
-| 1 — Data safety | P0 | 6 | 9 |
+| 1 — Data safety | P0 | 7 | 9 |
 | 2 — Kontrol & UX | P1 | 0 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **9** | **33** |
+| **Total** |  | **10** | **33** |
 
 ## Aturan kerja
 
@@ -132,7 +132,7 @@
   - **Verifikasi:** review keputusan; belum ada kode.
   - **Catatan:** **Opsi A dipilih**: reversal `SALDO_AWAL` lama + jurnal penyesuaian `UMUM` bertanggal sama + audit `KOREKSI-SALDO-AWAL`, semuanya dalam satu transaksi atomik. Alasan: ini *reverse and re-post* standar akuntansi, menjaga jurnal lama tetap utuh (tidak diedit/dihapus), dan mempertahankan `ux_jurnal_saldo_awal` sebagai penjaga "saldo awal hanya sekali" sehingga `sudahAdaSaldoAwal`/`statusSaldoAwal` tetap sederhana. Opsi B (trigger) butuh perubahan skema, keputusan reset/migrasi, perubahan `DDL_INDEX` + `docs/skema.md`, dan penyesuaian test skema (`db-04`, `skema-baseline`, `db-30`, `skema-strict`, `skema-hardening`) tanpa mengubah hasil yang dilihat pengguna; risiko `SALDO_AWAL` ganda juga membuat laporan berpotensi menghitung saldo awal dua kali. **Dampak skema:** tidak ada perubahan skema/migrasi; `ux_jurnal_saldo_awal` tetap apa adanya. **Dampak test (T1.7):** test baru untuk sukses (saldo laporan berubah; jurnal lama + reversal + UMUM ada; audit `KOREKSI-SALDO-AWAL`), rollback atomik (jurnal pengganti gagal → reversal & audit batal), penolakan tanggal (setelah transaksi paling awal/periode terkunci), koreksi berulang membalik `UMUM` aktif (bukan `SALDO_AWAL` dua kali), reversal generik `SALDO_AWAL` tetap ditolak, dan validasi IPC `saldo-awal:koreksi`. **UI (T1.8):** tombol **Koreksi Saldo Awal** saat wizard terkunci, prefill saldo saat ini, jelaskan jurnal lama tetap tersimpan. **File:** `docs/prinsip-akuntansi.md` (bagian baru “10. Koreksi saldo awal”), `TICKETS.md`. **Verifikasi:** review dokumen + `npm test -- tests/dokumentasi.test.ts` (10 lulus); belum ada kode implementasi. Commit dokumen `42a8213`; commit catatan tiket terpisah.
 
-- [ ] **T1.7 — Implementasi backend koreksi saldo awal**
+- [x] **T1.7 — Implementasi backend koreksi saldo awal**
   - **Masalah:** setelah T1.5, pengguna belum punya cara memperbaiki saldo awal yang salah.
   - **File:** `src/db/saldoAwal.ts` (atau modul baru), `src/db/reversal.ts`, `src/main/ipc.ts`, `src/main/validation.ts`, test baru.
   - **Langkah (Opsi A):**
@@ -142,7 +142,7 @@
     4. Tambah IPC `saldo-awal:koreksi` dengan validasi bentuk input dan alasan.
   - **Selesai bila:** koreksi mengubah saldo laporan sesuai input; bila jurnal pengganti gagal, reversal ikut batal; reversal generik tetap diblokir; audit tercatat.
   - **Verifikasi:** test baru untuk sukses, rollback, dan penolakan tanggal.
-  - **Catatan:** bergantung pada T1.6.
+  - **Catatan:** File disentuh: `src/db/saldoAwal.ts`, `src/main/ipc.ts`, `src/renderer/lib/api.ts`, `tests/saldo-awal-koreksi.test.ts` (baru), `tests/ipc-main.test.ts`, `TICKETS.md`. `koreksiSaldoAwal(db, input, opsi)` mencari jurnal pembukaan aktif di grup `SALDO_AWAL` yang belum punya reversal (koreksi pertama = `SALDO_AWAL`, berikutnya = `UMUM` pengganti terakhir), lalu dalam SATU transaksi menulis jurnal `REVERSAL` bertanggal jurnal aktif + jurnal pengganti `UMUM` bertanggal input (baris saldo penuh, `grup_id` sama), audit `KOREKSI-SALDO-AWAL` (data lama aktif + baris; data baru pengganti + reversal; `ref_type`/`ref_id` jurnal aktif), dan memperbarui `KUNCI_AKUNTANSI_TANGGAL_MULAI`. Kedua jurnal divalidasi lewat `validasiJurnal` dengan konteks DB `koreksiSaldoAwal: true`; batas bawah KUNCI lama dikecualikan agar koreksi yang memindahkan tanggal mulai lebih awal tidak salah ditolak, sedangkan tanggal setelah transaksi non-pembukaan paling awal dan tanggal masa depan tetap ditolak. Alasan wajib >=5 karakter; `konfirmasiPeringatan`/`alasanPeringatan` didukung seperti jalur posting. IPC `saldo-awal:koreksi` memakai `validasiBentukSaldoAwal` + `buatJurnalSaldoAwal` yang sama, mengembalikan `{ jurnal, reversal }`, dan status saldo awal tetap `boleh:false`. `reverseJurnal`/`jurnal:reverse` publik tidak diubah sehingga reversal `SALDO_AWAL` tetap diblokir. Test baru mencakup koreksi sukses + laporan/neraca + audit + status terkunci, koreksi kedua membalik `UMUM` aktif, rollback atomik lewat trigger audit, penolakan tanggal setelah transaksi paling awal, penerimaan tanggal lebih awal dari KUNCI lama, alasan <5 karakter, belum ada `SALDO_AWAL`, reversal generik tetap ditolak, dan IPC sukses/validasi alasan/bentuk. Verifikasi: `npm test -- tests/saldo-awal-koreksi.test.ts tests/saldo-awal.test.ts tests/reversal.test.ts tests/ipc-main.test.ts` (106 lulus), `npm run typecheck` lulus, `npm test` 86 file/1.101 test lulus. Commit kode `9d67f92`.
 
 - [ ] **T1.8 — UI koreksi saldo awal di wizard**
   - **Masalah:** wizard hanya punya status terkunci tanpa jalan keluar.
