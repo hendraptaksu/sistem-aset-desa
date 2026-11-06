@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 7 | 9 |
+| 2 — Kontrol & UX | P1 | 8 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **19** | **33** |
+| **Total** |  | **20** | **33** |
 
 ## Aturan kerja
 
@@ -237,7 +237,7 @@
   - **Verifikasi:** test komponen/handler + smoke manual.
   - **Catatan:** File disentuh: `src/renderer/components/DashboardTab.tsx`, `src/renderer/App.tsx`, `src/renderer/components/LockScreen.tsx`, `src/renderer/lib/api.ts` (komentar kontrak), `tests/ipc-main.test.ts`, `tests/restore-kunci.test.ts` (baru), `TICKETS.md`. Helper murni `pesanRestoreSukses(jenis, preRestorePath)` menyusun pesan yang menyebut jalur restore + cadangan pre-restore. Jalur sukses `restore()` dan `restoreLengkap()` kini hanya `setInfo(pesan)` lalu `onRestoreSelesai?.(pesan)`, **tanpa** `muatData(cutoff)` / API dashboard. `App` menyimpan `pesanRestore`, memanggil `refreshLock()` segera di callback (bukan menunggu polling 30 detik), meneruskan pesan ke `LockScreen`, dan mengosongkannya di `tanganiTerbuka` saat PIN benar. `LockScreen` menampilkan kotak info `role="status"` sebelum form PIN bila prop `pesan` diisi; alur PIN tidak berubah. Logika main (`kunciLagi`) tidak disentuh. Test: SSR `LockScreen` dengan/tanpa `pesan`; helper `pesanRestoreSukses`; potongan sumber DashboardTab memastikan kedua jalur restore memanggil callback dan tidak memanggil `muatData(...)`; handler IPC restore lengkap dan restore `.db` menegaskan `lock:status` langsung `terbuka:false`. Verifikasi: `npm test -- tests/ipc-main.test.ts tests/forms-ui.test.ts tests/restore-kunci.test.ts` (3 file/95 test lulus), `npm run typecheck` lulus, `npm test` **90 file/1.153 test lulus, 0 gagal**, `npm run build` lulus. Smoke manual GUI tidak dijalankan di lingkungan subagent; jalur handler/komponen tercakup test di atas. Commit `ec40700`.
 
-- [ ] **T2.8 — Lockout PIN bertahan setelah restart**
+- [x] **T2.8 — Lockout PIN bertahan setelah restart**
   - **Masalah:** `sesi.gagal`/`sesi.blokirSampai` hanya di memori. Menutup aplikasi mereset blokir, sehingga brute-force PIN 6 digit bisa diulang.
   - **File:** `src/main/kunci.ts`, `src/db/repository.ts`, `tests/kunci.test.ts`.
   - **Langkah:**
@@ -246,7 +246,7 @@
     3. Tetap tampilkan sisa blokir di `lock:status`.
   - **Selesai bila:** 5 kali salah → restart → masih diblokir; PIN benar setelah blokir habis membersihkan state.
   - **Verifikasi:** `npm test -- tests/kunci.test.ts`.
-  - **Catatan:** ini bukan enkripsi DB; tetap dokumentasikan di README.
+  - **Catatan:** File disentuh: `src/main/kunci.ts`, `src/main/ipc.ts`, `src/db/repository.ts`, `tests/kunci.test.ts`, `README.md`, `TICKETS.md`. State lockout kini dipersist di tabel `pengaturan` lewat `KUNCI_KEAMANAN_GAGAL='keamanan_gagal'` dan `KUNCI_KEAMANAN_BLOKIR_SAMPAI='keamanan_blokir_sampai'` (tanpa PIN/salt/hash tambahan). `catatGagal(db)` menulis setiap kegagalan (hitungan <5) dan pada kegagalan ke-5 menulis `gagal=0` + `blokirSampai=Date.now()+60 dtk`. `muatStateBlokir(db)` dipanggil di awal `registerIpc(deps)` (bukan `index.ts`) karena selalu berjalan setelah DB dibuka, sebelum renderer meminta `lock:status`, dan jalur startup yang sama dipakai test IPC; fungsi ini menimpa penuh state memori dari DB (key tidak ada = 0), membuang blokir yang sudah kedaluwarsa, dan dipanggil ulang setelah restore agar mengikuti DB hasil restore. `statusKunci` tetap mengembalikan `gagal`/`blokirDetik`, dan ikut membersihkan nilai persisted yang kedaluwarsa. Setup PIN, unlock sukses, ubah PIN sukses, dan reset paksa sukses mereset memori + nilai persisted ke 0; PIN salah tidak pernah mereset blokir. Test baru `tests/kunci.test.ts` mencakup (a) 5x salah → `blokirDetik>0` + state tersimpan, (b) simulasi restart (memori di-reset, `muatStateBlokir`) → PIN benar tetap ditolak dengan pesan blokir, (c) blokir kedaluwarsa via fake timer → PIN benar berhasil dan state persisted 0, (d) restart setelah unlock sukses tidak memblokir, (e) setup PIN baru mereset lockout, serta muat penuh dari DB baru tanpa key tidak mewarisi state proses. Verifikasi: `npm test -- tests/kunci.test.ts` (23 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.159 test lulus, 0 gagal**. Commit `b16f8aa`. **Catatan keamanan:** ini hanya memperpanjang lockout UI setelah restart; PIN dan isi database/backup tetap **tidak terenkripsi** (dijelaskan di README bagian “Keamanan dan keterbatasan”).
 
 - [ ] **T2.9 — Matikan DevTools di build produksi**
   - **Masalah:** `BrowserWindow` tidak menetapkan `devTools: false`; menu default Electron masih menyediakan Toggle Developer Tools. Di aplikasi keuangan, ini memperbesar risiko inspeksi/manipulasi renderer.
