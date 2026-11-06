@@ -11,7 +11,7 @@ import {
   statSync,
   unlinkSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
 import { openDb, SCHEMA_VERSION, TABEL_AKTIF } from '../../db/database.js';
@@ -98,6 +98,72 @@ function buangFileDb(path: string): void {
     /* biarkan pemanggil melaporkan error tulis utama */
   }
   buangSidecarDb(path);
+}
+
+// ---- Retensi backup internal (T3.2) ----
+// Batas ini hanya berlaku untuk backup internal aplikasi di folder backup
+// (bukan folder pilihan pengguna untuk Backup Lengkap).
+export const RETENSI_AUTO = 7;
+export const RETENSI_PRE_RESTORE = 5;
+export const RETENSI_TUTUP_BUKU = 10;
+
+export type JenisBackupInternal = 'auto' | 'pre-restore' | 'tutup-buku';
+
+/**
+ * Pola nama persis per jenis backup internal. File lain (termasuk `.tmp-`,
+ * `.bak-`, sidecar `-wal`/`-shm`, dan DB aktif) tidak pernah disentuh.
+ */
+const POLA_BACKUP_INTERNAL: Record<JenisBackupInternal, RegExp> = {
+  auto: /^auto-.*\.db$/,
+  'pre-restore': /^pre-restore-.*\.db$/,
+  'tutup-buku': /^pura-\d{4}\.db$/,
+};
+
+/**
+ * T3.2 — rapikan backup internal sesuai batas retensi.
+ *
+ * Hanya file dengan pola nama persis milik `jenis` yang dipertimbangkan,
+ * diurutkan naik (nama = kronologis), lalu yang paling lama dihapus sampai
+ * tersisa `keep` file terbaru. Path di `lindungi` (dibandingkan lewat path
+ * resolve) tidak pernah dihapus — dipakai untuk menjaga backup yang baru
+ * dibuat atau yang sedang menjadi sumber rollback.
+ *
+ * Best-effort: kegagalan membaca folder langsung berhenti diam-diam, dan
+ * kegagalan menghapus satu file tidak menghentikan pembersihan file lain agar
+ * backup utama tidak pernah gagal karena retensi. Mengembalikan path yang
+ * benar-benar terhapus (untuk log/test).
+ */
+export function rapikanBackupInternal(
+  dir: string,
+  jenis: JenisBackupInternal,
+  keep: number,
+  lindungi: string[] = [],
+): string[] {
+  if (!Number.isFinite(keep)) return [];
+  const batas = Math.max(0, Math.trunc(keep));
+  let nama: string[];
+  try {
+    nama = readdirSync(dir)
+      .filter((f) => POLA_BACKUP_INTERNAL[jenis].test(f))
+      .sort();
+  } catch {
+    // Folder belum ada / tidak terbaca: tidak ada yang perlu dirapikan.
+    return [];
+  }
+
+  const terjaga = new Set(lindungi.map((p) => resolve(p)));
+  const dihapus: string[] = [];
+  for (const f of nama.slice(0, Math.max(0, nama.length - batas))) {
+    const path = join(dir, f);
+    if (terjaga.has(resolve(path))) continue;
+    try {
+      unlinkSync(path);
+      dihapus.push(path);
+    } catch {
+      // Best-effort: lanjut ke file lama berikutnya.
+    }
+  }
+  return dihapus;
 }
 
 /** Penanda error verifikasi backup; pesannya sudah siap tampil ke operator. */
@@ -515,6 +581,12 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
     // Selalu jalankan: bila instalasi aktif belum punya kode darurat, pasangan
     // reset dari backup harus dibuang agar kode asing tidak menjadi berlaku.
     tulisKunciAktif(dbBaru, pinAktif, resetAktif);
+    // T3.2: retensi hanya setelah restore benar-benar sukses. Backup yang
+    // baru dipakai untuk rollback selalu dilindungi, begitu pula backup lain
+    // bila jumlahnya masih di bawah batas.
+    rapikanBackupInternal(dirBackup, 'pre-restore', RETENSI_PRE_RESTORE, [
+      preRestorePath,
+    ]);
     return { ok: true, db: dbBaru, preRestorePath };
   } catch {
     try {
@@ -560,7 +632,7 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
 export function autoBackupHarian(
   db: Database.Database,
   dir: string,
-  keep = 7,
+  keep = RETENSI_AUTO,
   stamp = tanggalLokal(),
 ): string {
   mkdirSync(dir, { recursive: true });
@@ -581,17 +653,10 @@ export function autoBackupHarian(
       baru: { path: dest, jenis: 'harian', hari: stamp },
     });
   }
-  const files = readdirSync(dir)
-    .filter((f) => f.startsWith('auto-') && f.endsWith('.db'))
-    .sort();
-  while (files.length > keep) {
-    const old = files.shift()!;
-    try {
-      unlinkSync(join(dir, old));
-    } catch {
-      break;
-    }
-  }
+  // T3.2: retensi berjalan hanya setelah backup baru lolos verifikasi (atau
+  // file hari ini memang sudah ada). `dest` selalu dilindungi agar backup baru
+  // tidak pernah ikut terhapus.
+  rapikanBackupInternal(dir, 'auto', keep, [dest]);
   return dest;
 }
 

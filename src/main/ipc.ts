@@ -83,8 +83,10 @@ import {
 } from '../db/laporan.js';
 import { buildDashboardJurnal, denganBackupTerakhir } from '../features/dashboard/dashboard.js';
 import {
+  RETENSI_TUTUP_BUKU,
   backupVacuumInto,
   lastAutoBackup,
+  rapikanBackupInternal,
   restoreDbAman,
 } from '../features/export/export.js';
 import {
@@ -1737,6 +1739,9 @@ export function registerIpc(deps: IpcDeps): void {
         alasan: `Backup otomatis sebelum kunci periode ${n}`,
         baru: { path: dest, jenis: 'tutup-buku', tahun: n },
       });
+      // T3.2: backup tutup buku juga dibatasi; `dest` yang baru dibuat selalu
+      // dilindungi agar tidak ikut terhapus.
+      rapikanBackupInternal(dir, 'tutup-buku', RETENSI_TUTUP_BUKU, [dest]);
       deps.log?.info(`Backup otomatis tutup buku ${n} dibuat: ${basename(dest)}`);
       return ok({ path: dest });
     } catch (e) {

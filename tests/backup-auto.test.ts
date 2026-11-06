@@ -2,10 +2,19 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
-import { openDb } from '../src/db/database.js';
+import { DDL, SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import { insertJurnalTervalidasi, listJurnal } from '../src/db/repository.js';
-import { autoBackupHarian } from '../src/features/export/export.js';
+import {
+  RETENSI_AUTO,
+  RETENSI_PRE_RESTORE,
+  RETENSI_TUTUP_BUKU,
+  autoBackupHarian,
+  backupVacuumInto,
+  rapikanBackupInternal,
+  restoreDbAman,
+} from '../src/features/export/export.js';
 
 function makeJurnal(i: number) {
   return {
@@ -162,6 +171,238 @@ describe('DB-12 — auto-backup menolak DB yang tidak lolos audit', () => {
         db.close();
       }
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('T3.2 — retensi backup internal terkendali', () => {
+  const preRestore = (n: number): string[] =>
+    Array.from(
+      { length: n },
+      (_, i) => `pre-restore-2026-01-${String(i + 1).padStart(2, '0')}.db`,
+    );
+
+  it('helper: pre-restore 8 file -> 5 terbaru, pola lain tidak disentuh', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t32-pre-'));
+    try {
+      const bakDir = join(dir, 'backups');
+      mkdirSync(bakDir, { recursive: true });
+      const pre = preRestore(8);
+      const lain = [
+        'auto-2026-01-01.db',
+        'pura-2026.db',
+        'lain.db',
+        'pre-restore-2026-01-01.db.tmp-1',
+        'pre-restore-2026-01-01.db.bak-1',
+        'pre-restore-2026-01-01.db-wal',
+        'pre-restore-catatan.txt',
+      ];
+      for (const f of [...pre, ...lain]) writeFileSync(join(bakDir, f), f);
+
+      const dihapus = rapikanBackupInternal(
+        bakDir,
+        'pre-restore',
+        RETENSI_PRE_RESTORE,
+      );
+      expect(dihapus).toHaveLength(3);
+
+      const sisa = readdirSync(bakDir)
+        .filter((f) => /^pre-restore-.*\.db$/.test(f))
+        .sort();
+      expect(sisa).toEqual(pre.slice(3));
+      for (const f of lain) expect(existsSync(join(bakDir, f))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('helper: pura-<tahun> 12 file -> 10 terbaru', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t32-tutup-'));
+    try {
+      const bakDir = join(dir, 'backups');
+      mkdirSync(bakDir, { recursive: true });
+      const tahun = Array.from({ length: 12 }, (_, i) => `pura-${2015 + i}.db`);
+      const lain = [
+        'pura-2026.db.tmp-1',
+        'pura-99.db',
+        'pura-2026.sqlite',
+        'auto-2026-01-01.db',
+      ];
+      for (const f of [...tahun, ...lain]) writeFileSync(join(bakDir, f), f);
+
+      const dihapus = rapikanBackupInternal(
+        bakDir,
+        'tutup-buku',
+        RETENSI_TUTUP_BUKU,
+      );
+      expect(dihapus).toHaveLength(2);
+
+      const sisa = readdirSync(bakDir)
+        .filter((f) => /^pura-\d{4}\.db$/.test(f))
+        .sort();
+      expect(sisa).toEqual(tahun.slice(2));
+      for (const f of lain) expect(existsSync(join(bakDir, f))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('helper: path di lindungi tidak dihapus walau di luar batas', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t32-lindungi-'));
+    try {
+      const bakDir = join(dir, 'backups');
+      mkdirSync(bakDir, { recursive: true });
+      const pre = preRestore(8);
+      for (const f of pre) writeFileSync(join(bakDir, f), f);
+
+      // File tertua dilindungi (mis. sedang dipakai rollback).
+      const dihapus = rapikanBackupInternal(
+        bakDir,
+        'pre-restore',
+        RETENSI_PRE_RESTORE,
+        [join(bakDir, pre[0]!)],
+      );
+      expect(dihapus).toHaveLength(2);
+
+      const sisa = readdirSync(bakDir)
+        .filter((f) => /^pre-restore-.*\.db$/.test(f))
+        .sort();
+      expect(sisa).toEqual([pre[0]!, ...pre.slice(3)]);
+      expect(sisa).toHaveLength(RETENSI_PRE_RESTORE + 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('auto: backup baru gagal tidak memicu penghapusan backup lama', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t32-auto-gagal-'));
+    let db: ReturnType<typeof openDb> | null = null;
+    try {
+      const bakDir = join(dir, 'backups');
+      mkdirSync(bakDir, { recursive: true });
+      const lama = Array.from(
+        { length: 10 },
+        (_, i) => `auto-2026-08-${String(i + 1).padStart(2, '0')}.db`,
+      );
+      for (const f of lama) writeFileSync(join(bakDir, f), 'x');
+
+      db = openDb(join(dir, 'pura.db'));
+      // VACUUM INTO ditolak di dalam transaksi: backup baru gagal dibuat,
+      // sehingga retensi tidak boleh berjalan sama sekali.
+      db.exec('BEGIN');
+      try {
+        expect(() =>
+          autoBackupHarian(db!, bakDir, RETENSI_AUTO, '2026-09-09'),
+        ).toThrow(/transaction/i);
+      } finally {
+        db.exec('ROLLBACK');
+      }
+
+      expect(existsSync(join(bakDir, 'auto-2026-09-09.db'))).toBe(false);
+      const sisa = readdirSync(bakDir)
+        .filter((f) => /^auto-.*\.db$/.test(f))
+        .sort();
+      expect(sisa).toEqual(lama);
+    } finally {
+      db?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('restore sukses memicu retensi pre-restore; file rollback tetap ada', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t32-restore-ok-'));
+    let aktif: Database.Database | null = null;
+    let sumber: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      const bakDir = join(dir, 'backups');
+      mkdirSync(bakDir, { recursive: true });
+      const lama = preRestore(8);
+      for (const f of lama) writeFileSync(join(bakDir, f), 'x');
+
+      aktif = openDb(aktifPath);
+      const j1 = makeJurnal(1);
+      insertJurnalTervalidasi(aktif, j1.header, j1.baris);
+
+      sumber = openDb(join(dir, 'sumber.db'));
+      const j2 = makeJurnal(2);
+      insertJurnalTervalidasi(sumber, j2.header, j2.baris);
+      const kandidat = join(dir, 'kandidat.db');
+      backupVacuumInto(sumber, kandidat);
+      sumber.close();
+      sumber = null;
+
+      const hasil = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidat,
+        dirBackup: bakDir,
+        stamp: 'restore-uji',
+      });
+      expect(hasil.ok).toBe(true);
+      if (!hasil.ok) throw new Error(hasil.error);
+      aktif = hasil.db;
+
+      // Cadangan yang baru dipakai untuk rollback tidak ikut terhapus.
+      expect(existsSync(hasil.preRestorePath)).toBe(true);
+
+      const sisa = readdirSync(bakDir)
+        .filter((f) => /^pre-restore-.*\.db$/.test(f))
+        .sort();
+      expect(sisa).toHaveLength(RETENSI_PRE_RESTORE);
+      for (const f of lama.slice(0, 4))
+        expect(existsSync(join(bakDir, f))).toBe(false);
+      for (const f of lama.slice(4))
+        expect(existsSync(join(bakDir, f))).toBe(true);
+      expect(sisa[sisa.length - 1]).toBe('pre-restore-restore-uji.db');
+    } finally {
+      sumber?.close();
+      aktif?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('restore gagal tidak memicu retensi pre-restore', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-t32-restore-gagal-'));
+    let aktif: Database.Database | null = null;
+    try {
+      const aktifPath = join(dir, 'aktif.db');
+      const bakDir = join(dir, 'backups');
+      mkdirSync(bakDir, { recursive: true });
+      const lama = preRestore(8);
+      for (const f of lama) writeFileSync(join(bakDir, f), 'x');
+
+      aktif = openDb(aktifPath);
+      const j1 = makeJurnal(1);
+      insertJurnalTervalidasi(aktif, j1.header, j1.baris);
+
+      // Kandidat lolos validasi/audit tetapi gagal saat `openDb` (non-STRICT),
+      // sehingga cadangan pra-restore sudah dibuat lalu restore dibatalkan.
+      const kandidat = join(dir, 'kandidat-rusak.db');
+      const rusak = new Database(kandidat);
+      rusak.exec(DDL.replace(/\) STRICT;/g, ');'));
+      rusak.pragma(`user_version = ${SCHEMA_VERSION}`);
+      rusak.close();
+
+      const hasil = restoreDbAman(aktif, {
+        dbPath: aktifPath,
+        backupPath: kandidat,
+        dirBackup: bakDir,
+        stamp: 'gagal',
+      });
+      expect(hasil.ok).toBe(false);
+      if (hasil.ok) throw new Error('seharusnya gagal');
+      aktif = hasil.db;
+
+      // 8 backup lama + cadangan baru tetap ada; tidak ada yang dirapikan.
+      const sisa = readdirSync(bakDir)
+        .filter((f) => /^pre-restore-.*\.db$/.test(f))
+        .sort();
+      expect(sisa).toHaveLength(lama.length + 1);
+      expect(existsSync(join(bakDir, 'pre-restore-gagal.db'))).toBe(true);
+      for (const f of lama) expect(existsSync(join(bakDir, f))).toBe(true);
+    } finally {
+      aktif?.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
