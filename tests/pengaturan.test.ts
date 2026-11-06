@@ -201,15 +201,18 @@ describe('P1-13 — simpan/baca + audit', () => {
     }
   });
 
-  it('DB lama berisi awal tahun 7 tetap terbaca; save berikutnya memakai Januari', () => {
+  it('DB lama berisi awal tahun 7 terbaca ternormalisasi Januari; save berikutnya memakai Januari', () => {
     const db = dbKosong();
     try {
       setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
 
       const lama = getPengaturanPembukuan(db);
-      expect(lama.awalTahunBuku).toBe(7);
+      // T2.6: adapter DB menormalkan nilai legacy ke Januari saat dibaca,
+      // tanpa mengubah nilai mentah yang tersimpan.
+      expect(lama.awalTahunBuku).toBe(AWAL_TAHUN_BUKU_DIDUKUNG);
+      expect(lama.awalTahunBuku).toBe(1);
       expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('7');
-      expect(peringatanAwalTahunBukuLama(lama.awalTahunBuku)).toMatch(/bulan 7/);
+      expect(peringatanAwalTahunBukuLama(7)).toMatch(/bulan 7/);
 
       // Kontrak publik tidak membawa field legacy; membaca tidak mengubah DB.
       const publik = pengaturanPublik(lama);
@@ -221,6 +224,37 @@ describe('P1-13 — simpan/baca + audit', () => {
       expect(hasil.awalTahunBuku).toBe(1);
       expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('1');
       expect(getPengaturanPembukuan(db)).toEqual(DEFAULT_PENGATURAN);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak simpan mentah awal tahun 7 tanpa mengubah DB legacy', () => {
+    const db = dbKosong();
+    try {
+      setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
+      expect(() =>
+        simpanPengaturanPembukuan(db, {
+          ...DEFAULT_PENGATURAN,
+          namaEntitas: 'PURA UJI',
+          awalTahunBuku: 7,
+        }),
+      ).toThrow(PESAN_AWAL_TAHUN_BUKU_FISKAL);
+      expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('7');
+      expect(getPengaturanPembukuan(db).awalTahunBuku).toBe(1);
+      expect(listAuditLog(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('DB legacy awal tahun 7 dibaca tanpa error dan tetap Januari', () => {
+    const db = dbKosong();
+    try {
+      setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
+      expect(() => getPengaturanPembukuan(db)).not.toThrow();
+      expect(getPengaturanPembukuan(db).awalTahunBuku).toBe(1);
+      expect(validasiPengaturan(getPengaturanPembukuan(db))).toEqual([]);
     } finally {
       db.close();
     }

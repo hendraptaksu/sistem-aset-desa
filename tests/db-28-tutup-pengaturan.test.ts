@@ -27,6 +27,7 @@ import {
 } from '../src/db/repository.js';
 import { tutupBuku } from '../src/db/tutup.js';
 import {
+  AWAL_TAHUN_BUKU_DIDUKUNG,
   DEFAULT_PENGATURAN,
   pengaturanPublik,
 } from '../src/core/pengaturan.js';
@@ -148,12 +149,13 @@ describe('DB-28 — tutup buku tanpa backup_path', () => {
 });
 
 describe('DB-28 — pengaturan tanpa awal tahun buku', () => {
-  it('nilai lama non-Januari tetap terbaca tanpa auto-rewrite', () => {
+  it('nilai lama non-Januari dibaca ternormalisasi Januari tanpa auto-rewrite', () => {
     const db = dbKosong();
     setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
 
     const lama = getPengaturanPembukuan(db);
-    expect(lama.awalTahunBuku).toBe(7);
+    // T2.6: adapter baca menormalkan ke Januari; nilai mentah tetap 7.
+    expect(lama.awalTahunBuku).toBe(AWAL_TAHUN_BUKU_DIDUKUNG);
     expect(pengaturanPublik(lama)).not.toHaveProperty('awalTahunBuku');
     expect(getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN)).toBe('7');
   });

@@ -3,7 +3,12 @@
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
-import { listTutupBuku } from '../src/db/repository.js';
+import {
+  getPengaturanPembukuan,
+  KUNCI_AKUNTANSI_AWAL_TAHUN,
+  listTutupBuku,
+  setPengaturan,
+} from '../src/db/repository.js';
 import {
   buildDashboardJurnal,
   denganBackupTerakhir,
@@ -229,6 +234,33 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
       expect(d.badge).toBe('BALANCE');
       expect(d.jurnalTerakhir).toBeNull();
       expect(d.periode.status).toBe('Belum ada periode terkunci · 2026 terbuka');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('DB legacy awal tahun buku 7 tetap memakai rentang Januari–cut-off', () => {
+    const db = openDb(':memory:');
+    try {
+      setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
+      const pengaturan = getPengaturanPembukuan(db);
+      // T2.6: adapter DB menormalkan nilai legacy ke Januari saat dibaca.
+      expect(pengaturan.awalTahunBuku).toBe(1);
+
+      const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, {
+        awalTahunBuku: pengaturan.awalTahunBuku,
+        sekarang: CUTOFF,
+      });
+      expect(d.labaRugiBerjalan.awalTahunBuku).toBe(1);
+      expect(d.labaRugiBerjalan.mulai).toBe('2026-01-01');
+      expect(d.labaRugiBerjalan.sampai).toBe(CUTOFF);
+      expect(d.labaRugiBerjalan.labelPeriode).toBe('1 Jan 2026 – 30 Jun 2026');
+      // Laba Jan–Jun 2026 (bukan Jul 2025–Jun 2026 seperti bila nilai 7 dipakai).
+      expect(d.labaRugiBerjalan.totalPendapatan).toBe(RP(5_000_000));
+      expect(d.labaRugiBerjalan.totalBeban).toBe(RP(1_500_000));
+      expect(d.labaRugiBerjalan.laba).toBe(RP(3_500_000));
+      // Nilai mentah 7 akan menghasilkan Jul 2025–Jun 2026; pastikan tidak dipakai.
+      expect(rentangLabaBerjalan(CUTOFF, 7).mulai).toBe('2025-07-01');
     } finally {
       db.close();
     }

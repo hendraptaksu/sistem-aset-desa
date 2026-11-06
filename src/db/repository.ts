@@ -1100,7 +1100,7 @@ export const KUNCI_AKUNTANSI_PADDING_BUKTI = 'akuntansi_padding_bukti';
 export function getPengaturanPembukuan(
   db: Database.Database,
 ): PengaturanPembukuan {
-  return normalisasiPengaturan({
+  const tersimpan = normalisasiPengaturan({
     namaEntitas:
       getPengaturan(db, KUNCI_AKUNTANSI_NAMA_ENTITAS) ??
       DEFAULT_PENGATURAN.namaEntitas,
@@ -1117,6 +1117,16 @@ export function getPengaturanPembukuan(
       getPengaturan(db, KUNCI_AKUNTANSI_PADDING_BUKTI) ??
       DEFAULT_PENGATURAN.paddingNomorBukti,
   });
+
+  // T2.6: DB legacy masih bisa menyimpan awal tahun buku selain Januari
+  // (mis. 7 dari versi lama). Aplikasi hanya mendukung Januari
+  // (`AWAL_TAHUN_BUKU_DIDUKUNG`), jadi semua pembaca — dashboard, laporan,
+  // dan penomoran bukti — harus menerima nilai ternormalisasi ini. Nilai
+  // mentah di DB sengaja tidak diubah; save berikutnya menulis Januari.
+  return {
+    ...tersimpan,
+    awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG,
+  };
 }
 
 export type OpsiSimpanPengaturan = {
@@ -1138,14 +1148,17 @@ export function simpanPengaturanPembukuan(
   input: unknown,
   opsi: OpsiSimpanPengaturan = {},
 ): PengaturanPembukuan {
-  // DB-28: awal tahun buku tidak lagi bisa dipilih operator. Nilai legacy
-  // (mis. 7) hanya dibaca untuk data lama; setiap save selalu menulis Januari.
+  // DB-28/T2.6: awal tahun buku tidak lagi bisa dipilih operator. Validasi
+  // tetap menolak nilai selain Januari (mis. input mentah 7 dari pemanggil
+  // lama), lalu nilai yang disimpan selalu dipaksa Januari.
+  const dinormalisasi = normalisasiPengaturan(input);
+  const errors = validasiPengaturan(dinormalisasi);
+  if (errors.length > 0) throw new Error(errors[0]!);
+
   const bersih: PengaturanPembukuan = {
-    ...normalisasiPengaturan(input),
+    ...dinormalisasi,
     awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG,
   };
-  const errors = validasiPengaturan(bersih);
-  if (errors.length > 0) throw new Error(errors[0]!);
 
   const lama = getPengaturanPembukuan(db);
   const simpan = db.transaction(() => {

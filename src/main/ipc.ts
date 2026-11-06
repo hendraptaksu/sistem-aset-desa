@@ -1572,6 +1572,8 @@ export function registerIpc(deps: IpcDeps): void {
       // Cut-off wajib tanggal kalender nyata (P1-12/P1-14).
       const bentuk = validasiCutoffLaporan(cutoff);
       if (!bentuk.ok) return fail(bentuk.error);
+      // T2.6: getPengaturanPembukuan sudah menormalkan awal tahun buku legacy
+      // (mis. 7) ke Januari, jadi rentang laba berjalan selalu Jan–cut-off.
       const pengaturan = getPengaturanPembukuan(deps.db());
       const d = buildDashboardJurnal(
         listBarisJurnal(deps.db()),
