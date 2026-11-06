@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 6 | 9 |
+| 2 — Kontrol & UX | P1 | 7 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **18** | **33** |
+| **Total** |  | **19** | **33** |
 
 ## Aturan kerja
 
@@ -226,7 +226,7 @@
   - **Verifikasi:** `npm test -- tests/dashboard.test.ts tests/pengaturan.test.ts`.
   - **Catatan:** File disentuh: `src/db/repository.ts`, `src/main/ipc.ts`, `tests/dashboard.test.ts`, `tests/pengaturan.test.ts`, `tests/db-28-tutup-pengaturan.test.ts`, `TICKETS.md`. `getPengaturanPembukuan` sekarang memaksa `awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG` (1) setelah `normalisasiPengaturan(...)`; komentar menjelaskan DB legacy bisa menyimpan 7 tetapi aplikasi hanya mendukung Januari. Nilai mentah `akuntansi_awal_tahun_buku` tidak diubah (tetap `'7'` sampai save berikutnya), dan `normalisasiPengaturan` murni tetap mempertahankan input 7 agar test model lama/peringatan legacy tidak berubah. `dashboard:get` memakai nilai ternormalisasi itu sehingga rentang laba berjalan DB legacy adalah 1 Jan–cut-off (bukan Jul 2025–Jun 2026); laporan/penomoran bukti yang membaca fungsi sama ikut konsisten. `simpanPengaturanPembukuan` kini memvalidasi hasil normalisasi input SEBELUM memaksa Januari, sehingga input mentah `awalTahunBuku: 7` ditolak dengan `PESAN_AWAL_TAHUN_BUKU_FISKAL` tanpa menulis DB/audit; save normal (field legacy tidak dikirim renderer) tetap menulis Januari tanpa error. Test baru: setting mentah `'7'` → `getPengaturanPembukuan(db).awalTahunBuku === 1` tanpa throw dan tanpa mengubah DB; simpan mentah 7 ditolak dan DB legacy tidak berubah; dashboard dengan pengaturan legacy memakai rentang 1 Jan 2026–30 Jun 2026 dan laba 3,5jt; test DB-28 lama diperbarui agar mengharapkan hasil baca ternormalisasi. Verifikasi: `npm test -- tests/dashboard.test.ts tests/pengaturan.test.ts tests/db-28-tutup-pengaturan.test.ts` (3 file/34 test lulus), `npm run typecheck` lulus, `npm test` **89 file/1.148 test lulus, 0 gagal**. Commit `a642933`.
 
-- [ ] **T2.7 — Refresh kunci segera setelah restore**
+- [x] **T2.7 — Refresh kunci segera setelah restore**
   - **Masalah:** setelah restore, main memanggil `kunciLagi()`, tetapi renderer masih memanggil `muatData(cutoff)`. Permintaan ditolak karena terkunci; dashboard bisa menampilkan data lama/error sampai polling berikutnya.
   - **File:** `src/renderer/components/DashboardTab.tsx`, `src/renderer/App.tsx`, `src/renderer/lib/api.ts`, test komponen.
   - **Langkah:**
@@ -235,7 +235,7 @@
     3. Tampilkan pesan restore sebelum layar kunci.
   - **Selesai bila:** setelah restore, layar kunci muncul langsung; tidak ada error “Aplikasi terkunci” atau data stale.
   - **Verifikasi:** test komponen/handler + smoke manual.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/renderer/components/DashboardTab.tsx`, `src/renderer/App.tsx`, `src/renderer/components/LockScreen.tsx`, `src/renderer/lib/api.ts` (komentar kontrak), `tests/ipc-main.test.ts`, `tests/restore-kunci.test.ts` (baru), `TICKETS.md`. Helper murni `pesanRestoreSukses(jenis, preRestorePath)` menyusun pesan yang menyebut jalur restore + cadangan pre-restore. Jalur sukses `restore()` dan `restoreLengkap()` kini hanya `setInfo(pesan)` lalu `onRestoreSelesai?.(pesan)`, **tanpa** `muatData(cutoff)` / API dashboard. `App` menyimpan `pesanRestore`, memanggil `refreshLock()` segera di callback (bukan menunggu polling 30 detik), meneruskan pesan ke `LockScreen`, dan mengosongkannya di `tanganiTerbuka` saat PIN benar. `LockScreen` menampilkan kotak info `role="status"` sebelum form PIN bila prop `pesan` diisi; alur PIN tidak berubah. Logika main (`kunciLagi`) tidak disentuh. Test: SSR `LockScreen` dengan/tanpa `pesan`; helper `pesanRestoreSukses`; potongan sumber DashboardTab memastikan kedua jalur restore memanggil callback dan tidak memanggil `muatData(...)`; handler IPC restore lengkap dan restore `.db` menegaskan `lock:status` langsung `terbuka:false`. Verifikasi: `npm test -- tests/ipc-main.test.ts tests/forms-ui.test.ts tests/restore-kunci.test.ts` (3 file/95 test lulus), `npm run typecheck` lulus, `npm test` **90 file/1.153 test lulus, 0 gagal**, `npm run build` lulus. Smoke manual GUI tidak dijalankan di lingkungan subagent; jalur handler/komponen tercakup test di atas. Commit `ec40700`.
 
 - [ ] **T2.8 — Lockout PIN bertahan setelah restart**
   - **Masalah:** `sesi.gagal`/`sesi.blokirSampai` hanya di memori. Menutup aplikasi mereset blokir, sehingga brute-force PIN 6 digit bisa diulang.
