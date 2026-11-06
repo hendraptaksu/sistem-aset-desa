@@ -56,25 +56,154 @@ export const PESAN_DB_TIDAK_KOMPATIBEL =
   'tersebut, lalu jalankan aplikasi lagi.';
 
 /**
- * DB-16b — tabel pinjaman LPD. Tabel baru sehingga `CHECK` boleh dipakai.
+ * DDL kanonik skema v1: 11 tabel aktif, semuanya `STRICT`.
+ * Tabel modul lama (`transaksi`, `coa`, `pihak`, `jurnal_pihak`, `aset`,
+ * `anggaran`, `rekonsiliasi_bank`, `lampiran_jurnal`) tidak pernah dibuat.
+ *
  * Semua `CREATE ... IF NOT EXISTS` membuat DDL ini aman dijalankan ulang.
  *
  * Prinsip sumber angka:
- * - `pinjaman_angsuran` hanya menyimpan RENCANA pokok/bunga.
- * - `pinjaman_bayar` hanya menyimpan link jurnal + angsuran. Tidak ada kolom
- *   nominal pokok/bunga/denda dan tidak ada saldo berjalan/`sisa_pokok`.
- * - Outstanding = `sisa_pokok_awal` - debit 2050 pada jurnal pembayaran tertaut;
- *   dihitung saat dibaca, tidak pernah dipersistenkan.
- *
- * DB-30 — kebijakan tabel baru: tabel yang dibuat SETELAH DB-30 wajib memakai
- * `STRICT` dan memberi `DEFAULT` eksplisit untuk kolom waktu (`created_at`
- * default ISO). Tabel pinjaman di bawah dibuat pada v20, SEBELUM kebijakan
- * itu. Sejak AUD2-09 (v23) seluruh tabel aktif, termasuk tiga tabel pinjaman,
- * direbuild menjadi `STRICT` oleh `terapkanMigrasiV23()`. Jangan menyalin DDL
- * tanpa `STRICT`/default `created_at` ini untuk tabel baru. Dokumen kontrak:
- * `docs/erd-v2.md`.
+ * - `jurnal` adalah satu-satunya sumber angka akuntansi; saldo, laba, dan
+ *   realisasi selalu dihitung dari jurnal, tidak dipersistenkan.
+ * - `tutup_buku` hanya penanda + catatan; laba dihitung dari jurnal.
+ * - `panjar` hanya menyimpan metadata dokumen; total realisasi, sisa, dan
+ *   kurang diturunkan dari `panjar_item` + jurnal.
+ * - `pinjaman_angsuran` hanya menyimpan rencana pokok/bunga; `pinjaman_bayar`
+ *   hanya menyimpan link jurnal + angsuran, tanpa nominal atau saldo berjalan.
+ *   Outstanding = `sisa_pokok_awal` dikurangi debit 2050 pada jurnal
+ *   pembayaran tertaut, dihitung saat dibaca.
  */
-export const DDL_PINJAMAN = `
+export const DDL = `
+CREATE TABLE IF NOT EXISTS akun (
+  kode TEXT PRIMARY KEY,
+  nama TEXT NOT NULL,
+  tipe TEXT NOT NULL,
+  posisi_normal TEXT NOT NULL,
+  aktif INTEGER NOT NULL DEFAULT 1,
+  is_kas INTEGER NOT NULL DEFAULT 0,
+  kelompok TEXT NOT NULL DEFAULT '',
+  sumber TEXT NOT NULL DEFAULT 'BAWAAN'
+) STRICT;
+
+-- Model double-entry: jurnal = satu transaksi/bukti, jurnal_baris = debit/kredit.
+CREATE TABLE IF NOT EXISTS jurnal (
+  id TEXT PRIMARY KEY,
+  tanggal TEXT NOT NULL,
+  no_bukti TEXT NOT NULL DEFAULT '',
+  keterangan TEXT NOT NULL,
+  jenis TEXT NOT NULL DEFAULT 'UMUM',
+  grup_id TEXT NOT NULL,
+  reversal_of TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (reversal_of) REFERENCES jurnal(id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
+CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
+CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
+-- Nomor bukti unik per tahun, bukan global: nomor yang sama boleh dipakai
+-- pada tahun berbeda.
+
+CREATE TABLE IF NOT EXISTS jurnal_baris (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  jurnal_id TEXT NOT NULL,
+  akun_kode TEXT NOT NULL,
+  debit INTEGER NOT NULL DEFAULT 0,
+  kredit INTEGER NOT NULL DEFAULT 0,
+  keterangan TEXT NOT NULL DEFAULT '',
+  CHECK (debit >= 0 AND kredit >= 0),
+  CHECK (debit > 0 OR kredit > 0),
+  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
+  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
+CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
+
+-- Tutup buku: hanya penanda + kunci + catatan. Laba selalu dihitung dari
+-- jurnal, bukan disimpan sebagai sumber angka.
+CREATE TABLE IF NOT EXISTS tutup_buku (
+  tahun INTEGER PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  catatan TEXT NOT NULL DEFAULT ''
+) STRICT;
+
+-- Audit log lengkap: alasan + kondisi sebelum/sesudah dalam JSON.
+-- ref_type/ref_id menunjuk objek terkait secara terstruktur (mis. 'jurnal' + id)
+-- sehingga riwayat tidak perlu LIKE pada aksi. Baris tanpa referensi boleh kosong.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id TEXT PRIMARY KEY,
+  tanggal TEXT NOT NULL,
+  aksi TEXT NOT NULL,
+  alasan TEXT NOT NULL,
+  data_lama_json TEXT NOT NULL DEFAULT '',
+  data_baru_json TEXT NOT NULL DEFAULT '',
+  ref_type TEXT NOT NULL DEFAULT '',
+  ref_id TEXT NOT NULL DEFAULT ''
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
+CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
+
+CREATE TABLE IF NOT EXISTS pengaturan (
+  kunci TEXT PRIMARY KEY,
+  nilai TEXT NOT NULL DEFAULT ''
+) STRICT;
+
+-- Panjar: dokumen serah & pertanggungjawaban.
+-- Angka saldo/realisasi TIDAK disimpan di sini; laporan tetap dihitung dari
+-- jurnal. Tabel ini hanya menyimpan metadata dokumen + rincian item.
+--
+-- Kolom header yang SENGAJA disimpan (operasional, bukan angka turunan):
+--   tanggal, jumlah, akun_kas_sumber, status, tanggal_close,
+--   jurnal_open_id, jurnal_close_id, created_at.
+-- tanggal, jumlah, dan akun_kas_sumber wajib sama dengan jurnal serah
+-- (D 1040 / K kas sumber) saat dibuat; tanggal_close dan jurnal_close_id
+-- diisi saat close. Nilai ini disimpan agar daftar/detail panjar tidak perlu
+-- join ke jurnal setiap kali, bukan untuk menggantikan jurnal.
+-- Kolom TURUNAN (tidak ada di tabel; dihitung dari panjar_item + jurnal):
+--   total_realisasi = SUM(panjar_item.nominal),
+--   sisa = max(0, jumlah - total_realisasi),
+--   kurang = max(0, total_realisasi - jumlah).
+-- panjar_item adalah detail nota per baris dan TIDAK boleh di-drop.
+CREATE TABLE IF NOT EXISTS panjar (
+  id TEXT PRIMARY KEY,
+  tanggal TEXT NOT NULL,
+  penerima TEXT NOT NULL,
+  jumlah INTEGER NOT NULL CHECK (jumlah > 0),
+  akun_kas_sumber TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'DIBATALKAN')),
+  tanggal_close TEXT,
+  jurnal_open_id TEXT NOT NULL,
+  jurnal_close_id TEXT,
+  created_at TEXT NOT NULL,
+  jurnal_batal_id TEXT,
+  tanggal_batal TEXT,
+  alasan_batal TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (akun_kas_sumber) REFERENCES akun(kode),
+  FOREIGN KEY (jurnal_open_id) REFERENCES jurnal(id),
+  FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id),
+  FOREIGN KEY (jurnal_batal_id) REFERENCES jurnal(id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
+CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
+
+CREATE TABLE IF NOT EXISTS panjar_item (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  panjar_id TEXT NOT NULL,
+  kategori_baga TEXT NOT NULL,
+  nominal INTEGER NOT NULL CHECK (nominal > 0),
+  jurnal_id TEXT NOT NULL,
+  -- Detail nota per baris; kolom nota boleh kosong.
+  nota_nomor TEXT NOT NULL DEFAULT '',
+  nota_tanggal TEXT NOT NULL DEFAULT '',
+  toko TEXT NOT NULL DEFAULT '',
+  keterangan TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (panjar_id) REFERENCES panjar(id) ON DELETE CASCADE,
+  FOREIGN KEY (kategori_baga) REFERENCES akun(kode),
+  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
+
+-- Pinjaman LPD. Rencana angsuran dan pembayaran adalah dua hal terpisah:
+-- rencana tidak pernah menjadi angka buku, pembayaran selalu tertaut jurnal.
 CREATE TABLE IF NOT EXISTS pinjaman (
   id TEXT PRIMARY KEY,
   kreditur TEXT NOT NULL,
@@ -122,166 +251,6 @@ CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
 -- Pembayaran dapat dicicil; satu jurnal tetap hanya dimiliki satu pembayaran.
 CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
   ON pinjaman_bayar(angsuran_id);
-`;
-
-/**
- * DDL dasar v2–v20. Hanya berisi tabel model baru + tabel pendukung
- * (pengaturan PIN). Tabel modul yang sudah dihapus (pihak, jurnal_pihak, aset,
- * anggaran, rekonsiliasi_bank, lampiran_jurnal) TIDAK dibuat lagi; migrasi v12
- * (DB-33) membuangnya dari DB lama.
- * Tabel single-entry lama TIDAK dibuat lagi; `terapkanMigrasiSingleEntryLama()`
- * membersihkannya HANYA dari DB asli v0–v2. Metadata panjar v2 dan `tutup_buku`
- * tidak pernah dibuang berdasarkan bentuk kolom (DB-06).
- * Aturan integritas v9 (trigger + unique index per tahun) dibuat oleh
- * `terapkanAturanV9()` agar DB lama ikut termigrasi dan idempoten.
- * Unique index saldo awal v13 dan unique reversal v14 sengaja dibuat oleh
- * `terapkanMigrasiV13()`/`terapkanMigrasiV14()` SETELAH pemeriksaan duplikat,
- * bukan di DDL ini, agar DB bermasalah tidak langsung gagal dengan error UNIQUE
- * tanpa pesan migrasi yang jelas. Trigger validasi jurnal v14 juga dibuat di
- * migrasi (DROP + CREATE), bukan di DDL, mengikuti pola DB-07.
- * Unique index nama akun dan trigger validasi akun v15 juga dibuat di
- * `terapkanMigrasiV15()` setelah pemeriksaan duplikat NOCASE.
- * Unique index link jurnal panjar v18 juga dibuat di `terapkanMigrasiV18()`
- * setelah pemeriksaan duplikat, BUKAN di DDL ini, agar DB bermasalah tidak
- * langsung gagal dengan error UNIQUE tanpa pesan migrasi yang jelas.
- * Kolom pembatalan panjar v19 dan partial unique index `ux_panjar_jurnal_batal`
- * juga dibuat di `terapkanMigrasiV19()` (ALTER TABLE aditif, tanpa rebuild).
- * Tabel pinjaman v20 dibuat oleh `DDL_PINJAMAN` (diinterpolasi di bawah) dan
- * dipanggil ulang secara idempoten oleh `terapkanMigrasiV20()`.
- */
-export const DDL = `
-CREATE TABLE IF NOT EXISTS akun (
-  kode TEXT PRIMARY KEY,
-  nama TEXT NOT NULL,
-  tipe TEXT NOT NULL,
-  posisi_normal TEXT NOT NULL,
-  aktif INTEGER NOT NULL DEFAULT 1,
-  is_kas INTEGER NOT NULL DEFAULT 0,
-  kelompok TEXT NOT NULL DEFAULT '',
-  sumber TEXT NOT NULL DEFAULT 'BAWAAN'
-) STRICT;
-
--- Model double-entry: jurnal = satu transaksi/bukti, jurnal_baris = debit/kredit.
-CREATE TABLE IF NOT EXISTS jurnal (
-  id TEXT PRIMARY KEY,
-  tanggal TEXT NOT NULL,
-  no_bukti TEXT NOT NULL DEFAULT '',
-  keterangan TEXT NOT NULL,
-  jenis TEXT NOT NULL DEFAULT 'UMUM',
-  grup_id TEXT NOT NULL,
-  reversal_of TEXT,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (reversal_of) REFERENCES jurnal(id)
-) STRICT;
-CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
-CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
-CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
--- AUD-23: tidak ada lagi index no_bukti global. Unique index per tahun dibuat
--- oleh terapkanAturanV9() supaya nomor yang sama boleh dipakai di tahun berbeda.
-
-CREATE TABLE IF NOT EXISTS jurnal_baris (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  jurnal_id TEXT NOT NULL,
-  akun_kode TEXT NOT NULL,
-  debit INTEGER NOT NULL DEFAULT 0,
-  kredit INTEGER NOT NULL DEFAULT 0,
-  keterangan TEXT NOT NULL DEFAULT '',
-  CHECK (debit >= 0 AND kredit >= 0),
-  CHECK (debit > 0 OR kredit > 0),
-  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id) ON DELETE CASCADE,
-  FOREIGN KEY (akun_kode) REFERENCES akun(kode)
-) STRICT;
-CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
-CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
-
--- Tutup buku v2: hanya penanda + kunci + catatan. Laba selalu dihitung dari jurnal
--- (P0-7), bukan disimpan sebagai sumber angka.
-CREATE TABLE IF NOT EXISTS tutup_buku (
-  tahun INTEGER PRIMARY KEY,
-  created_at TEXT NOT NULL,
-  catatan TEXT NOT NULL DEFAULT ''
-) STRICT;
-
--- Audit log lengkap (P0-9): alasan + kondisi sebelum/sesudah dalam JSON.
--- DB-27: ref_type/ref_id menunjuk objek terkait secara terstruktur
--- (mis. 'jurnal' + id) sehingga riwayat tidak perlu LIKE pada aksi.
--- Baris lama boleh kosong. Index ref dibuat oleh terapkanMigrasiV21 agar DB
--- v20 yang belum punya kolom tetap bisa dibuka (DDL dasar tidak boleh
--- mereferensikan kolom yang belum di-ALTER).
-CREATE TABLE IF NOT EXISTS audit_log (
-  id TEXT PRIMARY KEY,
-  tanggal TEXT NOT NULL,
-  aksi TEXT NOT NULL,
-  alasan TEXT NOT NULL,
-  data_lama_json TEXT NOT NULL DEFAULT '',
-  data_baru_json TEXT NOT NULL DEFAULT '',
-  ref_type TEXT NOT NULL DEFAULT '',
-  ref_id TEXT NOT NULL DEFAULT ''
-) STRICT;
-CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
-CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
-
-CREATE TABLE IF NOT EXISTS pengaturan (
-  kunci TEXT PRIMARY KEY,
-  nilai TEXT NOT NULL DEFAULT ''
-) STRICT;
-
--- Panjar v2 (P1-4): dokumen serah & pertanggungjawaban.
--- Angka saldo/realisasi TIDAK disimpan di sini; laporan tetap dihitung dari
--- jurnal. Tabel ini hanya menyimpan metadata dokumen + rincian item.
---
--- DB-20 - kolom header yang SENGAJA disimpan (operasional, bukan angka turunan):
---   tanggal, jumlah, akun_kas_sumber, status, tanggal_close,
---   jurnal_open_id, jurnal_close_id, created_at.
--- tanggal, jumlah, dan akun_kas_sumber wajib sama dengan jurnal serah
--- (D 1040 / K kas sumber) saat dibuat; tanggal_close dan jurnal_close_id
--- diisi saat close. Nilai ini disimpan agar daftar/detail panjar tidak perlu
--- join ke jurnal setiap kali, bukan untuk menggantikan jurnal.
--- Kolom TURUNAN (tidak ada di tabel; dihitung dari panjar_item + jurnal):
---   total_realisasi = SUM(panjar_item.nominal),
---   sisa = max(0, jumlah - total_realisasi),
---   kurang = max(0, total_realisasi - jumlah).
--- panjar_item adalah detail nota per baris dan TIDAK boleh di-drop.
-CREATE TABLE IF NOT EXISTS panjar (
-  id TEXT PRIMARY KEY,
-  tanggal TEXT NOT NULL,
-  penerima TEXT NOT NULL,
-  jumlah INTEGER NOT NULL CHECK (jumlah > 0),
-  akun_kas_sumber TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'DIBATALKAN')),
-  tanggal_close TEXT,
-  jurnal_open_id TEXT NOT NULL,
-  jurnal_close_id TEXT,
-  created_at TEXT NOT NULL,
-  jurnal_batal_id TEXT,
-  tanggal_batal TEXT,
-  alasan_batal TEXT NOT NULL DEFAULT '',
-  FOREIGN KEY (akun_kas_sumber) REFERENCES akun(kode),
-  FOREIGN KEY (jurnal_open_id) REFERENCES jurnal(id),
-  FOREIGN KEY (jurnal_close_id) REFERENCES jurnal(id),
-  FOREIGN KEY (jurnal_batal_id) REFERENCES jurnal(id)
-) STRICT;
-CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
-CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
-
-CREATE TABLE IF NOT EXISTS panjar_item (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  panjar_id TEXT NOT NULL,
-  kategori_baga TEXT NOT NULL,
-  nominal INTEGER NOT NULL CHECK (nominal > 0),
-  jurnal_id TEXT NOT NULL,
-  -- DB-18: detail nota per baris; kosong untuk baris legacy/form lama.
-  nota_nomor TEXT NOT NULL DEFAULT '',
-  nota_tanggal TEXT NOT NULL DEFAULT '',
-  toko TEXT NOT NULL DEFAULT '',
-  keterangan TEXT NOT NULL DEFAULT '',
-  FOREIGN KEY (panjar_id) REFERENCES panjar(id) ON DELETE CASCADE,
-  FOREIGN KEY (kategori_baga) REFERENCES akun(kode),
-  FOREIGN KEY (jurnal_id) REFERENCES jurnal(id)
-) STRICT;
-CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
-
-${DDL_PINJAMAN}
 `;
 
 function tabelAda(db: Database.Database, nama: string): boolean {
@@ -905,16 +874,6 @@ function terapkanMigrasiV19(db: Database.Database): void {
 }
 
 /**
- * DB-16b — migrasi v20: tabel pinjaman LPD baru. DDL seluruhnya memakai
- * `CREATE ... IF NOT EXISTS`, jadi aman dijalankan pada DB v19 (tidak ada
- * tabel lama yang direbuild/diubah) maupun DB baru. Tidak ada data yang
- * dihapus atau di-backfill.
- */
-function terapkanMigrasiV20(db: Database.Database): void {
-  db.exec(DDL_PINJAMAN);
-}
-
-/**
  * DB-27 — referensi audit terstruktur v21 (aditif, tanpa rebuild).
  *
  * `audit_log` sudah ada sejak v2 dan AKT-26 memasang trigger append-only pada
@@ -1173,7 +1132,6 @@ function pastikanVersiDidukung(db: Database.Database): number {
  * - Menerapkan migrasi v17 (detail nota panjar, aditif).
  * - Menerapkan migrasi v18 (link jurnal open/close panjar unik).
  * - Menerapkan migrasi v19 (kolom pembatalan panjar + link jurnal batal unik).
- * - Menerapkan migrasi v20 (tabel pinjaman LPD, aditif/idempoten).
  * - Menerapkan migrasi v21 (referensi audit terstruktur, aditif/idempoten).
  * - Menerapkan migrasi v23 (rebuild seluruh tabel aktif menjadi STRICT).
  * - Menaikkan user_version ke versi skema saat ini.
@@ -1208,7 +1166,6 @@ export function migrasi(db: Database.Database): number {
       terapkanMigrasiV17(db);
       terapkanMigrasiV18(db);
       terapkanMigrasiV19(db);
-      terapkanMigrasiV20(db);
       terapkanMigrasiV21(db);
       // v22: lepaskan batas satu kuitansi per angsuran, tanpa mengubah histori.
       db.exec('DROP INDEX IF EXISTS ux_pinjaman_bayar_angsuran');

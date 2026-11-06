@@ -46,7 +46,7 @@
   - Tambah `PESAN_DB_TIDAK_KOMPATIBEL` yang menyebut skema v1 dan instruksi menghapus/memindahkan file DB.
   - Selesai bila tidak ada lagi referensi ke versi 2–23 di konstanta aktif.
 
-- [ ] **T1.2 — DDL tabel kanonik**
+- [x] **T1.2 — DDL tabel kanonik**
   - File: `src/db/database.ts`
   - Tulis satu `DDL` berisi 11 tabel aktif, semuanya `STRICT`.
   - Pastikan tidak ada tabel legacy (`transaksi`, `coa`, `pihak`, `jurnal_pihak`, `aset`, `anggaran`, `rekonsiliasi_bank`, `lampiran_jurnal`).
