@@ -276,7 +276,7 @@
 
 ## Fase 5 — Dokumen
 
-- [ ] **T5.1 — Hapus artefak audit lama**
+- [x] **T5.1 — Hapus artefak audit lama**
   - Hapus `docs/audit/observasi-2026-11-02.txt`.
   - Hapus `docs/audit/repro-akuntansi-2026-11-02.ts`.
   - Hapus folder `docs/audit/`.

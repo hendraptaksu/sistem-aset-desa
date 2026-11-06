@@ -1,9 +1,0 @@
-OPENING_AS_FLOW {"saldoAwal":0,"pendanaanMasuk":20000000,"kenaikan":20000000,"saldoAkhir":20000000}
-LOAN_CASHFLOW {"operasiKeluar":10100000,"pendanaanKeluar":0,"totalKeluar":10100000}
-REVERSE_LOAN_PAYMENT {"glUtang":10000000,"outstanding":0,"status":"LUNAS","auditOk":true,"temuan":[]}
-REVERSE_LOAN_DISBURSEMENT {"glUtang":0,"outstanding":10000000,"auditOk":true,"temuan":[]}
-PANJAR_CROSS_YEAR {"beban2025":0,"beban2026":900000,"panjar2025":1000000}
-OPENING_STATUS {"status":{"boleh":true,"jumlahJurnal":1},"tersimpan":false,"errors":["Saldo awal hanya bisa diisi saat belum ada jurnal. Gunakan koreksi/jurnal biasa."]}
-PARTIAL_LOAN {"outstanding":10000000,"status":"LUNAS","nextPaymentSaved":false,"nextErrors":["Angsuran ke-1 sudah dibayar melalui pembayaran partial. Satu angsuran hanya boleh dibayar satu kali."]}
-CLOSED_PANJAR_CORRECTION {"reverseSaved":false,"reverseErrors":["Jurnal ini terhubung ke dokumen panjar. Reversal dari Jurnal Umum diblokir agar status panjar tidak basi. Gunakan modul Panjar."],"recloseSaved":false,"recloseErrors":["Panjar ini sudah ditutup dan tidak bisa ditutup dua kali."]}
-FRACTIONAL_SEN_SQL {"rows":[{"akun_kode":"1001","debit":0.5,"kredit":0,"tipe_debit":"real","tipe_kredit":"integer"},{"akun_kode":"4001","debit":0,"kredit":0.5,"tipe_debit":"integer","tipe_kredit":"real"}],"auditOk":true,"temuan":[]}
