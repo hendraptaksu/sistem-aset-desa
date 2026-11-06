@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 5 | 9 |
+| 2 — Kontrol & UX | P1 | 6 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **17** | **33** |
+| **Total** |  | **18** | **33** |
 
 ## Aturan kerja
 
@@ -218,13 +218,13 @@
   - **Verifikasi:** test baru.
   - **Catatan:** File disentuh: `tests/akun-sistem-alur.test.ts` (baru), `TICKETS.md`; tidak ada perubahan kode produksi. Matriks di komentar test: Saldo awal -> 3000 & kas 1001; Panjar -> 1040; Utang usaha -> 2060 (catat & bayar); Pinjaman -> 2050 (pencairan), 5063 (bunga), 5050 (denda); Jurnal terpandu -> 2060 & kas 1001; 1050 -> jalur PIUTANG legacy (input baru N/A); sel lain N/A dengan alasan (1040 kontrol hanya lewat Panjar). DB legacy disimulasikan dengan `UPDATE akun SET aktif = 0` langsung tanpa mematikan trigger. Setiap kasus menegaskan tidak ada throw tak tertangani, `tersimpan:false`/ditolak, pesan memuat kode akun + status aktif, serta snapshot `jurnal`/`jurnal_baris`/`audit_log`/`panjar`/`panjar_item`/`pinjaman`/`pinjaman_angsuran`/`pinjaman_bayar` tidak berubah; ditambah kasus kontrol sukses agar penolakan bukan karena alasan lain. Verifikasi: `npm test -- tests/akun-sistem-alur.test.ts` 13 lulus; test modul terkait (`akun`, `utang-usaha`, `pinjaman`, `saldo-awal`, `panjar`) 102 lulus (total 6 file/115 test); `npm run typecheck` lulus; `npm test` **89 file/1.145 test lulus, 0 gagal** (sebelumnya 88/1.132). Commit test `9f7f5b4`.
 
-- [ ] **T2.6 — Konsistenkan `awalTahunBuku` legacy**
+- [x] **T2.6 — Konsistenkan `awalTahunBuku` legacy**
   - **Masalah:** `getPengaturanPembukuan` masih mengembalikan nilai legacy (mis. 7), dan dashboard memakainya, sedangkan aplikasi hanya mendukung Januari (`AWAL_TAHUN_BUKU_DIDUKUNG = 1`). Laporan bisa memakai periode berbeda dari dashboard.
   - **File:** `src/db/repository.ts`, `src/features/dashboard/dashboard.ts`, `src/main/ipc.ts`, `tests/dashboard.test.ts`, `tests/pengaturan.test.ts`.
   - **Langkah:** normalisasi nilai legacy ke 1 saat dibaca, atau abaikan di dashboard dan gunakan konstanta yang didukung. Tambahkan test dengan setting 7.
   - **Selesai bila:** dashboard dan laporan memakai Januari–Desember untuk DB legacy; tidak ada error saat menyimpan pengaturan.
   - **Verifikasi:** `npm test -- tests/dashboard.test.ts tests/pengaturan.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/repository.ts`, `src/main/ipc.ts`, `tests/dashboard.test.ts`, `tests/pengaturan.test.ts`, `tests/db-28-tutup-pengaturan.test.ts`, `TICKETS.md`. `getPengaturanPembukuan` sekarang memaksa `awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG` (1) setelah `normalisasiPengaturan(...)`; komentar menjelaskan DB legacy bisa menyimpan 7 tetapi aplikasi hanya mendukung Januari. Nilai mentah `akuntansi_awal_tahun_buku` tidak diubah (tetap `'7'` sampai save berikutnya), dan `normalisasiPengaturan` murni tetap mempertahankan input 7 agar test model lama/peringatan legacy tidak berubah. `dashboard:get` memakai nilai ternormalisasi itu sehingga rentang laba berjalan DB legacy adalah 1 Jan–cut-off (bukan Jul 2025–Jun 2026); laporan/penomoran bukti yang membaca fungsi sama ikut konsisten. `simpanPengaturanPembukuan` kini memvalidasi hasil normalisasi input SEBELUM memaksa Januari, sehingga input mentah `awalTahunBuku: 7` ditolak dengan `PESAN_AWAL_TAHUN_BUKU_FISKAL` tanpa menulis DB/audit; save normal (field legacy tidak dikirim renderer) tetap menulis Januari tanpa error. Test baru: setting mentah `'7'` → `getPengaturanPembukuan(db).awalTahunBuku === 1` tanpa throw dan tanpa mengubah DB; simpan mentah 7 ditolak dan DB legacy tidak berubah; dashboard dengan pengaturan legacy memakai rentang 1 Jan 2026–30 Jun 2026 dan laba 3,5jt; test DB-28 lama diperbarui agar mengharapkan hasil baca ternormalisasi. Verifikasi: `npm test -- tests/dashboard.test.ts tests/pengaturan.test.ts tests/db-28-tutup-pengaturan.test.ts` (3 file/34 test lulus), `npm run typecheck` lulus, `npm test` **89 file/1.148 test lulus, 0 gagal**. Commit `a642933`.
 
 - [ ] **T2.7 — Refresh kunci segera setelah restore**
   - **Masalah:** setelah restore, main memanggil `kunciLagi()`, tetapi renderer masih memanggil `muatData(cutoff)`. Permintaan ditolak karena terkunci; dashboard bisa menampilkan data lama/error sampai polling berikutnya.
