@@ -34,7 +34,12 @@ import {
   postingJurnal,
   validasiJurnalDb,
 } from '../db/posting.js';
-import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
+import {
+  koreksiSaldoAwal,
+  PESAN_ALASAN_KOREKSI_MIN,
+  simpanSaldoAwal,
+  statusSaldoAwal,
+} from '../db/saldoAwal.js';
 import {
   batalPanjarV2,
   batalkanPertanggungjawabanPanjar,
@@ -781,6 +786,84 @@ export function registerIpc(deps: IpcDeps): void {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
   });
+
+  // T1.7: koreksi saldo awal (Opsi A) — reversal jurnal pembukaan aktif +
+  // jurnal penyesuaian UMUM baru + audit, atomik di adapter DB. Renderer
+  // mengirim form yang sama dengan wizard; builder/validator yang sama dipakai
+  // agar aturan akun dan modal otomatis tidak bercabang.
+  daftarkan(
+    'saldo-awal:koreksi',
+    (
+      _e,
+      input: unknown,
+      alasanMentah: unknown = '',
+      opsiMentah: unknown = {},
+    ) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+
+        const bentuk = validasiBentukSaldoAwal(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+
+        // Dukung dua gaya pemanggilan: (input, alasan, opsi) dan
+        // (input, opsi) dengan `alasan` di dalam input/opsi. `alasan` dari
+        // argumen eksplisit tetap menang.
+        const opsi =
+          alasanMentah !== null &&
+          typeof alasanMentah === 'object' &&
+          !Array.isArray(alasanMentah)
+            ? alasanMentah
+            : opsiMentah;
+        const alasan = String(
+          (typeof alasanMentah === 'string' ? alasanMentah : '') ||
+            bentuk.input.alasan ||
+            bacaTeksOpsi(opsi, 'alasan') ||
+            '',
+        ).trim();
+        if (alasan.length < 5) return fail(PESAN_ALASAN_KOREKSI_MIN);
+
+        const jurnalInput = buatJurnalSaldoAwal({
+          ...bentuk.input,
+          alasan,
+          daftarAkun: listAkun(deps.db()),
+        }).input;
+        const konfirmasiPeringatan =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan ===
+            true;
+
+        const hasil = koreksiSaldoAwal(deps.db(), jurnalInput, {
+          alasan,
+          konfirmasiPeringatan,
+          alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+          wajibAlasanPeringatan: true,
+          sekarang: tanggalSekarang(),
+        });
+        if (!hasil.tersimpan || !hasil.jurnal) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Koreksi saldo awal gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          const perluKonfirmasi =
+            hasil.perluKonfirmasi &&
+            (hasil.errors.length === 0 ||
+              hasil.errors.every(
+                (m) => m === PESAN_WAJIB_ALASAN_PERINGATAN,
+              ));
+          return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
+        return ok({ jurnal: hasil.jurnal, reversal: hasil.reversal });
+      } catch (e) {
+        return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
+      }
+    },
+  );
 
   daftarkan(
     'jurnal:reverse',

@@ -392,6 +392,25 @@ export const api = {
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
   ) => call<{ jurnal: Jurnal }>('saldo-awal:posting', input, opsi),
+  /**
+   * T1.7: koreksi saldo awal (Opsi A). Jurnal pembukaan lama dibalik dan
+   * jurnal penyesuaian `UMUM` baru dibuat atomik; `alasan` wajib >=5 karakter.
+   */
+  saldoAwalKoreksi: (
+    input: FormSaldoAwal,
+    alasan: string,
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
+      alasanPeringatan?: string;
+    } = {},
+  ) =>
+    call<{ jurnal: Jurnal; reversal: Jurnal }>(
+      'saldo-awal:koreksi',
+      input,
+      alasan,
+      opsi,
+    ),
   jurnalKoreksiIsiUlang: (
     id: string,
     alasan: string,

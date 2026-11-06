@@ -12,19 +12,41 @@
 // - Audit `SALDO-AWAL` ditulis atomik bersama jurnal lewat `postingSaldoAwal`.
 
 import type Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import {
   tanggalKalenderValid,
+  validasiJurnal,
   type HasilValidasiJurnal,
   type JurnalInput,
 } from '../core/posting.js';
+import { buatAuditLog } from '../core/audit.js';
+import { rencanaReversal } from '../core/reversal.js';
+import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
+import { kodeKasDariDaftarAkun } from './coa.js';
 import {
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
+  getJurnalDetail,
+  getPengaturan,
+  insertAuditLog,
+  insertJurnalTervalidasi,
+  listJurnal,
   setPengaturan,
 } from './repository.js';
-import { postingSaldoAwal, type HasilPosting } from './posting.js';
+import {
+  PESAN_WAJIB_ALASAN_PERINGATAN,
+  buatKonteksPosting,
+  postingSaldoAwal,
+  type HasilPosting,
+} from './posting.js';
 
 export const PESAN_SALDO_AWAL_SUDAH_ADA =
   'Saldo awal sudah pernah dibuat. Perbaikan saldo awal hanya bisa lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
+
+export const PESAN_KOREKSI_TANPA_SALDO_AWAL =
+  'Belum ada saldo awal yang bisa dikoreksi. Isi Wizard Saldo Awal terlebih dahulu.';
+
+export const PESAN_ALASAN_KOREKSI_MIN =
+  'Alasan koreksi saldo awal wajib diisi minimal 5 karakter.';
 
 export type StatusSaldoAwal = {
   boleh: boolean;
@@ -162,6 +184,280 @@ export function simpanSaldoAwal(
   } catch (e) {
     return hasilGagal(
       `Saldo awal gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+export type OpsiKoreksiSaldoAwal = {
+  /** Alasan operator; wajib >=5 karakter dan dipakai juga untuk kunci periode. */
+  alasan: string;
+  /** ID internal untuk test/determinisme; default dibuat otomatis. */
+  idReversal?: string;
+  idPengganti?: string;
+  /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
+  konfirmasiPeringatan?: boolean;
+  /** AKT-06: alasan konfirmasi peringatan. */
+  alasanPeringatan?: string;
+  /** AKT-06: wajibkan alasan >=5 karakter saat mengonfirmasi peringatan. */
+  wajibAlasanPeringatan?: boolean;
+  /** AKT-14: tanggal acuan untuk test; default tanggal lokal WITA. */
+  sekarang?: string;
+};
+
+export type HasilKoreksiSaldoAwal = HasilPosting & {
+  reversal?: Jurnal;
+  /** Jurnal pembukaan yang dibalik (SALDO_AWAL pertama atau UMUM pengganti). */
+  jurnalLama?: Jurnal;
+};
+
+function hasilGagalKoreksi(errors: string | string[]): HasilKoreksiSaldoAwal {
+  return {
+    boleh: false,
+    errors: Array.isArray(errors) ? errors : [errors],
+    peringatan: [],
+    perluKonfirmasi: false,
+    tersimpan: false,
+  };
+}
+
+/**
+ * T1.7 (Opsi A): koreksi saldo awal = reverse and re-post dalam SATU transaksi.
+ *
+ * Jurnal pembukaan aktif adalah jurnal `SALDO_AWAL`/`UMUM` di grup saldo awal
+ * yang belum punya reversal. Koreksi pertama membalik `SALDO_AWAL`; koreksi
+ * berikutnya membalik jurnal `UMUM` pengganti terakhir, sehingga
+ * `ux_jurnal_reversal` tidak dilanggar dan jurnal lama tetap utuh.
+ *
+ * Jurnal pengganti selalu berjenis `UMUM` dengan `grup_id` yang sama dan
+ * baris saldo koreksi PENUH (bukan delta). Unique index `ux_jurnal_saldo_awal`
+ * tidak disentuh karena tidak pernah ada `SALDO_AWAL` kedua.
+ *
+ * Atomik: reversal + pengganti + audit + setting tanggal mulai berada dalam
+ * satu transaksi. Bila salah satu langkah gagal, semuanya dibatalkan.
+ */
+export function koreksiSaldoAwal(
+  db: Database.Database,
+  input: JurnalInput,
+  opsi: OpsiKoreksiSaldoAwal,
+): HasilKoreksiSaldoAwal {
+  const alasan = String(opsi?.alasan ?? '').trim();
+  if (!input || !input.header || !Array.isArray(input.baris))
+    return hasilGagalKoreksi('Data saldo awal tidak lengkap.');
+  if (alasan.length < 5) return hasilGagalKoreksi(PESAN_ALASAN_KOREKSI_MIN);
+
+  try {
+    const koreksi = db.transaction((): HasilKoreksiSaldoAwal => {
+      const saldoAwal = db
+        .prepare(
+          "SELECT id, grup_id FROM jurnal WHERE jenis = 'SALDO_AWAL' ORDER BY rowid LIMIT 1",
+        )
+        .get() as { id: string; grup_id: string } | undefined;
+      if (!saldoAwal) return hasilGagalKoreksi(PESAN_KOREKSI_TANPA_SALDO_AWAL);
+
+      const grup = String(saldoAwal.grup_id || saldoAwal.id).trim();
+      const dalamGrup = listJurnal(db, { grup_id: grup });
+      const sudahDibalik = new Set(
+        dalamGrup
+          .map((j) => j.reversal_of)
+          .filter((id): id is string => Boolean(id)),
+      );
+      // Cari dari belakang: setelah koreksi, jurnal UMUM pengganti terakhir
+      // adalah pembukaan aktif. Jurnal REVERSAL tidak pernah menjadi kandidat.
+      const aktif = [...dalamGrup]
+        .reverse()
+        .find(
+          (j) =>
+            j.reversal_of == null &&
+            (j.jenis === 'SALDO_AWAL' || j.jenis === 'UMUM') &&
+            !sudahDibalik.has(j.id),
+        );
+      if (!aktif)
+        return hasilGagalKoreksi('Jurnal pembukaan aktif tidak ditemukan.');
+
+      const detail = getJurnalDetail(db, aktif.id);
+      if (!detail)
+        return hasilGagalKoreksi('Detail jurnal pembukaan aktif tidak ditemukan.');
+
+      const idReversal =
+        String(opsi.idReversal ?? '').trim() || `rev-${randomUUID()}`;
+      const idPengganti =
+        String(opsi.idPengganti ?? '').trim() || `j-${randomUUID()}`;
+
+      const headerPengganti: JurnalHeaderInput = {
+        ...input.header,
+        id: idPengganti,
+        tanggal: String(input.header.tanggal ?? '').trim(),
+        keterangan:
+          String(input.header.keterangan ?? '').trim() || 'Koreksi saldo awal',
+        jenis: 'UMUM',
+        grup_id: grup,
+        reversal_of: null,
+      };
+      const pengganti: JurnalInput = {
+        ...input,
+        header: headerPengganti,
+        baris: input.baris.map((b) => ({ ...b })),
+        alasan,
+      };
+
+      const rencana = rencanaReversal({
+        jurnal: aktif,
+        baris: detail.baris,
+        reversalAda: [],
+        id: idReversal,
+        tanggal: aktif.tanggal,
+        alasan,
+      });
+      if (!rencana.boleh || !rencana.input)
+        return hasilGagalKoreksi(rencana.errors);
+      const balik = rencana.input;
+
+      const tanggalBaru = String(headerPengganti.tanggal ?? '').trim();
+      const tanggalBalik = String(balik.header.tanggal ?? '').trim();
+
+      // Tanggal baru tidak boleh melewati transaksi non-pembukaan paling awal,
+      // karena saldo awal adalah jangkar pembukuan. Tanggal masa depan tetap
+      // ditolak validator melalui `sekarang`.
+      if (tanggalKalenderValid(tanggalBaru)) {
+        const row = db
+          .prepare(
+            'SELECT MIN(tanggal) AS awal FROM jurnal WHERE grup_id <> ?',
+          )
+          .get(grup) as { awal: string | null };
+        const awalLuar = row.awal == null ? '' : String(row.awal).trim();
+        if (awalLuar && tanggalBaru > awalLuar)
+          return hasilGagalKoreksi(
+            `Tanggal koreksi saldo awal (${tanggalBaru}) tidak boleh setelah transaksi paling awal (${awalLuar}).`,
+          );
+      }
+
+      // KUNCI lama tidak dipakai sebagai batas bawah saat memvalidasi koreksi:
+      // koreksi yang sah boleh memindahkan tanggal mulai ke lebih awal. Nilai
+      // baru ditulis atomik setelah semua validasi lolos. Batas atas transaksi
+      // dan tanggal masa depan tetap diperiksa.
+      const konteks = (header: JurnalHeaderInput) => {
+        const ctx = buatKonteksPosting(db, header, opsi.sekarang);
+        ctx.koreksiSaldoAwal = true;
+        ctx.tanggalMulaiPembukuan = '';
+        return ctx;
+      };
+      const ctxBalik = konteks(balik.header);
+      const ctxBaru = konteks(headerPengganti);
+
+      const tambahDeltaKas = (
+        saldo: Record<string, number>,
+        baris: JurnalInput['baris'],
+        kasKodes: ReadonlySet<string>,
+      ): void => {
+        for (const b of baris) {
+          if (kasKodes.has(b.akun_kode))
+            saldo[b.akun_kode] =
+              (saldo[b.akun_kode] ?? 0) + b.debit - b.kredit;
+        }
+      };
+      const kasBalik = new Set(kodeKasDariDaftarAkun(ctxBalik.akun ?? []));
+      const kasBaru = new Set(kodeKasDariDaftarAkun(ctxBaru.akun ?? []));
+
+      const saldoBalik: Record<string, number> = { ...(ctxBalik.saldoKas ?? {}) };
+      if (tanggalBaru <= tanggalBalik)
+        tambahDeltaKas(saldoBalik, pengganti.baris, kasBaru);
+      const validasiBalik = validasiJurnal(balik, {
+        ...ctxBalik,
+        saldoKas: saldoBalik,
+      });
+
+      const saldoBaru: Record<string, number> = { ...(ctxBaru.saldoKas ?? {}) };
+      if (tanggalBalik <= tanggalBaru)
+        tambahDeltaKas(saldoBaru, balik.baris, kasBalik);
+      const validasiBaru = validasiJurnal(pengganti, {
+        ...ctxBaru,
+        saldoKas: saldoBaru,
+      });
+
+      const errors = [
+        ...validasiBalik.errors.map((e) => `Jurnal balik: ${e}`),
+        ...validasiBaru.errors.map((e) => `Jurnal pengganti: ${e}`),
+      ];
+      const peringatan = [
+        ...new Set([...validasiBalik.peringatan, ...validasiBaru.peringatan]),
+      ];
+      if (errors.length > 0)
+        return {
+          boleh: false,
+          errors,
+          peringatan,
+          perluKonfirmasi: false,
+          tersimpan: false,
+        };
+      if (peringatan.length > 0 && !opsi.konfirmasiPeringatan)
+        return {
+          boleh: true,
+          errors: [],
+          peringatan,
+          perluKonfirmasi: true,
+          tersimpan: false,
+        };
+      if (
+        peringatan.length > 0 &&
+        opsi.konfirmasiPeringatan === true &&
+        opsi.wajibAlasanPeringatan === true &&
+        String(opsi.alasanPeringatan ?? '').trim().length < 5
+      )
+        return {
+          boleh: false,
+          errors: [PESAN_WAJIB_ALASAN_PERINGATAN],
+          peringatan,
+          perluKonfirmasi: true,
+          tersimpan: false,
+        };
+
+      const audit = buatAuditLog(
+        'KOREKSI-SALDO-AWAL',
+        alasan,
+        { jurnal: aktif, baris: detail.baris },
+        {
+          jurnal: headerPengganti,
+          baris: pengganti.baris,
+          reversal: balik.header,
+          reversal_baris: balik.baris,
+        },
+        { ref_type: 'jurnal', ref_id: aktif.id },
+      );
+
+      // Bila pengganti memakai nomor bukti eksplisit sedangkan reversal
+      // otomatis, simpan pengganti dulu agar nomor otomatis memakai max+1.
+      const penggantiDulu =
+        !String(balik.header.no_bukti ?? '').trim() &&
+        Boolean(String(headerPengganti.no_bukti ?? '').trim());
+
+      let reversal: Jurnal;
+      let jurnalBaru: Jurnal;
+      if (penggantiDulu) {
+        jurnalBaru = insertJurnalTervalidasi(db, headerPengganti, pengganti.baris);
+        reversal = insertJurnalTervalidasi(db, balik.header, balik.baris);
+      } else {
+        reversal = insertJurnalTervalidasi(db, balik.header, balik.baris);
+        jurnalBaru = insertJurnalTervalidasi(db, headerPengganti, pengganti.baris);
+      }
+      insertAuditLog(db, audit);
+      if (getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI) !== tanggalBaru)
+        setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, tanggalBaru);
+
+      return {
+        boleh: true,
+        errors: [],
+        peringatan,
+        perluKonfirmasi: false,
+        tersimpan: true,
+        jurnal: jurnalBaru,
+        reversal,
+        jurnalLama: aktif,
+      };
+    });
+    return koreksi();
+  } catch (e) {
+    return hasilGagalKoreksi(
+      `Koreksi saldo awal gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 }

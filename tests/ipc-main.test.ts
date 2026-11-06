@@ -208,6 +208,7 @@ const CHANNEL_IPC = [
   'pinjaman:pembayaran',
   'pinjaman:rekonsiliasi',
   'pinjaman:simpan',
+  'saldo-awal:koreksi',
   'saldo-awal:posting',
   'saldo-awal:status',
   'saldo:list',
@@ -218,11 +219,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 63 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 64 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(63);
+    expect(env.handlers.size).toBe(64);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(63);
+    expect(CHANNEL_IPC).toHaveLength(64);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -2453,5 +2454,97 @@ describe('T1.2 — guard path DB aktif di semua kanal simpan', () => {
         (f) => f.includes('.tmp-') || f.endsWith('.bak-'),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('T1.7 — IPC koreksi saldo awal', () => {
+  it('mengoreksi saldo awal, mengembalikan jurnal + reversal, dan menolak alasan pendek', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
+    });
+    expect(awal.ok, awal.error).toBe(true);
+    const jurnalAwal = awal.data.jurnal as { id: string; jenis: string };
+    expect(jurnalAwal.jenis).toBe('SALDO_AWAL');
+    expect((await env.panggil('saldo-awal:status')).data.boleh).toBe(false);
+
+    const koreksi = await env.panggil(
+      'saldo-awal:koreksi',
+      {
+        tanggal: '2026-01-01',
+        saldo: [{ akun_kode: '1001', nominal: 5_000_000 }],
+      },
+      'Salah input saldo awal',
+      {},
+    );
+    expect(koreksi.ok, koreksi.error).toBe(true);
+    expect(koreksi.data.jurnal).toMatchObject({
+      jenis: 'UMUM',
+      reversal_of: null,
+      tanggal: '2026-01-01',
+    });
+    expect(koreksi.data.reversal).toMatchObject({
+      jenis: 'REVERSAL',
+      reversal_of: jurnalAwal.id,
+    });
+
+    const audit = await env.panggil('audit:list', {
+      aksi: 'KOREKSI-SALDO-AWAL',
+    });
+    expect(audit.ok, audit.error).toBe(true);
+    expect(audit.data.total).toBe(1);
+    expect(audit.data.rows[0]).toMatchObject({
+      aksi: 'KOREKSI-SALDO-AWAL',
+      ref_type: 'jurnal',
+      ref_id: jurnalAwal.id,
+    });
+
+    const status = await env.panggil('saldo-awal:status');
+    expect(status.data).toMatchObject({ boleh: false, jumlahJurnal: 3 });
+
+    const pendek = await env.panggil(
+      'saldo-awal:koreksi',
+      {
+        tanggal: '2026-01-01',
+        saldo: [{ akun_kode: '1001', nominal: 2_000_000 }],
+      },
+      'sala',
+      {},
+    );
+    expect(pendek.ok).toBe(false);
+    expect(pendek.error).toMatch(/minimal 5 karakter/i);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(3);
+  });
+
+  it('menerima alasan dari field input dan menolak bentuk saldo yang tidak sah', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 1_000_000 }],
+    });
+    expect(awal.ok, awal.error).toBe(true);
+
+    const tanpaSaldo = await env.panggil(
+      'saldo-awal:koreksi',
+      { tanggal: '2026-01-01', saldo: [] },
+      'Alasan bentuk salah',
+      {},
+    );
+    expect(tanpaSaldo.ok).toBe(false);
+    expect(tanpaSaldo.error).toMatch(/saldo awal/i);
+
+    const dariInput = await env.panggil(
+      'saldo-awal:koreksi',
+      {
+        tanggal: '2026-01-01',
+        saldo: [{ akun_kode: '1001', nominal: 1_500_000 }],
+        alasan: 'Alasan dari form input',
+      },
+      '',
+      {},
+    );
+    expect(dariInput.ok, dariInput.error).toBe(true);
+    expect(dariInput.data.jurnal.jenis).toBe('UMUM');
   });
 });
