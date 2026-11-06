@@ -28,10 +28,10 @@
 | --- | --- | ---: | ---: |
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
-| 2 — Kontrol & UX | P1 | 4 | 9 |
+| 2 — Kontrol & UX | P1 | 5 | 9 |
 | 3 — Hardening | P2 | 0 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **16** | **33** |
+| **Total** |  | **17** | **33** |
 
 ## Aturan kerja
 
@@ -210,13 +210,13 @@
   - **Verifikasi:** `npm test -- tests/akun.test.ts tests/utang-usaha.test.ts tests/pinjaman.test.ts`.
   - **Catatan:** File disentuh: `src/db/coa.ts`, `src/db/pinjaman.ts`, `src/db/repository.ts`, `src/renderer/components/AkunTab.tsx`, `src/renderer/lib/api.ts`, `tests/akun.test.ts`, `tests/forms-ui.test.ts`, `tests/ipc-main.test.ts`, `TICKETS.md`. `coa.ts` kini mendefinisikan `AKUN_BUNGA_PINJAMAN = '5063'` dan `AKUN_DENDA_PINJAMAN = '5050'`; `pinjaman.ts` memakai konstanta itu dan tetap mengekspor alias `AKUN_BUNGA_PINJAMAN_DEFAULT`/`AKUN_DENDA_PINJAMAN_DEFAULT` (tanpa impor balik ke `pinjaman.ts`, jadi tidak ada siklus). `AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF` berisi 3000/1040/1050/2050/2060/5063/5050 sehingga badge “Sistem”, tombol nonaktif, dan penolakan backend otomatis berlaku. Pesan `setAkunAktif` menyebut kode+nama, alasan (wizard/alur: saldo awal, panjar, utang usaha, atau pinjaman), dan arahan memakai **Aktifkan**; reaktivasi `aktif=true` tetap lolos meski akun terlanjur nonaktif. Teks bantuan AkunTab dan komentar API diperbarui. Test: daftar set diperluas di `tests/akun.test.ts` + `tests/forms-ui.test.ts`; test baru menolak 2060/5063/5050 dengan pesan kode+nama, memastikan tetap aktif tanpa audit nonaktif, 5010 tetap bisa dinonaktifkan, alur utang usaha (2060) & bunga/denda pinjaman (5063/5050) tetap bisa diposting, dan reaktivasi ketiganya berhasil. `tests/ipc-main.test.ts` ikut menguji ketiga kode lewat IPC. Verifikasi: `npm test -- tests/akun.test.ts tests/utang-usaha.test.ts tests/pinjaman.test.ts tests/forms-ui.test.ts tests/ipc-main.test.ts` (5 file/132 test lulus), `npm run typecheck` lulus, `npm test` **88 file/1.132 test lulus, 0 gagal**. Commit `46311dd`.
 
-- [ ] **T2.5 — Matriks test alur dengan akun sistem nonaktif**
+- [x] **T2.5 — Matriks test alur dengan akun sistem nonaktif**
   - **Masalah:** akun tetap lain di wizard/template bisa dinonaktifkan dan baru ketahuan saat dipakai.
   - **File:** test baru mis. `tests/akun-sistem-alur.test.ts`.
   - **Langkah:** untuk setiap alur (saldo awal, panjar, utang usaha, pinjaman, jurnal terpandu), coba akun sistem nonaktif dan pastikan hasilnya error validasi yang jelas, bukan crash/data setengah jadi.
   - **Selesai bila:** matriks alur × akun sistem terdokumentasi di test.
   - **Verifikasi:** test baru.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `tests/akun-sistem-alur.test.ts` (baru), `TICKETS.md`; tidak ada perubahan kode produksi. Matriks di komentar test: Saldo awal -> 3000 & kas 1001; Panjar -> 1040; Utang usaha -> 2060 (catat & bayar); Pinjaman -> 2050 (pencairan), 5063 (bunga), 5050 (denda); Jurnal terpandu -> 2060 & kas 1001; 1050 -> jalur PIUTANG legacy (input baru N/A); sel lain N/A dengan alasan (1040 kontrol hanya lewat Panjar). DB legacy disimulasikan dengan `UPDATE akun SET aktif = 0` langsung tanpa mematikan trigger. Setiap kasus menegaskan tidak ada throw tak tertangani, `tersimpan:false`/ditolak, pesan memuat kode akun + status aktif, serta snapshot `jurnal`/`jurnal_baris`/`audit_log`/`panjar`/`panjar_item`/`pinjaman`/`pinjaman_angsuran`/`pinjaman_bayar` tidak berubah; ditambah kasus kontrol sukses agar penolakan bukan karena alasan lain. Verifikasi: `npm test -- tests/akun-sistem-alur.test.ts` 13 lulus; test modul terkait (`akun`, `utang-usaha`, `pinjaman`, `saldo-awal`, `panjar`) 102 lulus (total 6 file/115 test); `npm run typecheck` lulus; `npm test` **89 file/1.145 test lulus, 0 gagal** (sebelumnya 88/1.132). Commit test `9f7f5b4`.
 
 - [ ] **T2.6 — Konsistenkan `awalTahunBuku` legacy**
   - **Masalah:** `getPengaturanPembukuan` masih mengembalikan nilai legacy (mis. 7), dan dashboard memakainya, sedangkan aplikasi hanya mendukung Januari (`AWAL_TAHUN_BUKU_DIDUKUNG = 1`). Laporan bisa memakai periode berbeda dari dashboard.
