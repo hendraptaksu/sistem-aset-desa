@@ -16,6 +16,7 @@ import {
   api,
   isPerluKonfirmasi,
   type JurnalLengkap,
+  type SaldoAwalSaatIniApi,
   type StatusSaldoAwal,
 } from '../lib/api.js';
 import {
@@ -333,6 +334,25 @@ export function TransaksiTerakhirCard({
   );
 }
 
+/**
+ * T1.8: tombol saldo awal berubah menjadi Koreksi hanya setelah status benar
+ * terkunci (`boleh:false`). Saat status belum dimuat/null, tombol wizard biasa
+ * tetap tampil nonaktif sehingga tidak ada jalur koreksi yang menebak-nebak.
+ */
+export function modeTombolSaldoAwal(
+  status: StatusSaldoAwal | null,
+): 'awal' | 'koreksi' {
+  return status && !status.boleh ? 'koreksi' : 'awal';
+}
+
+export function labelTombolSaldoAwal(
+  status: StatusSaldoAwal | null,
+): string {
+  return modeTombolSaldoAwal(status) === 'koreksi'
+    ? 'Koreksi Saldo Awal'
+    : 'Wizard Saldo Awal';
+}
+
 export function TransaksiTab({
   jenisAwal,
   onBukaTab,
@@ -347,6 +367,11 @@ export function TransaksiTab({
   const [saldoStatus, setSaldoStatus] = useState<StatusSaldoAwal | null>(null);
   const [statusSaldoErr, setStatusSaldoErr] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<'awal' | 'koreksi'>('awal');
+  const [saldoSaatIni, setSaldoSaatIni] =
+    useState<SaldoAwalSaatIniApi | null>(null);
+  const [memuatKoreksi, setMemuatKoreksi] = useState(false);
+  const [errKoreksi, setErrKoreksi] = useState<string | null>(null);
   const [pesanSaldo, setPesanSaldo] = useState<string | null>(null);
 
   const [daftarJurnal, setDaftarJurnal] = useState<JurnalLengkap[]>([]);
@@ -367,6 +392,27 @@ export function TransaksiTab({
       setStatusSaldoErr(null);
     } catch (e) {
       setStatusSaldoErr(pesanError(e, PESAN_MUAT_GAGAL));
+    }
+  }, []);
+
+  /** T1.8: muat saldo pembukaan aktif lalu buka wizard mode koreksi. */
+  const bukaKoreksi = useCallback(async () => {
+    setErrKoreksi(null);
+    setMemuatKoreksi(true);
+    try {
+      const data = await api.saldoAwalSaatIni();
+      setSaldoSaatIni(data);
+      setWizardMode('koreksi');
+      setWizardOpen(true);
+    } catch (e) {
+      setErrKoreksi(
+        pesanError(
+          e,
+          'Gagal memuat saldo awal saat ini. Coba lagi; bila tetap gagal, periksa status saldo awal.',
+        ),
+      );
+    } finally {
+      setMemuatKoreksi(false);
     }
   }, []);
 
@@ -447,7 +493,9 @@ export function TransaksiTab({
             )}
             {saldoStatus && !saldoStatus.boleh && (
               <p className="mt-2 text-sm text-stone-600">
-                {saldoStatus.alasan ?? PESAN_SALDO_AWAL_TERKUNCI}
+                {saldoStatus.alasan ?? PESAN_SALDO_AWAL_TERKUNCI} Gunakan tombol
+                Koreksi Saldo Awal untuk memperbaiki; jurnal lama tetap tersimpan
+                di audit.
               </p>
             )}
             {!saldoStatus && !statusSaldoErr && (
@@ -467,18 +515,37 @@ export function TransaksiTab({
                   ? 'Sudah ada saldo awal'
                   : 'Memuat status'}
             </Badge>
-            <Button
-              disabled={!saldoStatus?.boleh || memuat}
-              title={
-                saldoStatus && !saldoStatus.boleh
-                  ? (saldoStatus.alasan ??
-                    PESAN_SALDO_AWAL_TERKUNCI)
-                  : undefined
-              }
-              onClick={() => setWizardOpen(true)}
-            >
-              Wizard Saldo Awal
-            </Button>
+            {modeTombolSaldoAwal(saldoStatus) === 'koreksi' ? (
+              <Button
+                disabled={memuatKoreksi || memuat}
+                title={saldoStatus?.alasan ?? PESAN_SALDO_AWAL_TERKUNCI}
+                onClick={() => void bukaKoreksi()}
+              >
+                {memuatKoreksi ? 'Memuat saldo…' : 'Koreksi Saldo Awal'}
+              </Button>
+            ) : (
+              <Button
+                disabled={!saldoStatus?.boleh || memuat}
+                title={
+                  saldoStatus && !saldoStatus.boleh
+                    ? (saldoStatus.alasan ?? PESAN_SALDO_AWAL_TERKUNCI)
+                    : undefined
+                }
+                onClick={() => {
+                  setWizardMode('awal');
+                  setSaldoSaatIni(null);
+                  setErrKoreksi(null);
+                  setWizardOpen(true);
+                }}
+              >
+                Wizard Saldo Awal
+              </Button>
+            )}
+            {errKoreksi && (
+              <p className="max-w-xs text-right text-sm text-red-700">
+                {errKoreksi}
+              </p>
+            )}
           </div>
         </div>
       </Card>
@@ -596,18 +663,37 @@ export function TransaksiTab({
       {wizardOpen && (
         <SaldoAwalWizard
           coa={coa}
-          tanggalMaksimal={saldoStatus?.tanggalMaksimal}
-          onClose={() => setWizardOpen(false)}
+          mode={wizardMode}
+          saldoAwal={
+            wizardMode === 'koreksi' ? (saldoSaatIni ?? undefined) : undefined
+          }
+          tanggalMaksimal={
+            wizardMode === 'koreksi'
+              ? saldoSaatIni?.tanggalMaksimal
+              : saldoStatus?.tanggalMaksimal
+          }
+          onClose={() => {
+            setWizardOpen(false);
+            setWizardMode('awal');
+            setSaldoSaatIni(null);
+          }}
           onSukses={(pesan) => {
             setPesanSaldo(pesan);
             setWizardOpen(false);
-            // Optimistis: tombol langsung terkunci walau refresh status gagal.
-            setSaldoStatus((s) => ({
-              ...(s ?? {}),
-              boleh: false,
-              jumlahJurnal: (s?.jumlahJurnal ?? 0) + 1,
-              alasan: PESAN_SALDO_AWAL_TERKUNCI,
-            }));
+            const selesaiKoreksi = wizardMode === 'koreksi';
+            setWizardMode('awal');
+            setSaldoSaatIni(null);
+            // Mode awal tetap optimistis agar tombol langsung terkunci walau
+            // refresh status gagal. Koreksi TIDAK membuat status `boleh:true`;
+            // status dimuat ulang dari DB supaya mencerminkan jurnal sebenarnya.
+            if (!selesaiKoreksi) {
+              setSaldoStatus((s) => ({
+                ...(s ?? {}),
+                boleh: false,
+                jumlahJurnal: (s?.jumlahJurnal ?? 0) + 1,
+                alasan: PESAN_SALDO_AWAL_TERKUNCI,
+              }));
+            }
             void muatStatusSaldo();
             muatJurnal();
           }}

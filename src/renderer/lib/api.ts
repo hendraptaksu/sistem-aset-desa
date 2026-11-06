@@ -208,6 +208,24 @@ export type StatusSaldoAwal = {
   alasan?: string;
 };
 
+/** T1.8: saldo pembukaan aktif untuk prefill Wizard mode koreksi. */
+export type SaldoAwalSaatIniApi = {
+  tanggal: string;
+  /** Hanya AKTIVA/KEWAJIBAN, sisi normal positif; 3000 MODAL tidak termasuk. */
+  saldo: { akun_kode: string; nominal: number }[];
+  keterangan?: string;
+  /** Batas atas tanggal koreksi dari jurnal non-pembukaan paling awal. */
+  tanggalMaksimal?: string;
+};
+
+/** Opsi koreksi saldo awal; `alasan` wajib >=5 karakter. */
+export type OpsiKoreksiSaldoAwalApi = {
+  alasan?: string;
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+  wajibAlasanPeringatan?: boolean;
+};
+
 /** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
 export type TutupBukuTampil = TutupBuku & {
   laba: number;
@@ -392,25 +410,33 @@ export const api = {
       konfirmasiTanpaSaldoAwal?: boolean;
     } = {},
   ) => call<{ jurnal: Jurnal }>('saldo-awal:posting', input, opsi),
+  /** T1.8: saldo pembukaan aktif untuk prefill Wizard mode koreksi. */
+  saldoAwalSaatIni: () =>
+    call<SaldoAwalSaatIniApi>('saldo-awal:saat-ini'),
   /**
    * T1.7: koreksi saldo awal (Opsi A). Jurnal pembukaan lama dibalik dan
    * jurnal penyesuaian `UMUM` baru dibuat atomik; `alasan` wajib >=5 karakter.
+   *
+   * T1.8: mendukung bentuk `(input, { alasan, ...opsi })` yang dipakai wizard,
+   * sekaligus bentuk lama `(input, alasan, opsi)` agar pemanggil lama tetap sah.
    */
   saldoAwalKoreksi: (
     input: FormSaldoAwal,
-    alasan: string,
-    opsi: {
-      konfirmasiPeringatan?: boolean;
-      /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
-      alasanPeringatan?: string;
-    } = {},
+    alasanAtauOpsi: string | OpsiKoreksiSaldoAwalApi,
+    opsi: OpsiKoreksiSaldoAwalApi = {},
   ) =>
-    call<{ jurnal: Jurnal; reversal: Jurnal }>(
-      'saldo-awal:koreksi',
-      input,
-      alasan,
-      opsi,
-    ),
+    typeof alasanAtauOpsi === 'string'
+      ? call<{ jurnal: Jurnal; reversal: Jurnal }>(
+          'saldo-awal:koreksi',
+          input,
+          alasanAtauOpsi,
+          opsi,
+        )
+      : call<{ jurnal: Jurnal; reversal: Jurnal }>(
+          'saldo-awal:koreksi',
+          input,
+          alasanAtauOpsi,
+        ),
   jurnalKoreksiIsiUlang: (
     id: string,
     alasan: string,

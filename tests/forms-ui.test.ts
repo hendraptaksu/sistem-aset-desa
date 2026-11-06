@@ -34,7 +34,11 @@ import { openDb } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
-import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
+import {
+  labelTombolSaldoAwal,
+  modeTombolSaldoAwal,
+  TransaksiTab,
+} from '../src/renderer/components/TransaksiTab.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
 import { KonfirmasiModal } from '../src/renderer/components/ui.js';
 import { SaldoAwalWizard } from '../src/renderer/components/SaldoAwalWizard.js';
@@ -939,5 +943,36 @@ describe('DB-15 — akun nonaktif tidak muncul di form input baru', () => {
     for (const kode of ['3000', '1040', '1050', '2050']) {
       expect(akunBolehDinonaktifkan({ kode }), `akun sistem ${kode}`).toBe(false);
     }
+  });
+});
+
+describe('T1.8 — tombol koreksi saldo awal di layar Transaksi', () => {
+  it('hanya memilih Koreksi saat status sudah dimuat dan terkunci', () => {
+    expect(modeTombolSaldoAwal(null)).toBe('awal');
+    expect(labelTombolSaldoAwal(null)).toBe('Wizard Saldo Awal');
+
+    expect(modeTombolSaldoAwal({ boleh: true, jumlahJurnal: 0 })).toBe('awal');
+    expect(labelTombolSaldoAwal({ boleh: true, jumlahJurnal: 0 })).toBe(
+      'Wizard Saldo Awal',
+    );
+
+    expect(modeTombolSaldoAwal({ boleh: false, jumlahJurnal: 1 })).toBe(
+      'koreksi',
+    );
+    expect(labelTombolSaldoAwal({ boleh: false, jumlahJurnal: 1 })).toBe(
+      'Koreksi Saldo Awal',
+    );
+  });
+
+  it('sumber TransaksiTab memuat alur koreksi dan tidak membuat status boleh:true', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/TransaksiTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('api.saldoAwalSaatIni()');
+    expect(sumber).toContain('Koreksi Saldo Awal');
+    expect(sumber).toContain('mode={wizardMode}');
+    expect(sumber).toContain('modeTombolSaldoAwal(saldoStatus)');
+    expect(sumber).not.toContain('boleh: true');
   });
 });

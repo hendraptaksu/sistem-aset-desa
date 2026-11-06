@@ -41,11 +41,47 @@ type GrupAkun = {
   akun: Coa[];
 };
 
-/** Tanggal default wizard: hari ini, tetapi dijepit ke batas jurnal pertama. */
-function tanggalAwalWizard(tanggalMaksimal?: string): string {
+/** Prefill dari `saldo-awal:saat-ini` saat wizard dipakai untuk koreksi. */
+export type SaldoAwalPrefill = {
+  tanggal: string;
+  saldo: { akun_kode: string; nominal: number }[];
+  keterangan?: string;
+};
+
+export const MIN_ALASAN_KOREKSI = 5;
+export const PESAN_ALASAN_KOREKSI_MIN =
+  'Alasan koreksi wajib diisi minimal 5 karakter.';
+
+/** Tanggal default wizard: hari ini (atau tanggal saldo aktif), dijepit ke batas. */
+function tanggalAwalWizard(
+  tanggalMaksimal?: string,
+  tanggalSaldoAwal?: string,
+): string {
+  const tanggalAktif = String(tanggalSaldoAwal ?? '').trim();
+  if (tanggalKalenderValid(tanggalAktif)) return tanggalAktif;
   const hariIni = tanggalLokal();
   const maks = String(tanggalMaksimal ?? '').trim();
   return tanggalKalenderValid(maks) && hariIni > maks ? maks : hariIni;
+}
+
+/** Baris awal wizard: prefill saldo aktif bila ada, atau satu baris kosong. */
+function barisAwalWizard(
+  saldo: SaldoAwalPrefill['saldo'] | undefined,
+  akunAwal: string,
+): BarisSaldo[] {
+  const rows = (saldo ?? [])
+    .map((s, i) => ({
+      key: i + 1,
+      akun: String(s?.akun_kode ?? '').trim(),
+      nominal: Number(s?.nominal ?? 0),
+    }))
+    .filter(
+      (r) =>
+        r.akun !== '' &&
+        Number.isSafeInteger(r.nominal) &&
+        r.nominal > 0,
+    );
+  return rows.length > 0 ? rows : [{ key: 1, akun: akunAwal, nominal: 0 }];
 }
 
 /**
@@ -60,15 +96,22 @@ function tanggalAwalWizard(tanggalMaksimal?: string): string {
 export function SaldoAwalWizard({
   coa,
   tanggalMaksimal,
+  mode = 'awal',
+  saldoAwal,
   onClose,
   onSukses,
 }: {
   coa: Coa[];
   /** AUD2-02: batas atas tanggal (jurnal paling awal); kosong = belum ada jurnal. */
   tanggalMaksimal?: string;
+  /** T1.8: `koreksi` memakai reverse-and-repost jurnal lama, bukan edit biasa. */
+  mode?: 'awal' | 'koreksi';
+  /** T1.8: prefill tanggal/saldo/keterangan saat mode koreksi. */
+  saldoAwal?: SaldoAwalPrefill;
   onClose: () => void;
   onSukses: (pesan: string) => void;
 }) {
+  const modeKoreksi = mode === 'koreksi';
   // DB-15: dropdown hanya menawarkan akun aktif. Akun yang dinonaktifkan tetap
   // tersedia di histori/laporan, tetapi bukan untuk jurnal saldo awal baru.
   const akunAktif = useMemo(() => coa.filter((a) => a.aktif !== false), [coa]);
@@ -87,15 +130,19 @@ export function SaldoAwalWizard({
     akunRelevan[0]?.kode ??
     '';
 
-  const keyRef = useRef(2);
-  const [tanggal, setTanggal] = useState(() =>
-    tanggalAwalWizard(tanggalMaksimal),
+  const barisAwal = useMemo(
+    () => barisAwalWizard(saldoAwal?.saldo, akunAwal),
+    [saldoAwal, akunAwal],
   );
-  const [rows, setRows] = useState<BarisSaldo[]>([
-    { key: 1, akun: akunAwal, nominal: 0 },
-  ]);
-  const [keterangan, setKeterangan] = useState('');
+  const keyRef = useRef(barisAwal.length + 1);
+  const [tanggal, setTanggal] = useState(() =>
+    tanggalAwalWizard(tanggalMaksimal, modeKoreksi ? saldoAwal?.tanggal : undefined),
+  );
+  const [rows, setRows] = useState<BarisSaldo[]>(barisAwal);
+  const [keterangan, setKeterangan] = useState(saldoAwal?.keterangan ?? '');
   const [noBukti, setNoBukti] = useState('');
+  /** T1.8: alasan koreksi wajib; terpisah dari alasan kunci periode/peringatan. */
+  const [alasanKoreksi, setAlasanKoreksi] = useState('');
 
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -174,6 +221,11 @@ export function SaldoAwalWizard({
   }, [tanggal, rows, keterangan, noBukti, akunAktif, batasTanggal]);
 
   const formSah = Boolean(hasil.data);
+  const alasanKoreksiBersih = alasanKoreksi.trim();
+  const alasanKoreksiCukup =
+    alasanKoreksiBersih.length >= MIN_ALASAN_KOREKSI;
+  const bolehSimpan =
+    formSah && (!modeKoreksi || alasanKoreksiCukup);
 
   const labelAkun = (kode: string): string => {
     if (kode === AKUN_MODAL) return '3000 — MODAL (penyeimbang otomatis)';
@@ -214,6 +266,11 @@ export function SaldoAwalWizard({
     }
     setLockOpen(false);
 
+    if (modeKoreksi && !alasanKoreksiCukup) {
+      setErr(PESAN_ALASAN_KOREKSI_MIN);
+      return;
+    }
+
     if (!formSah || !hasil.data) {
       setErr(
         'Isi minimal satu saldo dengan nominal lebih dari 0, lalu periksa tanggal mulai pembukuan.',
@@ -253,20 +310,36 @@ export function SaldoAwalWizard({
     busyRef.current = true;
     setBusy(true);
     try {
-      const res = await api.saldoAwalPosting(form, {
-        konfirmasiPeringatan: opsi.konfirmasi === true,
-        ...opsiPeringatanApi(
-          opsi.konfirmasi === true ? alasanPeringatan : undefined,
-        ),
-        // AKT-02: opsi ini konsisten dengan pintu input lain; jenis SALDO_AWAL
-        // tetap dikecualikan dari guard sehingga wizard bisa menjadi jurnal pertama.
-        wajibSaldoAwal: true,
-      });
-      setPesanKonfirmasi(null);
-      setErrorKonfirmasi(null);
-      onSukses(
-        `Saldo awal ${formatTanggal(tanggal)} tersimpan — satu jurnal seimbang ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}).`,
-      );
+      const konfirmasiPeringatan = opsi.konfirmasi === true;
+      if (modeKoreksi) {
+        const res = await api.saldoAwalKoreksi(form, {
+          alasan: alasanKoreksiBersih,
+          konfirmasiPeringatan,
+          ...opsiPeringatanApi(
+            konfirmasiPeringatan ? alasanPeringatan : undefined,
+          ),
+        });
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
+        onSukses(
+          `Saldo awal ${formatTanggal(tanggal)} dikoreksi — jurnal lama tetap tersimpan di audit; jurnal penyesuaian baru ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}) tercatat.`,
+        );
+      } else {
+        const res = await api.saldoAwalPosting(form, {
+          konfirmasiPeringatan,
+          ...opsiPeringatanApi(
+            konfirmasiPeringatan ? alasanPeringatan : undefined,
+          ),
+          // AKT-02: opsi ini konsisten dengan pintu input lain; jenis SALDO_AWAL
+          // tetap dikecualikan dari guard sehingga wizard bisa menjadi jurnal pertama.
+          wajibSaldoAwal: true,
+        });
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
+        onSukses(
+          `Saldo awal ${formatTanggal(tanggal)} tersimpan — satu jurnal seimbang ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}).`,
+        );
+      }
     } catch (e) {
       if (isPerluAlasan(e)) {
         setPesanKonfirmasi(null);
@@ -289,8 +362,12 @@ export function SaldoAwalWizard({
 
   return (
     <Modal
-      judul="Wizard Saldo Awal"
-      deskripsi="Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit."
+      judul={modeKoreksi ? 'Koreksi Saldo Awal' : 'Wizard Saldo Awal'}
+      deskripsi={
+        modeKoreksi
+          ? 'Perbaiki saldo awal yang sudah tersimpan. Sistem membalik jurnal pembukaan lama lalu membuat jurnal penyesuaian baru; jurnal lama tidak dihapus dan tetap tersimpan di audit.'
+          : 'Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit.'
+      }
       onTutup={onClose}
       sibuk={busy}
       lebar="3xl"
@@ -298,6 +375,12 @@ export function SaldoAwalWizard({
       <div className="mt-1">
         <ErrorBox msg={err} />
       </div>
+      {modeKoreksi && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Jurnal lama tetap tersimpan di audit. Koreksi membuat jurnal balik dan
+          jurnal penyesuaian baru, bukan menghapus atau mengedit jurnal asli.
+        </div>
+      )}
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Tanggal mulai pembukuan (tanggal jangkar)">
@@ -315,6 +398,22 @@ export function SaldoAwalWizard({
               </span>
             )}
           </Field>
+          {modeKoreksi && (
+            <div className="md:col-span-2">
+              <Field label="Alasan koreksi (wajib, minimal 5 karakter)">
+                <TextInput
+                  value={alasanKoreksi}
+                  disabled={busy}
+                  placeholder="cth: Saldo kas salah input saat pembukuan awal"
+                  onChange={(e) => setAlasanKoreksi(e.target.value)}
+                />
+                <span className="mt-1 block text-helper text-stone-500">
+                  Alasan ini dicatat di audit bersama jurnal lama dan jurnal
+                  penyesuaian baru.
+                </span>
+              </Field>
+            </div>
+          )}
           <Field label="Keterangan (opsional)">
             <TextInput
               value={keterangan}
@@ -527,15 +626,27 @@ export function SaldoAwalWizard({
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button disabled={busy || !formSah} onClick={() => void simpan()}>
-            {busy ? 'Menyimpan…' : 'Simpan Saldo Awal'}
+          <Button disabled={busy || !bolehSimpan} onClick={() => void simpan()}>
+            {busy
+              ? 'Menyimpan…'
+              : modeKoreksi
+                ? 'Simpan Koreksi'
+                : 'Simpan Saldo Awal'}
           </Button>
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Batal
           </Button>
-          <span className="text-sm text-stone-500">
-            Setelah tersimpan, wizard terkunci karena pembukuan sudah dimulai.
-          </span>
+          {modeKoreksi ? (
+            <span className="text-sm text-stone-500">
+              {alasanKoreksiCukup
+                ? 'Saldo awal akan dikoreksi tanpa menghapus jurnal lama.'
+                : PESAN_ALASAN_KOREKSI_MIN}
+            </span>
+          ) : (
+            <span className="text-sm text-stone-500">
+              Setelah tersimpan, wizard terkunci karena pembukuan sudah dimulai.
+            </span>
+          )}
         </div>
 
         {lockOpen && (

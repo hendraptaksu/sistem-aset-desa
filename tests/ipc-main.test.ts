@@ -210,6 +210,7 @@ const CHANNEL_IPC = [
   'pinjaman:simpan',
   'saldo-awal:koreksi',
   'saldo-awal:posting',
+  'saldo-awal:saat-ini',
   'saldo-awal:status',
   'saldo:list',
   'tutup:create',
@@ -219,11 +220,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 64 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 65 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(64);
+    expect(env.handlers.size).toBe(65);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(64);
+    expect(CHANNEL_IPC).toHaveLength(65);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -2546,5 +2547,63 @@ describe('T1.7 — IPC koreksi saldo awal', () => {
     );
     expect(dariInput.ok, dariInput.error).toBe(true);
     expect(dariInput.data.jurnal.jenis).toBe('UMUM');
+  });
+});
+
+describe('T1.8 — IPC saldo awal saat ini', () => {
+  it('menolak pembacaan sebelum ada saldo awal', async () => {
+    const env = buatEnv();
+    const hasil = await env.panggil('saldo-awal:saat-ini');
+    expect(hasil.ok).toBe(false);
+    expect(hasil.error).toMatch(/belum ada saldo awal/i);
+  });
+
+  it('mengembalikan saldo terbaru tanpa 3000 setelah koreksi', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-01-01',
+      keterangan: 'Saldo awal IPC',
+      saldo: [
+        { akun_kode: '1001', nominal: 1_000_000 },
+        { akun_kode: '2050', nominal: 200_000 },
+      ],
+    });
+    expect(awal.ok, awal.error).toBe(true);
+
+    const sebelum = await env.panggil('saldo-awal:saat-ini');
+    expect(sebelum.ok, sebelum.error).toBe(true);
+    expect(sebelum.data).toEqual({
+      tanggal: '2026-01-01',
+      saldo: [
+        { akun_kode: '1001', nominal: 1_000_000 },
+        { akun_kode: '2050', nominal: 200_000 },
+      ],
+      keterangan: 'Saldo awal IPC',
+    });
+    expect(
+      (sebelum.data.saldo as { akun_kode: string }[]).some(
+        (s) => s.akun_kode === '3000',
+      ),
+    ).toBe(false);
+
+    const koreksi = await env.panggil(
+      'saldo-awal:koreksi',
+      {
+        tanggal: '2026-01-01',
+        keterangan: 'Koreksi IPC',
+        saldo: [{ akun_kode: '1001', nominal: 2_500_000 }],
+      },
+      'Perbaiki saldo awal IPC',
+      {},
+    );
+    expect(koreksi.ok, koreksi.error).toBe(true);
+
+    const sesudah = await env.panggil('saldo-awal:saat-ini');
+    expect(sesudah.ok, sesudah.error).toBe(true);
+    expect(sesudah.data).toEqual({
+      tanggal: '2026-01-01',
+      saldo: [{ akun_kode: '1001', nominal: 2_500_000 }],
+      keterangan: 'Koreksi IPC',
+    });
   });
 });

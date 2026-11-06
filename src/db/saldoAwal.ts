@@ -22,13 +22,15 @@ import {
 import { buatAuditLog } from '../core/audit.js';
 import { rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
-import { kodeKasDariDaftarAkun } from './coa.js';
+import { AKUN_MODAL, kodeKasDariDaftarAkun } from './coa.js';
+import { listBarisJurnal } from './laporan.js';
 import {
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
   getJurnalDetail,
   getPengaturan,
   insertAuditLog,
   insertJurnalTervalidasi,
+  listAkun,
   listJurnal,
   setPengaturan,
 } from './repository.js';
@@ -116,6 +118,95 @@ export function statusSaldoAwal(db: Database.Database): StatusSaldoAwal {
         alasan: PESAN_SALDO_AWAL_SUDAH_ADA,
       }
     : { boleh: true, ...dasar };
+}
+
+export type SaldoAwalSaatIni = {
+  /** Tanggal jurnal pembukaan yang sedang aktif (SALDO_AWAL asli atau UMUM pengganti). */
+  tanggal: string;
+  /**
+   * Saldo per akun AKTIVA/KEWAJIBAN dalam sisi normal positif (AKTIVA = debit,
+   * KEWAJIBAN = kredit). Akun 3000 MODAL tidak dikembalikan karena selalu
+   * dihitung ulang oleh builder sebagai penyeimbang.
+   */
+  saldo: { akun_kode: string; nominal: number }[];
+  keterangan?: string;
+  /**
+   * Batas atas tanggal koreksi: jurnal NON-pembukaan paling awal. Berbeda dari
+   * `statusSaldoAwal.tanggalMaksimal` yang bisa tertahan di tanggal
+   * `SALDO_AWAL` lama setelah koreksi memindahkan tanggal mulai ke lebih akhir.
+   */
+  tanggalMaksimal?: string;
+};
+
+/**
+ * T1.8: data prefill Wizard mode koreksi.
+ *
+ * Sumbernya jurnal grup pembukaan yang sama (SALDO_AWAL asli + REVERSAL +
+ * UMUM pengganti). Dengan menjumlahkan SELURUH baris grup, hasilnya tetap
+ * benar setelah koreksi berulang: jurnal asli + balik saling meniadakan dan
+ * hanya penyesuaian aktif yang tersisa.
+ *
+ * Mengembalikan `null` bila belum ada `SALDO_AWAL` (tidak ada yang bisa
+ * dikoreksi); IPC mengubahnya menjadi pesan Indonesia yang jelas.
+ */
+export function saldoAwalSaatIni(
+  db: Database.Database,
+): SaldoAwalSaatIni | null {
+  const awal = db
+    .prepare(
+      "SELECT id, grup_id FROM jurnal WHERE jenis = 'SALDO_AWAL' ORDER BY rowid LIMIT 1",
+    )
+    .get() as { id: string; grup_id: string } | undefined;
+  if (!awal) return null;
+
+  const grup = String(awal.grup_id || awal.id).trim();
+  const dalamGrup = listJurnal(db, { grup_id: grup });
+  const sudahDibalik = new Set(
+    dalamGrup
+      .map((j) => j.reversal_of)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const aktif = [...dalamGrup]
+    .reverse()
+    .find(
+      (j) =>
+        j.reversal_of == null &&
+        (j.jenis === 'SALDO_AWAL' || j.jenis === 'UMUM') &&
+        !sudahDibalik.has(j.id),
+    );
+  if (!aktif) return null;
+
+  const tipeAkun = new Map(listAkun(db).map((a) => [a.kode, a.tipe]));
+  const total = new Map<string, number>();
+  for (const b of listBarisJurnal(db, { grup_id: grup })) {
+    const tipe = tipeAkun.get(b.akun_kode);
+    if (tipe !== 'AKTIVA' && tipe !== 'KEWAJIBAN') continue;
+    if (b.akun_kode === AKUN_MODAL) continue;
+    const delta = tipe === 'AKTIVA' ? b.debit - b.kredit : b.kredit - b.debit;
+    total.set(b.akun_kode, (total.get(b.akun_kode) ?? 0) + delta);
+  }
+
+  const saldo = [...total]
+    .filter(([, nominal]) => nominal > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([akun_kode, nominal]) => ({ akun_kode, nominal }));
+
+  // Batas atas koreksi dihitung dari jurnal di luar grup pembukaan. Jangan
+  // memakai MIN seluruh jurnal: jurnal SALDO_AWAL lama tetap bertanggal awal
+  // walau koreksi sudah memindahkan tanggal mulai, sehingga prefill bisa
+  // terjepit kembali ke tanggal lama.
+  const rowBatas = db
+    .prepare('SELECT MIN(tanggal) AS awal FROM jurnal WHERE grup_id <> ?')
+    .get(grup) as { awal: string | null };
+  const tanggalMaksimal =
+    rowBatas.awal == null ? '' : String(rowBatas.awal).trim();
+
+  return {
+    tanggal: aktif.tanggal,
+    saldo,
+    ...(aktif.keterangan ? { keterangan: aktif.keterangan } : {}),
+    ...(tanggalMaksimal ? { tanggalMaksimal } : {}),
+  };
 }
 
 function hasilGagal(pesan: string): HasilPosting {

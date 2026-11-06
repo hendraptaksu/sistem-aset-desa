@@ -37,6 +37,8 @@ import {
 import {
   koreksiSaldoAwal,
   PESAN_ALASAN_KOREKSI_MIN,
+  PESAN_KOREKSI_TANPA_SALDO_AWAL,
+  saldoAwalSaatIni,
   simpanSaldoAwal,
   statusSaldoAwal,
 } from '../db/saldoAwal.js';
@@ -738,6 +740,16 @@ export function registerIpc(deps: IpcDeps): void {
   daftarkan('saldo-awal:status', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(statusSaldoAwal(deps.db()));
+  });
+
+  // T1.8: data prefill untuk Wizard mode koreksi. Dibaca dari jurnal grup
+  // pembukaan aktif (bukan tabel saldo), sehingga tetap benar setelah koreksi
+  // berulang dan tidak pernah menampilkan 3000 MODAL sebagai isian.
+  daftarkan('saldo-awal:saat-ini', () => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    const saatIni = saldoAwalSaatIni(deps.db());
+    return saatIni ? ok(saatIni) : fail(PESAN_KOREKSI_TANPA_SALDO_AWAL);
   });
 
   daftarkan('saldo-awal:posting', (_e, input: unknown, opsi: unknown = {}) => {

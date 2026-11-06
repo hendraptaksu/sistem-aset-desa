@@ -17,7 +17,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { openDb } from '../src/db/database.js';
 import {
+  koreksiSaldoAwal,
   PESAN_SALDO_AWAL_SUDAH_ADA,
+  saldoAwalSaatIni,
   simpanSaldoAwal,
   statusSaldoAwal,
   sudahAdaSaldoAwal,
@@ -739,6 +741,204 @@ describe('P1-6 — validasi bentuk input IPC & UI', () => {
     expect(tombol).toBeDefined();
     // SSR belum menjalankan efek IPC → status belum diketahui, tombol aman disabled.
     expect(tombol).toContain('disabled');
+  });
+});
+
+describe('T1.8 — saldo awal saat ini untuk prefill koreksi', () => {
+  it('mengembalikan null sebelum ada saldo awal', () => {
+    const db = openDb(':memory:');
+    try {
+      expect(saldoAwalSaatIni(db)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mengembalikan tanggal, saldo sisi normal positif, dan keterangan tanpa 3000', () => {
+    const db = openDb(':memory:');
+    try {
+      const awal = simpanSaldoAwal(db, buatJurnalSaldoAwal(formLengkap()).input);
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+      const saatIni = saldoAwalSaatIni(db);
+      expect(saatIni).toEqual({
+        tanggal: '2026-01-01',
+        saldo: [
+          { akun_kode: '1001', nominal: RP(5_000_000) },
+          { akun_kode: '1029', nominal: RP(10_000_000) },
+          { akun_kode: '1040', nominal: RP(500_000) },
+          { akun_kode: '1050', nominal: RP(2_000_000) },
+          { akun_kode: '2050', nominal: RP(1_000_000) },
+        ],
+        keterangan: 'Saldo awal pembukuan 2026',
+      });
+      expect(saatIni?.saldo.some((s) => s.akun_kode === AKUN_MODAL)).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('memakai angka terbaru setelah koreksi berulang', () => {
+    const db = openDb(':memory:');
+    try {
+      simpanSaldoAwal(db, buatJurnalSaldoAwal(formLengkap()).input);
+
+      const pertama = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          tanggal: '2026-01-01',
+          saldo: [
+            { akun_kode: '1001', nominal: RP(8_000_000) },
+            { akun_kode: '1029', nominal: RP(1_000_000) },
+            { akun_kode: '2050', nominal: RP(2_000_000) },
+          ],
+          keterangan: 'Koreksi pertama',
+        }).input,
+        { alasan: 'Perbaiki saldo kas', sekarang: '2026-12-31' },
+      );
+      expect(pertama.tersimpan, pertama.errors.join(' ')).toBe(true);
+
+      const kedua = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          tanggal: '2026-01-01',
+          saldo: [
+            { akun_kode: '1001', nominal: RP(7_000_000) },
+            { akun_kode: '2050', nominal: RP(2_500_000) },
+          ],
+          keterangan: 'Koreksi kedua',
+        }).input,
+        { alasan: 'Koreksi angka terbaru', sekarang: '2026-12-31' },
+      );
+      expect(kedua.tersimpan, kedua.errors.join(' ')).toBe(true);
+
+      const saatIni = saldoAwalSaatIni(db);
+      expect(saatIni).toEqual({
+        tanggal: '2026-01-01',
+        saldo: [
+          { akun_kode: '1001', nominal: RP(7_000_000) },
+          { akun_kode: '2050', nominal: RP(2_500_000) },
+        ],
+        keterangan: 'Koreksi kedua',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('batas tanggal prefill memakai jurnal non-pembukaan, bukan SALDO_AWAL lama', () => {
+    const db = openDb(':memory:');
+    try {
+      simpanSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          tanggal: '2026-01-01',
+          saldo: [{ akun_kode: '1001', nominal: RP(1_000_000) }],
+        }).input,
+      );
+      const harian = postingJurnal(db, {
+        header: {
+          id: 'j-harian-koreksi',
+          tanggal: '2026-03-01',
+          no_bukti: 'JU-2026-0002',
+          keterangan: 'Transaksi setelah saldo awal',
+          jenis: 'TERIMA',
+        },
+        baris: [D('1001', RP(100_000)), K('4005', RP(100_000))],
+      });
+      expect(harian.tersimpan, harian.errors.join(' ')).toBe(true);
+
+      // Koreksi boleh memindahkan tanggal mulai ke antara SALDO_AWAL lama dan
+      // transaksi harian pertama.
+      const koreksi = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          tanggal: '2026-02-15',
+          saldo: [{ akun_kode: '1001', nominal: RP(2_000_000) }],
+        }).input,
+        { alasan: 'Mulai pembukuan dimajukan', sekarang: '2026-12-31' },
+      );
+      expect(koreksi.tersimpan, koreksi.errors.join(' ')).toBe(true);
+
+      // statusSaldoAwal masih menunjuk SALDO_AWAL lama; prefill koreksi harus
+      // memberi batas tanggal jurnal non-pembukaan agar tanggal aktif tidak
+      // terjepit kembali ke 2026-01-01.
+      expect(statusSaldoAwal(db).tanggalMaksimal).toBe('2026-01-01');
+      expect(saldoAwalSaatIni(db)).toEqual({
+        tanggal: '2026-02-15',
+        saldo: [{ akun_kode: '1001', nominal: RP(2_000_000) }],
+        keterangan: 'Saldo awal pembukuan',
+        tanggalMaksimal: '2026-03-01',
+      });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('T1.8 — wizard mode koreksi', () => {
+  const SALDO_KOREKSI = {
+    tanggal: '2026-01-01',
+    saldo: [
+      { akun_kode: '1001', nominal: RP(5_000_000) },
+      { akun_kode: '2050', nominal: RP(1_000_000) },
+    ],
+    keterangan: 'Saldo awal lama',
+  };
+
+  it('menampilkan label koreksi, alasan wajib, audit, prefill, dan pratinjau 3000', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalWizard, {
+        coa: COA,
+        mode: 'koreksi',
+        saldoAwal: SALDO_KOREKSI,
+        onClose: () => undefined,
+        onSukses: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('Koreksi Saldo Awal');
+    expect(html).toContain('Simpan Koreksi');
+    expect(html).toContain('Alasan koreksi (wajib, minimal 5 karakter)');
+    expect(html).toContain('Jurnal lama tetap tersimpan di audit');
+    expect(html).toContain('value="2026-01-01"');
+    expect(html).toContain('value="5.000.000"');
+    expect(html).toContain('value="1.000.000"');
+    expect(html).toContain('Saldo awal lama');
+    // Pratinjau selisih dan baris penyeimbang 3000 muncul dari prefill.
+    expect(html).toContain('Selisih ke 3000 MODAL');
+    expect(html).toContain('3000 — MODAL (penyeimbang otomatis)');
+  });
+
+  it('menonaktifkan Simpan Koreksi selama alasan masih kosong', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalWizard, {
+        coa: COA,
+        mode: 'koreksi',
+        saldoAwal: SALDO_KOREKSI,
+        onClose: () => undefined,
+        onSukses: () => undefined,
+      }),
+    );
+    const tombol = html
+      .split('<button')
+      .find((s) => s.includes('>Simpan Koreksi</button>'));
+    expect(tombol).toBeDefined();
+    expect(tombol).toContain('disabled');
+  });
+
+  it('mode awal tidak menampilkan field alasan koreksi', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalWizard, {
+        coa: COA,
+        onClose: () => undefined,
+        onSukses: () => undefined,
+      }),
+    );
+    expect(html).toContain('Wizard Saldo Awal');
+    expect(html).toContain('Simpan Saldo Awal');
+    expect(html).not.toContain('Alasan koreksi');
+    expect(html).not.toContain('Simpan Koreksi');
   });
 });
 
