@@ -16,11 +16,15 @@ import {
   validasiBarisJurnalForm,
   type BarisJurnalForm,
 } from '../src/core/jurnalForm.js';
-import type { JurnalInput } from '../src/core/posting.js';
+import {
+  validasiJurnal,
+  type JurnalInput,
+  type PostingContext,
+} from '../src/core/posting.js';
 import type { Jurnal } from '../src/core/types.js';
 import { openDb } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
-import { listJurnalLengkap } from '../src/db/repository.js';
+import { listAkun, listJurnalLengkap } from '../src/db/repository.js';
 import { JurnalTab } from '../src/renderer/components/JurnalTab.js';
 import { JurnalUmumEditor } from '../src/renderer/components/JurnalUmumEditor.js';
 import { jurnalToHtml } from '../src/features/export/workbooks.js';
@@ -258,13 +262,16 @@ describe('P1-7 — autocomplete akun', () => {
 });
 
 describe('P1-7 — template & duplikat jurnal', () => {
-  it('menyediakan minimal 4 template umum dengan akun, sisi, dan nominal 0', () => {
+  it('menyediakan template umum dengan akun, sisi, dan nominal 0', () => {
     expect(TEMPLATE_JURNAL.length).toBeGreaterThanOrEqual(4);
     const nama = TEMPLATE_JURNAL.map((t) => t.nama.toLowerCase()).join(' | ');
     expect(nama).toMatch(/terima pendapatan/);
     expect(nama).toMatch(/bayar beban/);
     expect(nama).toMatch(/pindah dana/);
-    expect(nama).toMatch(/serah panjar/);
+    expect(nama).toMatch(/bayar utang usaha/);
+    // T3.4: template panjar dipindah ke modul Panjar; akun kontrol 1040/2050
+    // tidak boleh muncul di template Jurnal Umum.
+    expect(nama).not.toMatch(/serah panjar/);
 
     for (const template of TEMPLATE_JURNAL) {
       expect(template.baris.length).toBeGreaterThanOrEqual(2);
@@ -274,7 +281,47 @@ describe('P1-7 — template & duplikat jurnal', () => {
       for (const b of template.baris) {
         expect(b.nominal).toBe(0);
         expect(COA.some((a) => a.kode === b.akun_kode)).toBe(true);
+        expect(['1040', '2050']).not.toContain(b.akun_kode);
       }
+    }
+  });
+
+  it('setiap template bisa diposting lewat validasiJurnal (tidak ada template mati)', () => {
+    const db = openDb(':memory:');
+    try {
+      const ctx: PostingContext = {
+        akun: listAkun(db, { aktif: true }),
+        tutupBuku: [],
+        // Saldo kas cukup agar template yang mengkredit kas tidak memicu
+        // peringatan saldo minus.
+        saldoKas: {
+          '1001': RP(10_000_000),
+          '1029': RP(10_000_000),
+        },
+      };
+      const nominal = RP(100_000);
+
+      for (const template of TEMPLATE_JURNAL) {
+        const input = buatJurnalUmumForm({
+          tanggal: '2026-01-15',
+          keterangan: template.keterangan,
+          baris: template.baris.map((b) => ({
+            akun_kode: b.akun_kode,
+            debit: b.sisi === 'DEBIT' ? nominal : 0,
+            kredit: b.sisi === 'KREDIT' ? nominal : 0,
+            keterangan: b.keterangan ?? '',
+          })),
+        });
+
+        const hasil = validasiJurnal(input, ctx);
+        expect(
+          hasil.errors,
+          `Template ${template.id} tidak bisa diposting: ${hasil.errors.join(' ')}`,
+        ).toEqual([]);
+        expect(hasil.boleh).toBe(true);
+      }
+    } finally {
+      db.close();
     }
   });
 

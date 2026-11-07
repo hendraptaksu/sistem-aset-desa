@@ -277,11 +277,11 @@ export const TEMPLATE_JURNAL: readonly TemplateJurnal[] = [
     ],
   },
   {
-    id: 'serah-panjar',
-    nama: 'Serah panjar',
-    keterangan: 'Serah panjar',
+    id: 'bayar-utang-usaha',
+    nama: 'Bayar utang usaha',
+    keterangan: 'Pembayaran utang usaha',
     baris: [
-      { akun_kode: '1040', sisi: 'DEBIT', nominal: 0, keterangan: 'Uang panjar' },
+      { akun_kode: '2060', sisi: 'DEBIT', nominal: 0, keterangan: 'Utang usaha dibayar' },
       { akun_kode: '1001', sisi: 'KREDIT', nominal: 0, keterangan: 'Kas sumber' },
     ],
   },
