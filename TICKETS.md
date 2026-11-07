@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 2 | 9 |
+| 3 — Hardening | P2 | 3 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **23** | **33** |
+| **Total** |  | **24** | **33** |
 
 ## Aturan kerja
 
@@ -285,7 +285,7 @@
   - **Verifikasi:** `npm test -- tests/backup-auto.test.ts`.
   - **Catatan:** File disentuh: `src/features/export/export.ts`, `src/main/ipc.ts`, `tests/backup-auto.test.ts`, `TICKETS.md`. Batas retensi internal diekspor sebagai `RETENSI_AUTO = 7`, `RETENSI_PRE_RESTORE = 5`, dan `RETENSI_TUTUP_BUKU = 10`. Helper `rapikanBackupInternal(dir, jenis, keep, lindungi?)` hanya menyentuh pola nama persis (`^auto-.*\.db$`, `^pre-restore-.*\.db$`, `^pura-\d{4}\.db$`), mengurutkan nama naik, menghapus yang tertua sampai tersisa `keep`, melewati path di `lindungi` (dibandingkan via `resolve`), dan menelan error hapus per file agar backup utama tidak gagal. `autoBackupHarian` memakai helper dengan `keep` parameter dan selalu melindungi `dest`; retensi baru berjalan setelah `VACUUM INTO` + verifikasi sukses (atau file hari itu sudah ada). `backup:auto` (tutup buku) merapikan `pura-<tahun>` dengan `RETENSI_TUTUP_BUKU` setelah backup + audit sukses, melindungi `dest`. `restoreDbAman` merapikan `pre-restore` dengan `RETENSI_PRE_RESTORE` hanya setelah restore benar-benar sukses (setelah `tulisKunciAktif`), melindungi `preRestorePath`; jalur gagal/rollback tidak merapikan apa pun. Backup Lengkap di folder pilihan pengguna tidak pernah disentuh. Test baru mencakup pre-restore 8→5 dengan pola lain utuh, `pura-<tahun>` 12→10, path `lindungi` tetap walau di luar batas, backup auto gagal (VACUUM ditolak dalam transaksi) tidak memicu pruning, serta restore sukses memicu retensi sedangkan restore gagal tidak. Verifikasi: `npm test -- tests/backup-auto.test.ts tests/backup-restore.test.ts` 42 lulus; `npm run typecheck` lulus; `npm test` **90 file / 1.175 test lulus, 0 gagal** (baseline T3.1: 90/1.169). Commit `63d68a9`.
 
-- [ ] **T3.3 — Keputusan enkripsi backup**
+- [x] **T3.3 — Keputusan enkripsi backup**
   - **Masalah:** backup `.db` tidak terenkripsi; PIN hanya melindungi UI, bukan isi file. Ini risiko nyata bila backup disalin ke USB/cloud.
   - **File:** `README.md`, `docs/panduan-pengguna.md`, UI backup.
   - **Langkah:**
@@ -294,7 +294,7 @@
     3. Bila memilih implementasi, buat tiket terpisah — jangan campur dengan tiket ini.
   - **Selesai bila:** keputusan dan risiko terdokumentasi; pengguna melihat peringatan.
   - **Verifikasi:** review dokumen + test dokumentasi.
-  - **Catatan:** -
+  - **Catatan:** **Keputusan: dokumentasi + imbauan menyimpan backup di disk/volume terenkripsi**, bukan implementasi SQLCipher/arsip terenkripsi di rilis ini. Alasan: enkripsi penuh mengubah format database/backup, berisiko kompatibilitas dengan backup lama, dan membutuhkan rancangan restore + keputusan skema tersendiri; opsi **SQLCipher** dan **arsip terenkripsi** dicatat sebagai kandidat **tiket terpisah**. Risiko yang diterima: siapa pun yang memegang file `.db`/folder backup dapat membacanya dengan alat SQLite biasa tanpa PIN. Mitigasi yang didokumentasikan: aktifkan enkripsi disk (BitLocker/FileVault), simpan backup hanya di media terenkripsi, jangan unggah ke cloud publik, dan hapus salinan lama. File disentuh: `README.md` (bagian Backup dan restore + Keamanan), `docs/panduan-pengguna.md` (§5.1 langkah praktis non-teknis), `src/renderer/components/DashboardTab.tsx` (komponen `PeringatanBackupTidakTerenkripsi` tampil permanen di kartu Backup / Restore; alur backup/restore tidak berubah), `tests/dokumentasi.test.ts`, `tests/backup-periodik.test.ts`, `TICKETS.md`. Verifikasi: `npm test -- tests/dokumentasi.test.ts tests/backup-periodik.test.ts` (25 lulus; SSR memastikan peringatan terlihat dengan teks “File backup tidak terenkripsi”, “PIN hanya melindungi aplikasi”, dan “media/disk yang terenkripsi”), `npm run typecheck` lulus, `npm test` **90 file / 1.177 test lulus, 0 gagal** (baseline T3.2: 90/1.175). Commit dokumen/UI `bfe65f2`.
 
 - [ ] **T3.4 — Bersihkan template Jurnal Umum yang tidak bisa diposting**
   - **Masalah:** template `serah-panjar` memakai akun 1040, tetapi `validasiJurnal` menolak 1040 lewat Jurnal Umum. Template ini selalu gagal.
