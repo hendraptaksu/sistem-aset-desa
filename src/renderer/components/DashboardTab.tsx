@@ -65,6 +65,30 @@ export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
   );
 }
 
+/**
+ * T3.3: peringatan permanen di kartu Backup / Restore. File `.db` (termasuk
+ * hasil Backup Lengkap) tidak dienkripsi; PIN hanya melindungi UI aplikasi.
+ * Ditampilkan sebagai teks terlihat, bukan tooltip, agar tidak terlewat.
+ */
+export function PeringatanBackupTidakTerenkripsi() {
+  return (
+    <div
+      role="note"
+      data-testid="peringatan-backup-tidak-terenkripsi"
+      className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+    >
+      <p className="font-bold">File backup tidak terenkripsi.</p>
+      <p className="mt-1">
+        PIN hanya melindungi aplikasi, bukan isi file. Siapa pun yang memegang
+        file <code>.db</code> atau folder backup dapat membacanya tanpa PIN.
+        Simpan backup di laptop sendiri atau media/disk yang terenkripsi, jangan
+        unggah ke cloud publik, dan hapus salinan lama yang tidak diperlukan.
+      </p>
+    </div>
+  );
+}
+
+
 export function DashboardTab({
   onBukaTab,
   modeLanjutan = false,
@@ -540,6 +564,7 @@ export function DashboardTab({
           Backup menyalin data tanpa mengubah data aktif. Pulihkan mengganti data
           yang sedang dipakai.
         </p>
+        <PeringatanBackupTidakTerenkripsi />
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <section
             aria-labelledby="judul-backup"

@@ -569,6 +569,25 @@ yang dibuat untuk tahun parsial ini.
 Simpan backup dalam **satu folder bertanggal**. Backup **tidak terenkripsi**;
 simpan di media yang aman dan pisahkan dari laptop.
 
+> **Penting — file backup tidak terenkripsi, dan PIN bukan enkripsi.** PIN hanya
+> mengunci aplikasi di layar; PIN **tidak** mengunci isi file `pura.db` maupun
+> backup-nya. Siapa pun yang menemukan file backup dapat membukanya dengan alat
+> SQLite biasa, tanpa PIN. Untuk rilis ini aplikasi belum menyediakan enkripsi
+> backup (opsi enkripsi penuh/arsip berpassword akan dibahas sebagai tiket
+> terpisah).
+>
+> Langkah praktis:
+> 1. Simpan backup di **laptop sendiri** atau **disk/flashdisk yang terenkripsi**
+>    (mis. BitLocker di Windows atau FileVault di macOS). Bila media tidak bisa
+>    dienkripsi, simpan di tempat terkunci dan jangan dibawa sembarangan.
+> 2. **Jangan unggah ke cloud publik** atau mengirim lewat chat/email. Bila perlu
+>    cloud, gunakan penyimpanan pribadi yang terenkripsi dan batasi aksesnya.
+> 3. **Hapus salinan lama** yang tidak lagi dipakai, termasuk di flashdisk dan
+>    folder unduhan, agar tidak ada salinan data yang terlupakan.
+> 4. Jangan menyalin file `pura.db`/backup ke komputer bersama atau warnet.
+> 5. Ganti PIN secara berkala dan aktifkan auto-kunci; ingat bahwa itu hanya
+>    melindungi aplikasi yang sedang terbuka, **bukan** file yang disalin.
+
 ### 5.2 Restore database
 
 Ada dua pilihan di **Dashboard**:

@@ -96,6 +96,32 @@ describe('istilah akuntansi kunci', () => {
       expect(SKEMA, `skema memuat "${istilah}"`).toContain(istilah);
     }
   });
+
+  it('keputusan enkripsi backup T3.3 tercatat di README dan panduan pengguna', () => {
+    // Keputusan rilis ini: dokumentasi + imbauan media terenkripsi, bukan
+    // implementasi SQLCipher/arsip terenkripsi.
+    expect(README).toMatch(/Keputusan enkripsi backup/i);
+    expect(README).toMatch(/backup[^\n]*tidak (di|ter)?enkripsi/i);
+    expect(README).toMatch(/PIN bukan enkripsi/i);
+    expect(README).toMatch(/disk\/volume terenkripsi|media\/disk yang terenkripsi|enkripsi disk/i);
+    expect(README).toMatch(/tiket terpisah/i);
+    expect(README).toMatch(/SQLCipher/i);
+    expect(README).toMatch(/arsip terenkripsi/i);
+
+    expect(PENGGUNA).toMatch(/backup[^\n]*tidak terenkripsi/i);
+    expect(PENGGUNA).toMatch(/PIN bukan enkripsi/i);
+    expect(PENGGUNA).toMatch(/(media\/disk|disk\/flashdisk) yang terenkripsi/i);
+    expect(PENGGUNA).toMatch(/cloud publik/i);
+    expect(PENGGUNA).toMatch(/hapus salinan lama/i);
+
+    // Peringatan harus terlihat di sumber UI, bukan hanya komentar/tooltip.
+    const dashboard = bacaRoot('src/renderer/components/DashboardTab.tsx');
+    expect(dashboard).toContain('<PeringatanBackupTidakTerenkripsi />');
+    expect(dashboard).toContain('File backup tidak terenkripsi.');
+    expect(dashboard).toMatch(/PIN hanya melindungi aplikasi/i);
+    expect(dashboard).toMatch(/media\/disk yang terenkripsi/i);
+    expect(dashboard).toContain('data-testid="peringatan-backup-tidak-terenkripsi"');
+  });
 });
 
 describe('modul yang sudah dihapus', () => {

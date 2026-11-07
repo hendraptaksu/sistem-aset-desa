@@ -152,6 +152,19 @@ Rincian ada di `docs/panduan-portable.md`.
   tabel wajib, dan audit akuntansi), lalu mencadangkan database aktif lebih dulu.
 - Backup **tidak terenkripsi**. Simpan di media yang aman dan pisahkan dari
   laptop (flashdisk/Drive) secara rutin.
+- **Keputusan enkripsi backup (T3.3):** untuk rilis ini, backup `.db` **tidak
+  dienkripsi** dan **PIN bukan enkripsi** — PIN hanya kunci akses aplikasi,
+  bukan kunci isi file. Keputusan yang dipilih adalah **dokumentasi + imbauan
+  menyimpan backup di disk/volume terenkripsi**, bukan implementasi SQLCipher
+  atau arsip terenkripsi sekarang. Alasan: enkripsi penuh mengubah format
+  database/backup, berisiko kompatibilitas dengan backup lama, dan perlu
+  rancangan restore yang terpisah. Opsi **SQLCipher** (enkripsi penuh) dan
+  **arsip terenkripsi** (mis. ZIP berpassword) dicatat sebagai kandidat
+  **tiket terpisah**, bukan bagian rilis ini. Risiko yang diterima: siapa pun
+  yang memegang file backup dapat membacanya dengan alat SQLite biasa tanpa
+  PIN. Mitigasi: aktifkan enkripsi disk (BitLocker/FileVault), simpan backup
+  hanya di media terenkripsi, jangan unggah ke cloud publik, dan hapus salinan
+  lama yang tidak diperlukan.
 - **Hanya skema baseline v1 yang didukung.** Tidak ada migrasi/pre-upgrade.
   Database atau backup dari skema lama ditolak tanpa mengubah file;
   pindahkan atau hapus file database lama tersebut, lalu jalankan aplikasi lagi.
@@ -164,6 +177,9 @@ Rincian ada di `docs/panduan-portable.md`.
 
 - **PIN = kunci akses, bukan enkripsi.** Hash PIN disimpan di database; isi
   database tetap teks/SQLite biasa. PIN tidak melindungi file yang dicuri.
+  **Keputusan T3.3:** rilis ini memilih dokumentasi + imbauan disk terenkripsi,
+  bukan SQLCipher/arsip terenkripsi; opsi enkripsi penuh menjadi tiket
+  terpisah.
 - **Lockout PIN bertahan setelah restart, tetapi tetap bukan enkripsi.** Setelah
   5 kali PIN salah, aplikasi memblokir percobaan selama 60 detik dan menyimpan
   hitungan gagal/waktu blokir di tabel `pengaturan`. Menutup lalu membuka
