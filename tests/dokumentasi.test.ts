@@ -122,6 +122,33 @@ describe('istilah akuntansi kunci', () => {
     expect(dashboard).toMatch(/media\/disk yang terenkripsi/i);
     expect(dashboard).toContain('data-testid="peringatan-backup-tidak-terenkripsi"');
   });
+
+  it('keputusan audit actor & hash chain T3.5 tidak hilang dari dokumen', () => {
+    // Keputusan rilis v1: pertahankan trigger append-only + dokumentasi
+    // risiko, tanpa kolom actor/hash dan tanpa perubahan skema. Opsi
+    // aktor/hash chain dicatat untuk skema v2 lewat tiket terpisah.
+    for (const istilah of [
+      'tamper-evident',
+      'actor',
+      'hash chain',
+      'skema v2',
+      'append-only',
+    ]) {
+      expect(PRINSIP, `prinsip akuntansi memuat "${istilah}"`).toContain(
+        istilah,
+      );
+    }
+    expect(PRINSIP).toMatch(/tidak mencatat actor/i);
+    expect(PRINSIP).toMatch(/tabel chain terpisah/i);
+    expect(PRINSIP).toMatch(/anchor eksternal/i);
+    expect(PRINSIP).toMatch(/tiket terpisah/i);
+
+    // Catatan singkat di kontrak skema harus menunjuk keputusan lengkapnya.
+    expect(SKEMA).toMatch(/audit_log` v1[^\n]*tidak memiliki kolom `actor`/i);
+    expect(SKEMA).toMatch(/tidak tamper-evident/i);
+    expect(SKEMA).toMatch(/hash chain/i);
+    expect(SKEMA).toMatch(/prinsip-akuntansi\.md/);
+  });
 });
 
 describe('modul yang sudah dihapus', () => {

@@ -191,6 +191,13 @@ Jejak audit append-only. Waktu peristiwa disimpan di `tanggal`; tabel ini tidak
 memiliki `created_at`. `data_lama_json`/`data_baru_json` menyimpan kondisi
 sebelum/sesudah, sedangkan `ref_type`/`ref_id` menunjuk objek terkait.
 
+> **Catatan v1 (T3.5):** `audit_log` v1 **tidak memiliki kolom `actor`,
+> `prev_hash`, atau `hash`** dan **tidak tamper-evident** terhadap edit file DB
+> langsung. Trigger append-only hanya melindungi dari perubahan lewat jalur
+> SQLite aplikasi. Keputusan, threat model, dan opsi aktor/**hash chain** untuk
+> **skema v2** ada di `docs/prinsip-akuntansi.md` §11; implementasinya (bila
+> ada) menunggu tiket terpisah.
+
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
 | `id` | TEXT | tidak | — | PRIMARY KEY |

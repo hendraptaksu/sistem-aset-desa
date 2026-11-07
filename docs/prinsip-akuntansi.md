@@ -303,3 +303,106 @@ Konsekuensinya: **tidak ada perubahan skema, tidak ada migrasi, dan
   jurnal pembukaan yang sedang aktif, bukan mengulang reversal jurnal yang sama.
 - Bila tanggal jatuh di periode terkunci, aturan kunci periode dan alasan tetap
   berlaku seperti jurnal biasa.
+
+## 11. Audit: aktor, hash chain, dan threat model (T3.5)
+
+**Keputusan (T3.5): untuk rilis v1, pertahankan `audit_log` + trigger
+append-only dan dokumentasikan risikonya. Tidak ada perubahan skema, tidak ada
+kolom `actor`, dan tidak ada `prev_hash`/`hash`.** Implementasi aktor atau
+**hash chain**, bila kelak dipilih, wajib lewat **tiket terpisah** dengan
+keputusan **skema v2** yang eksplisit; jangan menyelipkannya ke tiket
+hardening lain.
+
+### 11.1 Konteks
+
+- Aplikasi **single-user, offline, satu laptop, satu PIN**. Tidak ada login
+  per pengguna dan tidak ada identitas operator yang bisa dipercaya dari
+  aplikasi.
+- `audit_log` v1 menyimpan `id`, `tanggal`, `aksi`, `alasan`,
+  `data_lama_json`, `data_baru_json`, `ref_type`, dan `ref_id`.
+- Dua trigger DB (`trg_audit_log_immutable_update`,
+  `trg_audit_log_immutable_delete`) menolak `UPDATE`/`DELETE`. Repository hanya
+  menulis audit lewat `INSERT` (`insertAuditLog`/`catatAudit`) dan tidak punya
+  jalur edit/hapus.
+
+### 11.2 Apa yang dilindungi
+
+- **Append-only dari dalam aplikasi.** Tidak ada operasi edit/hapus audit di
+  repository, IPC, atau UI. Trigger DB menolak percobaan `UPDATE`/`DELETE`
+  yang lewat koneksi SQLite aplikasi.
+- **Konteks keputusan, bukan sekadar "ada kejadian".** Setiap baris audit
+  dapat memuat **alasan**, kondisi **data lama/baru** dalam JSON, waktu
+  peristiwa (`tanggal`), serta **`ref_type`/`ref_id`** yang menunjuk objek
+  terkait (mis. `jurnal` + id). Ini memungkinkan pemeriksa menjawab "apa yang
+  berubah, mengapa, dan atas objek apa".
+- **Atomik dengan transaksi bisnis.** Audit yang diwajibkan ditulis dalam
+  transaksi yang sama dengan jurnal/koreksi, sehingga kegagalan salah satu
+  pihak membatalkan keduanya.
+- **Histori koreksi tetap utuh.** Jurnal lama tidak diedit/dihapus; koreksi
+  berupa jurnal balik + alasan, dan audit mencatat kedua kondisi.
+
+### 11.3 Apa yang TIDAK dilindungi
+
+- **Edit file DB langsung.** Siapa pun yang bisa menulis file `pura.db`
+  (mis. membukanya dengan alat SQLite) dapat menghapus trigger lalu
+  `UPDATE`/`DELETE` baris audit, atau menulis ulang isinya. Trigger bukan batas
+  keamanan terhadap pemilik file/OS.
+- **Tidak ada aktor.** `audit_log` v1 **tidak mencatat actor**. Tanpa login,
+  nilai aktor hanya bisa diisi konstanta atau tebakan sehingga tidak bermakna
+  untuk atribusi. Audit menjawab "apa & mengapa", bukan "siapa".
+- **Tidak tamper-evident.** Tidak ada hash chain, tanda tangan, atau anchor
+  eksternal. Perubahan isi audit tidak terdeteksi oleh aplikasi. Backup lama
+  juga dapat diedit dengan cara yang sama.
+- **Bukan enkripsi.** PIN hanya kunci akses aplikasi, bukan enkripsi database
+  atau backup (lihat README bagian "Keamanan dan keterbatasan" dan keputusan
+  T3.3).
+
+### 11.4 Opsi masa depan dan biayanya
+
+| Opsi | Isi | Manfaat | Biaya/dampak |
+|---|---|---|---|
+| **A** | Kolom `actor` + `prev_hash`/`hash` di `audit_log` (**skema v2**) | Aktor tercatat; baris audit bisa dirantai dan diverifikasi | Perubahan DDL + `SCHEMA_VERSION`; migrasi/reset DB; backup v1 lama tidak langsung kompatibel; `insertAuditLog`/`catatAudit` dan seluruh pemanggil berubah; perlu aturan kanonikalisasi hash, baris genesis, dan verifikasi; test skema/backup/audit ikut berubah |
+| **B** | **Tabel chain terpisah** (mis. `audit_chain`) yang menautkan hash per baris audit | `audit_log` tidak berubah bentuk; rantai bisa diverifikasi terpisah | Tetap **skema v2** + migrasi/reset; butuh penulisan atomik dua tabel, urutan/`id` chain yang stabil, query gabungan, dan test konsistensi; biaya operasional lebih tinggi dari A |
+| **C** | **Dokumentasi risiko + trigger append-only** (dipilih untuk v1) | Tanpa migrasi; backup/skema v1 tetap kompatibel; perilaku yang dilihat pengguna tidak berubah | Tidak melindungi dari edit file DB langsung; tidak ada aktor; tidak tamper-evident |
+
+Catatan penting untuk opsi A/B: **hash chain tidak melindungi dari penyerang
+yang bisa menulis file DB**. Setelah mengedit satu baris, penyerang dapat
+menghitung ulang seluruh rantai dari genesis. Hash chain hanya membuat edit
+parsial/naif terdeteksi; untuk **tamper-evident** yang nyata dibutuhkan
+**anchor eksternal** (mis. hash terakhir dicatat di kertas/laporan tercetak,
+file terpisah yang read-only, atau layanan lain). Tanpa anchor, rantai hanya
+mendeteksi perubahan yang tidak disengaja, bukan penyerang dengan akses tulis
+penuh.
+
+Begitu pula `actor`: baru bermakna bila ada autentikasi per pengguna atau
+pemisahan peran. Selama aplikasi single-user dengan satu PIN, kolom aktor
+akan berisi nilai tetap dan tidak menambah bukti atribusi.
+
+### 11.5 Dampak migrasi/reset DB dan backup
+
+- Skema v2 mengubah `user_version`; kebijakan repo saat ini **menolak versi
+  selain v1** dan tidak melakukan konversi otomatis (`docs/skema.md`). Karena
+  itu opsi A/B memerlukan **migrasi eksplisit** atau **reset database** —
+  keduanya keputusan produk, bukan sekadar perubahan DDL.
+- **Backup v1 lama** tidak bisa dibuka build v2 tanpa jalur migrasi. Restore
+  harus tetap diuji, atau operator diberi instruksi ekspor/impor yang jelas.
+- **Reset DB** berarti data pembukuan nyata hilang; ini bertentangan dengan
+  janji backup/restore yang sudah diuji di T1/T3 dan harus disetujui pemilik.
+- Biaya test mencakup `skema-baseline`, `skema-strict`, `skema-kompatibilitas`,
+  `backup-restore`, `dokumentasi`, dan test audit lintas modul.
+- Karena dampaknya besar dan tidak mendesak untuk pemakaian single-user
+  offline, perubahan ini **tidak dikerjakan di rilis v1** dan tidak dicampur
+  dengan tiket hardening lain.
+
+### 11.6 Rekomendasi
+
+1. **Rilis v1:** pertahankan trigger append-only + dokumentasi risiko ini
+   (Opsi C). Nilai utama audit saat ini adalah mencegah edit/hapus dari dalam
+   aplikasi dan merekam alasan serta kondisi sebelum/sesudah.
+2. **Sebelum skema v2:** buka **tiket keputusan terpisah** yang memilih A, B,
+   atau tetap C, lengkap dengan rencana migrasi/backup dan persetujuan pemilik.
+   Bila tujuannya benar-benar tamper-evident, rancang sekalian **anchor
+   eksternal**; tanpa itu hash chain memberi rasa aman yang menyesatkan.
+3. **Implementasi** opsi A/B (bila disetujui) masuk **tiket terpisah** setelah
+   keputusan skema v2; tiket T3.5 ini hanya menetapkan keputusan dan threat
+   model.
