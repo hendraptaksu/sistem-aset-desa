@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 4 | 9 |
+| 3 — Hardening | P2 | 5 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **25** | **33** |
+| **Total** |  | **26** | **33** |
 
 ## Aturan kerja
 
@@ -306,7 +306,7 @@
   - **Verifikasi:** `npm test -- tests/jurnal-form.test.ts`.
   - **Catatan:** File disentuh: `src/core/jurnalForm.ts`, `tests/jurnal-form.test.ts`, `TICKETS.md`. Template `serah-panjar` (D 1040 / K 1001) dihapus dari `TEMPLATE_JURNAL` dan diganti `bayar-utang-usaha` (D 2060 HUTANG USAHA / K 1001 KAS) agar jumlah template berguna tetap 4: `terima-pendapatan` (D 1001/K 4005), `bayar-beban` (D 5010/K 1001), `pindah-dana` (D 1029/K 1001), dan `bayar-utang-usaha` (D 2060/K 1001). Tidak ada template yang memakai akun kontrol 1040/2050, dan larangan di `validasiJurnal` tidak dilonggarkan. Test lama diperbarui (mengharapkan `bayar utang usaha`, menolak `serah panjar`, serta menegaskan tidak ada baris 1040/2050). Test regresi baru mengisi nominal contoh Rp 100.000 per baris debit/kredit untuk SETIAP template, memanggil `buatJurnalUmumForm`, lalu `validasiJurnal` dengan konteks `listAkun(db, { aktif: true })`, `tutupBuku: []`, saldo kas 1001/1029 cukup, dan tanggal `2026-01-15`; hasilnya `errors` kosong dan `boleh: true`. Uji mutasi sementara (mengembalikan template 1040) membuat 2 test gagal dengan pesan akun kontrol panjar, lalu mutasi dipulihkan. UI `JurnalUmumEditor`/`JurnalTab` tidak perlu diubah karena membaca array `TEMPLATE_JURNAL`. Verifikasi: `npm test -- tests/jurnal-form.test.ts` (18 lulus), `npm test -- tests/jurnal-form.test.ts tests/db-26-mode-lanjutan.test.ts tests/reversal.test.ts` (54 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.178 test lulus, 0 gagal** (baseline T3.3: 90/1.177). Commit `de5167e`.
 
-- [ ] **T3.5 — Keputusan audit actor & hash chain**
+- [x] **T3.5 — Keputusan audit actor & hash chain**
   - **Masalah:** `audit_log` punya trigger append-only, tetapi tidak mencatat aktor dan tidak tamper-evident. Siapa pun yang bisa mengedit file DB bisa mengubah isi audit.
   - **File:** `docs/prinsip-akuntansi.md`, `src/db/database.ts`, `src/db/repository.ts`.
   - **Langkah:**
@@ -314,7 +314,7 @@
     2. Catat dampak migrasi/reset DB dan biaya implementasi.
   - **Selesai bila:** keputusan disetujui; implementasi (bila ada) masuk tiket terpisah.
   - **Verifikasi:** review keputusan.
-  - **Catatan:** -
+  - **Catatan:** **Keputusan: dokumentasi risiko + pertahankan trigger append-only, TANPA perubahan skema** (Opsi C). Alasan: aplikasi single-user offline dengan satu PIN sehingga tidak ada identitas aktor yang bermakna tanpa login; hash chain butuh skema v2/migrasi/reset DB, memengaruhi kompatibilitas backup lama, dan tidak melindungi dari penyerang yang bisa menulis file DB (bisa menghitung ulang rantai). Nilai utama audit saat ini adalah mencegah edit/hapus dari dalam aplikasi serta merekam alasan dan kondisi lama/baru. **Yang dilindungi:** append-only via `trg_audit_log_immutable_update`/`delete`, alasan + `data_lama_json`/`data_baru_json`, `ref_type`/`ref_id`, `tanggal`, dan penulisan atomik dalam transaksi bisnis. **Yang tidak dilindungi:** edit file DB langsung (trigger bisa di-drop), tidak ada `actor`, tidak tamper-evident, backup lama juga dapat diedit; PIN tetap bukan enkripsi. **Opsi masa depan:** (A) kolom `actor` + `prev_hash`/`hash` di `audit_log` skema v2, atau (B) tabel chain terpisah — keduanya mengubah `SCHEMA_VERSION`, butuh migrasi/reset DB, penyesuaian `insertAuditLog`/`catatAudit`, backup v1 lama tidak langsung kompatibel, dan hash chain tetap butuh anchor eksternal agar benar-benar tamper-evident. **Dampak skema:** tidak ada perubahan DDL/migrasi; `database.ts`/`repository.ts` tidak disentuh. File disentuh: `docs/prinsip-akuntansi.md` (§11 threat model/opsi/dampak), `docs/skema.md` (catatan `audit_log` v1), `tests/dokumentasi.test.ts`, `TICKETS.md`. Verifikasi: `npm test -- tests/dokumentasi.test.ts` (12 lulus, termasuk assertion frasa `tamper-evident`/`actor`/`hash chain`/`skema v2`), `npm run typecheck` lulus, `npm test` **90 file / 1.179 test lulus, 0 gagal** (baseline T3.4: 90/1.178). Commit dokumen/test `7d2e47b`; commit catatan tiket terpisah.
 
 - [ ] **T3.6 — Self-check definisi index/trigger**
   - **Masalah:** `CREATE INDEX IF NOT EXISTS` tidak memperbaiki index dengan nama sama tetapi definisi salah. Trigger sudah di-drop/recreate, index belum.
