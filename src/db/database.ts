@@ -177,60 +177,90 @@ export function pesanDbKolomTidakLengkap(
 /**
  * DDL index kanonik skema v1.
  *
- * Semua index wajib didefinisikan di sini dan diinterpolasi ke `DDL`, sehingga
- * `db.exec(DDL)` pada DB baru langsung menghasilkan tabel + index. Semua
- * `IF NOT EXISTS` membuat definisi ini aman dijalankan ulang.
+ * Setiap index aplikasi diawali `DROP INDEX IF EXISTS` lalu `CREATE INDEX`
+ * (bukan `IF NOT EXISTS`), sehingga `db.exec(DDL)` selalu membuat ulang index
+ * dengan definisi kanonik — termasuk memperbaiki index bernama sama yang
+ * definisinya salah. Pola ini analog dengan `DDL_TRIGGER`.
+ *
+ * Semua index aplikasi punya nama eksplisit. Index implisit dari constraint
+ * `UNIQUE` tabel bernama `sqlite_autoindex_*` tidak pernah di-drop karena
+ * bukan bagian dari DDL ini.
  */
 export const DDL_INDEX = `
 -- Nomor bukti unik per tahun, bukan global: nomor yang sama boleh dipakai
 -- pada tahun berbeda.
-CREATE INDEX IF NOT EXISTS idx_jurnal_tanggal ON jurnal(tanggal);
-CREATE INDEX IF NOT EXISTS idx_jurnal_grup ON jurnal(grup_id);
-CREATE INDEX IF NOT EXISTS idx_jurnal_reversal ON jurnal(reversal_of);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_jurnal_no_bukti_tahun
+DROP INDEX IF EXISTS idx_jurnal_tanggal;
+CREATE INDEX idx_jurnal_tanggal ON jurnal(tanggal);
+DROP INDEX IF EXISTS idx_jurnal_grup;
+CREATE INDEX idx_jurnal_grup ON jurnal(grup_id);
+DROP INDEX IF EXISTS idx_jurnal_reversal;
+CREATE INDEX idx_jurnal_reversal ON jurnal(reversal_of);
+DROP INDEX IF EXISTS idx_jurnal_no_bukti_tahun;
+CREATE UNIQUE INDEX idx_jurnal_no_bukti_tahun
   ON jurnal(substr(tanggal, 1, 4), no_bukti COLLATE NOCASE)
   WHERE no_bukti <> '';
-CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_saldo_awal
+DROP INDEX IF EXISTS ux_jurnal_saldo_awal;
+CREATE UNIQUE INDEX ux_jurnal_saldo_awal
   ON jurnal(jenis)
   WHERE jenis = 'SALDO_AWAL';
-CREATE UNIQUE INDEX IF NOT EXISTS ux_jurnal_reversal
+DROP INDEX IF EXISTS ux_jurnal_reversal;
+CREATE UNIQUE INDEX ux_jurnal_reversal
   ON jurnal(reversal_of)
   WHERE reversal_of IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
-CREATE INDEX IF NOT EXISTS idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
+DROP INDEX IF EXISTS idx_jurnal_baris_jurnal;
+CREATE INDEX idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
+DROP INDEX IF EXISTS idx_jurnal_baris_akun;
+CREATE INDEX idx_jurnal_baris_akun ON jurnal_baris(akun_kode);
 
-CREATE INDEX IF NOT EXISTS idx_audit_tanggal ON audit_log(tanggal);
-CREATE INDEX IF NOT EXISTS idx_audit_aksi ON audit_log(aksi);
-CREATE INDEX IF NOT EXISTS idx_audit_ref ON audit_log(ref_type, ref_id);
+DROP INDEX IF EXISTS idx_audit_tanggal;
+CREATE INDEX idx_audit_tanggal ON audit_log(tanggal);
+DROP INDEX IF EXISTS idx_audit_aksi;
+CREATE INDEX idx_audit_aksi ON audit_log(aksi);
+DROP INDEX IF EXISTS idx_audit_ref;
+CREATE INDEX idx_audit_ref ON audit_log(ref_type, ref_id);
 
-CREATE INDEX IF NOT EXISTS idx_panjar_status ON panjar(status);
-CREATE INDEX IF NOT EXISTS idx_panjar_tanggal ON panjar(tanggal);
-CREATE INDEX IF NOT EXISTS idx_panjar_item_panjar ON panjar_item(panjar_id);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_open
+DROP INDEX IF EXISTS idx_panjar_status;
+CREATE INDEX idx_panjar_status ON panjar(status);
+DROP INDEX IF EXISTS idx_panjar_tanggal;
+CREATE INDEX idx_panjar_tanggal ON panjar(tanggal);
+DROP INDEX IF EXISTS idx_panjar_item_panjar;
+CREATE INDEX idx_panjar_item_panjar ON panjar_item(panjar_id);
+DROP INDEX IF EXISTS ux_panjar_jurnal_open;
+CREATE UNIQUE INDEX ux_panjar_jurnal_open
   ON panjar(jurnal_open_id);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_close
+DROP INDEX IF EXISTS ux_panjar_jurnal_close;
+CREATE UNIQUE INDEX ux_panjar_jurnal_close
   ON panjar(jurnal_close_id)
   WHERE jurnal_close_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS ux_panjar_jurnal_batal
+DROP INDEX IF EXISTS ux_panjar_jurnal_batal;
+CREATE UNIQUE INDEX ux_panjar_jurnal_batal
   ON panjar(jurnal_batal_id)
   WHERE jurnal_batal_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_pinjaman_tanggal ON pinjaman(tanggal_mulai);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_kreditur ON pinjaman(kreditur);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_pinjaman
+DROP INDEX IF EXISTS idx_pinjaman_tanggal;
+CREATE INDEX idx_pinjaman_tanggal ON pinjaman(tanggal_mulai);
+DROP INDEX IF EXISTS idx_pinjaman_kreditur;
+CREATE INDEX idx_pinjaman_kreditur ON pinjaman(kreditur);
+DROP INDEX IF EXISTS idx_pinjaman_angsuran_pinjaman;
+CREATE INDEX idx_pinjaman_angsuran_pinjaman
   ON pinjaman_angsuran(pinjaman_id);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_angsuran_jatuh_tempo
+DROP INDEX IF EXISTS idx_pinjaman_angsuran_jatuh_tempo;
+CREATE INDEX idx_pinjaman_angsuran_jatuh_tempo
   ON pinjaman_angsuran(jatuh_tempo);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_pinjaman
+DROP INDEX IF EXISTS idx_pinjaman_bayar_pinjaman;
+CREATE INDEX idx_pinjaman_bayar_pinjaman
   ON pinjaman_bayar(pinjaman_id);
-CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_tanggal
+DROP INDEX IF EXISTS idx_pinjaman_bayar_tanggal;
+CREATE INDEX idx_pinjaman_bayar_tanggal
   ON pinjaman_bayar(tanggal);
 -- Pembayaran dapat dicicil; satu jurnal tetap hanya dimiliki satu pembayaran.
-CREATE INDEX IF NOT EXISTS idx_pinjaman_bayar_angsuran
+DROP INDEX IF EXISTS idx_pinjaman_bayar_angsuran;
+CREATE INDEX idx_pinjaman_bayar_angsuran
   ON pinjaman_bayar(angsuran_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_akun_nama_nocase
+DROP INDEX IF EXISTS ux_akun_nama_nocase;
+CREATE UNIQUE INDEX ux_akun_nama_nocase
   ON akun(nama COLLATE NOCASE);
 `;
 
@@ -647,6 +677,90 @@ END;
 export const DDL = DDL_TABEL + DDL_TRIGGER;
 
 /**
+ * Awalan pesan penolakan DB yang index/trigger wajibnya hilang atau definisinya
+ * berbeda. DDL sudah membuat ulang objek tersebut secara kanonik; bila masih
+ * tidak sesuai, DB tidak boleh dibuka diam-diam.
+ */
+export const PESAN_OBJEK_SKEMA_TIDAK_SESUAI =
+  'Skema database tidak valid: index/trigger wajib hilang atau definisinya berbeda:';
+
+/** Pesan penolakan DB dengan objek skema tidak sesuai; menyebut objeknya. */
+export function pesanObjekSkemaTidakSesuai(objek: readonly string[]): string {
+  return (
+    `${PESAN_OBJEK_SKEMA_TIDAK_SESUAI} ${objek.join(', ')}. ` +
+    'Database tidak dibuka agar objek skema yang salah tidak dipakai diam-diam. ' +
+    'Periksa file DB/backup, lalu pulihkan dari backup yang sehat; ' +
+    'jangan membuat ulang atau mengubah objek skema secara manual.'
+  );
+}
+
+type ObjekSkemaWajib = {
+  nama: string;
+  tipe: 'index' | 'trigger';
+  sql: string;
+};
+
+/** Normalisasi teks SQL dari `sqlite_master` agar perbedaan spasi/kapital aman. */
+function normalisasiSqlSkema(sql: string): string {
+  return sql.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** Index/trigger non-implisit di `main`; `sqlite_autoindex_*` tidak termasuk. */
+function bacaObjekSkema(db: Database.Database): ObjekSkemaWajib[] {
+  const rows = db
+    .prepare(
+      "SELECT type, name, sql FROM sqlite_master " +
+        "WHERE type IN ('index', 'trigger') AND sql IS NOT NULL " +
+        "AND name NOT LIKE 'sqlite_autoindex_%'",
+    )
+    .all() as { type: string; name: string; sql: string }[];
+  return rows.map((row) => ({
+    nama: String(row.name),
+    tipe: row.type === 'trigger' ? 'trigger' : 'index',
+    sql: String(row.sql),
+  }));
+}
+
+let definisiSkemaKanonikCache: ObjekSkemaWajib[] | undefined;
+
+/**
+ * Definisi index/trigger kanonik, diambil dari DB `:memory:` baru yang
+ * dijalankan dengan `DDL` yang sama. Hasilnya di-cache karena `DDL` konstan.
+ */
+function definisiSkemaKanonik(): ObjekSkemaWajib[] {
+  if (definisiSkemaKanonikCache) return definisiSkemaKanonikCache;
+  const acuan = new Database(':memory:');
+  try {
+    acuan.exec(DDL);
+    definisiSkemaKanonikCache = bacaObjekSkema(acuan);
+  } finally {
+    acuan.close();
+  }
+  return definisiSkemaKanonikCache;
+}
+
+/**
+ * Bandingkan objek skema wajib (seluruh index & trigger kanonik) dengan
+ * `sqlite_master.sql` pada DB target. Mengembalikan nama objek yang hilang
+ * atau definisinya berbeda (ternormalisasi spasi + case-insensitive).
+ */
+export function objekSkemaTidakSesuai(db: Database.Database): string[] {
+  const cari = db.prepare('SELECT type, sql FROM sqlite_master WHERE name = ?');
+  const tidakSesuai: string[] = [];
+  for (const wajib of definisiSkemaKanonik()) {
+    const baris = cari.all(wajib.nama) as { type: string; sql: string | null }[];
+    const cocok = baris.some(
+      (row) =>
+        row.type === wajib.tipe &&
+        row.sql !== null &&
+        normalisasiSqlSkema(String(row.sql)) === normalisasiSqlSkema(wajib.sql),
+    );
+    if (!cocok) tidakSesuai.push(wajib.nama);
+  }
+  return tidakSesuai;
+}
+
+/**
  * AUD2-09 — helper strictness. `pragma table_list` adalah sumber kebenaran
  * (bukan tebakan dari SQL DDL).
  */
@@ -753,12 +867,30 @@ export function cekKompatibilitas(db: Database.Database): void {
  * Siapkan skema v1 untuk DB baru/kompatibel: jalankan seluruh DDL (tabel,
  * index, trigger) dalam satu transaksi, verifikasi STRICT, lalu naikkan
  * `user_version` ke v1 bila DB sebelumnya baru (v0).
+ *
+ * T3.6 — setelah DDL, objek index/trigger wajib dibandingkan dengan definisi
+ * kanonik. `DROP ... IF EXISTS` + `CREATE` di DDL sudah membuat ulang objek
+ * tersebut; bila masih hilang/berbeda (mis. nama bentrok dengan objek lain),
+ * DB ditolak dengan pesan Indonesia agar tidak dibuka diam-diam.
  */
 export function siapkanSkema(db: Database.Database): void {
   const versiAwal = Number(db.pragma('user_version', { simple: true }) ?? 0);
   const siapkan = db.transaction(() => {
-    db.exec(DDL);
+    try {
+      db.exec(DDL);
+    } catch (e) {
+      // `CREATE` bisa gagal bila nama index/trigger dipakai objek lain. Bila
+      // memang ada objek wajib yang tidak sesuai, laporkan dalam bahasa
+      // Indonesia beserta nama objeknya; selain itu teruskan error asli.
+      const tidakSesuai = objekSkemaTidakSesuai(db);
+      if (tidakSesuai.length > 0) {
+        throw new Error(pesanObjekSkemaTidakSesuai(tidakSesuai));
+      }
+      throw e;
+    }
     pastikanTabelAktifStrict(db);
+    const tidakSesuai = objekSkemaTidakSesuai(db);
+    if (tidakSesuai.length > 0) throw new Error(pesanObjekSkemaTidakSesuai(tidakSesuai));
     if (versiAwal === 0) db.pragma(`user_version = ${SCHEMA_VERSION}`);
   });
   siapkan();

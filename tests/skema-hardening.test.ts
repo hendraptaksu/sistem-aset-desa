@@ -8,8 +8,12 @@
 // boleh memakai INSERT langsung seperti di sini.
 
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  objekSkemaTidakSesuai,
   openDb,
   PESAN_REVERSAL_JURNAL_DB,
   PESAN_TANGGAL_KALENDER_JURNAL_DB,
@@ -19,12 +23,31 @@ const WAKTU = '2026-01-01T00:00:00.000Z';
 
 let db: Database.Database;
 
+const dirs: string[] = [];
+
+function dirBaru(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'pura-skema-hardening-'));
+  dirs.push(dir);
+  return dir;
+}
+
+/** Buka file DB mentah (tanpa `openDb`) lalu tutup rapi. */
+function buatDbMentah(path: string, isi: (raw: Database.Database) => void): void {
+  const raw = new Database(path);
+  try {
+    isi(raw);
+  } finally {
+    raw.close();
+  }
+}
+
 beforeEach(() => {
   db = openDb(':memory:');
 });
 
 afterEach(() => {
   db.close();
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 type JurnalInput = {
@@ -349,5 +372,114 @@ describe('T2.4 — CHECK metadata akun', () => {
         .prepare('SELECT sumber, kelompok, nama FROM akun WHERE kode = ?')
         .get(kode),
     ).toEqual({ sumber: 'TAMBAHAN', kelompok: 'BANK', nama: 'Bank Uji T2.5' });
+  });
+});
+
+describe('T3.6 — self-check definisi index/trigger', () => {
+  it('memulihkan trigger jurnal immutable yang di-drop dan aturan tetap aktif', () => {
+    const path = join(dirBaru(), 'pura.db');
+
+    const awal = openDb(path);
+    awal
+      .prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run('j-uji', '2026-01-02', '', 'Jurnal uji T3.6', 'UMUM', 'g-uji', null, WAKTU);
+    awal.close();
+
+    // Tiru DB rusak: trigger hilang dari file.
+    buatDbMentah(path, (raw) => {
+      raw.exec('DROP TRIGGER trg_jurnal_immutable_update');
+    });
+
+    const db2 = openDb(path);
+    try {
+      expect(
+        db2
+          .prepare(
+            "SELECT 1 AS ada FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_jurnal_immutable_update'",
+          )
+          .get(),
+      ).toEqual({ ada: 1 });
+      expect(() =>
+        db2.prepare("UPDATE jurnal SET keterangan = 'diubah' WHERE id = 'j-uji'").run(),
+      ).toThrow(/tidak boleh diubah/i);
+    } finally {
+      db2.close();
+    }
+  });
+
+  it('memulihkan index aplikasi yang di-drop', () => {
+    const path = join(dirBaru(), 'pura.db');
+    openDb(path).close();
+
+    buatDbMentah(path, (raw) => {
+      raw.exec('DROP INDEX idx_jurnal_tanggal');
+    });
+
+    const db2 = openDb(path);
+    try {
+      const baris = db2
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_jurnal_tanggal'")
+        .get() as { sql: string } | undefined;
+      expect(baris?.sql.toLowerCase()).toContain('on jurnal(tanggal)');
+      expect(objekSkemaTidakSesuai(db2)).toEqual([]);
+    } finally {
+      db2.close();
+    }
+  });
+
+  it('mendeteksi index dengan definisi salah lalu memperbaikinya saat openDb', () => {
+    const path = join(dirBaru(), 'pura.db');
+    openDb(path).close();
+
+    // Tiru index bernama sama tetapi definisi salah.
+    buatDbMentah(path, (raw) => {
+      raw.exec('DROP INDEX idx_jurnal_tanggal');
+      raw.exec('CREATE INDEX idx_jurnal_tanggal ON jurnal(keterangan)');
+    });
+
+    const raw = new Database(path);
+    try {
+      expect(objekSkemaTidakSesuai(raw)).toContain('idx_jurnal_tanggal');
+    } finally {
+      raw.close();
+    }
+
+    const db2 = openDb(path);
+    try {
+      const baris = db2
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_jurnal_tanggal'")
+        .get() as { sql: string } | undefined;
+      const sql = baris?.sql.toLowerCase() ?? '';
+      expect(sql).toContain('on jurnal(tanggal)');
+      expect(sql).not.toContain('keterangan');
+      expect(objekSkemaTidakSesuai(db2)).toEqual([]);
+    } finally {
+      db2.close();
+    }
+  });
+
+  it('DB valid tidak melaporkan objek skema tidak sesuai dan tetap bisa dibuka', () => {
+    const path = join(dirBaru(), 'pura.db');
+
+    const awal = openDb(path);
+    try {
+      expect(objekSkemaTidakSesuai(awal)).toEqual([]);
+    } finally {
+      awal.close();
+    }
+
+    const db2 = openDb(path);
+    try {
+      expect(objekSkemaTidakSesuai(db2)).toEqual([]);
+      expect(
+        db2.prepare("SELECT 1 AS ada FROM sqlite_master WHERE type = 'index' AND name = 'idx_jurnal_tanggal'").get(),
+      ).toEqual({ ada: 1 });
+    } finally {
+      db2.close();
+    }
   });
 });
