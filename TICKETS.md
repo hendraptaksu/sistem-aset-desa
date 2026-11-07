@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 5 | 9 |
+| 3 — Hardening | P2 | 6 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **26** | **33** |
+| **Total** |  | **27** | **33** |
 
 ## Aturan kerja
 
@@ -316,7 +316,7 @@
   - **Verifikasi:** review keputusan.
   - **Catatan:** **Keputusan: dokumentasi risiko + pertahankan trigger append-only, TANPA perubahan skema** (Opsi C). Alasan: aplikasi single-user offline dengan satu PIN sehingga tidak ada identitas aktor yang bermakna tanpa login; hash chain butuh skema v2/migrasi/reset DB, memengaruhi kompatibilitas backup lama, dan tidak melindungi dari penyerang yang bisa menulis file DB (bisa menghitung ulang rantai). Nilai utama audit saat ini adalah mencegah edit/hapus dari dalam aplikasi serta merekam alasan dan kondisi lama/baru. **Yang dilindungi:** append-only via `trg_audit_log_immutable_update`/`delete`, alasan + `data_lama_json`/`data_baru_json`, `ref_type`/`ref_id`, `tanggal`, dan penulisan atomik dalam transaksi bisnis. **Yang tidak dilindungi:** edit file DB langsung (trigger bisa di-drop), tidak ada `actor`, tidak tamper-evident, backup lama juga dapat diedit; PIN tetap bukan enkripsi. **Opsi masa depan:** (A) kolom `actor` + `prev_hash`/`hash` di `audit_log` skema v2, atau (B) tabel chain terpisah — keduanya mengubah `SCHEMA_VERSION`, butuh migrasi/reset DB, penyesuaian `insertAuditLog`/`catatAudit`, backup v1 lama tidak langsung kompatibel, dan hash chain tetap butuh anchor eksternal agar benar-benar tamper-evident. **Dampak skema:** tidak ada perubahan DDL/migrasi; `database.ts`/`repository.ts` tidak disentuh. File disentuh: `docs/prinsip-akuntansi.md` (§11 threat model/opsi/dampak), `docs/skema.md` (catatan `audit_log` v1), `tests/dokumentasi.test.ts`, `TICKETS.md`. Verifikasi: `npm test -- tests/dokumentasi.test.ts` (12 lulus, termasuk assertion frasa `tamper-evident`/`actor`/`hash chain`/`skema v2`), `npm run typecheck` lulus, `npm test` **90 file / 1.179 test lulus, 0 gagal** (baseline T3.4: 90/1.178). Commit dokumen/test `7d2e47b`; commit catatan tiket terpisah.
 
-- [ ] **T3.6 — Self-check definisi index/trigger**
+- [x] **T3.6 — Self-check definisi index/trigger**
   - **Masalah:** `CREATE INDEX IF NOT EXISTS` tidak memperbaiki index dengan nama sama tetapi definisi salah. Trigger sudah di-drop/recreate, index belum.
   - **File:** `src/db/database.ts`, `tests/skema-hardening.test.ts`.
   - **Langkah:**
@@ -325,7 +325,7 @@
     3. Tambah test drop trigger → `openDb` memulihkan; index salah → terdeteksi.
   - **Selesai bila:** DB dengan objek skema hilang/berbeda tidak dibuka diam-diam.
   - **Verifikasi:** `npm test -- tests/skema-hardening.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/db/database.ts`, `tests/skema-hardening.test.ts`, `TICKETS.md`. `DDL_INDEX` kini memakai pola `DROP INDEX IF EXISTS <nama>;` + `CREATE INDEX` (bukan `IF NOT EXISTS`) untuk setiap index aplikasi, analog `DDL_TRIGGER`, sehingga `siapkanSkema` selalu membuat ulang definisi kanonik. Semua index punya nama eksplisit; index implisit `sqlite_autoindex_*` dari constraint `UNIQUE` tabel tidak pernah di-drop. Fungsi ekspor `objekSkemaTidakSesuai(db)` membangun definisi acuan dari DB `:memory:` baru yang menjalankan `DDL` (di-cache karena `DDL` konstan), membaca `sqlite_master` index/trigger non-`sqlite_autoindex`, lalu membandingkan tipe + SQL ternormalisasi (whitespace + lowercase) dengan DB target; hasilnya daftar nama objek yang hilang/berbeda. `siapkanSkema` memanggil pemeriksaan setelah `db.exec(DDL)` dan sekali lagi di jalur error `exec`; bila masih tidak sesuai, DB ditolak dengan error Indonesia `PESAN_OBJEK_SKEMA_TIDAK_SESUAI` yang menyebut objek bermasalah dan instruksi memeriksa file DB/backup. DDL tetap idempoten, tanpa migrasi/ALTER TABLE, dan cek T1.3/T1.4 tidak berubah. Test baru: trigger `trg_jurnal_immutable_update` di-drop → `openDb` memulihkan dan UPDATE jurnal tetap ditolak; index `idx_jurnal_tanggal` di-drop → dipulihkan; index bernama sama didefinisikan salah (`jurnal(keterangan)`) → terdeteksi `objekSkemaTidakSesuai` lalu diperbaiki menjadi `jurnal(tanggal)`; DB valid → daftar kosong dan tetap bisa dibuka. Verifikasi: `npm test -- tests/skema-hardening.test.ts` (19 lulus), tiga file skema (31 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.183 test lulus, 0 gagal** (baseline T3.5: 90/1.179). Commit `3fafc08`.
 
 - [ ] **T3.7 — Benchmark laporan & audit pagination**
   - **Masalah:** belum ada bukti performa untuk DB besar; beberapa laporan bisa memuat seluruh jurnal tanpa batas.
