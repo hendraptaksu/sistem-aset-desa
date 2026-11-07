@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 3 | 9 |
+| 3 — Hardening | P2 | 4 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **24** | **33** |
+| **Total** |  | **25** | **33** |
 
 ## Aturan kerja
 
@@ -296,7 +296,7 @@
   - **Verifikasi:** review dokumen + test dokumentasi.
   - **Catatan:** **Keputusan: dokumentasi + imbauan menyimpan backup di disk/volume terenkripsi**, bukan implementasi SQLCipher/arsip terenkripsi di rilis ini. Alasan: enkripsi penuh mengubah format database/backup, berisiko kompatibilitas dengan backup lama, dan membutuhkan rancangan restore + keputusan skema tersendiri; opsi **SQLCipher** dan **arsip terenkripsi** dicatat sebagai kandidat **tiket terpisah**. Risiko yang diterima: siapa pun yang memegang file `.db`/folder backup dapat membacanya dengan alat SQLite biasa tanpa PIN. Mitigasi yang didokumentasikan: aktifkan enkripsi disk (BitLocker/FileVault), simpan backup hanya di media terenkripsi, jangan unggah ke cloud publik, dan hapus salinan lama. File disentuh: `README.md` (bagian Backup dan restore + Keamanan), `docs/panduan-pengguna.md` (§5.1 langkah praktis non-teknis), `src/renderer/components/DashboardTab.tsx` (komponen `PeringatanBackupTidakTerenkripsi` tampil permanen di kartu Backup / Restore; alur backup/restore tidak berubah), `tests/dokumentasi.test.ts`, `tests/backup-periodik.test.ts`, `TICKETS.md`. Verifikasi: `npm test -- tests/dokumentasi.test.ts tests/backup-periodik.test.ts` (25 lulus; SSR memastikan peringatan terlihat dengan teks “File backup tidak terenkripsi”, “PIN hanya melindungi aplikasi”, dan “media/disk yang terenkripsi”), `npm run typecheck` lulus, `npm test` **90 file / 1.177 test lulus, 0 gagal** (baseline T3.2: 90/1.175). Commit dokumen/UI `bfe65f2`.
 
-- [ ] **T3.4 — Bersihkan template Jurnal Umum yang tidak bisa diposting**
+- [x] **T3.4 — Bersihkan template Jurnal Umum yang tidak bisa diposting**
   - **Masalah:** template `serah-panjar` memakai akun 1040, tetapi `validasiJurnal` menolak 1040 lewat Jurnal Umum. Template ini selalu gagal.
   - **File:** `src/core/jurnalForm.ts`, `tests/jurnal-form.test.ts`.
   - **Langkah:**
@@ -304,7 +304,7 @@
     2. Tambah test yang mencoba memposting setiap template dengan nominal contoh.
   - **Selesai bila:** semua template yang ditampilkan bisa diposting; tidak ada template mati.
   - **Verifikasi:** `npm test -- tests/jurnal-form.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/core/jurnalForm.ts`, `tests/jurnal-form.test.ts`, `TICKETS.md`. Template `serah-panjar` (D 1040 / K 1001) dihapus dari `TEMPLATE_JURNAL` dan diganti `bayar-utang-usaha` (D 2060 HUTANG USAHA / K 1001 KAS) agar jumlah template berguna tetap 4: `terima-pendapatan` (D 1001/K 4005), `bayar-beban` (D 5010/K 1001), `pindah-dana` (D 1029/K 1001), dan `bayar-utang-usaha` (D 2060/K 1001). Tidak ada template yang memakai akun kontrol 1040/2050, dan larangan di `validasiJurnal` tidak dilonggarkan. Test lama diperbarui (mengharapkan `bayar utang usaha`, menolak `serah panjar`, serta menegaskan tidak ada baris 1040/2050). Test regresi baru mengisi nominal contoh Rp 100.000 per baris debit/kredit untuk SETIAP template, memanggil `buatJurnalUmumForm`, lalu `validasiJurnal` dengan konteks `listAkun(db, { aktif: true })`, `tutupBuku: []`, saldo kas 1001/1029 cukup, dan tanggal `2026-01-15`; hasilnya `errors` kosong dan `boleh: true`. Uji mutasi sementara (mengembalikan template 1040) membuat 2 test gagal dengan pesan akun kontrol panjar, lalu mutasi dipulihkan. UI `JurnalUmumEditor`/`JurnalTab` tidak perlu diubah karena membaca array `TEMPLATE_JURNAL`. Verifikasi: `npm test -- tests/jurnal-form.test.ts` (18 lulus), `npm test -- tests/jurnal-form.test.ts tests/db-26-mode-lanjutan.test.ts tests/reversal.test.ts` (54 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.178 test lulus, 0 gagal** (baseline T3.3: 90/1.177). Commit `de5167e`.
 
 - [ ] **T3.5 — Keputusan audit actor & hash chain**
   - **Masalah:** `audit_log` punya trigger append-only, tetapi tidak mencatat aktor dan tidak tamper-evident. Siapa pun yang bisa mengedit file DB bisa mengubah isi audit.
