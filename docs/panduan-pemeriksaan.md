@@ -309,8 +309,9 @@ Buka **Pengaturan → Riwayat Audit**.
   referensinya kosong dan tidak diubah karena audit bersifat append-only.
 - Klik **Lihat** untuk melihat data sebelum/sesudah dan referensi objek.
 - Aksi penting yang harus muncul: pembuatan jurnal, `REVERSAL`,
-  `KOREKSI-ISI-ULANG`, `TUTUP`/`TUTUP-ULANG`, `SALDO-AWAL`, `PANJAR`/
-  `PANJAR-BATAL`, `BACKUP`/`RESTORE`, dan perubahan `PENGATURAN`.
+  `KOREKSI-ISI-ULANG`, `KOREKSI-SALDO-AWAL`, `TUTUP`/`TUTUP-ULANG`,
+  `SALDO-AWAL`, `PANJAR`/`PANJAR-BATAL`, `BACKUP`/`RESTORE`, dan perubahan
+  `PENGATURAN`.
 - Audit tidak pernah menyimpan PIN, salt, atau hash PIN.
 
 Gunakan audit untuk menjawab: siapa/apa yang berubah, kapan, dan dengan alasan
@@ -357,3 +358,28 @@ penyalinan; perlindungan file harus lewat akun OS dan enkripsi disk.
 - [ ] Audit: koreksi dan kunci periode punya alasan.
 - [ ] Backup Lengkap (`pura.db` + `manifest.json`) atau Backup Export `.db`
       sudah dibuat.
+
+---
+
+## 13. Checklist cepat pemulihan
+
+Pakai checklist ini setelah koreksi saldo awal, restore, atau saat aplikasi
+menolak database. Langkah untuk operator ada di `docs/panduan-pengguna.md` §10
+dan README bagian **Runbook singkat**.
+
+- [ ] **Status saldo awal** — wizard saldo awal terkunci dan saldo awal aktif
+      ada. Bila pernah dikoreksi, pastikan tetap hanya ada satu jurnal
+      `SALDO_AWAL`; koreksi tidak boleh membuat saldo awal kedua.
+- [ ] **Audit KOREKSI-SALDO-AWAL** — ada audit dengan alasan minimal 5 karakter
+      yang menunjuk jurnal lama, jurnal balik, dan jurnal penyesuaian. Jurnal
+      lama tidak diedit/dihapus; laporan memakai angka baru.
+- [ ] **Backup terakhir** — Backup Lengkap terbaru (`pura.db` +
+      `manifest.json`) atau backup otomatis tersedia, disimpan di media/disk
+      terenkripsi. Ingat backup **tidak terenkripsi** dan PIN **bukan enkripsi**.
+- [ ] **Integritas** — Neraca Saldo selisih 0; kandidat restore lolos
+      `integrity_check`, foreign key, skema v1, dan 11 tabel wajib. Bila database
+      ditolak karena tabel/kolom hilang, **pulihkan dari backup**, jangan membuat
+      DB baru.
+- [ ] **Lockout PIN** — setelah 5 kali PIN salah, aplikasi memblokir 60 detik
+      dan blokir bertahan setelah restart; PIN benar setelah blokir habis
+      membersihkan state. Lockout hanya melindungi UI, bukan isi file.

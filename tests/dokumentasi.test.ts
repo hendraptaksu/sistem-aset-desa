@@ -151,6 +151,38 @@ describe('istilah akuntansi kunci', () => {
   });
 });
 
+describe('runbook pemulihan T3.9', () => {
+  it('README dan panduan pengguna memuat langkah saldo awal, backup, dan DB ditolak', () => {
+    for (const dokumen of [README, PENGGUNA]) {
+      expect(dokumen).toContain('Koreksi Saldo Awal');
+      expect(dokumen).toContain('pre-restore');
+      expect(dokumen).toMatch(/tabel\/kolom[^\n]*(hilang|wajib)/i);
+      expect(dokumen).toMatch(/pulihkan dari backup/i);
+      expect(dokumen).toMatch(/bukan enkripsi/i);
+      expect(dokumen).toMatch(/tidak terenkripsi/i);
+    }
+  });
+
+  it('skema menegaskan DB v1 tidak lengkap dipulihkan dari backup, bukan dibuat ulang', () => {
+    expect(SKEMA).toMatch(/SCHEMA_VERSION\s*=\s*1/);
+    expect(SKEMA).toMatch(/tabel wajib hilang|kolom wajib hilang/i);
+    expect(SKEMA).toMatch(/pulihkan dari backup/i);
+    expect(SKEMA).toMatch(/tidak\s*\**\s*membuat ulang|bukan dibuat ulang/i);
+  });
+
+  it('panduan pemeriksaan memuat checklist cepat pemulihan', () => {
+    for (const frasa of [
+      'Status saldo awal',
+      'KOREKSI-SALDO-AWAL',
+      'Backup terakhir',
+      'integrity_check',
+      'Lockout PIN',
+    ]) {
+      expect(PEMERIKSAAN, `panduan pemeriksaan memuat "${frasa}"`).toContain(frasa);
+    }
+  });
+});
+
 describe('modul yang sudah dihapus', () => {
   it('tidak ditawarkan lagi di dokumen kanonik', () => {
     for (const dokumen of DOKUMEN_PENGGUNA) {

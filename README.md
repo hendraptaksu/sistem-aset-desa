@@ -100,8 +100,9 @@ Prinsip yang dijaga:
    `pinjaman_bayar`. Seluruh tabel aktif memakai `STRICT` dengan `DEFAULT`
    eksplisit bila diperlukan (termasuk `created_at` ISO). **Tidak ada
    migrasi/pre-upgrade**: database dengan skema lain ditolak sebelum file diubah.
-   Operator memindahkan atau menghapus file database lama, lalu menjalankan
-   aplikasi lagi agar database baru dengan skema baseline v1 dibuat.
+   Database v1 yang **tidak lengkap** (tabel/kolom wajib hilang) juga ditolak
+   dan harus **dipulihkan dari backup**, bukan dibuat ulang. Langkah praktisnya
+   ada di **Runbook singkat** di bawah.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
    di mesin yang sama.
 
@@ -194,6 +195,81 @@ Rincian ada di `docs/panduan-portable.md`.
   kode terlebih dahulu.
 - Satu instalasi = satu laptop, satu PIN, tanpa multi-user.
 - Aplikasi tidak mengirim data ke internet. Pembaruan aplikasi dilakukan manual.
+
+---
+
+## Runbook singkat (pemulihan)
+
+Bagian ini untuk operator non-teknis. Bila ragu, **jangan menimpa atau menghapus
+`pura.db`**; salin dulu file yang ada, lalu hubungi akuntan pendamping/pengembang.
+
+### A. Saldo awal salah
+
+1. Buka tab **Transaksi**.
+2. Pada kartu **Saldo Awal**, tekan **Koreksi Saldo Awal**. Tombol ini tersedia
+   karena saldo awal sudah pernah disimpan; form saldo awal biasa tetap terkunci
+   agar tidak ada saldo awal kedua.
+3. Isi saldo yang benar (tanggal/keterangan boleh ikut diperbaiki).
+4. Tulis **alasan koreksi minimal 5 karakter**.
+5. Periksa pratinjau: selisih dan baris penyeimbang `3000 MODAL`. Tekan
+   **Simpan**.
+6. Buka **Neraca Saldo**, **Neraca**, dan **Buku Besar** untuk memastikan laporan
+   sudah memakai angka baru.
+
+Jurnal saldo awal lama **tidak dihapus dan tidak diedit**. Sistem membuat jurnal
+balik + jurnal penyesuaian, mencatat audit **KOREKSI-SALDO-AWAL**, dan semua
+laporan dihitung ulang dari jurnal sehingga langsung memakai angka baru. Jurnal
+lama tetap ada di audit dan Buku Besar. Bila masih salah, ulangi langkah 1–6
+dengan alasan baru; koreksi berikutnya membalik penyesuaian terakhir, bukan
+saldo awal asli.
+
+### B. Backup dan restore
+
+**Membuat backup**
+
+1. Buka **Dashboard**.
+2. Pilih **Backup Lengkap** (disarankan), lalu tentukan folder induk. Aplikasi
+   membuat satu folder berisi `pura.db` + `manifest.json`.
+3. **Backup Export .db** hanya untuk kebutuhan lanjutan: satu file database,
+   tanpa manifest.
+4. Simpan hasil backup di **media/disk terenkripsi**, pisahkan dari laptop, dan
+   hapus salinan lama yang tidak dipakai. Backup **tidak terenkripsi** dan
+   **PIN bukan enkripsi**: siapa pun yang memegang file dapat membukanya dengan
+   alat SQLite biasa tanpa PIN.
+
+**Memulihkan**
+
+1. Tutup pekerjaan lain; jangan menutup aplikasi saat restore berjalan.
+2. Buka **Dashboard** → **Restore Lengkap** (disarankan, memakai folder hasil
+   Backup Lengkap) atau **Restore Import .db** (satu file, jalur lanjutan).
+3. Baca peringatan, pilih folder/file, lalu konfirmasi.
+4. Aplikasi memvalidasi kandidat (SQLite terbaca, `integrity_check`, foreign key,
+   skema v1, 11 tabel wajib) dan membuat cadangan otomatis
+   **`pre-restore-<waktu>.db`** sebelum mengganti data aktif.
+5. Setelah restore selesai, aplikasi **terkunci** dan meminta **PIN**. Masukkan
+   PIN yang biasa dipakai; PIN tidak berubah karena restore database.
+6. Periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
+
+### C. Database ditolak (skema tidak kompatibel / tabel atau kolom hilang)
+
+Gejalanya: saat dibuka, aplikasi menyebut **skema tidak kompatibel**, versi
+database tidak didukung, atau ada **tabel/kolom wajib yang hilang**.
+
+1. **Jangan membuat database baru** dan **jangan menimpa atau menghapus** file
+   database yang ditolak. Data lama masih ada di file itu.
+2. Tutup aplikasi. Salin file database tersebut ke tempat aman, misalnya
+   `pura-rusak-<tanggal>.db`, agar tidak tertimpa langkah berikutnya.
+3. **Pulihkan dari backup sehat**: buka aplikasi, lalu **Dashboard → Restore
+   Lengkap** (disarankan) atau **Restore Import .db** memakai backup terakhir
+   yang lolos validasi. Aplikasi tidak bermigrasi dan tidak membuat ulang
+   tabel/kolom yang hilang.
+4. Bila tidak ada backup sehat atau restore juga ditolak, **hubungi pendamping**.
+   Jangan menambal file dengan alat SQLite.
+
+Database v1 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
+ulang. Membuat database baru hanya untuk file skema lain/asing yang memang tidak
+didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
+dipastikan tidak ada data yang perlu diselamatkan.
 
 ---
 

@@ -11,10 +11,22 @@ Dokumen ini adalah satu-satunya kontrak skema baseline v1. Setiap heading
 tidak boleh ada tabel/kolom aktif yang lupa dicatat, dan tidak boleh ada
 tabel/kolom hantu di dokumen.
 
-**Kebijakan database:** aplikasi hanya mendukung skema v1. File database dengan
+**Kebijakan database:** aplikasi hanya mendukung skema v1
+(`SCHEMA_VERSION = 1` di `src/db/database.ts`). File database dengan
 `user_version` lain atau tabel asing ditolak sebelum file diubah; tidak ada
-konversi otomatis. Operator memindahkan atau menghapus file database lama, lalu
-aplikasi membuat database baru dengan skema v1.
+konversi otomatis. Database v1 yang **tidak lengkap** — tabel wajib hilang atau
+kolom wajib hilang — juga ditolak sebelum `journal_mode = WAL` dan sebelum DDL.
+Aplikasi **tidak** membuat ulang tabel/kolom yang hilang dan **tidak**
+memigrasikan file: langkah yang benar adalah **memulihkan dari backup sehat**
+(Restore Lengkap atau Restore Import `.db`).
+
+**Pemulihan DB v1 tidak lengkap.** Pesan penolakan menyebut nama tabel/kolom
+yang hilang. Jangan membuka file itu berulang kali, membuat database baru, atau
+menambal dengan `ALTER TABLE`/alat SQLite. Salin file ke tempat aman, lalu
+pulihkan dari backup yang lolos validasi. Database v1 yang lengkap tetap dibuka
+normal. Membuat database baru hanya untuk file skema lain/asing yang tidak
+didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
+dipastikan tidak ada data yang perlu diselamatkan.
 
 ## Prinsip sumber angka
 

@@ -712,3 +712,83 @@ perlu mengatur ukuran kertas manual.
 
 Bila masalah tidak selesai: **jangan menghapus `pura.db`**. Backup dulu file
 `.db`, lalu hubungi akuntan pendamping/pengembang.
+
+---
+
+## 10. Runbook singkat (pemulihan)
+
+Tiga masalah di bawah ini butuh langkah berbeda. Bila ragu, salin dulu file
+`pura.db` ke tempat aman dan hubungi pendamping; **jangan menghapus atau
+menimpa database aktif**.
+
+### 10.1 Saldo awal salah
+
+1. Buka tab **Transaksi**.
+2. Pada kartu **Saldo Awal**, tekan **Koreksi Saldo Awal**. Tombol ini tersedia
+   karena saldo awal sudah pernah disimpan; form saldo awal biasa tetap terkunci
+   agar tidak ada saldo awal kedua.
+3. Form terisi saldo saat ini. Perbaiki nominal/tanggal/keterangan sesuai
+   kondisi sebenarnya.
+4. Tulis **alasan koreksi minimal 5 karakter**, misalnya “Kas awal kurang catat
+   Rp 500.000”.
+5. Periksa pratinjau: selisih dan baris penyeimbang `3000 MODAL`. Tekan
+   **Simpan**.
+6. Buka **Neraca Saldo**, **Neraca**, dan **Buku Besar** untuk memastikan laporan
+   memakai angka baru.
+
+Jurnal lama **tidak dihapus dan tidak diedit**. Sistem membuat jurnal balik +
+jurnal penyesuaian, mencatat audit **KOREKSI-SALDO-AWAL**, dan semua laporan
+menghitung ulang dari jurnal sehingga memakai angka baru. Jurnal lama tetap
+terlihat di audit dan Buku Besar. Bila hasilnya masih salah, ulangi langkah yang
+sama dengan alasan baru; koreksi berikutnya membalik penyesuaian terakhir, bukan
+saldo awal asli.
+
+### 10.2 Backup dan restore
+
+**Membuat backup**
+
+1. Buka **Dashboard**.
+2. Tekan **Backup Lengkap** (disarankan) dan pilih folder induk. Hasilnya satu
+   folder berisi `pura.db` + `manifest.json`.
+3. **Backup Export .db** hanya untuk kebutuhan lanjutan: satu file database,
+   tanpa manifest.
+4. Simpan di **media/disk terenkripsi**, pisahkan dari laptop, dan hapus salinan
+   lama yang tidak dipakai. Backup **tidak terenkripsi**; **PIN bukan enkripsi**
+   dan tidak melindungi isi file.
+
+**Memulihkan**
+
+1. Tutup pekerjaan lain dan jangan menutup aplikasi saat restore berjalan.
+2. **Dashboard → Restore Lengkap** (disarankan) lalu pilih folder Backup Lengkap;
+   atau **Restore Import .db** untuk satu file `.db` (jalur lanjutan, baca
+   peringatannya).
+3. Konfirmasi. Sistem memeriksa backup (SQLite terbaca, integritas, foreign key,
+   skema v1, 11 tabel wajib) sebelum menyentuh data aktif.
+4. Sistem membuat cadangan otomatis **`pre-restore-<waktu>.db`** berisi data
+   lama, lalu mengganti data aktif.
+5. Setelah selesai aplikasi **terkunci** dan meminta **PIN**. PIN tidak berubah
+   karena restore database; masukkan PIN yang biasa dipakai.
+6. Periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
+
+### 10.3 Database ditolak (skema tidak kompatibel / tabel atau kolom hilang)
+
+Pesan seperti “skema tidak kompatibel”, “versi database tidak didukung”, atau
+yang menyebut **tabel/kolom wajib hilang** berarti aplikasi menolak file sebelum
+mengubahnya.
+
+1. **Jangan membuat DB baru** dan **jangan menimpa atau menghapus** file database
+   yang ditolak. Jangan mencoba menambal tabel/kolom dengan alat SQLite.
+2. Tutup aplikasi. Salin file database yang bermasalah ke tempat aman, misalnya
+   `pura-rusak-<tanggal>.db`.
+3. **Pulihkan dari backup sehat** lewat **Dashboard → Restore Lengkap** atau
+   **Restore Import .db**. Ini jalur yang disarankan.
+4. Bila tidak ada backup sehat atau restore juga ditolak, **hubungi pendamping**.
+   Aplikasi tidak memigrasikan dan tidak membuat ulang tabel/kolom yang hilang.
+
+Database v1 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
+ulang. Membuat database baru hanya untuk file skema lain/asing yang memang tidak
+didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
+dipastikan tidak ada data yang perlu diselamatkan.
+
+**PIN bukan enkripsi** dan **backup tidak terenkripsi** — perlindungan file
+adalah tanggung jawab akun OS dan enkripsi disk.
