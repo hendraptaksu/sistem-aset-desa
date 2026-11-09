@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 7 | 9 |
+| 3 — Hardening | P2 | 8 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **28** | **33** |
+| **Total** |  | **29** | **33** |
 
 ## Aturan kerja
 
@@ -339,9 +339,9 @@
   - **Verifikasi:** hasil benchmark + test regression query plan.
   - **Catatan:** File disentuh: `scripts/benchmark-laporan.ts` (baru), `package.json` (script `"benchmark": "tsx scripts/benchmark-laporan.ts"`), `src/main/ipc.ts`, `tests/benchmark-laporan.test.ts` (baru), `tests/ipc-main.test.ts`, `TICKETS.md`. `src/db/laporan.ts` **tidak diubah**: query laporan sudah memakai index kanonik, jadi tidak ada index baru yang perlu ditambahkan. **Benchmark** (`npm run benchmark`, DB temp 10.000 jurnal / 50.000 baris, satu laptop referensi): seed 174,1 ms; dashboard (query + builder) 119,6 ms; neraca saldo 43,6 ms; laba rugi 30,6 ms; arus kas 60,0 ms; buku besar akun 1001 40,3 ms — semua <5.000 ms, script exit non-zero bila ada yang melewati batas. **Query plan** (EXPLAIN QUERY PLAN): (a) `jurnal WHERE tanggal <= ?` → `SEARCH jurnal USING INDEX idx_jurnal_tanggal (tanggal<?)`; (b) `jurnal_baris WHERE jurnal_id = ?` → `SEARCH jurnal_baris USING INDEX idx_jurnal_baris_jurnal (jurnal_id=?)`; (c) `audit_log WHERE tanggal <= ? ORDER BY tanggal DESC` → `SEARCH audit_log USING INDEX idx_audit_tanggal (tanggal<?)`. Query `listBarisJurnal` juga memakai `SCAN j USING INDEX idx_jurnal_tanggal` + `SEARCH b USING COVERING INDEX idx_jurnal_baris_jurnal` tanpa temp B-tree; halaman `listJurnal` memakai `idx_jurnal_tanggal` untuk ORDER BY + LIMIT. **Pagination:** `jurnal:list` tetap mengembalikan array legacy tanpa total, tetapi kini selalu terpotong lewat `batasDaftarJurnal` (default limit 500, integer clamp 0..1000, offset ≥0; limit 0 = array kosong) dan komentar handler menjelaskan pemotongan; `jurnal:cari` tidak diubah. `audit:list` sudah memakai `limit`/`offset` + total, kini dikunci test. Test ringan seed 500 jurnal / 2.500 baris mengukur lima operasi (masing-masing <5.000 ms, total <15.000 ms) dan memastikan hasil tidak kosong; test query plan memakai tiga query di atas. Verifikasi: `npm test -- tests/benchmark-laporan.test.ts` (4 lulus), `npm test -- tests/ipc-main.test.ts` (57 lulus), `npm run typecheck` lulus, `npm test` **91 file / 1.190 test lulus, 0 gagal** (baseline T3.6: 90/1.183), `npm run benchmark` lulus. Commit `eded5ea`.
 
-- [ ] **T3.8 — Poles UX untuk aksi berisiko**
+- [x] **T3.8 — Poles UX untuk aksi berisiko**
   - **Masalah:** beberapa konfirmasi/error belum menjelaskan dampak; tombol nonaktif kadang tanpa alasan; modal perlu fokus yang jelas.
-  - **File:** `DashboardTab.tsx`, `JurnalTab.tsx`, `SaldoAwalWizard.tsx`, `AkunTab.tsx`, komponen modal/confirm.
+  - **File:** `src/renderer/components/ui.tsx`, `DashboardTab.tsx`, `JurnalTab.tsx`, `SaldoAwalWizard.tsx`, `AkunTab.tsx`, `TransaksiTab.tsx`, `e2e/ui-audit.test.mjs`, `tests/forms-ui.test.ts`, `TICKETS.md`.
   - **Langkah:**
     1. Konfirmasi restore/backup/saldo awal menjelaskan apa yang berubah dan apa yang tetap.
     2. Tombol nonaktif punya tooltip/alasan.
@@ -349,7 +349,7 @@
     4. Copy error tidak menyalahkan pengguna; sebut langkah berikutnya.
   - **Selesai bila:** checklist UX di atas lulus audit UI/manual.
   - **Verifikasi:** `npm run audit:ui` + smoke manual.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `src/renderer/components/ui.tsx`, `DashboardTab.tsx`, `JurnalTab.tsx`, `SaldoAwalWizard.tsx`, `AkunTab.tsx`, `TransaksiTab.tsx`, `e2e/ui-audit.test.mjs`, `tests/forms-ui.test.ts`, `TICKETS.md`. **Modal:** `pilihFokusAwal` memberi prioritas `data-fokus-awal` → `autofocus` → field isian → kontrol pertama → dialog; `KonfirmasiModal` menandai tombol **Batal** sebagai fokus aman sehingga konfirmasi destruktif tidak langsung menyorot tombol berbahaya. Escape tetap hanya menutup saat `sibuk()` false, fokus kembali ke pemicu, dialog memakai `aria-busy`, dan tombol X menjelaskan saat terkunci proses. `ErrorBox` kini `role="alert"` + `aria-live="assertive"` + `aria-atomic`; kotak sukses memakai `role="status"`/`aria-live="polite"`. Modal bertumpuk (PeringatanModal/LockModal/KodeDarurat) tidak diubah alurnya. **Konfirmasi:** komponen baru `KonfirmasiBackup`, `KonfirmasiRestoreDb`, `KonfirmasiRestoreLengkap`, dan `KonfirmasiSimpanSaldoAwal` menjelaskan “Yang berubah”/“Yang tetap”, cadangan `pre-restore`, PIN yang dipertahankan, file sumber yang tidak diubah, manifest untuk restore lengkap, dan langkah berikutnya bila hasil keliru. Backup tetap non-destruktif tetapi tetap dikonfirmasi agar teks dampaknya terlihat; copy sukses menyebut data aktif tidak berubah. **Tombol nonaktif:** helper `ALASAN_SIBUK`, `alasanSimpanSaldoAwal`, dan `alasanKoreksiTidakSiap` menghasilkan `title` + teks terlihat untuk Koreksi, Jurnal balik/Simpan koreksi, Batalkan/Tetap batalkan, Simpan saldo awal, backup/restore saat sibuk, dan Hapus baris; akun sistem menampilkan teks “tidak bisa dinonaktifkan” di samping badge. **Copy error:** audit `src/renderer` tidak menemukan pesan yang menyalahkan pengguna; pesan generik sudah menyebut “Coba lagi; bila tetap gagal, hubungi pendamping”, jadi pesan validasi backend tidak diubah. **Penyebab 1280x800:** assertion lama `16` salah hitung, bukan race reload/mode lanjutan — jendela 1280 membuka sidebar (12 item nav = 13 tab dikurangi Pengaturan yang dipin di footer luar `<nav>`, termasuk Jurnal Umum karena Mode lanjutan aktif) + 3 tombol header grup = **15**. Perbaikan test: hitung `TAB.length - 1 + 3` (bukan angka mati), tambah assertion Jurnal Umum terlihat untuk memastikan bukan race, lalu verifikasi item laporan satu per satu. **Bukti:** `npm run build` lulus; `npm run audit:ui` **3/3 ukuran lulus** (1280×800, 1024×768, 1024×680) termasuk flow baru “konfirmasi aksi berisiko OK: copy dampak, fokus Batal, Escape menutup tanpa aksi”; `npm test -- tests/forms-ui.test.ts tests/saldo-awal.test.ts tests/restore-kunci.test.ts` 77 lulus; `npm run typecheck` lulus; `npm test` **91 file / 1.198 test lulus, 0 gagal**. Smoke GUI manual terbatas pada e2e Electron asli di atas (buka konfirmasi backup/restore, cek fokus Batal + Escape + copy dampak). Commit kode `615cf59`.
 
 - [ ] **T3.9 — Perbarui dokumentasi & runbook pemulihan**
   - **Masalah:** README sudah menyebut batasan, tetapi belum ada runbook singkat untuk saldo awal salah, backup/restore, dan DB ditolak.
