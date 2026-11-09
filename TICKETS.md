@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 6 | 9 |
+| 3 — Hardening | P2 | 7 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **27** | **33** |
+| **Total** |  | **28** | **33** |
 
 ## Aturan kerja
 
@@ -327,7 +327,7 @@
   - **Verifikasi:** `npm test -- tests/skema-hardening.test.ts`.
   - **Catatan:** File disentuh: `src/db/database.ts`, `tests/skema-hardening.test.ts`, `TICKETS.md`. `DDL_INDEX` kini memakai pola `DROP INDEX IF EXISTS <nama>;` + `CREATE INDEX` (bukan `IF NOT EXISTS`) untuk setiap index aplikasi, analog `DDL_TRIGGER`, sehingga `siapkanSkema` selalu membuat ulang definisi kanonik. Semua index punya nama eksplisit; index implisit `sqlite_autoindex_*` dari constraint `UNIQUE` tabel tidak pernah di-drop. Fungsi ekspor `objekSkemaTidakSesuai(db)` membangun definisi acuan dari DB `:memory:` baru yang menjalankan `DDL` (di-cache karena `DDL` konstan), membaca `sqlite_master` index/trigger non-`sqlite_autoindex`, lalu membandingkan tipe + SQL ternormalisasi (whitespace + lowercase) dengan DB target; hasilnya daftar nama objek yang hilang/berbeda. `siapkanSkema` memanggil pemeriksaan setelah `db.exec(DDL)` dan sekali lagi di jalur error `exec`; bila masih tidak sesuai, DB ditolak dengan error Indonesia `PESAN_OBJEK_SKEMA_TIDAK_SESUAI` yang menyebut objek bermasalah dan instruksi memeriksa file DB/backup. DDL tetap idempoten, tanpa migrasi/ALTER TABLE, dan cek T1.3/T1.4 tidak berubah. Test baru: trigger `trg_jurnal_immutable_update` di-drop → `openDb` memulihkan dan UPDATE jurnal tetap ditolak; index `idx_jurnal_tanggal` di-drop → dipulihkan; index bernama sama didefinisikan salah (`jurnal(keterangan)`) → terdeteksi `objekSkemaTidakSesuai` lalu diperbaiki menjadi `jurnal(tanggal)`; DB valid → daftar kosong dan tetap bisa dibuka. Verifikasi: `npm test -- tests/skema-hardening.test.ts` (19 lulus), tiga file skema (31 lulus), `npm run typecheck` lulus, `npm test` **90 file / 1.183 test lulus, 0 gagal** (baseline T3.5: 90/1.179). Commit `3fafc08`.
 
-- [ ] **T3.7 — Benchmark laporan & audit pagination**
+- [x] **T3.7 — Benchmark laporan & audit pagination**
   - **Masalah:** belum ada bukti performa untuk DB besar; beberapa laporan bisa memuat seluruh jurnal tanpa batas.
   - **File:** script benchmark baru, `src/db/laporan.ts`, `src/main/ipc.ts`, test performa ringan.
   - **Langkah:**
@@ -337,7 +337,7 @@
     4. Pastikan semua daftar memakai limit/offset.
   - **Selesai bila:** target waktu wajar pada laptop referensi tercatat dan tidak ada query scan besar yang tidak disengaja.
   - **Verifikasi:** hasil benchmark + test regression query plan.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `scripts/benchmark-laporan.ts` (baru), `package.json` (script `"benchmark": "tsx scripts/benchmark-laporan.ts"`), `src/main/ipc.ts`, `tests/benchmark-laporan.test.ts` (baru), `tests/ipc-main.test.ts`, `TICKETS.md`. `src/db/laporan.ts` **tidak diubah**: query laporan sudah memakai index kanonik, jadi tidak ada index baru yang perlu ditambahkan. **Benchmark** (`npm run benchmark`, DB temp 10.000 jurnal / 50.000 baris, satu laptop referensi): seed 174,1 ms; dashboard (query + builder) 119,6 ms; neraca saldo 43,6 ms; laba rugi 30,6 ms; arus kas 60,0 ms; buku besar akun 1001 40,3 ms — semua <5.000 ms, script exit non-zero bila ada yang melewati batas. **Query plan** (EXPLAIN QUERY PLAN): (a) `jurnal WHERE tanggal <= ?` → `SEARCH jurnal USING INDEX idx_jurnal_tanggal (tanggal<?)`; (b) `jurnal_baris WHERE jurnal_id = ?` → `SEARCH jurnal_baris USING INDEX idx_jurnal_baris_jurnal (jurnal_id=?)`; (c) `audit_log WHERE tanggal <= ? ORDER BY tanggal DESC` → `SEARCH audit_log USING INDEX idx_audit_tanggal (tanggal<?)`. Query `listBarisJurnal` juga memakai `SCAN j USING INDEX idx_jurnal_tanggal` + `SEARCH b USING COVERING INDEX idx_jurnal_baris_jurnal` tanpa temp B-tree; halaman `listJurnal` memakai `idx_jurnal_tanggal` untuk ORDER BY + LIMIT. **Pagination:** `jurnal:list` tetap mengembalikan array legacy tanpa total, tetapi kini selalu terpotong lewat `batasDaftarJurnal` (default limit 500, integer clamp 0..1000, offset ≥0; limit 0 = array kosong) dan komentar handler menjelaskan pemotongan; `jurnal:cari` tidak diubah. `audit:list` sudah memakai `limit`/`offset` + total, kini dikunci test. Test ringan seed 500 jurnal / 2.500 baris mengukur lima operasi (masing-masing <5.000 ms, total <15.000 ms) dan memastikan hasil tidak kosong; test query plan memakai tiga query di atas. Verifikasi: `npm test -- tests/benchmark-laporan.test.ts` (4 lulus), `npm test -- tests/ipc-main.test.ts` (57 lulus), `npm run typecheck` lulus, `npm test` **91 file / 1.190 test lulus, 0 gagal** (baseline T3.6: 90/1.183), `npm run benchmark` lulus. Commit `eded5ea`.
 
 - [ ] **T3.8 — Poles UX untuk aksi berisiko**
   - **Masalah:** beberapa konfirmasi/error belum menjelaskan dampak; tombol nonaktif kadang tanpa alasan; modal perlu fokus yang jelas.
