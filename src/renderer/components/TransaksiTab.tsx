@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import {
   ArrowDownLeft,
@@ -408,6 +408,32 @@ export function TransaksiTab({
   const [versiJurnal, setVersiJurnal] = useState(0);
   const [detailJurnal, setDetailJurnal] = useState<JurnalLengkap | null>(null);
   const [batalJurnal, setBatalJurnal] = useState<JurnalLengkap | null>(null);
+  const formRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Pilih jenis lalu bawa pengguna ke form. Di layar kecil kartu jenis
+   * mendorong form jauh ke bawah, sehingga tanpa scroll klik terasa tidak
+   * bereaksi (hanya border kartu yang berubah).
+   */
+  const pilihJenis = useCallback((id: JenisFormTransaksi) => {
+    setJenis(id);
+    // Tunggu commit render agar tinggi form jenis baru sudah terukur.
+    window.requestAnimationFrame(() => {
+      const target = formRef.current;
+      if (!target) return;
+      const halus = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      target.scrollIntoView({
+        behavior: halus ? 'smooth' : 'auto',
+        block: 'start',
+      });
+      // Fokus ke isian pertama supaya pengguna bisa langsung mengetik.
+      target
+        .querySelector<HTMLElement>(
+          'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])',
+        )
+        ?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const muatJurnal = useCallback(() => {
     setVersiJurnal((versi) => versi + 1);
@@ -486,17 +512,12 @@ export function TransaksiTab({
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold">Catat Transaksi Harian</h1>
-            <p className="mt-1 max-w-2xl text-[15px] text-stone-600">
-              Pilih jenis transaksi, isi beberapa kolom, lalu periksa pratinjau sebelum
-              menyimpan. Sistem menyusun jurnal otomatis, jadi Anda tidak perlu menghitung
-              sendiri.
-            </p>
-          </div>
-          <Badge tone="green">Form terpandu</Badge>
-        </div>
+        <h1 className="text-xl font-bold">Catat Transaksi Harian</h1>
+        <p className="mt-1 max-w-2xl text-[15px] text-stone-600">
+          Pilih jenis transaksi, isi beberapa kolom, lalu periksa pratinjau sebelum
+          menyimpan. Sistem menyusun jurnal otomatis, jadi Anda tidak perlu menghitung
+          sendiri.
+        </p>
       </Card>
 
       <Card>
@@ -580,10 +601,7 @@ export function TransaksiTab({
       <Card>
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
         <p className="mt-1 text-sm text-stone-600">
-          Pilih <b>Terima Uang</b>, <b>Bayar</b>, <b>Pindah Dana</b>, <b>Catat Utang</b>,
-          atau <b>Bayar Utang</b> untuk mencatat lewat form terpandu. <b>Panjar</b>{' '}
-          dan <b>Pinjaman LPD</b> dibuka dari kartu menunya sendiri. Saldo 2050 lama
-          tetap terbaca di laporan.
+          Klik salah satu jenis untuk mulai mencatat.
         </p>
         {err && (
           <div className="mt-3">
@@ -603,7 +621,7 @@ export function TransaksiTab({
                   if (tujuan) {
                     onBukaTab(tujuan);
                   } else if (bisaDipilih(id)) {
-                    setJenis(id);
+                    pilihJenis(id);
                   }
                 }}
                 className={clsx(
@@ -628,20 +646,14 @@ export function TransaksiTab({
                 <span className="min-w-0">
                   <span className="block break-words font-bold xl:break-normal">{label}</span>
                   <span className="block text-helper">{keterangan}</span>
-                  <span
-                    className={clsx(
-                      'mt-1 block text-helper font-semibold',
-                      aktif ? 'text-emerald-700' : 'text-emerald-800',
-                    )}
-                  >
-                    {aktif
-                      ? 'Sedang dipakai'
-                      : tujuan === 'panjar'
-                        ? 'Buka Buku Panjar'
-                        : tujuan === 'pinjaman'
-                          ? 'Buka Pinjaman LPD'
-                          : 'Siap dipakai'}
-                  </span>
+                  {/* Hanya kartu pintasan yang perlu label: ia berpindah tab, bukan
+                      memilih form. Status terpilih sudah jelas dari border, latar,
+                      ikon, dan aria-pressed, jadi tidak perlu teks tambahan. */}
+                  {tujuan && (
+                    <span className="mt-1 block text-helper font-semibold text-emerald-800">
+                      {tujuan === 'panjar' ? 'Buka Buku Panjar' : 'Buka Pinjaman LPD'}
+                    </span>
+                  )}
                 </span>
               </button>
             );
@@ -650,13 +662,15 @@ export function TransaksiTab({
       </Card>
 
       {/* `key` memastikan isian form tidak tercampur saat berganti jenis. */}
-      <FormTransaksiTerpandu
-        key={jenis}
-        jenis={jenis}
-        coa={coa}
-        memuat={memuat}
-        onTersimpan={muatJurnal}
-      />
+      <div ref={formRef} className="scroll-mt-24">
+        <FormTransaksiTerpandu
+          key={jenis}
+          jenis={jenis}
+          coa={coa}
+          memuat={memuat}
+          onTersimpan={muatJurnal}
+        />
+      </div>
 
       <TransaksiTerakhirCard
         daftar={daftarJurnal}

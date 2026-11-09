@@ -473,8 +473,13 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
       ?.split('</button>')[0];
     expect(kartuBayar).toBeDefined();
     expect(kartuBayar).not.toContain('disabled');
-    expect(kartuBayar).toContain('Siap dipakai');
-    expect(html).toContain('Sedang dipakai');
+    // Status teknis "Siap dipakai" tidak boleh tampil di UI; kartu yang bisa
+    // dipakai cukup dirender normal tanpa label tambahan.
+    expect(kartuBayar).not.toContain('Siap dipakai');
+    expect(html).not.toContain('Siap dipakai');
+    // Status terpilih cukup lewat border/latar/ikon/aria-pressed; label teks hanya
+    // dipakai untuk kartu pintasan yang berpindah tab.
+    expect(html).not.toContain('Sedang dipakai');
     // Panjar menjadi pintasan tab; form utang ada langsung di tab Transaksi.
     const kartuPanjar = html
       .split('<button')
@@ -489,6 +494,22 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     }
     expect(html).not.toContain('Buka Hutang');
     expect(html).not.toContain('Piutang/Hutang');
+  });
+
+  it('membawa pengguna ke form saat kartu jenis diklik', () => {
+    // Perilaku scroll tidak bisa diuji lewat SSR, jadi kunci kontraknya di
+    // sumber: klik kartu memanggil pilihJenis, lalu scroll ke wrapper form dan
+    // fokus ke isian pertama.
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/TransaksiTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('pilihJenis(id)');
+    expect(sumber).toContain('formRef');
+    expect(sumber).toContain('scrollIntoView');
+    expect(sumber).toContain("block: 'start'");
+    expect(sumber).toContain('scroll-mt-24');
+    expect(sumber).toContain('.focus({ preventScroll: true })');
   });
 
   it('merender form Bayar dengan label ramah dan pilihan akun non-kas', () => {
@@ -754,7 +775,8 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
       ?.split('</button>')[0];
     expect(kartuPindah).toBeDefined();
     expect(kartuPindah).not.toContain('disabled');
-    expect(kartuPindah).toContain('Siap dipakai');
+    expect(kartuPindah).not.toContain('Siap dipakai');
+    expect(html).not.toContain('Siap dipakai');
     expect(html).not.toContain('Segera hadir');
     for (const label of ['Panjar', 'Catat Utang', 'Bayar Utang']) {
       expect(html).toContain(label);
