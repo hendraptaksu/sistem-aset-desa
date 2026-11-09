@@ -11,6 +11,7 @@ import {
 } from '../../db/coa.js';
 import { api } from '../lib/api.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   Card,
@@ -309,7 +310,11 @@ export function AkunTab() {
           </p>
           <ErrorBox msg={err} />
           {info && (
-            <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800">
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
+            >
               {info}
             </div>
           )}
@@ -402,7 +407,11 @@ export function AkunTab() {
             )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button disabled={busy} onClick={() => void simpan()}>
+            <Button
+              disabled={busy}
+              title={busy ? ALASAN_SIBUK : undefined}
+              onClick={() => void simpan()}
+            >
               {busy ? 'Menyimpan…' : editKode ? 'Simpan Perubahan' : 'Tambah Akun'}
             </Button>
             {editKode && (
@@ -518,10 +527,13 @@ export function AkunTab() {
                           </Button>
                         ) : sistem ? (
                           <span
-                            className="px-2 py-1 text-helper text-stone-400"
-                            title="Akun sistem yang dibutuhkan wizard/alur tidak bisa dinonaktifkan."
+                            className="px-2 py-1 text-right text-helper text-stone-400"
+                            title="Akun sistem dibutuhkan wizard/alur dan tidak bisa dinonaktifkan."
                           >
                             Akun sistem
+                            <span className="block text-[11px] leading-tight">
+                              tidak bisa dinonaktifkan
+                            </span>
                           </span>
                         ) : (
                           <Button
@@ -570,16 +582,18 @@ export function AkunTab() {
             aksiTarget.jenis === 'hapus' ? (
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> akan
-                dihapus permanen. Penghapusan hanya berhasil bila akun belum pernah
-                dipakai di jurnal atau panjar. Bila sudah dipakai,
-                gunakan <b>Nonaktifkan</b>.
+                dihapus permanen dan <b>tidak bisa dibatalkan</b>. Penghapusan
+                hanya berhasil bila akun belum pernah dipakai di jurnal atau
+                panjar. Bila sudah dipakai, gunakan <b>Nonaktifkan</b> agar
+                histori dan laporan lama tetap utuh.
               </>
             ) : aksiTarget.jenis === 'nonaktif' ? (
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> tidak
-                akan muncul di form input baru. Jurnal dan laporan lama
-                tetap utuh dan bisa dibaca. Akun bawaan juga tidak bisa diubah
-                namanya atau dihapus; status ini bisa diaktifkan kembali kapan saja.
+                akan muncul di form input baru. <b>Yang tetap:</b> jurnal dan
+                laporan lama utuh dan bisa dibaca. Akun bawaan juga tidak bisa
+                diubah namanya atau dihapus; status ini bisa diaktifkan kembali
+                kapan saja.
               </>
             ) : (
               <>

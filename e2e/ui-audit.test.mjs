@@ -247,11 +247,20 @@ async function cekSidebar(page, ukuran) {
         `Item laporan ${label} tidak terlihat setelah grup dibuka`,
       );
     }
-    // 13 item tab (tanpa Pengaturan) + 3 header grup, dengan Jurnal Umum
-    // terlihat karena Mode lanjutan sudah aktif.
+    // Jurnal Umum sudah terlihat karena Mode lanjutan aktif; pastikan bukan
+    // race setelah reload sebelum menghitung tombol.
+    assert.ok(
+      await nav.getByRole('button', { name: 'Jurnal Umum', exact: true }).isVisible(),
+      'Jurnal Umum tidak terlihat di sidebar setelah Mode lanjutan aktif',
+    );
+    // Isi nav saat sidebar terbuka = seluruh tab kecuali Pengaturan (dipin di
+    // footer di luar <nav>) + 3 tombol header grup (Harian/Laporan/Data).
+    // Jangan menulis angka mati: daftar TAB boleh berubah tanpa membuat audit
+    // gagal karena selisih satu.
+    const jumlahItemNav = TAB.length - 1;
     assert.equal(
       await nav.getByRole('button').count(),
-      16,
+      jumlahItemNav + 3,
       'Jumlah tombol nav tidak sesuai setelah grup Laporan dibuka',
     );
   } else {
@@ -538,6 +547,53 @@ async function cekSimpanTransaksi(page, folder, t) {
   return { keterangan, baris };
 }
 
+/**
+ * T3.8: konfirmasi aksi berisiko menjelaskan dampak, memfokuskan pilihan aman,
+ * dan bisa ditutup dengan Escape tanpa menjalankan aksi.
+ */
+async function cekKonfirmasiAksiBerisiko(page, t) {
+  const pemicu = page.getByRole('button', { name: 'Backup Lengkap (disarankan)' });
+  await pemicu.scrollIntoViewIfNeeded();
+  await pemicu.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Buat backup lengkap?' });
+  await dialog.waitFor({ timeout: 10_000 });
+  const teks = await dialog.innerText();
+  assert.match(teks, /Yang berubah:/, 'Konfirmasi backup tidak menyebut yang berubah');
+  assert.match(teks, /Yang tetap:/, 'Konfirmasi backup tidak menyebut yang tetap');
+  assert.match(teks, /tidak terenkripsi/i, 'Konfirmasi backup tidak menyebut enkripsi');
+
+  const fokus = await page.evaluate(() =>
+    (document.activeElement?.textContent ?? '').trim(),
+  );
+  assert.equal(fokus, 'Batal', 'Fokus awal konfirmasi bukan pilihan aman Batal');
+
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  await page.waitForFunction(
+    () => (document.activeElement?.textContent ?? '').includes('Backup Lengkap'),
+    null,
+    { timeout: 5_000 },
+  );
+
+  const restore = page.getByRole('button', { name: 'Restore Lengkap (disarankan)' });
+  await restore.click();
+  const dialogRestore = page.getByRole('dialog', {
+    name: 'Pulihkan database dari backup lengkap?',
+  });
+  await dialogRestore.waitFor({ timeout: 10_000 });
+  const teksRestore = await dialogRestore.innerText();
+  assert.match(teksRestore, /Yang tetap:/, 'Konfirmasi restore tidak menyebut yang tetap');
+  assert.match(teksRestore, /pre-restore/, 'Konfirmasi restore tidak menyebut cadangan');
+  assert.match(teksRestore, /manifest\.json/, 'Konfirmasi restore tidak menyebut manifest');
+  await page.keyboard.press('Escape');
+  await dialogRestore.waitFor({ state: 'detached' });
+
+  t.diagnostic(
+    'konfirmasi aksi berisiko OK: copy dampak, fokus Batal, Escape menutup tanpa aksi',
+  );
+}
+
 /** Modal Detail Jurnal: fokus masuk, Tab terkurung, Escape + restore fokus. */
 async function cekModalJurnal(page, baris, folder, t) {
   const dialog = page.getByRole('dialog', { name: 'Detail Jurnal' });
@@ -766,6 +822,9 @@ async function jalankanAudit(ukuran, t) {
     await aktifkanModeLanjutan(page, t);
     await cekSidebar(page, ukuran);
     t.diagnostic(`${ukuran.nama} sidebar: Pengaturan terlihat, grup Laporan dapat diakses`);
+
+    await cekKonfirmasiAksiBerisiko(page, t);
+    ringkasan.flow.konfirmasiBerisiko = 'lulus';
 
     await cekScrollAntarTab(page, t);
     ringkasan.flow.scrollAntarTab = 'lulus';

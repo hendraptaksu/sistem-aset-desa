@@ -20,6 +20,7 @@ import {
   type StatusSaldoAwal,
 } from '../lib/api.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   Card,
@@ -809,6 +810,7 @@ export function BatalkanJurnalModal({
             <Button
               variant="ghost"
               disabled={busy}
+              title={busy ? ALASAN_SIBUK : undefined}
               onClick={() => {
                 setPerluKonfirmasi(false);
                 setErr(null);
@@ -819,6 +821,13 @@ export function BatalkanJurnalModal({
             <Button
               variant="danger"
               disabled={busy || !cukup}
+              title={
+                busy
+                  ? ALASAN_SIBUK
+                  : !cukup
+                    ? `Isi alasan pembatalan minimal ${ALASAN_REVERSAL_MIN} karakter.`
+                    : undefined
+              }
               onClick={() => void kirim(true)}
             >
               {busy ? 'Membatalkan…' : 'Tetap batalkan'}
@@ -848,6 +857,13 @@ export function BatalkanJurnalModal({
             <Button
               variant="danger"
               disabled={busy || !cukup}
+              title={
+                busy
+                  ? ALASAN_SIBUK
+                  : !cukup
+                    ? `Isi alasan pembatalan minimal ${ALASAN_REVERSAL_MIN} karakter.`
+                    : undefined
+              }
               onClick={() => void kirim()}
             >
               {busy ? 'Membatalkan…' : 'Batalkan Transaksi'}

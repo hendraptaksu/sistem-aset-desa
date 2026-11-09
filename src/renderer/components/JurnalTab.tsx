@@ -25,6 +25,7 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, isPerluKonfirmasi, type JurnalLengkap } from '../lib/api.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   Card,
@@ -93,6 +94,28 @@ export function alasanTidakBisaKoreksi(
     return 'Jurnal balik / jurnal yang sudah dikoreksi tidak bisa dikoreksi lagi.';
   if (jurnal.jenis === 'SALDO_AWAL')
     return 'Saldo awal hanya boleh dikoreksi lewat alur koreksi saldo awal.';
+  return undefined;
+}
+
+/**
+ * T3.8: alasan tombol koreksi nonaktif. Dipakai sebagai `title` sekaligus teks
+ * bantuan terlihat agar operator tidak menebak-nebak mengapa tombol mati.
+ */
+export function alasanKoreksiTidakSiap(opsi: {
+  busy: boolean;
+  alasanSah: boolean;
+  tanggalBalikValid: boolean;
+  langkah: 'alasan' | 'isi-ulang';
+  formSah: boolean;
+}): string | undefined {
+  if (opsi.busy) return ALASAN_SIBUK;
+  if (!opsi.alasanSah) {
+    return `Isi alasan koreksi minimal ${ALASAN_REVERSAL_MIN} karakter.`;
+  }
+  if (!opsi.tanggalBalikValid) return 'Perbaiki tanggal jurnal balik.';
+  if (opsi.langkah === 'isi-ulang' && !opsi.formSah) {
+    return 'Lengkapi tanggal, keterangan, dan baris; total debit harus sama dengan kredit.';
+  }
   return undefined;
 }
 
@@ -316,7 +339,11 @@ export function JurnalTab({
       <Card>
         <ErrorBox msg={err} />
         {info && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800"
+          >
             {info}
           </div>
         )}
@@ -638,6 +665,14 @@ function KoreksiModal({
     Boolean(keterangan.trim()) &&
     dataBarisSah &&
     seimbang;
+  const tanggalBalikValid = tanggalKalenderValid(tanggalBalik);
+  const alasanAksiTidakSiap = alasanKoreksiTidakSiap({
+    busy,
+    alasanSah,
+    tanggalBalikValid,
+    langkah,
+    formSah,
+  });
   const bedaTahun =
     tanggalKalenderValid(tanggalBalik) &&
     tanggalKalenderValid(tanggal) &&
@@ -846,19 +881,26 @@ function KoreksiModal({
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              {alasanAksiTidakSiap && (
+                <span className="mr-auto text-sm text-stone-500">
+                  {alasanAksiTidakSiap}
+                </span>
+              )}
               <Button variant="ghost" disabled={busy} onClick={batal}>
                 Batal
               </Button>
               <Button
                 variant="ghost"
-                disabled={busy || !alasanSah || !tanggalKalenderValid(tanggalBalik)}
+                disabled={busy || !alasanSah || !tanggalBalikValid}
+                title={alasanAksiTidakSiap}
                 onClick={() => setKonfirmasiFinal('balik')}
               >
                 {busy ? 'Menyimpan…' : 'Jurnal balik saja'}
               </Button>
               <Button
-                disabled={busy || !alasanSah || !tanggalKalenderValid(tanggalBalik)}
+                disabled={busy || !alasanSah || !tanggalBalikValid}
+                title={alasanAksiTidakSiap}
                 onClick={() => {
                   setErr(null);
                   setLangkah('isi-ulang');
@@ -960,6 +1002,11 @@ function KoreksiModal({
                         <Button
                           variant="ghost"
                           disabled={baris.length <= 2}
+                          title={
+                            baris.length <= 2
+                              ? 'Minimal dua baris jurnal (satu debit, satu kredit).'
+                              : undefined
+                          }
                           onClick={() => hapusBaris(i)}
                         >
                           Hapus
@@ -1004,7 +1051,12 @@ function KoreksiModal({
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              {alasanAksiTidakSiap && (
+                <span className="mr-auto text-sm text-stone-500">
+                  {alasanAksiTidakSiap}
+                </span>
+              )}
               <Button variant="ghost" disabled={busy} onClick={() => setLangkah('alasan')}>
                 Kembali
               </Button>
@@ -1013,6 +1065,7 @@ function KoreksiModal({
               </Button>
               <Button
                 disabled={busy || !formSah}
+                title={alasanAksiTidakSiap}
                 onClick={() => setKonfirmasiFinal('isi-ulang')}
               >
                 {busy ? 'Menyimpan…' : 'Simpan koreksi'}
@@ -1043,8 +1096,9 @@ function KoreksiModal({
                   </p>
                 )}
                 <p className="text-sm text-stone-600">
-                  Jurnal asli tetap disimpan. Tindakan ini tercatat di riwayat audit
-                  dan tidak bisa dibatalkan.
+                  Jurnal asli tetap disimpan dan tidak bisa dihapus. Tindakan ini
+                  tercatat di riwayat audit; bila keliru, lakukan koreksi ulang
+                  (jurnal balik + jurnal pengganti) dengan alasan baru.
                 </p>
               </>
             }

@@ -13,11 +13,13 @@ import {
   rapikanAlasanPeringatan,
 } from '../lib/peringatan.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   CurrencyInput,
   ErrorBox,
   Field,
+  KonfirmasiModal,
   LockModal,
   Modal,
   PeringatanModal,
@@ -82,6 +84,84 @@ function barisAwalWizard(
         r.nominal > 0,
     );
   return rows.length > 0 ? rows : [{ key: 1, akun: akunAwal, nominal: 0 }];
+}
+
+/** T3.8: alasan tombol Simpan nonaktif, dipakai sebagai title + teks terlihat. */
+export function alasanSimpanSaldoAwal(opsi: {
+  busy: boolean;
+  formSah: boolean;
+  modeKoreksi: boolean;
+  alasanKoreksiCukup: boolean;
+}): string | undefined {
+  if (opsi.busy) return ALASAN_SIBUK;
+  if (opsi.formSah && (!opsi.modeKoreksi || opsi.alasanKoreksiCukup)) {
+    return undefined;
+  }
+  if (opsi.modeKoreksi && !opsi.alasanKoreksiCukup) {
+    return PESAN_ALASAN_KOREKSI_MIN;
+  }
+  return 'Isi minimal satu saldo lebih dari 0 dan tanggal yang valid.';
+}
+
+/**
+ * T3.8: konfirmasi simpan/koreksi saldo awal. Menjelaskan apa yang berubah,
+ * apa yang tetap, dan langkah berikutnya bila hasilnya perlu diperbaiki.
+ */
+export function KonfirmasiSimpanSaldoAwal({
+  mode,
+  tanggal,
+  total,
+  sibuk = false,
+  onBatal,
+  onKonfirmasi,
+}: {
+  mode: 'awal' | 'koreksi';
+  tanggal: string;
+  total: number;
+  sibuk?: boolean;
+  onBatal: () => void;
+  onKonfirmasi: () => void;
+}) {
+  const koreksi = mode === 'koreksi';
+  return (
+    <KonfirmasiModal
+      judul={koreksi ? 'Simpan koreksi saldo awal?' : 'Simpan saldo awal sekarang?'}
+      deskripsi={
+        <>
+          <p>
+            {koreksi ? (
+              <>
+                Saldo awal per <b>{formatTanggal(tanggal)}</b> akan dikoreksi
+                menjadi total <b>{formatRp(total)}</b>. Sistem membuat jurnal
+                balik untuk jurnal pembukaan aktif, lalu jurnal penyesuaian baru.
+              </>
+            ) : (
+              <>
+                Satu jurnal saldo awal seimbang sebesar{' '}
+                <b>{formatRp(total)}</b> per <b>{formatTanggal(tanggal)}</b> akan
+                dibuat.
+              </>
+            )}
+          </p>
+          <p>
+            <b>Yang berubah:</b> laporan dan saldo akun mengikuti jurnal baru.{' '}
+            <b>Yang tetap:</b> jurnal lama tidak dihapus dan tetap tersimpan di
+            audit; koreksi berikutnya juga membuat jurnal balik, bukan mengedit
+            jurnal lama.
+          </p>
+          <p className="text-sm text-stone-600">
+            {koreksi
+              ? 'Bila hasilnya masih keliru, buka Koreksi Saldo Awal lagi dan isi alasan baru.'
+              : 'Setelah tersimpan, wizard saldo awal terkunci. Bila ada kekeliruan, gunakan tombol Koreksi Saldo Awal dengan alasan; jurnal lama tetap tersimpan.'}
+          </p>
+        </>
+      }
+      labelYa={koreksi ? 'Ya, simpan koreksi' : 'Ya, simpan saldo awal'}
+      sibuk={sibuk}
+      onBatal={onBatal}
+      onKonfirmasi={onKonfirmasi}
+    />
+  );
 }
 
 /**
@@ -150,6 +230,7 @@ export function SaldoAwalWizard({
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
+  const [konfirmasiSimpan, setKonfirmasiSimpan] = useState(false);
   /** AKT-07: alasan kunci periode dan alasan peringatan dipisah. */
   const alasanPeriodeRef = useRef('');
   const alasanPeringatanRef = useRef('');
@@ -226,6 +307,15 @@ export function SaldoAwalWizard({
     alasanKoreksiBersih.length >= MIN_ALASAN_KOREKSI;
   const bolehSimpan =
     formSah && (!modeKoreksi || alasanKoreksiCukup);
+  const totalSaldoAwal = hasil.data
+    ? hasil.data.input.baris.reduce((s, b) => s + b.debit, 0)
+    : 0;
+  const alasanSimpanTidakAktif = alasanSimpanSaldoAwal({
+    busy,
+    formSah,
+    modeKoreksi,
+    alasanKoreksiCukup,
+  });
 
   const labelAkun = (kode: string): string => {
     if (kode === AKUN_MODAL) return '3000 — MODAL (penyeimbang otomatis)';
@@ -626,7 +716,11 @@ export function SaldoAwalWizard({
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button disabled={busy || !bolehSimpan} onClick={() => void simpan()}>
+          <Button
+            disabled={busy || !bolehSimpan}
+            title={alasanSimpanTidakAktif}
+            onClick={() => setKonfirmasiSimpan(true)}
+          >
             {busy
               ? 'Menyimpan…'
               : modeKoreksi
@@ -636,11 +730,11 @@ export function SaldoAwalWizard({
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Batal
           </Button>
-          {modeKoreksi ? (
+          {alasanSimpanTidakAktif ? (
+            <span className="text-sm text-stone-500">{alasanSimpanTidakAktif}</span>
+          ) : modeKoreksi ? (
             <span className="text-sm text-stone-500">
-              {alasanKoreksiCukup
-                ? 'Saldo awal akan dikoreksi tanpa menghapus jurnal lama.'
-                : PESAN_ALASAN_KOREKSI_MIN}
+              Saldo awal akan dikoreksi tanpa menghapus jurnal lama.
             </span>
           ) : (
             <span className="text-sm text-stone-500">
@@ -648,6 +742,20 @@ export function SaldoAwalWizard({
             </span>
           )}
         </div>
+
+        {konfirmasiSimpan && (
+          <KonfirmasiSimpanSaldoAwal
+            mode={modeKoreksi ? 'koreksi' : 'awal'}
+            tanggal={tanggal}
+            total={totalSaldoAwal}
+            sibuk={busy}
+            onBatal={() => setKonfirmasiSimpan(false)}
+            onKonfirmasi={() => {
+              setKonfirmasiSimpan(false);
+              void simpan();
+            }}
+          />
+        )}
 
         {lockOpen && (
           <LockModal

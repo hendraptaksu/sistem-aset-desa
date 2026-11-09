@@ -40,8 +40,24 @@ import {
   TransaksiTab,
 } from '../src/renderer/components/TransaksiTab.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
-import { KonfirmasiModal } from '../src/renderer/components/ui.js';
-import { SaldoAwalWizard } from '../src/renderer/components/SaldoAwalWizard.js';
+import {
+  ALASAN_SIBUK,
+  ErrorBox,
+  KonfirmasiModal,
+  alasanTombolNonaktif,
+  pilihFokusAwal,
+} from '../src/renderer/components/ui.js';
+import {
+  KonfirmasiSimpanSaldoAwal,
+  SaldoAwalWizard,
+  alasanSimpanSaldoAwal,
+} from '../src/renderer/components/SaldoAwalWizard.js';
+import {
+  KonfirmasiBackup,
+  KonfirmasiRestoreDb,
+  KonfirmasiRestoreLengkap,
+} from '../src/renderer/components/DashboardTab.js';
+import { alasanKoreksiTidakSiap } from '../src/renderer/components/JurnalTab.js';
 import { akunBolehDinonaktifkan } from '../src/renderer/components/AkunTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
@@ -705,6 +721,9 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
     expect(html).toContain('Batal');
     expect(html).toContain('Ya, hapus');
     expect(html).not.toContain('disabled=""');
+    // T3.8: fokus awal ke pilihan aman (Batal), bukan tombol destruktif.
+    expect(html).toContain('autofocus');
+    expect(html).toContain('data-fokus-awal="true"');
   });
 
   it('menampilkan status sibuk dan menonaktifkan tombol aksi serta X', () => {
@@ -953,6 +972,203 @@ describe('DB-15 — akun nonaktif tidak muncul di form input baru', () => {
       'utf8',
     );
     expect(sumber).toContain('3000/1040/1050/2050/2060/5063/5050');
+  });
+});
+
+describe('T3.8 — poles UX aksi berisiko', () => {
+  it('ErrorBox diumumkan sebagai alert assertive', () => {
+    const html = renderToStaticMarkup(
+      createElement(ErrorBox, { msg: 'Kas akan minus. Periksa nominal lalu coba lagi.' }),
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('aria-live="assertive"');
+    expect(html).toContain('aria-atomic="true"');
+    expect(html).toContain('Periksa nominal lalu coba lagi.');
+    expect(renderToStaticMarkup(createElement(ErrorBox, { msg: null }))).toBe('');
+  });
+
+  it('memprioritaskan penanda fokus aman, lalu field, lalu kontrol pertama, lalu dialog', () => {
+    const fake = (
+      nama: string,
+      opsi: { fokusAwal?: boolean; autofocus?: boolean; field?: boolean } = {},
+    ) => ({
+      nama,
+      hasAttribute: (attr: string) =>
+        (attr === 'data-fokus-awal' && opsi.fokusAwal === true) ||
+        (attr === 'autofocus' && opsi.autofocus === true),
+      matches: (sel: string) => opsi.field === true && sel.includes('input'),
+    });
+    const aman = fake('batal', { fokusAwal: true, autofocus: true });
+    const field = fake('alasan', { field: true });
+    const tombol = fake('tombol');
+    const dialog = fake('dialog');
+
+    expect(pilihFokusAwal([tombol, field, aman], dialog)).toBe(aman);
+    expect(pilihFokusAwal([tombol, field], dialog)).toBe(field);
+    expect(pilihFokusAwal([tombol], dialog)).toBe(tombol);
+    expect(pilihFokusAwal([], dialog)).toBe(dialog);
+  });
+
+  it('modal menutup dengan Escape hanya saat tidak sibuk dan mengembalikan fokus', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/ui.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain("e.key === 'Escape'");
+    expect(sumber).toContain('if (atas.sibuk()) return;');
+    expect(sumber).toContain('pemicu.focus({ preventScroll: true })');
+  });
+
+  it('alasan tombol nonaktif selalu tersedia saat sibuk atau ada alasan', () => {
+    expect(alasanTombolNonaktif({ sibuk: true })).toBe(ALASAN_SIBUK);
+    expect(alasanTombolNonaktif({ alasan: '  Jurnal sudah dikoreksi.  ' })).toBe(
+      'Jurnal sudah dikoreksi.',
+    );
+    expect(alasanTombolNonaktif({})).toBeUndefined();
+  });
+
+  it('konfirmasi backup menjelaskan yang berubah, yang tetap, dan enkripsi', () => {
+    const lengkap = renderToStaticMarkup(
+      createElement(KonfirmasiBackup, {
+        jenis: 'lengkap',
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(lengkap).toContain('Buat backup lengkap?');
+    expect(lengkap).toContain('Yang berubah:');
+    expect(lengkap).toContain('Yang tetap:');
+    expect(lengkap).toContain('data aktif');
+    expect(lengkap).toContain('tidak dihapus');
+    expect(lengkap).toContain('tidak terenkripsi');
+    expect(lengkap).toContain('manifest.json');
+
+    const db = renderToStaticMarkup(
+      createElement(KonfirmasiBackup, {
+        jenis: 'db',
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(db).toContain('Buat backup Export .db?');
+    expect(db).toContain('tanpa');
+    expect(db).toContain('Yang berubah:');
+    expect(db).toContain('Yang tetap:');
+  });
+
+  it('konfirmasi restore menyebut penggantian data, cadangan, PIN, dan langkah berikutnya', () => {
+    const db = renderToStaticMarkup(
+      createElement(KonfirmasiRestoreDb, {
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(db).toContain('diganti');
+    expect(db).toContain('manifest.json');
+    expect(db).toContain('PIN aplikasi dipertahankan');
+    expect(db).toContain('pre-restore');
+    expect(db).toMatch(/Bila hasil restore tidak sesuai/);
+    expect(db).toContain('dikunci');
+
+    const lengkap = renderToStaticMarkup(
+      createElement(KonfirmasiRestoreLengkap, {
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(lengkap).toContain('disarankan');
+    expect(lengkap).toContain('Yang tetap:');
+    expect(lengkap).toContain('pre-restore');
+    expect(lengkap).toContain('manifest.json');
+    expect(lengkap).toContain('dikunci');
+  });
+
+  it('konfirmasi simpan saldo awal menjelaskan kunci wizard dan jalur koreksi', () => {
+    const awal = renderToStaticMarkup(
+      createElement(KonfirmasiSimpanSaldoAwal, {
+        mode: 'awal',
+        tanggal: '2026-01-01',
+        total: RP(1_500_000),
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(awal).toContain('Simpan saldo awal sekarang?');
+    expect(awal).toContain('Yang berubah:');
+    expect(awal).toContain('Yang tetap:');
+    expect(awal).toContain('Koreksi Saldo Awal');
+    expect(awal).toContain('terkunci');
+
+    const koreksi = renderToStaticMarkup(
+      createElement(KonfirmasiSimpanSaldoAwal, {
+        mode: 'koreksi',
+        tanggal: '2026-01-01',
+        total: RP(1_500_000),
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(koreksi).toContain('Simpan koreksi saldo awal?');
+    expect(koreksi).toContain('jurnal balik');
+    expect(koreksi).toContain('audit');
+    expect(koreksi).toMatch(/Koreksi Saldo Awal lagi/);
+  });
+
+  it('helper alasan tombol Simpan saldo awal dan Koreksi jurnal konsisten', () => {
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: false,
+        formSah: true,
+        modeKoreksi: false,
+        alasanKoreksiCukup: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: false,
+        formSah: false,
+        modeKoreksi: false,
+        alasanKoreksiCukup: false,
+      }),
+    ).toMatch(/minimal satu saldo/);
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: false,
+        formSah: true,
+        modeKoreksi: true,
+        alasanKoreksiCukup: false,
+      }),
+    ).toMatch(/minimal 5 karakter/);
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: true,
+        formSah: true,
+        modeKoreksi: false,
+        alasanKoreksiCukup: true,
+      }),
+    ).toBe(ALASAN_SIBUK);
+
+    const dasar = {
+      busy: false,
+      alasanSah: true,
+      tanggalBalikValid: true,
+      langkah: 'alasan' as const,
+      formSah: true,
+    };
+    expect(alasanKoreksiTidakSiap(dasar)).toBeUndefined();
+    expect(alasanKoreksiTidakSiap({ ...dasar, alasanSah: false })).toMatch(
+      /minimal 5 karakter/,
+    );
+    expect(alasanKoreksiTidakSiap({ ...dasar, tanggalBalikValid: false })).toMatch(
+      /tanggal jurnal balik/,
+    );
+    expect(
+      alasanKoreksiTidakSiap({
+        ...dasar,
+        langkah: 'isi-ulang',
+        formSah: false,
+      }),
+    ).toMatch(/total debit/);
   });
 });
 

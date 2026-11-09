@@ -92,16 +92,41 @@ export function Badge({
   return <span className={clsx('rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;
 }
 
+/**
+ * T3.8: error harus diumumkan pembaca layar. `role="alert"` sudah implisit
+ * assertive, tetapi `aria-live` ditulis eksplisit agar perilakunya tidak
+ * bergantung pada dukungan AT terhadap role tersebut.
+ */
 export function ErrorBox({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
     <div
       role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
       className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
     >
       {msg}
     </div>
   );
+}
+
+/** T3.8: satu alasan baku saat aksi dinonaktifkan karena proses lain. */
+export const ALASAN_SIBUK = 'Tunggu proses yang sedang berjalan selesai.';
+
+/**
+ * T3.8: alasan yang ditampilkan pada tombol nonaktif. Tombol berisiko tidak
+ * boleh mati tanpa penjelasan; kembalikan `undefined` hanya bila aksi boleh.
+ */
+export function alasanTombolNonaktif(opsi: {
+  sibuk?: boolean;
+  alasan?: string | false | null;
+}): string | undefined {
+  if (opsi.sibuk) return ALASAN_SIBUK;
+  if (typeof opsi.alasan === 'string' && opsi.alasan.trim()) {
+    return opsi.alasan.trim();
+  }
+  return opsi.alasan === false ? 'Aksi ini belum bisa dipakai.' : undefined;
 }
 
 /** Input PIN 6 kotak ala m-banking. Keyboard fisik: ketik maju otomatis,
@@ -336,6 +361,23 @@ function elemenFokusable(dialog: HTMLElement): HTMLElement[] {
   });
 }
 
+/**
+ * T3.8: prioritas fokus awal modal. Penanda `data-fokus-awal` menang (dipakai
+ * tombol Batal pada konfirmasi berisiko), lalu elemen ber-`autoFocus`, field
+ * isian, kontrol pertama, dan dialog itu sendiri sebagai cadangan.
+ */
+export function pilihFokusAwal<
+  T extends { hasAttribute(nama: string): boolean; matches(selektor: string): boolean },
+>(fokusable: readonly T[], dialog: T): T {
+  return (
+    fokusable.find((el) => el.hasAttribute('data-fokus-awal')) ??
+    fokusable.find((el) => el.hasAttribute('autofocus')) ??
+    fokusable.find((el) => el.matches('input, select, textarea')) ??
+    fokusable[0] ??
+    dialog
+  );
+}
+
 type EntriModal = {
   dialog: HTMLElement;
   sibuk: () => boolean;
@@ -492,11 +534,7 @@ export function Modal({
     pastikanPendengarModal();
 
     const fokusable = elemenFokusable(dialog);
-    const fokusAwal =
-      fokusable.find((el) => el.hasAttribute('autofocus')) ??
-      fokusable.find((el) => el.matches('input, select, textarea')) ??
-      fokusable[0] ??
-      dialog;
+    const fokusAwal = pilihFokusAwal(fokusable, dialog);
     fokusAwal.focus({ preventScroll: true });
 
     return () => {
@@ -534,6 +572,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={idJudul}
+        aria-busy={sibuk || undefined}
         {...(deskripsi ? { 'aria-describedby': idDeskripsi } : {})}
         tabIndex={-1}
         data-modal="true"
@@ -558,7 +597,7 @@ export function Modal({
           <button
             type="button"
             aria-label="Tutup dialog"
-            title="Tutup dialog"
+            title={sibuk ? 'Tunggu proses selesai sebelum menutup' : 'Tutup dialog'}
             disabled={sibuk}
             onClick={onTutup}
             className={`-m-1 shrink-0 rounded-lg p-1.5 text-xl leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 ${RING_FOKUS}`}
@@ -663,6 +702,8 @@ export function PeringatanModal({
       {pesanError && (
         <p
           role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
         >
           {pesanError}
@@ -726,7 +767,14 @@ export function KonfirmasiModal({
       lebar="md"
     >
       <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="ghost" disabled={sibuk} onClick={onBatal}>
+        {/* T3.8: fokus awal ke pilihan aman (Batal), bukan tombol destruktif. */}
+        <Button
+          variant="ghost"
+          autoFocus
+          data-fokus-awal="true"
+          disabled={sibuk}
+          onClick={onBatal}
+        >
           {labelBatal}
         </Button>
         <Button variant={variant} disabled={sibuk} onClick={onKonfirmasi}>
