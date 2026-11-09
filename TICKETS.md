@@ -30,8 +30,8 @@
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
 | 3 — Hardening | P2 | 9 | 9 |
-| 4 — Rilis | — | 1 | 3 |
-| **Total** |  | **31** | **33** |
+| 4 — Rilis | — | 2 | 3 |
+| **Total** |  | **32** | **33** |
 
 ## Aturan kerja
 
@@ -372,7 +372,7 @@
   - **Selesai bila:** semua lulus dan hasilnya dicatat.
   - **Catatan:** Dijalankan berurutan di **macOS** (Darwin, Node dari repo; **Windows tidak diuji** di subagent ini). **Hasil:** (1) `npm run typecheck` lulus tanpa error. (2) `npm test` = **91 file / 1.201 test lulus, 0 gagal** (T3.9: 91/1.201; baseline T0.2: 85/1.078 → **+6 file / +123 test**, tidak ada file/test yang hilang). Enam file test baru sejak baseline: `tests/saldo-awal-koreksi.test.ts` (T1.7), `tests/kemampuan-koreksi-jurnal.test.ts` (T2.2), `tests/akun-sistem-alur.test.ts` (T2.5), `tests/restore-kunci.test.ts` (T2.7), `tests/regresi-p0.test.ts` (T1.9), `tests/benchmark-laporan.test.ts` (T3.7); sisanya penambahan test di file yang sudah ada. (3) `npm run build` lulus: `out/main/index.js` (417,71 kB), `out/preload/index.cjs`, `out/renderer/*`. (4) `npm run smoke` (= build + e2e) lulus **2/2**: smoke aplikasi (buka, setup PIN, dashboard seimbang) dan pinjaman (bayar sebagian, batal, arus kas cocok); tidak perlu `SMOKE_KEEP=1`, tidak ada kegagalan headless. (5) Opsional `npm run benchmark` lulus: seed 10.000 jurnal/50.000 baris 166,4 ms; dashboard 100,0 ms; neraca saldo 38,2 ms; laba rugi 26,4 ms; arus kas 51,9 ms; buku besar 1001 30,5 ms — semua <5.000 ms. (6) Opsional `npm run audit:ui` lulus **3/3** (1024x768, 1024x680, 1280x800): 13 tab, modal/fokus/Escape, guard isian, filter, sidebar, dan simpan transaksi OK. Tidak ada kegagalan sehingga tidak ada perubahan kode; `git status --short` bersih. Commit catatan: `docs(tickets): catat T4.1`.
 
-- [ ] **T4.2 — Smoke manual matriks**
+- [x] **T4.2 — Smoke manual matriks**
   - Skenario minimum:
     1. DB baru → saldo awal → jurnal → laporan.
     2. Backup manual → tutup → buka backup.
@@ -383,7 +383,19 @@
     7. Matikan PIN salah 5x → restart → masih diblokir.
   - Uji di macOS dan Windows bila tersedia.
   - **Selesai bila:** semua skenario lulus dan catatan platform disimpan.
-  - **Catatan:** -
+  - **Catatan:** Dijalankan **2026-11-09** di **macOS** (Darwin, Node dari repo). **Windows tidak diuji** — tidak tersedia di lingkungan subagent; tidak ada klaim hasil Windows. `npm run smoke` (build + e2e UI nyata) lulus **2/2**, `npm run audit:ui` lulus **3/3** (1280x800, 1024x768, 1024x680). Tujuh skenario end-to-end dijalankan dengan skrip sementara `npx tsx` di luar repo (DB di temp dir; skrip + temp dihapus setelah selesai) memakai API aplikasi:
+
+    | # | Skenario | Hasil | Bukti |
+    | --- | --- | --- | --- |
+    | 1 | DB baru → saldo awal → jurnal → laporan | LULUS | `openDb` + `simpanSaldoAwal` + `postingJurnal` + `laporanBukuBesar`/`laporanNeracaSaldo`; kas 1001 = Rp11.000.000, neraca saldo seimbang, data sama setelah DB ditutup & dibuka ulang |
+    | 2 | Backup manual → tutup → buka backup | LULUS | `backupVacuumInto` + `verifikasiFileBackup`; DB ditutup, backup dibuka langsung: 2 jurnal, kas Rp2.750.000 |
+    | 3 | Restore `.db` dan restore lengkap → layar kunci | LULUS | `restoreDbAman` + `restoreLengkap`, lalu urutan handler IPC `muatStateBlokir` + `kunciLagi`; `statusKunci().terbuka=false` dan `sudahSetup=true` pada kedua restore, PIN benar membuka, jurnal setelah backup hilang. Bukti test: `tests/ipc-main.test.ts` (restore lengkap `lock:status` terbuka:false di :731-740; restore `.db` di :2023-2026), `tests/restore-kunci.test.ts` |
+    | 4 | Koreksi saldo awal → laporan berubah, audit bertambah | LULUS | `koreksiSaldoAwal`: kas 1001 Rp5.000.000→Rp8.000.000, neraca saldo seimbang, audit `KOREKSI-SALDO-AWAL` +1, wizard tetap terkunci. Bukti test: `tests/saldo-awal-koreksi.test.ts` |
+    | 5 | Panjar serah → close; pinjaman pencairan → bayar pokok/bunga → batal | LULUS | `serahkanPanjar`→`closePanjarV2` (status CLOSED, sisa Rp100.000); `simpanPinjamanLpd`→`bayarAngsuranPinjaman` (pokok Rp1.000.000 + bunga Rp50.000)→`batalkanPembayaranPinjaman`→`batalkanPinjaman` (status DIBATALKAN, outstanding 0). Bukti UI: `e2e/pinjaman.test.mjs` (bagian `npm run smoke`); `tests/panjar.test.ts` |
+    | 6 | Tutup buku → backup otomatis → jurnal tahun terkunci ditolak | LULUS | `tutupBuku(2025)` tersimpan (audit `TUTUP 2025`), backup otomatis `pura-2025.db` dibuat + `verifikasiFileBackup`; `postingJurnal` tanggal 2025 tanpa alasan **ditolak** dengan “Periode sudah ditutup”. Catatan desain: kunci periode bersifat **longgar** — koreksi dengan alasan ≥5 karakter tetap diizinkan (`docs/prinsip-akuntansi.md` #6, `docs/panduan-pengguna.md` Kunci Periode). Bukti test: `tests/db-28-tutup-pengaturan.test.ts`, `tests/tutup.test.ts` |
+    | 7 | PIN salah 5x → restart → masih diblokir | LULUS | 5x `bukaKunci` salah → `blokirDetik>0`; DB ditutup & dibuka ulang, state memori dikosongkan, `muatStateBlokir` → `blokirDetik>0`, `statusKunci().terbuka=false`, PIN benar ditolak “coba lagi dalam”; `keamanan_gagal`/`keamanan_blokir_sampai` tersimpan. Bukti test: `tests/kunci.test.ts` (:179-194 simulasi restart), `tests/ipc-main.test.ts` (`lock:status` mengikuti sesi) |
+
+    **Hasil:** 7/7 skenario lulus; tidak ada bug nyata ditemukan sehingga tidak ada perubahan kode/test. Skrip/temp dihapus dan `git status --short` bersih. Commit catatan: `docs(tickets): catat T4.2`.
 
 - [ ] **T4.3 — Tutup tiket & arsipkan**
   - Pastikan seluruh tiket `[x]` dan tidak ada P0/P1 terbuka.
