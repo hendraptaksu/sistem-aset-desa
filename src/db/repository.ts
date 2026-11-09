@@ -17,6 +17,7 @@ import {
   type PengaturanPembukuan,
 } from '../core/pengaturan.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
+import { parseRupiahToSen } from '../utils/format.js';
 import { akhirHariLokalUtc, awalHariLokalUtc } from '../utils/tanggal.js';
 import { kemampuanKoreksiJurnal } from './kemampuanKoreksi.js';
 import {
@@ -659,19 +660,26 @@ function escapeLike(teks: string): string {
 }
 
 /**
- * Nominal rupiah dari kata kunci pencarian → sen. Titik/koma/spasi (pemisah
- * ribuan) dan awalan "Rp" diabaikan. Bukan angka → null.
+ * Nominal rupiah dari kata kunci pencarian → sen. Awalan "Rp" dan spasi
+ * diabaikan. Menerima format Indonesia (`1.500,50`) dan paste gaya AS
+ * (`1,500.50`). Bukan nominal valid atau nol → null.
  */
 function cariNominalSen(teks: string): number | null {
-  const bersih = teks
+  let bersih = teks
     .trim()
     .replace(/^rp\.?\s*/i, '')
-    .replace(/[.,\s]/g, '');
-  if (!/^\d+$/.test(bersih)) return null;
-  const rupiah = Number(bersih);
-  if (!Number.isSafeInteger(rupiah) || rupiah <= 0) return null;
-  const sen = rupiah * 100;
-  return Number.isSafeInteger(sen) ? sen : null;
+    .replace(/\s+/g, '');
+  if (bersih === '') return null;
+  // Normalisasi paste gaya AS: 1,500,000.50 → 1.500.000,50
+  if (/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(bersih)) {
+    bersih = bersih.replace(/,/g, '').replace('.', ',');
+  }
+  try {
+    const sen = parseRupiahToSen(bersih);
+    return sen > 0 && Number.isSafeInteger(sen) ? sen : null;
+  } catch {
+    return null;
+  }
 }
 
 /** WHERE bersama untuk daftar & hitung jurnal (termasuk pencarian P1-11). */

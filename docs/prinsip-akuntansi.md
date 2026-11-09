@@ -75,7 +75,8 @@ pembukuan nyata dimulai pada tanggal lain (mis. `2026-07-01`):
 ## 3. Yang tetap sama (jangan hilang)
 
 - Bahasa Indonesia sederhana, kop "PURA DALEM PURI PELIATAN", format Rupiah
-  `(Rp ...)` untuk negatif.
+  `Rp 1.500.000` untuk nominal bulat (tanpa `,00`), `Rp 1.500,50` untuk
+  pecahan sen, dan `(Rp ...)` untuk negatif.
 - Kode & nama akun mengikuti `KODE AKUN.csv` resmi pura (plus 1040 Uang Panjar).
 - Offline-first, satu file, backup/restore `.db`.
 - Tema UI hijau/tenang, tabel besar, tombol jelas.

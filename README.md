@@ -106,6 +106,24 @@ Prinsip yang dijaga:
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
    di mesin yang sama.
 
+### Format Rupiah dan angka
+
+- Tampilan UI, pratinjau cetak, dan PDF memakai `formatRp()`
+  (`Intl.NumberFormat('id-ID')`): titik ribuan, koma desimal. Nominal bulat
+  tampil tanpa `,00` (`Rp 1.500.000`); pecahan sen tetap dua desimal
+  (`Rp 1.500,50`); negatif dalam kurung (`(Rp 1.500.000)`).
+- Input nominal menerima format Indonesia (`1.500.000`, `1.500,50`). Koma
+  diikuti 1–2 digit dibaca sebagai desimal; koma diikuti 3 digit pada angka
+  tanpa titik ribuan tetap dibaca sebagai pemisah ribuan agar paste `100,000`
+  tidak menjadi Rp 100.
+- Pencarian jurnal menerima nominal yang sama, termasuk `Rp 1.500,50` dan
+  paste gaya AS `1,500.50`, lalu mencocokkan nilai debit/kredit.
+- Ekspor Excel menulis nominal sebagai NUMBER + numFmt `"Rp"#,##0.00`, bukan
+  string, supaya kolom bisa di-SUM. Karena itu Excel menampilkan `,00`, dan
+  pemisah tampilannya mengikuti locale Excel pengguna.
+- Jangan mem-parse string hasil `formatRp()` untuk perhitungan. Semua hitungan
+  memakai integer SEN; format hanya untuk tampilan.
+
 ---
 
 ## Perintah

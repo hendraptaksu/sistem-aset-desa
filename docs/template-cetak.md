@@ -58,9 +58,10 @@ dibutuhkan, tambahkan sebagai blok baru di model cetak.
   kolom yang dinormalisasi ke 100%. Teks panjang membungkus
   (`overflow-wrap: anywhere`), bukan memotong kolom.
 - **Font:** body 10pt, tabel 8,5pt; tetap terbaca saat dicetak hitam-putih.
-- **Nominal:** Rupiah memakai `formatRp`; negatif dalam kurung, mis.
-  `(Rp 500.000,00)`. Angka asli tetap tersimpan sebagai SEN di properti
-  `nilai` baris untuk pemeriksaan, bukan hasil parsing string.
+- **Nominal:** Rupiah memakai `formatRp`; nominal bulat tanpa `,00`, mis.
+  `Rp 500.000`; pecahan sen tetap dua desimal, mis. `Rp 1.500,50`; negatif
+  dalam kurung, mis. `(Rp 500.000)`. Angka asli tetap tersimpan sebagai SEN di
+  properti `nilai` baris untuk pemeriksaan, bukan hasil parsing string.
 - **Pagination deterministik:** parameter `barisPerHalaman` (default portrait
   30, landscape 22) menghitung baris data **dan** baris footer/total. Jumlah
   baris per halaman tidak berubah-ubah antar render.

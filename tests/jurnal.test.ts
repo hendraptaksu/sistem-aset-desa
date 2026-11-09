@@ -750,10 +750,41 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(ids('150000')).toEqual(['j-parkir']);
       expect(ids('150.000')).toEqual(['j-parkir']);
       expect(ids('Rp 150.000')).toEqual(['j-parkir']);
+      expect(ids('150.000,00')).toEqual(['j-parkir']);
+      expect(ids('150,000')).toEqual(['j-parkir']);
       expect(ids('20.000')).toEqual(['j-panjar']);
       // Wildcard LIKE diperlakukan sebagai teks biasa.
       expect(ids('%')).toEqual([]);
       expect(ids('_')).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mencari nominal pecahan dengan koma desimal', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-pecahan',
+          tanggal: '2026-08-01',
+          no_bukti: 'JU-2026-0007',
+          keterangan: 'Jurnal pecahan',
+          jenis: 'TERIMA',
+        },
+        [D('1001', 150_050), K('4005', 150_050)],
+      );
+      const ids = (cari: string) =>
+        listJurnalLengkapPage(db, { cari }).rows.map((j) => j.id);
+
+      expect(ids('1.500,50')).toEqual(['j-pecahan']);
+      expect(ids('Rp 1.500,50')).toEqual(['j-pecahan']);
+      expect(ids('1,500.50')).toEqual(['j-pecahan']);
+      // '150050' berarti Rp 150.050, bukan 150050 sen.
+      expect(ids('150050')).toEqual([]);
+      expect(ids('1.500,51')).toEqual([]);
+      expect(ids('1.500,505')).toEqual([]);
     } finally {
       db.close();
     }

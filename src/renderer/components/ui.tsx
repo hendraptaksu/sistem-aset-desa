@@ -250,22 +250,61 @@ export function PinInput({
 }
 
 const rpInput = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
-// 13 digit rupiah ×100 masih bilangan aman; 17 = 13 digit + 4 titik ribuan.
+// 13 digit rupiah ×100 masih bilangan aman.
+// 20 = 13 digit + 4 titik ribuan + koma + 2 digit desimal.
 const MAX_DIGIT_RUPIAH = 13;
-const MAX_PANJANG_INPUT = 17;
+const MAX_PANJANG_INPUT = 20;
 
-/** Baca ketikan/paste CurrencyInput: hanya digit dihitung sebagai rupiah utuh.
- * '150000' → { tampil: '150.000', sen: 15_000_000 };
- * '100,000' → { tampil: '100.000', sen: 10_000_000 }, bukan Rp 100. */
-export function parseCurrencyInput(teks: string): { tampil: string; sen: number } {
-  const digit = teks.replace(/\D/g, '').slice(0, MAX_DIGIT_RUPIAH);
-  if (digit === '') return { tampil: '', sen: 0 };
-  const rupiah = Number(digit);
-  return { tampil: rpInput.format(rupiah), sen: rupiah * 100 };
+/** Cari pemisah desimal pada teks nominal.
+ * - Koma/titik diikuti 1–2 digit di akhir → desimal.
+ * - Koma diikuti 3+ digit setelah titik ribuan → desimal tidak valid; potong 2 digit.
+ * - Koma diikuti 3 digit tanpa titik ribuan → pemisah ribuan (paste `100,000`).
+ * - Koma di akhir dipertahankan agar desimal bisa diketik bertahap. */
+function cariDesimal(bersih: string): { index: number; frac: string } | null {
+  if (bersih.endsWith(',')) {
+    return { index: bersih.length - 1, frac: '' };
+  }
+  const pendek = /([.,])(\d{1,2})$/.exec(bersih);
+  if (pendek) return { index: pendek.index, frac: pendek[2]! };
+  const panjang = /([.,])(\d{3,})$/.exec(bersih);
+  if (panjang) {
+    const index = panjang.index;
+    const sebelum = bersih.slice(0, index);
+    // Desimal lebih dari 2 digit: pertahankan dua digit pertama.
+    if (panjang[1] === ',' && sebelum.includes('.')) {
+      return { index, frac: panjang[2]!.slice(0, 2) };
+    }
+    if (panjang[1] === '.' && sebelum.includes(',')) {
+      return { index, frac: panjang[2]!.slice(0, 2) };
+    }
+  }
+  return null;
 }
 
-/** Input Rupiah bulat: tampil grouping Indonesia, state berupa SEN (integer).
- * Mengetik '1500' → tampil Rp 1.500 dan onChange(150000). */
+/** Baca ketikan/paste CurrencyInput.
+ * - '150000' → { tampil: '150.000', sen: 15_000_000 }
+ * - '1.500,50' → { tampil: '1.500,50', sen: 150_050 }
+ * - '100,000' → { tampil: '100.000', sen: 10_000_000 } (paste gaya AS)
+ * - '1.500,505' → { tampil: '1.500,50', sen: 150_050 } (desimal >2 digit dipotong) */
+export function parseCurrencyInput(teks: string): { tampil: string; sen: number } {
+  const bersih = teks.replace(/[^\d.,]/g, '');
+  if (bersih === '') return { tampil: '', sen: 0 };
+
+  const desimal = cariDesimal(bersih);
+  const intPart = desimal ? bersih.slice(0, desimal.index) : bersih;
+  const frac = desimal?.frac ?? '';
+  const digit = intPart.replace(/\D/g, '').slice(0, MAX_DIGIT_RUPIAH);
+  if (digit === '') return { tampil: '', sen: 0 };
+
+  const rupiah = Number(digit);
+  const sen = rupiah * 100 + Number((frac + '00').slice(0, 2));
+  const tampil = desimal ? `${rpInput.format(rupiah)},${frac}` : rpInput.format(rupiah);
+  return { tampil, sen };
+}
+
+/** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
+ * Mendukung nominal bulat maupun pecahan sen: mengetik '1.500,50' →
+ * onChange(150050). */
 export function CurrencyInput({
   value,
   onChange,
@@ -319,7 +358,7 @@ export function CurrencyInput({
   );
 }
 
-/** SEN → teks input: '1.500' bila bulat, '1.500,50' bila pecahan. */
+/** SEN → teks input saat tidak fokus: '1.500' bila bulat, '1.500,50' bila pecahan. */
 function formatSenInput(sen: number): string {
   const neg = sen < 0 ? '-' : '';
   const abs = Math.abs(sen);

@@ -1,7 +1,7 @@
-// AUD2-11: input & tampilan nominal Rupiah bulat tanpa desimal sen.
-// Fokus: formatRp bersih untuk nominal bulat, CurrencyInput memakai keyboard
-// numerik, menampilkan titik ribuan saat mengetik, dan membaca digit sebagai
-// rupiah utuh (bukan pecahan) sehingga paste '100,000' tidak menjadi Rp 100.
+// AUD2-11: input & tampilan nominal Rupiah.
+// Fokus: formatRp bersih untuk nominal bulat/pecahan, CurrencyInput memakai
+// keyboard numerik, menampilkan titik ribuan, dan membaca format Indonesia
+// (termasuk koma desimal) tanpa mengubah arti paste '100,000' menjadi Rp 100.
 
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
@@ -30,7 +30,7 @@ describe('AUD2-11 — formatRp nominal bulat', () => {
   });
 });
 
-describe('AUD2-11 — CurrencyInput rupiah bulat', () => {
+describe('AUD2-11 — CurrencyInput rupiah', () => {
   it('memakai inputMode numeric dan memformat nilai awal dengan titik ribuan', () => {
     const html = renderToStaticMarkup(
       createElement(CurrencyInput, {
@@ -66,6 +66,54 @@ describe('AUD2-11 — CurrencyInput rupiah bulat', () => {
       tampil: '1.500.000',
       sen: 150_000_000,
     });
+  });
+
+  it('membaca koma desimal sebagai sen', () => {
+    expect(parseCurrencyInput('1.500,50')).toEqual({
+      tampil: '1.500,50',
+      sen: 150_050,
+    });
+    expect(parseCurrencyInput('1.500,5')).toEqual({
+      tampil: '1.500,5',
+      sen: 150_050,
+    });
+    expect(parseCurrencyInput('1500,50')).toEqual({
+      tampil: '1.500,50',
+      sen: 150_050,
+    });
+    expect(parseCurrencyInput('0,05')).toEqual({ tampil: '0,05', sen: 5 });
+  });
+
+  it('mempertahankan koma di akhir agar desimal bisa diketik bertahap', () => {
+    expect(parseCurrencyInput('1.500,')).toEqual({
+      tampil: '1.500,',
+      sen: 150_000,
+    });
+  });
+
+  it('membaca paste format AS dan memotong desimal lebih dari 2 digit', () => {
+    expect(parseCurrencyInput('1,500.50')).toEqual({
+      tampil: '1.500,50',
+      sen: 150_050,
+    });
+    expect(parseCurrencyInput('1.500,505')).toEqual({
+      tampil: '1.500,50',
+      sen: 150_050,
+    });
+    expect(parseCurrencyInput('Rp 1.500.000,00')).toEqual({
+      tampil: '1.500.000,00',
+      sen: 150_000_000,
+    });
+  });
+
+  it('menampilkan nilai pecahan sen di input', () => {
+    const html = renderToStaticMarkup(
+      createElement(CurrencyInput, {
+        value: 150_050,
+        onChange: () => undefined,
+      }),
+    );
+    expect(html).toContain('value="1.500,50"');
   });
 
   it('membatasi digit agar nilai SEN tetap bilangan aman', () => {

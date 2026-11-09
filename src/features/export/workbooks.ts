@@ -180,7 +180,10 @@ export async function workbookToBuffer(wb: ExcelJS.Workbook): Promise<Uint8Array
 // (sen / 100) + numFmt — bukan string hasil formatRp. formatRp hanya untuk
 // HTML/print. Nominal negatif tetap angka negatif; numFmt menampilkan kurung.
 
-/** Format sel nominal Rupiah: positif Rp 1.500,00; negatif (Rp 1.500,00). */
+/** Format sel nominal Rupiah: positif Rp 1.500,00; negatif (Rp 1.500,00).
+ * Sengaja 2 desimal (bukan `formatRp`) agar presisi sen tidak hilang dan kolom
+ * bisa di-SUM. Pemisah tampilan mengikuti locale Excel pengguna, bukan locale
+ * aplikasi. */
 export const NUMFMT_RP = '"Rp"#,##0.00;(Rp"#,##0.00)';
 /** Format sel persen: nilai fraksi 0..1 (0,5 = 50,00%). */
 export const NUMFMT_PERSEN = '0.00%';
