@@ -193,6 +193,27 @@ export type IpcDeps = {
   pengirim: KonteksNavigasi;
 };
 
+/**
+ * T3.7 — batas aman `jurnal:list` (legacy). Nilai bukan angka kembali ke
+ * default; limit di-clamp ke 0..1000 dan offset minimal 0. Limit 0 berarti
+ * pemanggil meminta array kosong, bukan "tanpa batas".
+ */
+export function batasDaftarJurnal(
+  limit: unknown,
+  offset: unknown,
+): { limit: number; offset: number } {
+  const angka = (nilai: unknown, bawaan: number): number => {
+    if (nilai === undefined || nilai === null || nilai === '') return bawaan;
+    const n = Number(nilai);
+    if (!Number.isFinite(n)) return bawaan;
+    return Math.trunc(n);
+  };
+  return {
+    limit: Math.min(1000, Math.max(0, angka(limit, 500))),
+    offset: Math.max(0, angka(offset, 0)),
+  };
+}
+
 export function registerIpc(deps: IpcDeps): void {
   const sekarang = (): Date => deps.now?.() ?? new Date();
   const tanggalSekarang = (): string => tanggalLokal(sekarang());
@@ -489,6 +510,8 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Jurnal Umum & koreksi (P0-6) ----
   // Bentuk lama dipertahankan: mengembalikan array tanpa total. Layar baru
   // memakai `jurnal:cari` agar pagination memakai total dari server (P1-11).
+  // T3.7: array legacy tetap ada, tetapi SELALU terpotong (default 500, maks
+  // 1000) agar pemanggil lama tidak pernah memuat seluruh riwayat tanpa batas.
   daftarkan('jurnal:list', (_e, f: JurnalFilter = {}) => {
     const k = perluBuka();
     if (k) return fail(k);
@@ -498,6 +521,7 @@ export function registerIpc(deps: IpcDeps): void {
     if (!sampai.ok) return fail(sampai.error);
     if (mulai.input && sampai.input && mulai.input > sampai.input)
       return fail('Tanggal mulai tidak boleh setelah tanggal sampai.');
+    const { limit, offset } = batasDaftarJurnal(f?.limit, f?.offset);
     const filter: JurnalFilter = {
       mulai: mulai.input || undefined,
       sampai: sampai.input || undefined,
@@ -507,8 +531,8 @@ export function registerIpc(deps: IpcDeps): void {
         typeof f?.cari === 'string' && f.cari.trim()
           ? f.cari.trim().slice(0, 200)
           : undefined,
-      limit: Number.isFinite(f?.limit) ? Number(f.limit) : undefined,
-      offset: Number.isFinite(f?.offset) ? Number(f.offset) : undefined,
+      limit,
+      offset,
     };
     return ok(listJurnalLengkap(deps.db(), filter));
   });

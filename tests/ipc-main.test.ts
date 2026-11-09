@@ -17,7 +17,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
-import { registerIpc, type IpcDeps } from '../src/main/ipc.js';
+import {
+  batasDaftarJurnal,
+  registerIpc,
+  type IpcDeps,
+} from '../src/main/ipc.js';
 import { kunciLagi, operasiPanjangAktif, sesi } from '../src/main/kunci.js';
 
 type Handler = (event: unknown, ...args: any[]) => unknown;
@@ -2617,5 +2621,92 @@ describe('T1.8 — IPC saldo awal saat ini', () => {
       saldo: [{ akun_kode: '1001', nominal: 2_500_000 }],
       keterangan: 'Koreksi IPC',
     });
+  });
+});
+
+describe('T3.7 — daftar legacy dibatasi & audit pagination', () => {
+  it('batasDaftarJurnal default 500, clamp 0..1000, offset >= 0', () => {
+    expect(batasDaftarJurnal(undefined, undefined)).toEqual({ limit: 500, offset: 0 });
+    expect(batasDaftarJurnal('', '')).toEqual({ limit: 500, offset: 0 });
+    expect(batasDaftarJurnal('abc', 'xyz')).toEqual({ limit: 500, offset: 0 });
+    expect(batasDaftarJurnal(-25, -4)).toEqual({ limit: 0, offset: 0 });
+    expect(batasDaftarJurnal(10_000, 3.9)).toEqual({ limit: 1000, offset: 3 });
+    expect(batasDaftarJurnal(12.8, 0)).toEqual({ limit: 12, offset: 0 });
+  });
+
+  it('jurnal:list menghormati limit/offset pada array legacy', async () => {
+    const env = buatEnv();
+    const insJurnal = env.db().prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES (?, ?, '', ?, 'UMUM', ?, NULL, ?)`,
+    );
+    const insBaris = env.db().prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES (?, ?, ?, ?, '')`,
+    );
+    for (let i = 1; i <= 3; i += 1) {
+      const id = `j-batas-${i}`;
+      insJurnal.run(
+        id,
+        `2026-01-0${i}`,
+        `Jurnal ${i}`,
+        id,
+        '2026-01-01T00:00:00.000Z',
+      );
+      insBaris.run(id, '1001', 1000, 0);
+      insBaris.run(id, '4005', 0, 1000);
+    }
+
+    const semua = await env.panggil('jurnal:list', {});
+    expect(semua.ok, semua.error).toBe(true);
+    expect(semua.data.map((j: { id: string }) => j.id)).toEqual([
+      'j-batas-1',
+      'j-batas-2',
+      'j-batas-3',
+    ]);
+
+    const halaman = await env.panggil('jurnal:list', { limit: 2, offset: 1 });
+    expect(halaman.ok, halaman.error).toBe(true);
+    expect(halaman.data.map((j: { id: string }) => j.id)).toEqual([
+      'j-batas-2',
+      'j-batas-3',
+    ]);
+
+    const kosong = await env.panggil('jurnal:list', { limit: 0, offset: 0 });
+    expect(kosong.ok, kosong.error).toBe(true);
+    expect(kosong.data).toEqual([]);
+  });
+
+  it('audit:list menghormati limit/offset dan mengembalikan total', async () => {
+    const env = buatEnv();
+    const insAudit = env.db().prepare(
+      `INSERT INTO audit_log
+         (id, tanggal, aksi, alasan, data_lama_json, data_baru_json, ref_type, ref_id)
+       VALUES (?, ?, ?, '', '', '', '', '')`,
+    );
+    for (let i = 1; i <= 5; i += 1) {
+      insAudit.run(
+        `audit-${i}`,
+        `2026-01-01T00:00:0${i}.000Z`,
+        `AKSI-${i}`,
+      );
+    }
+
+    const halaman = await env.panggil('audit:list', { limit: 2, offset: 1 });
+    expect(halaman.ok, halaman.error).toBe(true);
+    expect(halaman.data.total).toBe(5);
+    expect(halaman.data.rows.map((a: { id: string }) => a.id)).toEqual([
+      'audit-4',
+      'audit-3',
+    ]);
+
+    const berikut = await env.panggil('audit:list', { limit: 2, offset: 3 });
+    expect(berikut.ok, berikut.error).toBe(true);
+    expect(berikut.data.rows.map((a: { id: string }) => a.id)).toEqual([
+      'audit-2',
+      'audit-1',
+    ]);
+    expect(berikut.data.total).toBe(5);
   });
 });
