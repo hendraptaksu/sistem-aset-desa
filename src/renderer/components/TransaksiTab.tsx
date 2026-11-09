@@ -409,6 +409,16 @@ export function TransaksiTab({
   const [detailJurnal, setDetailJurnal] = useState<JurnalLengkap | null>(null);
   const [batalJurnal, setBatalJurnal] = useState<JurnalLengkap | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const sorotTimerRef = useRef<number | null>(null);
+  const [sorotForm, setSorotForm] = useState(false);
+
+  // Bersihkan timer sorotan bila tab ditutup sebelum waktunya.
+  useEffect(
+    () => () => {
+      if (sorotTimerRef.current !== null) window.clearTimeout(sorotTimerRef.current);
+    },
+    [],
+  );
 
   /**
    * Pilih jenis lalu bawa pengguna ke form. Di layar kecil kartu jenis
@@ -432,6 +442,15 @@ export function TransaksiTab({
           'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])',
         )
         ?.focus({ preventScroll: true });
+
+      // Sorot form sebentar agar mata tahu harus mendarat di mana setelah
+      // scroll berhenti. Ring memudar sendiri, tidak ada gerakan tambahan.
+      if (sorotTimerRef.current !== null) window.clearTimeout(sorotTimerRef.current);
+      setSorotForm(true);
+      sorotTimerRef.current = window.setTimeout(() => {
+        setSorotForm(false);
+        sorotTimerRef.current = null;
+      }, 1200);
     });
   }, []);
 
@@ -662,7 +681,13 @@ export function TransaksiTab({
       </Card>
 
       {/* `key` memastikan isian form tidak tercampur saat berganti jenis. */}
-      <div ref={formRef} className="scroll-mt-24">
+      <div
+        ref={formRef}
+        className={clsx(
+          'scroll-mt-24 rounded-xl transition-shadow duration-700 motion-reduce:transition-none',
+          sorotForm && 'ring-2 ring-emerald-600 ring-offset-2',
+        )}
+      >
         <FormTransaksiTerpandu
           key={jenis}
           jenis={jenis}

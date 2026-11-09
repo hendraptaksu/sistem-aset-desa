@@ -510,6 +510,11 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(sumber).toContain("block: 'start'");
     expect(sumber).toContain('scroll-mt-24');
     expect(sumber).toContain('.focus({ preventScroll: true })');
+    // Sorotan singkat supaya mata tahu ke mana harus mendarat; ring memudar
+    // dan tidak dipaksakan saat pengguna memilih kurangi gerak.
+    expect(sumber).toContain('sorotForm');
+    expect(sumber).toContain('ring-2 ring-emerald-600 ring-offset-2');
+    expect(sumber).toContain('motion-reduce:transition-none');
   });
 
   it('merender form Bayar dengan label ramah dan pilihan akun non-kas', () => {
