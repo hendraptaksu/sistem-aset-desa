@@ -29,9 +29,9 @@
 | 0 — Persiapan | — | 3 | 3 |
 | 1 — Data safety | P0 | 9 | 9 |
 | 2 — Kontrol & UX | P1 | 9 | 9 |
-| 3 — Hardening | P2 | 8 | 9 |
+| 3 — Hardening | P2 | 9 | 9 |
 | 4 — Rilis | — | 0 | 3 |
-| **Total** |  | **29** | **33** |
+| **Total** |  | **30** | **33** |
 
 ## Aturan kerja
 
@@ -351,7 +351,7 @@
   - **Verifikasi:** `npm run audit:ui` + smoke manual.
   - **Catatan:** File disentuh: `src/renderer/components/ui.tsx`, `DashboardTab.tsx`, `JurnalTab.tsx`, `SaldoAwalWizard.tsx`, `AkunTab.tsx`, `TransaksiTab.tsx`, `e2e/ui-audit.test.mjs`, `tests/forms-ui.test.ts`, `TICKETS.md`. **Modal:** `pilihFokusAwal` memberi prioritas `data-fokus-awal` → `autofocus` → field isian → kontrol pertama → dialog; `KonfirmasiModal` menandai tombol **Batal** sebagai fokus aman sehingga konfirmasi destruktif tidak langsung menyorot tombol berbahaya. Escape tetap hanya menutup saat `sibuk()` false, fokus kembali ke pemicu, dialog memakai `aria-busy`, dan tombol X menjelaskan saat terkunci proses. `ErrorBox` kini `role="alert"` + `aria-live="assertive"` + `aria-atomic`; kotak sukses memakai `role="status"`/`aria-live="polite"`. Modal bertumpuk (PeringatanModal/LockModal/KodeDarurat) tidak diubah alurnya. **Konfirmasi:** komponen baru `KonfirmasiBackup`, `KonfirmasiRestoreDb`, `KonfirmasiRestoreLengkap`, dan `KonfirmasiSimpanSaldoAwal` menjelaskan “Yang berubah”/“Yang tetap”, cadangan `pre-restore`, PIN yang dipertahankan, file sumber yang tidak diubah, manifest untuk restore lengkap, dan langkah berikutnya bila hasil keliru. Backup tetap non-destruktif tetapi tetap dikonfirmasi agar teks dampaknya terlihat; copy sukses menyebut data aktif tidak berubah. **Tombol nonaktif:** helper `ALASAN_SIBUK`, `alasanSimpanSaldoAwal`, dan `alasanKoreksiTidakSiap` menghasilkan `title` + teks terlihat untuk Koreksi, Jurnal balik/Simpan koreksi, Batalkan/Tetap batalkan, Simpan saldo awal, backup/restore saat sibuk, dan Hapus baris; akun sistem menampilkan teks “tidak bisa dinonaktifkan” di samping badge. **Copy error:** audit `src/renderer` tidak menemukan pesan yang menyalahkan pengguna; pesan generik sudah menyebut “Coba lagi; bila tetap gagal, hubungi pendamping”, jadi pesan validasi backend tidak diubah. **Penyebab 1280x800:** assertion lama `16` salah hitung, bukan race reload/mode lanjutan — jendela 1280 membuka sidebar (12 item nav = 13 tab dikurangi Pengaturan yang dipin di footer luar `<nav>`, termasuk Jurnal Umum karena Mode lanjutan aktif) + 3 tombol header grup = **15**. Perbaikan test: hitung `TAB.length - 1 + 3` (bukan angka mati), tambah assertion Jurnal Umum terlihat untuk memastikan bukan race, lalu verifikasi item laporan satu per satu. **Bukti:** `npm run build` lulus; `npm run audit:ui` **3/3 ukuran lulus** (1280×800, 1024×768, 1024×680) termasuk flow baru “konfirmasi aksi berisiko OK: copy dampak, fokus Batal, Escape menutup tanpa aksi”; `npm test -- tests/forms-ui.test.ts tests/saldo-awal.test.ts tests/restore-kunci.test.ts` 77 lulus; `npm run typecheck` lulus; `npm test` **91 file / 1.198 test lulus, 0 gagal**. Smoke GUI manual terbatas pada e2e Electron asli di atas (buka konfirmasi backup/restore, cek fokus Batal + Escape + copy dampak). Commit kode `615cf59`.
 
-- [ ] **T3.9 — Perbarui dokumentasi & runbook pemulihan**
+- [x] **T3.9 — Perbarui dokumentasi & runbook pemulihan**
   - **Masalah:** README sudah menyebut batasan, tetapi belum ada runbook singkat untuk saldo awal salah, backup/restore, dan DB ditolak.
   - **File:** `README.md`, `docs/panduan-pengguna.md`, `docs/panduan-pemeriksaan.md`, `docs/skema.md`.
   - **Langkah:**
@@ -360,7 +360,7 @@
     3. Catat skenario DB v1 tidak lengkap harus dipulihkan dari backup, bukan dibuat ulang.
   - **Selesai bila:** pengguna non-teknis bisa mengikuti runbook; `tests/dokumentasi.test.ts` lulus.
   - **Verifikasi:** `npm test -- tests/dokumentasi.test.ts`.
-  - **Catatan:** -
+  - **Catatan:** File disentuh: `README.md`, `docs/panduan-pengguna.md`, `docs/panduan-pemeriksaan.md`, `docs/skema.md`, `tests/dokumentasi.test.ts`, `TICKETS.md`. **README** mendapat bagian **Runbook singkat (pemulihan)** dengan tiga alur bernomor untuk non-teknis: (A) saldo awal salah → Transaksi → **Koreksi Saldo Awal** → saldo benar + alasan ≥5 karakter → simpan, dijelaskan jurnal lama tetap ada di audit/Buku Besar dan laporan memakai angka baru; (B) backup/restore → Backup Lengkap vs Export `.db`, simpan di media terenkripsi, validasi kandidat, cadangan otomatis `pre-restore-<waktu>.db`, lalu aplikasi terkunci dan meminta PIN; (C) DB ditolak → jangan membuat DB baru/menimpa file, salin file bermasalah, **pulihkan dari backup** sehat atau hubungi pendamping. Prinsip #4 README juga dibedakan: DB v1 tidak lengkap harus dipulihkan dari backup, bukan dibuat ulang. **Panduan pengguna §10** memuat runbook yang sama secara lebih rinci (termasuk contoh alasan dan langkah periksa laporan), serta menegaskan **PIN bukan enkripsi** dan **backup tidak terenkripsi**. **docs/skema.md** menegaskan skema v1/`SCHEMA_VERSION = 1`; DB v1 dengan tabel/kolom wajib hilang ditolak sebelum WAL/DDL, tidak dimigrasi/dibuat ulang, dan harus dipulihkan dari backup; catatan audit `actor`/hash chain dari T3.5 tetap utuh. **docs/panduan-pemeriksaan.md** mendapat §13 **Checklist cepat pemulihan** (status saldo awal, audit `KOREKSI-SALDO-AWAL`, backup terakhir, integritas/`integrity_check`, lockout PIN) dan `KOREKSI-SALDO-AWAL` ditambahkan ke daftar aksi audit penting. Test dokumentasi ditambah 3 assertion ringkas untuk frasa kunci runbook (tidak rapuh terhadap detail tata letak). Verifikasi: `npm test -- tests/dokumentasi.test.ts` (15 lulus), `npm run typecheck` lulus, `npm test` **91 file / 1.201 test lulus, 0 gagal** (baseline T3.8: 91/1.198). Commit `5ed7f41`; commit catatan tiket terpisah.
 
 ---
 
