@@ -1,7 +1,7 @@
 # Panduan Lokasi Data & Paket Portable
 
 **Versi aplikasi:** 2.0.0  
-**Tanggal dokumen:** 2026-10-27  
+**Tanggal dokumen:** 2026-11-09  
 **Untuk:** operator, akuntan pendamping, dan pengembang
 
 Dokumen ini menjelaskan **lokasi persis** database dan backup untuk dua paket

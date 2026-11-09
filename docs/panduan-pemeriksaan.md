@@ -1,7 +1,7 @@
 # Panduan Pemeriksaan — Keuangan Pura Dalem Puri
 
 **Versi aplikasi:** 2.0.0  
-**Tanggal dokumen:** 2026-10-27  
+**Tanggal dokumen:** 2026-11-09  
 **Untuk:** akuntan pendamping/pemeriksa
 
 Panduan ini untuk memeriksa pembukuan yang diinput operator. Prinsip utamanya:
@@ -112,7 +112,7 @@ Akun yang paling sering diperiksa:
 - `3000 MODAL` — hanya berubah karena setoran/penarikan modal atau Saldo Awal.
 - `3001 SALDO KUMULATIF` dan `3002 SALDO BERJALAN` — akun **legacy** yang hanya
   ditampilkan untuk membaca data lama. Keduanya **tidak dapat diposting** lewat
-  Jurnal Umum, form terpandu, maupun Saldo Awal. Sistem v2 **tidak
+  Jurnal Umum, form terpandu, maupun Saldo Awal. Aplikasi versi ini **tidak
   menghitung** saldo akun ini dari kunci periode atau surplus periode dan **tidak
   menulis** ke akun ini; saldo yang tampil hanyalah akumulasi baris jurnal lama
   yang sudah ada di database. Bila tidak ada data lama, saldonya nol dan itu

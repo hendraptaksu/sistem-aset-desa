@@ -1,7 +1,7 @@
 # Panduan Pengguna — Keuangan Pura Dalem Puri
 
 **Versi aplikasi:** 2.0.0  
-**Tanggal dokumen:** 2026-10-27  
+**Tanggal dokumen:** 2026-11-09  
 **Untuk:** operator harian (pengurus/bendahara) dan akuntan pendamping
 
 Panduan ini ditulis dengan bahasa sehari-hari. Istilah akuntansi hanya dipakai

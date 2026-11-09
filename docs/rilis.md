@@ -4,7 +4,7 @@ Dokumen ini menjelaskan aset icon aplikasi dan jalur **code signing** untuk
 installer Windows. Signing bersifat **opsional tetapi sangat disarankan**;
 build tanpa sertifikat tetap berjalan, hanya akan memicu peringatan SmartScreen.
 
-- **Diperbarui:** 2026-10-27
+- **Diperbarui:** 2026-11-09
 - **Target utama:** Windows (NSIS installer + portable)
 - **Aset:** `build/icon.png`, `build/icon.ico`, `build/icon.icns`
 
