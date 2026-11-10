@@ -32,8 +32,10 @@ import {
 } from '../src/core/posting.js';
 import {
   buatJurnalCatatUtangUsaha,
+  buatJurnalSaldoAwal,
   buatJurnalTerimaUang,
 } from '../src/core/forms.js';
+import { auditIntegritas } from '../src/db/integritas.js';
 import { serahkanPanjar } from '../src/db/panjar.js';
 import type { JurnalBarisInput, JurnalHeaderInput } from '../src/core/types.js';
 
@@ -490,8 +492,10 @@ describe('AKT-06 — audit override peringatan + alasan', () => {
           keterangan: 'Saldo awal dengan kas minus',
           jenis: 'SALDO_AWAL' as const,
         }),
+        // T-A05: saldo awal hanya akun neraca; kas minus dipicu lewat piutang
+        // (D 1050 / K 1001), bukan beban 5000.
         baris: [
-          { akun_kode: '5000', debit: 150_000, kredit: 0 },
+          { akun_kode: '1050', debit: 150_000, kredit: 0 },
           { akun_kode: '1001', debit: 0, kredit: 150_000 },
         ],
       };
@@ -1294,9 +1298,10 @@ describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
     }
   });
 
-  it('SALDO_AWAL pertama boleh memuat akun P&L; SALDO_AWAL kedua ditolak DB', () => {
+  it('SALDO_AWAL valid tetap boleh sekali; SALDO_AWAL kedua ditolak DB', () => {
     const { db } = freshDb();
     try {
+      // T-A05: akun P&L tidak lagi sah di saldo awal; gunakan neraca murni.
       const saldoAwal = postingSaldoAwal(db, {
         header: header({
           id: 'j-saldo-awal-akt16',
@@ -1305,7 +1310,7 @@ describe('AKT-16 — larang jurnal penutup manual P&L → ekuitas', () => {
           keterangan: 'Saldo awal',
           jenis: 'SALDO_AWAL',
         }),
-        baris: pasangan('5000', '3000', 10_000),
+        baris: pasangan('1001', '3000', 10_000),
       });
       expect(saldoAwal.tersimpan, saldoAwal.errors.join(' ')).toBe(true);
 
@@ -1555,6 +1560,104 @@ describe('AUD2-04 — akun kontrol panjar/pinjaman dikunci dari Jurnal Umum', ()
       );
       expect(koreksi.errors, koreksi.errors.join(' ')).toEqual([]);
       expect(koreksi.boleh).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('T-A05 — jurnal saldo awal menolak akun P&L di semua jalur', () => {
+  it('postingSaldoAwal langsung dengan pendapatan 4001 ditolak tanpa jurnal/audit', () => {
+    const { db } = freshDb();
+    try {
+      const hasil = postingSaldoAwal(db, {
+        header: header({
+          id: 'j-awal-pendapatan',
+          tanggal: '2026-01-01',
+          no_bukti: 'SA-2026-0601',
+          keterangan: 'Saldo awal dengan pendapatan',
+          jenis: 'SALDO_AWAL',
+        }),
+        baris: pasangan('1001', '4001', 1_000_000),
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/4001 PENDAPATAN BEJI/);
+      expect(hasil.errors.join(' ')).toMatch(/bertipe PENDAPATAN/);
+      expect(hasil.errors.join(' ')).toMatch(/AKTIVA, KEWAJIBAN, dan EKUITAS/);
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS c FROM jurnal_baris').get()).toEqual({ c: 0 });
+      expect(listAuditLog(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('postingSaldoAwal langsung dengan beban 5000 ditolak tanpa jurnal/audit', () => {
+    const { db } = freshDb();
+    try {
+      const hasil = postingSaldoAwal(db, {
+        header: header({
+          id: 'j-awal-beban',
+          tanggal: '2026-01-01',
+          no_bukti: 'SA-2026-0602',
+          keterangan: 'Saldo awal dengan beban',
+          jenis: 'SALDO_AWAL',
+        }),
+        baris: pasangan('5000', '1001', 200_000),
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toMatch(/5000 BIAYA KESEKRETARIATAN/);
+      expect(hasil.errors.join(' ')).toMatch(/bertipe BEBAN/);
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(listAuditLog(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('simpanSaldoAwal juga menolak P&L, sedangkan aset/kewajiban + modal otomatis tetap tersimpan', () => {
+    const { db } = freshDb();
+    try {
+      const pl = simpanSaldoAwal(db, {
+        header: header({
+          id: 'j-awal-pl',
+          tanggal: '2026-01-01',
+          no_bukti: 'SA-2026-0603',
+          keterangan: 'Saldo awal P&L',
+          jenis: 'SALDO_AWAL',
+        }),
+        baris: pasangan('1001', '4005', 500_000),
+      });
+      expect(pl.tersimpan).toBe(false);
+      expect(pl.errors.join(' ')).toMatch(/4005 PENDAPATAN PARKIR/);
+      expect(pl.errors.join(' ')).toMatch(/PENDAPATAN/);
+      expect(jumlahJurnal(db)).toBe(0);
+      expect(listAuditLog(db)).toEqual([]);
+
+      const valid = buatJurnalSaldoAwal({
+        tanggal: '2026-01-01',
+        keterangan: 'Saldo awal valid',
+        noBukti: 'SA-2026-0604',
+        saldo: [
+          { akun_kode: '1001', nominal: 5_000_000 },
+          { akun_kode: '2050', nominal: 1_000_000 },
+        ],
+      });
+      const tersimpan = simpanSaldoAwal(db, valid.input);
+      expect(tersimpan.tersimpan, tersimpan.errors.join(' ')).toBe(true);
+      expect(tersimpan.jurnal?.jenis).toBe('SALDO_AWAL');
+      expect(jumlahJurnal(db)).toBe(1);
+      expect(listAuditLog(db, { aksi: 'SALDO-AWAL' })).toHaveLength(1);
+
+      const detail = getJurnalDetail(db, tersimpan.jurnal!.id);
+      const tipePnl = detail!.baris.filter((b) => b.akun_kode.startsWith('4') || b.akun_kode.startsWith('5'));
+      expect(tipePnl).toEqual([]);
+      expect(detail!.baris).toContainEqual(
+        expect.objectContaining({ akun_kode: '3000', kredit: 4_000_000 }),
+      );
+      expect(auditIntegritas(db).ok).toBe(true);
     } finally {
       db.close();
     }

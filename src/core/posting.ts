@@ -121,6 +121,19 @@ export const PESAN_AKUN_KONTROL_PANJAR_UMUM =
 export const PESAN_AKUN_KONTROL_PINJAMAN_UMUM =
   'Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Pinjaman LPD (atau 2060 HUTANG USAHA untuk utang usaha).';
 
+/**
+ * T-A05: jurnal pembukaan bukan operasi laba rugi. Akun PENDAPATAN/BEBAN
+ * ditolak untuk SALDO_AWAL (termasuk pemanggilan langsung `postingSaldoAwal`)
+ * dan untuk koreksi saldo awal, agar Laba Rugi tahun pertama tidak memuat
+ * angka fiktif. Hanya AKTIVA, KEWAJIBAN, dan EKUITAS (modal penyeimbang) sah.
+ */
+export const PESAN_SALDO_AWAL_HANYA_NERACA =
+  'Saldo awal hanya boleh memakai akun AKTIVA, KEWAJIBAN, dan EKUITAS (modal penyeimbang).';
+
+/** T-A05: pesan koreksi saldo awal yang memuat akun PENDAPATAN/BEBAN. */
+export const PESAN_KOREKSI_SALDO_AWAL_HANYA_NERACA =
+  'Koreksi saldo awal hanya boleh memakai akun aset, kewajiban, dan ekuitas.';
+
 export type JurnalInput = {
   header: JurnalHeaderInput;
   baris: JurnalBarisInput[];
@@ -177,6 +190,8 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  *    PIUTANG 1050; HUTANG 2050 pinjaman atau 2060 utang usaha). UMUM tidak
  *    boleh memakai akun kontrol 1040/2050, kecuali konteks koreksiSaldoAwal.
  * 4. Jurnal penutup manual (P&L + ekuitas) ditolak, kecuali SALDO_AWAL.
+ * 4a. SALDO_AWAL dan koreksi saldo awal hanya boleh memakai akun AKTIVA,
+ *    KEWAJIBAN, dan EKUITAS; akun PENDAPATAN/BEBAN ditolak (T-A05).
  * 4b. Jurnal ber-kas yang memuat 2050 dan 2060 sekaligus ditolak agar tidak
  *    ada satu jurnal dengan dua kelompok arus kas; reklasifikasi non-kas tetap
  *    diperbolehkan (AKT-20).
@@ -393,10 +408,34 @@ export function validasiJurnal(
   ) {
     errors.push(PESAN_ARUS_KAS_AMBIGU);
   }
-  if (konteks.koreksiSaldoAwal === true && baris.some((b) => {
-    const tipe = petaAkun.get(String(b?.akun_kode ?? '').trim())?.tipe;
-    return tipe === 'PENDAPATAN' || tipe === 'BEBAN';
-  })) errors.push('Koreksi saldo awal hanya boleh memakai akun aset, kewajiban, dan ekuitas.');
+  // ---- 3a-2. Saldo awal/koreksi hanya akun neraca (T-A05) ----
+  // SALDO_AWAL dikecualikan dari larangan jurnal penutup di atas, jadi aturan
+  // ini wajib berdiri sendiri dan tidak boleh bergantung pada `koreksiSaldoAwal`
+  // saja: `postingSaldoAwal()` dan `simpanSaldoAwal()` sama-sama melewati
+  // validator ini, termasuk saat dipanggil langsung tanpa wizard. Koreksi
+  // saldo awal memakai jenis UMUM + `koreksiSaldoAwal`, sehingga tetap
+  // diperiksa oleh aturan yang sama (tanpa pesan ganda).
+  if (jenis === 'SALDO_AWAL' || konteks.koreksiSaldoAwal === true) {
+    const adaAkunLabaRugi = baris.some((b) => {
+      const tipe = petaAkun.get(String(b?.akun_kode ?? '').trim())?.tipe;
+      return tipe === 'PENDAPATAN' || tipe === 'BEBAN';
+    });
+    if (adaAkunLabaRugi) {
+      if (jenis === 'SALDO_AWAL') {
+        baris.forEach((b, i) => {
+          const kodeBaris = String(b?.akun_kode ?? '').trim();
+          const akunBaris = petaAkun.get(kodeBaris);
+          if (akunBaris?.tipe !== 'PENDAPATAN' && akunBaris?.tipe !== 'BEBAN')
+            return;
+          errors.push(
+            `Baris ${i + 1}: akun ${labelAkun(akunBaris, kodeBaris)} bertipe ${akunBaris.tipe} tidak boleh dipakai di saldo awal. ${PESAN_SALDO_AWAL_HANYA_NERACA}`,
+          );
+        });
+      } else {
+        errors.push(PESAN_KOREKSI_SALDO_AWAL_HANYA_NERACA);
+      }
+    }
+  }
 
   // ---- 3b. Larangan jurnal penutup manual (AKT-16) ----
   // P&L dan ekuitas dalam satu jurnal adalah bentuk penutup manual: laba tahun
