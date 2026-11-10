@@ -13,6 +13,14 @@ import {
 } from '../db/integritas.js';
 import type { LoggerApp } from './logApp.js';
 
+export {
+  KODE_AUDIT_KRITIS,
+  ringkasanAuditAwal,
+  temuanKritis,
+  type KodeAuditKritis,
+  type RingkasanAuditAwal,
+} from '../core/auditAwalRingkasan.js';
+
 export type LoggerAuditAwal = Pick<LoggerApp, 'info' | 'warn'>;
 
 /** Batas temuan yang ditulis ke log agar satu baris tidak terlalu panjang. */

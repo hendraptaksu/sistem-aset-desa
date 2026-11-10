@@ -38,8 +38,13 @@ import type {
 import { LockScreen } from './components/LockScreen.js';
 import { KodeDaruratModal } from './components/KodeDaruratModal.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
+import { AuditAwalBanner } from './components/AuditAwalBanner.js';
 import { Button, RING_FOKUS_GELAP } from './components/ui.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
+import {
+  ringkasanAuditAwal,
+  type RingkasanAuditAwal,
+} from '../core/auditAwalRingkasan.js';
 import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
@@ -179,6 +184,10 @@ function AppShell() {
   const [lock, setLock] = useState<LockStatus | null>(null);
   // T2.7: pesan restore ditampilkan di layar kunci sampai PIN berhasil dibuka.
   const [pesanRestore, setPesanRestore] = useState<string | null>(null);
+  // T-A16: ringkasan audit startup dan status abaikan banner. Audit hanya
+  // diminta setelah sesi terbuka karena kanal IPC-nya dijaga `perluBuka`.
+  const [auditAwal, setAuditAwal] = useState<RingkasanAuditAwal | null>(null);
+  const [auditAwalDitutup, setAuditAwalDitutup] = useState(false);
   // AUD-19: plaintext kode darurat hanya hidup di state ini sampai modal ditutup.
   const [kodeDaruratBaru, setKodeDaruratBaru] = useState<string | null>(null);
   const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
@@ -395,6 +404,32 @@ function AppShell() {
     },
     [refreshLock],
   );
+
+  // T-A16: ambil hasil audit startup setelah sesi terbuka. Bila restore
+  // mengganti DB, main mengaudit ulang dan sesi dikunci; saat dibuka lagi efek
+  // ini membaca hasil terbaru. Kegagalan bersifat diam karena banner hanyalah
+  // pemberitahuan, bukan penghalang.
+  useEffect(() => {
+    if (!lock?.terbuka || !lock.sudahSetup) {
+      setAuditAwal(null);
+      setAuditAwalDitutup(false);
+      return;
+    }
+    let batal = false;
+    void api
+      .auditAwal()
+      .then((hasil) => {
+        if (batal) return;
+        setAuditAwal(ringkasanAuditAwal(hasil));
+        setAuditAwalDitutup(false);
+      })
+      .catch(() => {
+        /* IPC belum siap/gagal sesaat: jangan ganggu alur utama. */
+      });
+    return () => {
+      batal = true;
+    };
+  }, [lock?.terbuka, lock?.sudahSetup]);
 
   // AUD-18: keputusan lock ada di main (idle/suspend). Renderer hanya polling
   // status; saat main mengunci, layar PIN muncul tanpa menunggu aksi user.
@@ -649,6 +684,15 @@ function AppShell() {
             {mengunci ? 'Mengunci…' : 'Kunci'}
           </Button>
         </header>
+        {auditAwal && !auditAwalDitutup && (
+          <div className="px-6 pt-4">
+            <AuditAwalBanner
+              ringkasan={auditAwal}
+              onBukaAudit={() => pindahTab('pengaturan')}
+              onTutup={() => setAuditAwalDitutup(true)}
+            />
+          </div>
+        )}
         {tab === 'dashboard' ? (
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">

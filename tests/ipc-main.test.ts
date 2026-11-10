@@ -56,7 +56,7 @@ type Env = {
 
 const envs: Env[] = [];
 
-function buatEnv(): Env {
+function buatEnv(tambahan: Partial<IpcDeps> = {}): Env {
   const dir = mkdtempSync(join(tmpdir(), 'pura-ipc-'));
   const dataDir = join(dir, 'data');
   const dbFile = join(dataDir, 'pura.db');
@@ -105,6 +105,7 @@ function buatEnv(): Env {
     pengirim: { rendererFile },
     // Tanggal tetap agar K2 (tutup hanya tahun selesai) deterministik.
     now: () => new Date('2026-10-23T08:00:00.000Z'),
+    ...tambahan,
   };
 
   // DB temp belum punya PIN, jadi gembok data terbuka; tetap set sesi eksplisit.
@@ -162,6 +163,7 @@ const CHANNEL_IPC = [
   'akun:ubah',
   'app:buka-folder',
   'app:info-lokasi',
+  'audit:awal',
   'audit:integritas',
   'audit:list',
   'backup:auto',
@@ -226,11 +228,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 67 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 68 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(67);
+    expect(env.handlers.size).toBe(68);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(67);
+    expect(CHANNEL_IPC).toHaveLength(68);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -313,6 +315,63 @@ describe('DB-12 — IPC audit integritas read-only', () => {
     expect(ulang.data).toEqual(hasil.data);
     expect(hitung()).toEqual(sebelum);
     expect(env.setDbCalls).toHaveLength(0);
+  });
+});
+
+describe('T-A16 — IPC audit awal (hasil startup)', () => {
+  const hasilAudit = {
+    ok: false,
+    ringkasan: 'Audit integritas: 1 temuan.',
+    temuan: [
+      {
+        kode: 'NERACA_TIDAK_SEIMBANG' as const,
+        pesan: 'Neraca tidak seimbang.',
+      },
+    ],
+  };
+
+  it('mengembalikan hasil yang disediakan deps startup', async () => {
+    const env = buatEnv({ auditAwal: () => hasilAudit });
+    const hasil = await env.panggil('audit:awal');
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hasil.data).toEqual(hasilAudit);
+  });
+
+  it('mengembalikan null bila main tidak menyediakan hasil audit', async () => {
+    const env = buatEnv();
+    const hasil = await env.panggil('audit:awal');
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hasil.data).toBeNull();
+  });
+
+  it('hanya membaca: tidak mengubah tabel dan tidak mengganti DB', async () => {
+    const env = buatEnv({ auditAwal: () => hasilAudit });
+    const db = env.db();
+    const tabel = ['akun', 'jurnal', 'jurnal_baris', 'audit_log', 'panjar'];
+    const hitung = (): Record<string, number> =>
+      Object.fromEntries(
+        tabel.map((t) => [
+          t,
+          (db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
+        ]),
+      );
+    const sebelum = hitung();
+
+    const hasil = await env.panggil('audit:awal');
+
+    expect(hasil.ok, hasil.error).toBe(true);
+    expect(hitung()).toEqual(sebelum);
+    expect(env.setDbCalls).toHaveLength(0);
+  });
+
+  it('ditolak saat sesi terkunci seperti audit:integritas', async () => {
+    const env = buatEnv({ auditAwal: () => hasilAudit });
+    expect((await env.panggil('lock:setup', '111111')).ok).toBe(true);
+    sesi.terbuka = false;
+
+    const hasil = await env.panggil('audit:awal');
+    expect(hasil.ok).toBe(false);
+    expect(hasil.error).toMatch(/terkunci/i);
   });
 });
 

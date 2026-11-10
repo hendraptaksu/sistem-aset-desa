@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { IDLE_DEFAULT_MENIT } from '../core/pin.js';
 import { openDb } from '../db/database.js';
+import type { HasilAuditIntegritas } from '../db/integritas.js';
 import { getIdleMenit } from '../db/repository.js';
 import { seedDev } from '../db/seed-dev.js';
 import { autoBackupHarian } from '../features/export/export.js';
@@ -49,6 +50,12 @@ import {
 } from './windowSecurity.js';
 
 let db: Database.Database;
+/**
+ * T-A16: hasil audit integritas saat startup disimpan di memori agar bisa
+ * dibaca renderer lewat IPC `audit:awal`. Nilainya `null` sebelum audit atau
+ * bila audit gagal dibaca; tidak pernah ditulis ke DB.
+ */
+let hasilAuditAwal: HasilAuditIntegritas | null = null;
 let win: BrowserWindow | null = null;
 let lokasi: LokasiData | null = null;
 let hentikanBackupPeriodik: (() => void) | null = null;
@@ -244,6 +251,9 @@ function buatIpcDeps(): IpcDeps {
     db: () => db,
     setDb: (d) => {
       db = d;
+      // T-A16: restore mengganti database aktif. Audit ulang agar banner
+      // renderer tidak menampilkan temuan dari DB yang sudah tidak dipakai.
+      hasilAuditAwal = auditIntegritasSaatMulai(db, loggerMain());
     },
     dbPath,
     dialog: {
@@ -261,6 +271,7 @@ function buatIpcDeps(): IpcDeps {
     printPdf: printPdfKeFile,
     openPath: (path) => shell.openPath(path),
     lokasiData,
+    auditAwal: () => hasilAuditAwal,
     log: loggerMain() ?? undefined,
     // AUD-17: frame pengirim yang sah = renderer build atau dev origin.
     pengirim: {
@@ -380,10 +391,11 @@ function mulaiAplikasi(): void {
     });
     if (!dbDibuka) return;
     db = dbDibuka;
-    // DB-12: audit integritas saat startup, SEBELUM backup otomatis. Temuan
-    // hanya dicatat ke log dan tidak memblokir aplikasi; backup yang gagal audit
-    // akan dibatalkan oleh auditSebelumBackup (fail-safe seperti restore).
-    auditIntegritasSaatMulai(db, loggerMain());
+    // DB-12/T-A16: audit integritas saat startup, SEBELUM backup otomatis.
+    // Hasilnya disimpan untuk banner renderer; temuan hanya dicatat ke log dan
+    // tidak memblokir aplikasi. Backup yang gagal audit tetap dibatalkan oleh
+    // auditSebelumBackup (fail-safe seperti restore).
+    hasilAuditAwal = auditIntegritasSaatMulai(db, loggerMain());
     // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
     try {
       const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);

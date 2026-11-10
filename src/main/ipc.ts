@@ -69,7 +69,10 @@ import {
   rekonsiliasiPinjaman,
   rekonsiliasiSemuaPinjaman,
 } from '../db/pinjamanRekonsiliasi.js';
-import { auditIntegritas } from '../db/integritas.js';
+import {
+  auditIntegritas,
+  type HasilAuditIntegritas,
+} from '../db/integritas.js';
 import { AKUN_PIUTANG } from '../db/coa.js';
 import { saldoSemuaKas as saldoSemuaKasJurnal } from '../core/reports.js';
 import {
@@ -186,6 +189,12 @@ export type IpcDeps = {
    * tidak perlu menyiapkan file log.
    */
   log?: Pick<LoggerApp, 'info' | 'warn' | 'error'>;
+  /**
+   * T-A16: hasil audit integritas yang dijalankan saat startup/restore.
+   * Opsional agar test IPC lama tidak perlu menyiapkan audit; `null` berarti
+   * audit belum tersedia/gagal dibaca. Handler hanya membaca nilai ini.
+   */
+  auditAwal?(): HasilAuditIntegritas | null;
   /** Waktu acuan yang bisa dipatok di test; default `new Date()`. */
   now?(): Date;
   /**
@@ -1595,6 +1604,18 @@ export function registerIpc(deps: IpcDeps): void {
       const k = perluBuka();
       if (k) return fail(k);
       return ok(auditIntegritas(deps.db()));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+  // T-A16: hasil audit yang sudah dijalankan saat startup (atau setelah
+  // restore). Handler ini hanya membaca state memori main; tidak menjalankan
+  // audit ulang dan tidak menulis DB.
+  daftarkan('audit:awal', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(deps.auditAwal?.() ?? null);
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }
