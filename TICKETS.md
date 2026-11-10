@@ -1081,14 +1081,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A10 — Validasi tanggal reversal dan koreksi
+### [x] T-A10 — Validasi tanggal reversal dan koreksi
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | S |
 | **Depends** | T-A01, T-A03 |
-| **Status** | Belum |
+| **Status** | Selesai — commit ee41e19 |
 
 **Masalah**
 
@@ -1138,6 +1138,35 @@ alur koreksi saldo awal.
 npm test -- tests/reversal.test.ts tests/saldo-awal-koreksi.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit ee41e19):**
+
+- `src/core/reversal.ts`: helper murni `cekTanggalTidakMundur()` menolak
+  tanggal yang lebih awal dari tanggal jurnal asli. Pesan menyebut tanggal
+  asli, batas yang diperbolehkan (`<tanggal asli> atau lebih baru`), dan
+  mengarahkan koreksi yang perlu memindahkan tanggal lebih awal ke Wizard
+  Koreksi Saldo Awal. Tanggal tidak valid dibiarkan ditolak validator agar
+  pesan lamanya tetap.
+- `src/db/reversal.ts`: `rencanaUntuk()` memeriksa `opsi.tanggal` eksplisit
+  terhadap tanggal jurnal asli sebelum rencana disusun; tanpa tanggal
+  eksplisit default tetap tanggal asli. `koreksiDanIsiUlang()` memeriksa
+  tanggal jurnal pengganti dengan aturan yang sama sebelum jurnal/audit
+  disusun. Jalur wizard `koreksiSaldoAwal()` tidak memakai fungsi ini,
+  sehingga tetap boleh memindahkan tanggal saldo awal lebih awal. Kunci
+  periode dan kewajiban alasan tetap berlaku lewat posting layer.
+- `src/renderer/components/JurnalTab.tsx`: catatan di modal koreksi bahwa
+  tanggal balik/pengganti tidak boleh sebelum tanggal asli dan bahwa snapshot
+  tutup buku tidak ikut berubah bila tanggal jatuh di tahun yang sudah
+  ditutup.
+- Test regresi: `tests/reversal.test.ts` (H-1 ditolak tanpa jurnal/audit,
+  H dan H+1 diterima, pengganti non-pembukaan bertanggal sebelum asli ditolak
+  tanpa tulisan, pengganti pada/setelah tanggal asli diterima, pesan memuat
+  tanggal asli dan batas), `tests/saldo-awal-koreksi.test.ts` (wizard
+  memindahkan saldo awal ke tanggal lebih awal tetap diterima dan cut-over
+  ikut berubah), serta penyesuaian tanggal fixture di `tests/invariant.test.ts`.
+- Verifikasi: `npm test -- tests/reversal.test.ts tests/saldo-awal-koreksi.test.ts`
+  2 file / 56 test lulus; `npm test` penuh dua kali 94 file / 1290 test lulus;
+  `npm run typecheck` lulus. T-A11 dan seterusnya tidak disentuh.
 
 ---
 
