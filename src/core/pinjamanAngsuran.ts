@@ -118,14 +118,15 @@ export function ringkasanAngsuran(
 } {
   const sisaPokok = Math.max(0, jadwal.pokok - realisasi.pokok);
   const sisaBunga = Math.max(0, jadwal.bunga - realisasi.bunga);
+  const adaRealisasi =
+    realisasi.pokok > 0 || realisasi.bunga > 0 || (realisasi.denda ?? 0) > 0;
   const lunas = sisaPokok === 0 && sisaBunga === 0;
+  // Jadwal bernilai nol tanpa pembayaran bukan angsuran yang lunas: status
+  // harus mencerminkan realisasi, bukan hanya kewajiban yang tersisa.
+  const dibayar = lunas && adaRealisasi;
   return {
-    status: lunas
-      ? 'LUNAS'
-      : realisasi.pokok > 0 || realisasi.bunga > 0 || (realisasi.denda ?? 0) > 0
-        ? 'SEBAGIAN'
-        : 'BELUM',
-    dibayar: lunas,
+    status: dibayar ? 'LUNAS' : adaRealisasi ? 'SEBAGIAN' : 'BELUM',
+    dibayar,
     pokok_dibayar: realisasi.pokok,
     bunga_dibayar: realisasi.bunga,
     sisa_pokok: sisaPokok,

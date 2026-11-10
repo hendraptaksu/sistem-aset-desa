@@ -19,11 +19,13 @@ import {
   listPinjaman,
   listPinjamanBayar,
   rincianPembayaranDariJurnal,
+  simpanPinjamanLpd,
   statusAngsuranPinjaman,
   tautkanPembayaran,
   type BuatPinjamanInput,
   type PinjamanAngsuranInput,
 } from '../src/db/pinjaman.js';
+import { ringkasanAngsuran } from '../src/core/pinjamanAngsuran.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { getJurnalDetail, listAuditLog } from '../src/db/repository.js';
 import {
@@ -338,6 +340,150 @@ function jumlahBayar(db: Database.Database): number {
     }
   ).n;
 }
+
+describe('T-A12 — validasi jadwal & realisasi angsuran', () => {
+  it('menolak jatuh tempo sebelum tanggal mulai dan menyebut baris serta kedua tanggal', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    const rows = jadwal(RP(12_000_000));
+    rows[0] = { ...rows[0], jatuh_tempo: '2026-01-01' };
+
+    const hasil = buatPinjaman(db, inputPinjaman({ angsuran: rows }));
+
+    expect(hasil.tersimpan).toBe(false);
+    const pesan = hasil.errors.join(' ');
+    expect(pesan).toMatch(/Jadwal angsuran baris 1/);
+    expect(pesan).toContain('2026-01-02');
+    expect(pesan).toContain('2026-01-01');
+    expect(pesan).toMatch(/tidak boleh sebelum tanggal mulai pinjaman/);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman').get() as { n: number }).n,
+    ).toBe(0);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman_angsuran').get() as {
+        n: number;
+      }).n,
+    ).toBe(0);
+  });
+
+  it('menolak jatuh tempo sebelum tanggal mulai lewat simpanPinjamanLpd tanpa meninggalkan jurnal', () => {
+    const db = dbKas();
+    const sebelumJurnal = (
+      db.prepare('SELECT COUNT(*) AS n FROM jurnal').get() as { n: number }
+    ).n;
+    const total = RP(1_000_000);
+
+    const hasil = simpanPinjamanLpd(db, {
+      mode: 'PENCAIRAN',
+      kreditur: 'LPD Desa Adat',
+      tanggal: '2026-01-02',
+      akunKas: '1001',
+      pokok: total,
+      tenor: 1,
+      angsuran: [
+        {
+          ke: 1,
+          jatuh_tempo: '2026-01-01',
+          pokok: total,
+          bunga: 0,
+          catatan: '',
+        },
+      ],
+    });
+
+    expect(hasil.tersimpan).toBe(false);
+    expect(hasil.errors.join(' ')).toMatch(
+      /baris 1.*2026-01-01.*sebelum tanggal mulai pinjaman 2026-01-02/,
+    );
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM jurnal').get() as { n: number }).n,
+    ).toBe(sebelumJurnal);
+    expect(listPinjaman(db)).toHaveLength(0);
+  });
+
+  it('menolak baris jadwal dengan pokok dan bunga sama-sama 0', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    const rows = jadwal(RP(12_000_000));
+    rows[11] = { ...rows[11], pokok: rows[11].pokok + rows[0].pokok };
+    rows[0] = { ...rows[0], pokok: 0, bunga: 0 };
+
+    const hasil = buatPinjaman(db, inputPinjaman({ angsuran: rows }));
+
+    expect(hasil.tersimpan).toBe(false);
+    expect(hasil.errors.join(' ')).toMatch(
+      /Jadwal angsuran baris 1.*pokok dan bunga tidak boleh sama-sama 0.*bukan angsuran/,
+    );
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman_angsuran').get() as {
+        n: number;
+      }).n,
+    ).toBe(0);
+  });
+
+  it('ringkasan jadwal nol tanpa pembayaran tidak LUNAS dan tidak dibayar', () => {
+    expect(
+      ringkasanAngsuran(
+        { pokok: 0, bunga: 0 },
+        { pokok: 0, bunga: 0, denda: 0 },
+      ),
+    ).toMatchObject({
+      status: 'BELUM',
+      dibayar: false,
+      sisa_pokok: 0,
+      sisa_bunga: 0,
+    });
+
+    // Pelunasan dengan realisasi tetap LUNAS.
+    expect(
+      ringkasanAngsuran(
+        { pokok: RP(1_000_000), bunga: RP(100_000) },
+        { pokok: RP(1_000_000), bunga: RP(100_000) },
+      ),
+    ).toMatchObject({ status: 'LUNAS', dibayar: true });
+
+    // Jadwal bernilai penuh tanpa pembayaran tetap BELUM.
+    expect(
+      ringkasanAngsuran(
+        { pokok: RP(1_000_000), bunga: RP(100_000) },
+        { pokok: 0, bunga: 0 },
+      ),
+    ).toMatchObject({ status: 'BELUM', dibayar: false });
+
+    expect(
+      ringkasanAngsuran(
+        { pokok: RP(1_000_000), bunga: RP(100_000) },
+        { pokok: 0, bunga: RP(100_000) },
+      ),
+    ).toMatchObject({
+      status: 'SEBAGIAN',
+      dibayar: false,
+      sisa_pokok: RP(1_000_000),
+      sisa_bunga: 0,
+    });
+
+    expect(
+      ringkasanAngsuran(
+        { pokok: RP(1_000_000), bunga: RP(100_000) },
+        { pokok: 0, bunga: 0, denda: RP(25_000) },
+      ),
+    ).toMatchObject({
+      status: 'SEBAGIAN',
+      dibayar: false,
+      sisa_pokok: RP(1_000_000),
+      sisa_bunga: RP(100_000),
+    });
+
+    // Pelunasan dengan realisasi tetap LUNAS, termasuk bila hanya denda yang
+    // tercatat pada jadwal bernilai nol.
+    expect(
+      ringkasanAngsuran(
+        { pokok: 0, bunga: 0 },
+        { pokok: 0, bunga: 0, denda: RP(25_000) },
+      ),
+    ).toMatchObject({ status: 'LUNAS', dibayar: true });
+  });
+});
 
 describe('DB-16b — pembayaran link-only', () => {
   it('menautkan jurnal nyata dan menurunkan outstanding dari debit 2050', () => {

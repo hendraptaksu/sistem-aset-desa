@@ -577,7 +577,8 @@ export function buatPinjaman(
     errors.push('Sisa pokok awal tidak boleh melebihi pokok awal.');
 
   const tanggalMulai = teks(data.tanggal_mulai ?? data.tanggalMulai);
-  if (!tanggalKalenderValid(tanggalMulai))
+  const tanggalMulaiValid = tanggalKalenderValid(tanggalMulai);
+  if (!tanggalMulaiValid)
     errors.push('Tanggal mulai pinjaman tidak valid (YYYY-MM-DD).');
 
   const tenorMentah = data.tenor_bulan ?? data.tenorBulan;
@@ -639,18 +640,29 @@ export function buatPinjaman(
       const jatuhTempo = teks(it.jatuh_tempo ?? it.jatuhTempo);
       if (!tanggalKalenderValid(jatuhTempo)) {
         errors.push(`${label}: tanggal jatuh tempo tidak valid (YYYY-MM-DD).`);
-      } else if (tanggalSebelumnya && jatuhTempo < tanggalSebelumnya) {
-        errors.push(
-          `${label}: tanggal jatuh tempo tidak boleh mundur dari baris sebelumnya (${tanggalSebelumnya}).`,
-        );
       } else {
-        tanggalSebelumnya = jatuhTempo;
+        if (tanggalMulaiValid && jatuhTempo < tanggalMulai) {
+          errors.push(
+            `${label}: tanggal jatuh tempo ${jatuhTempo} tidak boleh sebelum tanggal mulai pinjaman ${tanggalMulai}.`,
+          );
+        }
+        if (tanggalSebelumnya && jatuhTempo < tanggalSebelumnya) {
+          errors.push(
+            `${label}: tanggal jatuh tempo tidak boleh mundur dari baris sebelumnya (${tanggalSebelumnya}).`,
+          );
+        } else {
+          tanggalSebelumnya = jatuhTempo;
+        }
       }
 
       if (!isInt(it.pokok) || it.pokok < 0)
         errors.push(`${label}: pokok harus bilangan bulat ≥ 0 (satuan sen).`);
       if (!isInt(it.bunga) || it.bunga < 0)
         errors.push(`${label}: bunga harus bilangan bulat ≥ 0 (satuan sen).`);
+      if (isInt(it.pokok) && isInt(it.bunga) && it.pokok === 0 && it.bunga === 0)
+        errors.push(
+          `${label}: pokok dan bunga tidak boleh sama-sama 0; baris tanpa kewajiban bukan angsuran.`,
+        );
 
       jadwal.push({
         ke: Number(ke),

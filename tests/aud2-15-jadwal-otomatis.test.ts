@@ -16,6 +16,8 @@ import {
   buatJadwalAngsuranOtomatis,
   tambahBulanUtc,
 } from '../src/core/pinjamanAngsuran.js';
+import { openDb } from '../src/db/database.js';
+import { buatPinjaman } from '../src/db/pinjaman.js';
 import { formatRp } from '../src/utils/format.js';
 import {
   KontrolJadwalOtomatis,
@@ -124,6 +126,45 @@ describe('AUD2-15 — generator jadwal angsuran', () => {
           tanggal: '2025-01-31',
         }),
       ).toThrow(RangeError);
+    }
+  });
+});
+
+describe('AUD2-15 — jadwal otomatis lolos validasi pinjaman', () => {
+  it('menerima jadwal otomatis normal tanpa baris nol atau tanggal mundur', () => {
+    const db = openDb(':memory:');
+    try {
+      const rows = buatJadwalAngsuranOtomatis({
+        targetPokok: TARGET,
+        tenor: 12,
+        tanggal: '2026-01-31',
+        bunga: RP(100_000),
+      });
+      expect(rows.every((r) => r.pokok > 0)).toBe(true);
+      expect(rows.every((r) => r.jatuh_tempo >= '2026-01-31')).toBe(true);
+
+      const hasil = buatPinjaman(db, {
+        kreditur: 'LPD Desa Adat',
+        akun_kas: '1001',
+        pokok_awal: TARGET,
+        sisa_pokok_awal: TARGET,
+        tanggal_mulai: '2026-01-31',
+        tenor_bulan: 12,
+        angsuran: rows,
+      });
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.pinjaman?.angsuran).toHaveLength(12);
+      expect(hasil.pinjaman?.angsuran?.map((a) => a.jatuh_tempo)).toEqual(
+        rows.map((r) => r.jatuh_tempo),
+      );
+      expect(
+        hasil.pinjaman?.angsuran?.every(
+          (a) => a.status === 'BELUM' && a.dibayar === false,
+        ),
+      ).toBe(true);
+    } finally {
+      db.close();
     }
   });
 });
