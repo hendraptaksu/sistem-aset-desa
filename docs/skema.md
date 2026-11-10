@@ -49,7 +49,9 @@ dipastikan tidak ada data yang perlu diselamatkan.
 5. **`panjar` menyimpan header operasional, bukan angka turunan.** `tanggal`,
    `jumlah`, dan `akun_kas_sumber` adalah cermin jurnal serah; `total_realisasi`,
    `sisa`, dan `kurang` dihitung dari `panjar_item` + jurnal. Status resmi:
-   `OPEN`, `CLOSED`, atau `DIBATALKAN`.
+   `OPEN`, `CLOSED`, atau `DIBATALKAN`. `panjar.sumber` membedakan dokumen
+   `NORMAL` dari representasi `SALDO_AWAL` yang menunjuk jurnal pembukaan aktif
+   (tanpa jurnal serah kedua).
 6. **`pinjaman_angsuran` adalah rencana; jurnal adalah realisasi.**
    `pinjaman_bayar` hanya menautkan `jurnal_id` + `angsuran_id`; nominal
    pokok/bunga/denda dibaca dari baris jurnal. Outstanding =
@@ -70,8 +72,10 @@ dipastikan tidak ada data yang perlu diselamatkan.
    `akuntansi_tanggal_mulai` dipertahankan sebagai fallback data lama. Laporan
    tidak memakai `MIN(tanggal)` jurnal `SALDO_AWAL`.
 10. **`tutup_buku_snapshot` append-only.** Snapshot menyimpan angka hasil
-    pembacaan saat tutup buku beserta versi; bukan sumber angka laporan dan
-    tidak boleh diubah/dihapus.
+    pembacaan saat tutup buku beserta versi; **bukan sumber angka laporan**.
+    Layar laporan dan pratinjau tutup buku tetap menghitung ulang dari jurnal,
+    lalu membandingkan hasil live dengan snapshot untuk audit. Snapshot tidak
+    boleh diubah/dihapus; `TUTUP-ULANG` menulis versi baru.
 
 ## Kebijakan `STRICT`
 
@@ -264,12 +268,13 @@ Jejak audit append-only. Waktu peristiwa disimpan di `tanggal`; tabel ini tidak
 memiliki `created_at`. `data_lama_json`/`data_baru_json` menyimpan kondisi
 sebelum/sesudah, sedangkan `ref_type`/`ref_id` menunjuk objek terkait.
 
-> **Catatan v1 (T3.5):** `audit_log` v1 **tidak memiliki kolom `actor`,
-> `prev_hash`, atau `hash`** dan **tidak tamper-evident** terhadap edit file DB
-> langsung. Trigger append-only hanya melindungi dari perubahan lewat jalur
-> SQLite aplikasi. Keputusan, threat model, dan opsi aktor/**hash chain** untuk
-> **skema v2** ada di `docs/prinsip-akuntansi.md` §11; implementasinya (bila
-> ada) menunggu tiket terpisah.
+> **Catatan skema v1 (T3.5, dibawa ke v2):**
+> `audit_log` v1 **tidak memiliki kolom `actor`, `prev_hash`, atau `hash`** dan
+> **tidak tamper-evident** terhadap edit file DB langsung. Trigger append-only
+> hanya melindungi dari perubahan lewat jalur SQLite aplikasi. Keputusan,
+> threat model, dan opsi aktor/**hash chain** untuk skema berikutnya (v3) ada
+> di `docs/prinsip-akuntansi.md` §12; implementasinya (bila ada) menunggu tiket
+> terpisah.
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|
@@ -515,7 +520,7 @@ Ada **satu sumber mesin** untuk daftar akun:
 COA = seluruh baris KODE AKUN.csv + tepat ekstensi sistem (KODE_EKSTENSI_SISTEM)
 ```
 
-Kondisi baseline v1:
+Kondisi baseline COA:
 
 ```text
 48 akun baseline client + 6 akun tambahan + 2 ekstensi sistem = 56 akun COA

@@ -608,16 +608,17 @@ Langkah umum:
 3. Baca peringatan, lalu pilih folder backup lengkap atau file `.db`.
 4. Sistem memvalidasi isi backup sebelum menyentuh data aktif: file SQLite
    terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim,
-   **skema harus baseline v1**, 11 tabel wajib tersedia, dan audit akuntansi
+   **skema harus baseline v2**, 12 tabel wajib tersedia, dan audit akuntansi
    tidak menemukan masalah. Restore Lengkap juga memeriksa `manifest.json`;
    Restore Import .db tidak. Setelah lolos, sistem membuat cadangan data lama
    (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
 5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
 
-**Hanya backup dengan skema baseline v1 yang didukung.** Backup dari skema lama
+**Hanya backup dengan skema baseline v2 yang didukung.** Backup dari skema lama
 ditolak; tidak ada migrasi atau pre-upgrade. Bila aplikasi menolak database lama
-saat dibuka, pindahkan atau hapus file `pura.db` lama, lalu jalankan aplikasi
-lagi agar database baru dengan skema v1 dibuat. Jangan menimpa backup yang sah.
+saat dibuka, jangan menimpa file lama: pulihkan backup v2 yang sehat. Untuk DB
+dev, gunakan `npm run db:reset-dev` yang memindahkan file lama lebih dulu.
+Jangan menimpa backup yang sah.
 
 ### 5.3 Ganti laptop
 
@@ -675,7 +676,7 @@ menyalin file `.exe`.
 | **Aplikasi terkunci** | Sesi PIN habis karena idle. | Masukkan PIN kembali. |
 | **Terlalu banyak salah** | PIN salah 5 kali. | Tunggu 60 detik, lalu coba lagi dengan hati-hati. |
 | **Backup gagal** | Media penyimpanan penuh/tidak bisa ditulis. | Ganti lokasi simpan, pastikan flashdisk tidak dikunci, coba lagi. |
-| **Database tidak kompatibel** | File database/backup memakai skema lama atau bukan skema baseline v1. | Pindahkan atau hapus file database lama, lalu jalankan aplikasi lagi. Untuk backup, pilih backup berskema v1 buatan aplikasi versi ini. |
+| **Database tidak kompatibel** | File database/backup memakai skema lama atau bukan skema baseline v2. | Pindahkan atau hapus file database lama, lalu jalankan aplikasi lagi. Untuk backup, pilih backup berskema v2 buatan aplikasi versi ini. |
 | **Tahun belum boleh dikunci** | Kunci periode hanya untuk tahun yang sudah selesai. | Kunci tahun lalu lebih dulu; tahun berjalan jangan dikunci. |
 
 ---
@@ -763,7 +764,7 @@ saldo awal asli.
    atau **Restore Import .db** untuk satu file `.db` (jalur lanjutan, baca
    peringatannya).
 3. Konfirmasi. Sistem memeriksa backup (SQLite terbaca, integritas, foreign key,
-   skema v1, 11 tabel wajib) sebelum menyentuh data aktif.
+   skema v2, 12 tabel wajib) sebelum menyentuh data aktif.
 4. Sistem membuat cadangan otomatis **`pre-restore-<waktu>.db`** berisi data
    lama, lalu mengganti data aktif.
 5. Setelah selesai aplikasi **terkunci** dan meminta **PIN**. PIN tidak berubah
@@ -785,7 +786,7 @@ mengubahnya.
 4. Bila tidak ada backup sehat atau restore juga ditolak, **hubungi pendamping**.
    Aplikasi tidak memigrasikan dan tidak membuat ulang tabel/kolom yang hilang.
 
-Database v1 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
+Database v2 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
 ulang. Membuat database baru hanya untuk file skema lain/asing yang memang tidak
 didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
 dipastikan tidak ada data yang perlu diselamatkan.

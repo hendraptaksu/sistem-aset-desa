@@ -148,10 +148,10 @@ konfirmasi tambahan. **Backup Lengkap → Restore Lengkap** tetap yang disaranka
 - Simpan backup dalam satu folder bertanggal, misalnya `backup-2026-10-23`.
 - Jangan mengandalkan hanya folder `backups`: folder itu ada di laptop yang sama.
   Salin ke media lain (flashdisk/Drive).
-- **Hanya backup dengan skema baseline v1 yang didukung.** Restore menolak file
+- **Hanya backup dengan skema baseline v2 yang didukung.** Restore menolak file
   dari skema lama; tidak ada migrasi atau pre-upgrade. Bila aplikasi menolak
-  database lama saat dibuka, pindahkan atau hapus file `pura.db` lama, lalu
-  jalankan aplikasi lagi agar database baru dengan skema v1 dibuat.
+  database lama saat dibuka, jangan menimpa file lama: pulihkan backup v2 yang
+  sehat. Untuk DB dev, `npm run db:reset-dev` memindahkan file lama lebih dulu.
 
 ---
 

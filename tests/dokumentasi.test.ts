@@ -183,6 +183,71 @@ describe('runbook pemulihan T3.9', () => {
   });
 });
 
+describe('sinkronisasi dokumentasi akuntansi (T-A15)', () => {
+  it('prinsip koreksi saldo awal mengikuti penunjuk resmi dan tanggal yang boleh pindah', () => {
+    for (const istilah of [
+      'saldo_awal_aktif_id',
+      'cutover_tanggal',
+      'OPENING_REPLACEMENT',
+      'replaces_id',
+      'Wizard Koreksi Saldo Awal',
+      'tutup_buku_snapshot',
+      'SNAPSHOT_TUTUP_BERUBAH',
+      'TUTUP-ULANG',
+      "sumber = 'SALDO_AWAL'",
+    ]) {
+      expect(PRINSIP, `prinsip akuntansi memuat "${istilah}"`).toContain(istilah);
+    }
+    expect(PRINSIP).toMatch(/tanggal saldo awal boleh dipindah/i);
+    expect(PRINSIP).toMatch(/tidak\*\* memakai `MIN\(tanggal\)`/i);
+    expect(PRINSIP).toMatch(/diperbarui\s+\*\*atomik\*\*/i);
+    expect(PRINSIP).toMatch(/jenis jurnal tidak boleh diganti/i);
+    expect(PRINSIP).toMatch(/tidak boleh mundur/i);
+    expect(PRINSIP).toMatch(/non-blok/i);
+    // Pernyataan lama yang bertentangan dengan perilaku koreksi tanggal.
+    expect(PRINSIP).not.toMatch(/KUNCI_AKUNTANSI_TANGGAL_MULAI` tidak berubah/i);
+    expect(PRINSIP).not.toMatch(/tanggal saldo awal tidak berubah/i);
+  });
+
+  it('panduan pemeriksaan mendokumentasikan seluruh kode temuan integritas', () => {
+    for (const kode of [
+      'NERACA_TIDAK_SEIMBANG',
+      'NERACA_SALDO_SELISIH',
+      'CUTOVER_TIDAK_KONSISTEN',
+      'PEMBUKAAN_AKTIF_HILANG',
+      'LABA_RUGI_SEBELUM_CUTOVER',
+      'SALDO_AWAL_MEMUAT_LABA_RUGI',
+      'SNAPSHOT_TUTUP_BERUBAH',
+      'PANJAR_OPENING_TIDAK_LENGKAP',
+    ]) {
+      expect(PEMERIKSAAN, `panduan pemeriksaan memuat "${kode}"`).toContain(kode);
+    }
+    expect(PEMERIKSAAN).toMatch(/SNAPSHOT_TUTUP_BERUBAH[\s\S]{0,160}non-blok/i);
+    expect(PEMERIKSAAN).toMatch(/memblokir kunci periode/i);
+    expect(PEMERIKSAAN).toMatch(/skema v2, dan 12 tabel wajib/i);
+    expect(PEMERIKSAAN).not.toMatch(/skema v1, 11 tabel wajib/i);
+  });
+
+  it('dokumen skema mengunci baseline v2 lengkap dengan penunjuk pembukaan', () => {
+    expect(SKEMA).toMatch(/SCHEMA_VERSION = 2/);
+    expect(SKEMA).toContain('12 tabel');
+    expect(SKEMA).toContain('tutup_buku_snapshot');
+    expect(SKEMA).toContain('`jurnal.peran`');
+    expect(SKEMA).toContain('`jurnal.replaces_id`');
+    expect(SKEMA).toContain('`panjar.sumber`');
+    expect(SKEMA).toMatch(/saldo_awal_aktif_id/);
+    expect(SKEMA).toMatch(/snapshot[\s\S]{0,80}bukan sumber angka laporan/i);
+  });
+
+  it('README tidak lagi menyebut skema v1/11 tabel dan menyediakan reset DB dev', () => {
+    expect(README).toMatch(/SCHEMA_VERSION = 2/);
+    expect(README).toContain('12 tabel');
+    expect(README).toContain('npm run db:reset-dev');
+    expect(README).not.toMatch(/skema baseline v1/i);
+    expect(README).not.toMatch(/\b11 tabel\b/i);
+  });
+});
+
 describe('modul yang sudah dihapus', () => {
   it('tidak ditawarkan lagi di dokumen kanonik', () => {
     for (const dokumen of DOKUMEN_PENGGUNA) {

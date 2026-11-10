@@ -230,26 +230,35 @@ Langkah baku:
 3. Periksa **pratinjau jurnal balik**: debit/kredit ditukar, nomor bukti baru.
    **Default tanggal balik adalah tanggal jurnal asli** agar koreksi tetap di
    periode yang sama. Tanggal balik boleh diubah secara eksplisit, termasuk ke
-   tahun berbeda; aplikasi tidak memblokir perubahan itu.
+   tahun yang lebih baru, tetapi **tidak boleh lebih awal dari tanggal jurnal
+   asli**. Koreksi yang perlu memindahkan tanggal lebih awal hanya bisa lewat
+   **Wizard Koreksi Saldo Awal**.
 4. Bila tanggal balik dan tanggal pengganti jatuh di tahun berbeda, aplikasi
    menampilkan peringatan kuning. Periksa dampaknya ke Laba Rugi tahunan sebelum
    menyimpan. Untuk koreksi biasa, pertahankan default tanggal asli.
 5. Simpan. Jurnal asli tetap ada; jurnal balik menetralkan saldonya.
 6. Bila perlu, gunakan **Koreksi & isi ulang** — form terbuka dengan data lama
    sebagai awalan. Sistem membuat jurnal balik + jurnal pengganti dalam satu
-   alur.
+   alur. **Jenis jurnal pengganti wajib sama** dengan jurnal asli; aplikasi
+   menolak perubahan jenis (mis. `BAYAR` menjadi `UMUM` atau `SALDO_AWAL`).
 7. Periksa kembali Buku Besar, Neraca Saldo, dan laporan terkait.
 
 Aturan penting:
 
 - Reversal ganda atas jurnal yang sama ditolak.
 - Reversal atas jurnal reversal ditolak.
+- **Jurnal pembukaan aktif dan penggantinya tidak boleh dibalik/dikoreksi dari
+  Jurnal Umum.** Jurnal yang ditunjuk `saldo_awal_aktif_id`, berperan
+  `OPENING`/`OPENING_REPLACEMENT`, atau berjenis `SALDO_AWAL` hanya bisa
+  dikoreksi lewat **Wizard Koreksi Saldo Awal**. Pesannya mengarahkan ke wizard,
+  bukan menawarkan jalur generik.
 - Jurnal yang terhubung ke dokumen panjar (`jurnal_open_id`/`jurnal_close_id`)
   tidak boleh direversal dari Jurnal Umum. Gunakan modul **Panjar**: tombol
   **Batalkan** untuk panjar OPEN yang salah serah (membuat jurnal balik
   `D kas / K 1040`, wajib alasan, status menjadi DIBATALKAN), atau alur
   pertanggungjawaban untuk panjar yang benar. Panjar CLOSED belum bisa
-  dibatalkan lewat modul Panjar.
+  dibatalkan lewat modul Panjar. Panjar `sumber = 'SALDO_AWAL'` memakai
+  pembatalan khusus tanpa jurnal balik (lihat §14).
 - Panjar yang dibatalkan tetap menyimpan jurnal serah asli dan jurnal balik;
   tidak ada jurnal yang dihapus. Audit `PANJAR-BATAL` mencatat alasan dan link
   `jurnal_batal_id`.
@@ -277,8 +286,15 @@ Riwayat Audit. Alasan koreksi jurnal juga wajib minimal 5 karakter.
 Kunci periode hanya menyimpan penanda tahun, waktu, dan catatan. Path/lokasi file
 backup tidak disimpan di riwayat kunci periode; backup otomatis tetap dibuat
 sebagai berkas terpisah di folder `backups`. **Laba tidak disimpan sebagai
-sumber angka.** Menutup ulang tahun yang sama tercatat sebagai `TUTUP-ULANG`.
-Setelah dikunci, koreksi masih boleh dengan alasan.
+sumber angka.** Mengunci ulang tahun yang sama tercatat sebagai `TUTUP-ULANG`
+dan menulis **snapshot versi baru**; snapshot lama tidak diubah. Snapshot adalah
+bukti angka saat tutup, bukan sumber laporan. Setelah dikunci, koreksi masih
+boleh dengan alasan.
+
+Sebelum mengunci periode, aplikasi menjalankan audit integritas. **Semua
+temuan integritas memblokir kunci periode, kecuali `SNAPSHOT_TUTUP_BERUBAH`**
+yang hanya peringatan kontrol (non-blok) agar kunci ulang yang dikonfirmasi
+tetap bisa mencatat versi snapshot baru. Daftar kode dan tindakannya ada di §14.
 
 Kunci periode **tidak membuat jurnal penutup** dan tidak memindahkan saldo
 PENDAPATAN/BEBAN ke akun ekuitas. Jangan membuat jurnal penutup manual: sistem
@@ -377,9 +393,40 @@ dan README bagian **Runbook singkat**.
       `manifest.json`) atau backup otomatis tersedia, disimpan di media/disk
       terenkripsi. Ingat backup **tidak terenkripsi** dan PIN **bukan enkripsi**.
 - [ ] **Integritas** — Neraca Saldo selisih 0; kandidat restore lolos
-      `integrity_check`, foreign key, skema v1, dan 11 tabel wajib. Bila database
+      `integrity_check`, foreign key, skema v2, dan 12 tabel wajib. Bila database
       ditolak karena tabel/kolom hilang, **pulihkan dari backup**, jangan membuat
       DB baru.
 - [ ] **Lockout PIN** — setelah 5 kali PIN salah, aplikasi memblokir 60 detik
       dan blokir bertahan setelah restart; PIN benar setelah blokir habis
       membersihkan state. Lockout hanya melindungi UI, bukan isi file.
+
+---
+
+## 14. Temuan audit integritas
+
+Audit integritas membaca DB tanpa mengubah apa pun. Temuannya muncul di pratinjau
+kunci periode dan dapat diperiksa sebelum laporan ditandatangani. **Semua kode
+di bawah memblokir kunci periode, kecuali `SNAPSHOT_TUTUP_BERUBAH`** yang
+merupakan kontrol non-blok.
+
+| Kode | Arti | Tindakan | Blokir? |
+|---|---|---|---|
+| `NERACA_TIDAK_SEIMBANG` | Neraca pada cutoff jurnal terakhir/hari ini tidak seimbang: total aset ≠ total pasiva. Biasanya karena baris jurnal tidak seimbang, P&L sebelum cut-over, atau saldo awal/pembukaan tidak konsisten. | Jangan menutup periode atau membuat laporan resmi. Periksa Neraca Saldo, jurnal tidak seimbang, cut-over, dan saldo awal. Perbaiki lewat koreksi/wizard, lalu ulangi audit. | Ya |
+| `NERACA_SALDO_SELISIH` | Neraca Saldo mode **kumulatif** atau **tahun** selisih (total debit ≠ total kredit). Bisa muncul satu temuan per mode. | Periksa baris jurnal yang tidak seimbang dan P&L sebelum cut-over; jangan menutup periode sampai selisih 0. | Ya |
+| `CUTOVER_TIDAK_KONSISTEN` | `pengaturan.cutover_tanggal` berbeda dari tanggal jurnal pembukaan aktif. Biasanya karena setting diubah manual setelah saldo awal. | Jangan mengubah tanggal cut-over manual. Jalankan **Wizard Koreksi Saldo Awal** agar penunjuk pembukaan dan tanggal cut-over diperbarui bersama. | Ya |
+| `PEMBUKAAN_AKTIF_HILANG` | Ada jurnal `SALDO_AWAL`, tetapi `saldo_awal_aktif_id` kosong/tidak valid, atau menunjuk jurnal yang bukan pembukaan aktif (sudah dibalik/digantikan). | Perbaiki lewat **Wizard Koreksi Saldo Awal**; jangan membuat jurnal pembukaan baru atau mengubah jurnal lama. Bila data berasal dari restore, pertimbangkan pulihkan backup yang lebih sehat. | Ya |
+| `LABA_RUGI_SEBELUM_CUTOVER` | Ada baris PENDAPATAN/BEBAN bertanggal sebelum cut-over resmi di luar grup pembukaan. P&L itu tidak boleh dilaporkan sebagai laba tahun pertama. | Pindahkan/benahi baris lewat **Wizard Koreksi Saldo Awal** atau koreksi jurnal yang benar; jangan mengubah tanggal cut-over manual. | Ya |
+| `SALDO_AWAL_MEMUAT_LABA_RUGI` | Jurnal pembukaan (atau pengganti) memuat akun PENDAPATAN/BEBAN. Saldo awal hanya boleh AKTIVA, KEWAJIBAN, dan EKUITAS. | Perbaiki lewat **Wizard Koreksi Saldo Awal**; akun P&L sebelum cut-over harus tercermin di ekuitas/modal awal, bukan di jurnal pembukaan. | Ya |
+| `SNAPSHOT_TUTUP_BERUBAH` | Snapshot kunci periode versi terbaru berbeda dari angka/hash jurnal live. Penyebab sah: koreksi setelah kunci periode. Bisa juga data rusak. Snapshot tidak diubah otomatis. | Periksa rincian perbedaan dan audit koreksi setelah kunci periode. Bila memang ada koreksi sah, lakukan **KUNCI ULANG** yang dikonfirmasi agar versi snapshot baru tercatat; jangan mengedit snapshot. | **Tidak** (kontrol) |
+| `PANJAR_OPENING_TIDAK_LENGKAP` | Panjar `sumber = 'SALDO_AWAL'` tidak lengkap: `jurnal_open_id` kosong/tidak ditemukan, menunjuk jurnal yang bukan `OPENING`/`OPENING_REPLACEMENT`, total panjar OPEN melebihi debit neto `1040` jurnal pembukaan, atau penunjuk pembukaan aktif tidak sah. | Periksa dokumen panjar dan jurnal pembukaan. Bila jurnal pembukaan sudah dikoreksi, buat ulang dokumen representasi yang menunjuk pembukaan aktif; bila belum ada realisasi, pembatalan khusus panjar saldo awal menghapus dokumen tanpa jurnal balik. Jangan membuat jurnal serah kedua untuk 1040 yang sudah ada. | Ya |
+
+Catatan:
+
+- Temuan `SNAPSHOT_TUTUP_BERUBAH` **tidak memblokir** **KUNCI ULANG** yang sudah
+  dikonfirmasi, tetapi tetap harus ditampilkan dan diperiksa. Temuan lain
+  memblokir kunci periode **dan** kunci ulang sampai data diperbaiki.
+- Jangan memperbaiki temuan dengan mengedit/menghapus jurnal, snapshot, atau
+  audit langsung lewat SQLite. Gunakan wizard/koreksi resmi, atau pulihkan dari
+  backup sehat bila data memang rusak.
+- Setelah perbaikan, jalankan ulang audit integritas dan pastikan Neraca Saldo
+  selisih 0 sebelum mengunci periode.

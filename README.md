@@ -72,7 +72,7 @@ angka turunan yang disimpan mati.
 ┌───────────────▼──────────────┐  ┌─────────────▼─────────────────────┐
 │ src/core/* — logika murni    │  │ src/db/* — akses SQLite           │
 │ forms, posting, reports,     │  │ database.ts (DDL + guard skema    │
-│ reversal, periode, pin,      │  │ v1), repository, jurnal, panjar,  │
+│ reversal, periode, pin,      │  │ v2), repository, jurnal, panjar,  │
 │ tutup, pengaturan            │  │ laporan, seed-dev                 │
 └──────────────────────────────┘  └─────────────┬─────────────────────┘
                                                  │
@@ -93,14 +93,17 @@ Prinsip yang dijaga:
    dari jurnal, bukan dari tabel saldo/laba tersimpan.
 3. **Logika akuntansi murni** ada di `src/core/` supaya mudah diuji tanpa
    Electron. Lapisan `src/db/` mengurus SQL; `src/main/` mengurus IPC/OS.
-4. **Skema baseline v1** (lihat `SCHEMA_VERSION = 1` di
-   `src/db/database.ts`; kontrak lengkap di `docs/skema.md`). Ada 11 tabel
-   aktif: `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`, `audit_log`,
-   `pengaturan`, `panjar`, `panjar_item`, `pinjaman`, `pinjaman_angsuran`, dan
-   `pinjaman_bayar`. Seluruh tabel aktif memakai `STRICT` dengan `DEFAULT`
-   eksplisit bila diperlukan (termasuk `created_at` ISO). **Tidak ada
+4. **Skema baseline v2** (lihat `SCHEMA_VERSION = 2` di
+   `src/db/database.ts`; kontrak lengkap di `docs/skema.md`). Ada 12 tabel
+   aktif: `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`,
+   `tutup_buku_snapshot`, `audit_log`, `pengaturan`, `panjar`, `panjar_item`,
+   `pinjaman`, `pinjaman_angsuran`, dan `pinjaman_bayar`. Seluruh tabel aktif
+   memakai `STRICT` dengan `DEFAULT` eksplisit bila diperlukan (termasuk
+   `created_at` ISO). `jurnal.peran`/`replaces_id` menandai pembukaan dan
+   penggantinya, sedangkan `tutup_buku_snapshot` menyimpan bukti angka saat
+   kunci periode — **bukan** sumber angka laporan. **Tidak ada
    migrasi/pre-upgrade**: database dengan skema lain ditolak sebelum file diubah.
-   Database v1 yang **tidak lengkap** (tabel/kolom wajib hilang) juga ditolak
+   Database v2 yang **tidak lengkap** (tabel/kolom wajib hilang) juga ditolak
    dan harus **dipulihkan dari backup**, bukan dibuat ulang. Langkah praktisnya
    ada di **Runbook singkat** di bawah.
 5. **Offline dan satu file.** Tidak ada backend; seluruh data ada di `pura.db`
@@ -136,6 +139,7 @@ npm install
 npm run dev        # jalankan aplikasi mode development (electron-vite)
 npm test           # seluruh test Vitest
 npm run typecheck  # TypeScript tanpa emit
+npm run db:reset-dev  # pindahkan DB dev lama ke data/backups/pre-reset-<waktu>.db, buat DB v2 baru
 npm run build      # build main/preload/renderer ke out/
 npm run dist       # build + paket installer untuk OS saat ini
 npm run dist:win   # build + installer NSIS & portable Windows (paling aman di Windows/CI)
@@ -167,8 +171,9 @@ Rincian ada di `docs/panduan-portable.md`.
   `manifest.json`. Pakai ini untuk arsip jangka panjang atau pindah laptop.
 - **Restore Import .db** memulihkan database dari satu file; **Restore Lengkap**
   memulihkan database dari folder hasil Backup Lengkap. Keduanya hanya menerima
-  backup dengan skema baseline v1, memvalidasi kandidat (termasuk foreign key,
-  tabel wajib, dan audit akuntansi), lalu mencadangkan database aktif lebih dulu.
+  backup dengan skema baseline v2, memvalidasi kandidat (termasuk foreign key,
+  12 tabel wajib, dan audit akuntansi), lalu mencadangkan database aktif lebih
+  dulu.
 - Backup **tidak terenkripsi**. Simpan di media yang aman dan pisahkan dari
   laptop (flashdisk/Drive) secara rutin.
 - **Keputusan enkripsi backup (T3.3):** untuk rilis ini, backup `.db` **tidak
@@ -184,11 +189,12 @@ Rincian ada di `docs/panduan-portable.md`.
   PIN. Mitigasi: aktifkan enkripsi disk (BitLocker/FileVault), simpan backup
   hanya di media terenkripsi, jangan unggah ke cloud publik, dan hapus salinan
   lama yang tidak diperlukan.
-- **Hanya skema baseline v1 yang didukung.** Tidak ada migrasi/pre-upgrade.
-  Database atau backup dari skema lama ditolak tanpa mengubah file;
-  pindahkan atau hapus file database lama tersebut, lalu jalankan aplikasi lagi.
-  Backup yang dibuat aplikasi versi ini selalu dapat dipulihkan pada aplikasi
-  versi ini.
+- **Hanya skema baseline v2 yang didukung.** Tidak ada migrasi/pre-upgrade.
+  Database atau backup dari skema lama (termasuk v1) ditolak tanpa mengubah
+  file. Untuk DB dev, `npm run db:reset-dev` memindahkan file lama ke
+  `data/backups/pre-reset-<timestamp>.db` lalu membuat DB v2 baru; untuk data
+  nyata, pulihkan dari backup v2 yang sehat. Backup yang dibuat aplikasi versi
+  ini selalu dapat dipulihkan pada aplikasi versi ini.
 
 ---
 
@@ -262,7 +268,7 @@ saldo awal asli.
    Backup Lengkap) atau **Restore Import .db** (satu file, jalur lanjutan).
 3. Baca peringatan, pilih folder/file, lalu konfirmasi.
 4. Aplikasi memvalidasi kandidat (SQLite terbaca, `integrity_check`, foreign key,
-   skema v1, 11 tabel wajib) dan membuat cadangan otomatis
+   skema v2, 12 tabel wajib) dan membuat cadangan otomatis
    **`pre-restore-<waktu>.db`** sebelum mengganti data aktif.
 5. Setelah restore selesai, aplikasi **terkunci** dan meminta **PIN**. Masukkan
    PIN yang biasa dipakai; PIN tidak berubah karena restore database.
@@ -284,10 +290,11 @@ database tidak didukung, atau ada **tabel/kolom wajib yang hilang**.
 4. Bila tidak ada backup sehat atau restore juga ditolak, **hubungi pendamping**.
    Jangan menambal file dengan alat SQLite.
 
-Database v1 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
+Database v2 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
 ulang. Membuat database baru hanya untuk file skema lain/asing yang memang tidak
-didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
-dipastikan tidak ada data yang perlu diselamatkan.
+didukung (atau DB dev lewat `npm run db:reset-dev`), dan hanya setelah file lama
+dipindahkan (bukan ditimpa) serta dipastikan tidak ada data yang perlu
+diselamatkan.
 
 ---
 
@@ -295,7 +302,7 @@ dipastikan tidak ada data yang perlu diselamatkan.
 
 Dokumen kanonik utama:
 
-- `docs/skema.md` — kontrak skema baseline v1: 11 tabel `STRICT`, kolom,
+- `docs/skema.md` — kontrak skema baseline v2: 12 tabel `STRICT`, kolom,
   relasi, index, trigger, sumber COA, dan aturan sumber angka.
 - `docs/prinsip-akuntansi.md` — prinsip double-entry, koreksi/reversal, kunci
   periode, cut-over, dan batas yang masih berlaku.
