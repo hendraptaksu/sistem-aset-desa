@@ -36,8 +36,15 @@ import {
 import { rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, Panjar, PanjarItem } from '../core/types.js';
 import { formatRp } from '../utils/format.js';
-import { isAkunKasData } from './coa.js';
-import { getAkun, getJurnalDetail, listAkun, listJurnal } from './repository.js';
+import { AKUN_PANJAR, isAkunKasData } from './coa.js';
+import {
+  getAkun,
+  getJurnalDetail,
+  insertAuditLog,
+  listAkun,
+  listJurnal,
+} from './repository.js';
+import { getPembukaanAktif } from './pembukaan.js';
 import { postingJurnal } from './posting.js';
 import { rekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
 import type { HasilRekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
@@ -124,6 +131,32 @@ export type BatalPertanggungjawabanPanjarInput = {
   konfirmasiPeringatan?: boolean;
   /** Alasan operator saat peringatan posting dikonfirmasi. */
   alasanPeringatan?: string;
+};
+
+export type CatatPanjarSaldoAwalInput = {
+  /** ID dokumen panjar; opsional (dibuat otomatis). */
+  id?: string;
+  /** Bagian 1040 jurnal pembukaan yang masih beredar sebagai panjar (sen). */
+  jumlah: number;
+  /** Nama penerima; default "Panjar saldo awal". */
+  penerima?: string;
+  /** Akun kas/bank sumber; default 1001 KAS. */
+  akunKasSumber?: string;
+  /** Alias bentuk lama. */
+  akun_kas_sumber?: string;
+  /** Harus sama dengan tanggal jurnal pembukaan aktif; default tanggal itu. */
+  tanggal?: string;
+  /** Catatan/alasan yang dicatat di audit `PANJAR-SALDO-AWAL`. */
+  catatan?: string;
+  alasan?: string;
+};
+
+export type HasilBatalPanjarSaldoAwal = HasilValidasiJurnal & {
+  tersimpan: boolean;
+  /** ID dokumen representasi yang dihapus. */
+  id?: string;
+  /** Salinan dokumen sebelum dihapus (untuk tampilan/pesan). */
+  panjar?: Panjar;
 };
 
 export type StatusPanjar = 'OPEN' | 'CLOSED' | 'DIBATALKAN';
@@ -320,7 +353,182 @@ export function serahkanPanjar(
 }
 
 /**
- * Pertanggungjawaban panjar. Menolak panjar yang tidak ada / sudah CLOSED,
+ * T-A11 — catat panjar yang sudah beredar pada saat cut-over.
+ *
+ * Jangan membuat jurnal serah baru: debit 1040 sudah ada di jurnal pembukaan.
+ * Dokumen `panjar` ini hanya representasi operasional bagian 1040 yang masih
+ * beredar. `jurnal_open_id` menunjuk jurnal pembukaan aktif sehingga:
+ * - rekonsiliasi 1040 menghitung dokumen ini SATU kali (tanpa jurnal kedua);
+ * - close normal tetap memakai `buatJurnalPanjarClose` dan mengkredit 1040;
+ * - pembatalan generik ditolak karena akan membalik jurnal pembukaan.
+ *
+ * Satu jurnal pembukaan hanya boleh punya satu dokumen (unique index
+ * `ux_panjar_jurnal_open`). `jumlah` tidak boleh melebihi debit neto 1040
+ * jurnal pembukaan agar saldo tidak direpresentasikan dua kali.
+ */
+export function catatPanjarSaldoAwal(
+  db: Database.Database,
+  input: CatatPanjarSaldoAwalInput,
+): HasilPanjar {
+  const jumlah = input?.jumlah;
+  if (!Number.isSafeInteger(jumlah) || jumlah <= 0)
+    return gagal('Jumlah panjar saldo awal harus bilangan bulat lebih dari 0 (satuan sen).');
+
+  try {
+    const simpan = db.transaction((): HasilPanjar => {
+      const pembukaan = getPembukaanAktif(db);
+      if (!pembukaan)
+        return gagal(
+          'Belum ada jurnal pembukaan aktif. Catat saldo awal (atau koreksi saldo awal) ' +
+            'lebih dahulu sebelum mencatat panjar saldo awal.',
+        );
+      if (
+        pembukaan.peran !== 'OPENING' &&
+        pembukaan.peran !== 'OPENING_REPLACEMENT'
+      ) {
+        return gagal(
+          `Jurnal ${pembukaan.id} berperan ${pembukaan.peran}, bukan OPENING/OPENING_REPLACEMENT. ` +
+            'Panjar saldo awal hanya boleh menunjuk jurnal pembukaan.',
+        );
+      }
+
+      const tanggalInput = String(input?.tanggal ?? '').trim();
+      if (tanggalInput && !tanggalKalenderValid(tanggalInput))
+        return gagal('Tanggal panjar saldo awal tidak valid (YYYY-MM-DD).');
+      const tanggal = tanggalInput || pembukaan.tanggal;
+      if (tanggal !== pembukaan.tanggal)
+        return gagal(
+          `Tanggal panjar saldo awal (${tanggal}) harus sama dengan tanggal jurnal ` +
+            `pembukaan aktif (${pembukaan.tanggal}).`,
+        );
+
+      const id = String(input?.id ?? '').trim() || uid('p');
+      if (getPanjar(db, id))
+        return gagal(`Panjar ${id} sudah ada. Gunakan ID lain.`);
+
+      const dokumenPembukaan = db
+        .prepare(
+          `SELECT id FROM panjar
+            WHERE jurnal_open_id = ?
+            ORDER BY id LIMIT 1`,
+        )
+        .get(pembukaan.id) as { id: string } | undefined;
+      if (dokumenPembukaan)
+        return gagal(
+          `Jurnal pembukaan ${pembukaan.id} sudah punya dokumen panjar ` +
+            `${dokumenPembukaan.id}. Satu jurnal pembukaan hanya boleh punya satu ` +
+            'dokumen panjar saldo awal.',
+        );
+
+      const debitNeto = Number(
+        (
+          db
+            .prepare(
+              `SELECT COALESCE(SUM(debit - kredit), 0) AS saldo
+                 FROM jurnal_baris
+                WHERE jurnal_id = ? AND akun_kode = ?`,
+            )
+            .get(pembukaan.id, AKUN_PANJAR) as { saldo: number }
+        ).saldo,
+      );
+      // Kurangi dokumen opening lain yang (seharusnya tidak ada karena unique
+      // index) menunjuk jurnal yang sama; ini menjaga perhitungan tetap aman
+      // pada data lama yang dibuka tanpa index.
+      const sudahTercatat = Number(
+        (
+          db
+            .prepare(
+              `SELECT COALESCE(SUM(jumlah), 0) AS total
+                 FROM panjar
+                WHERE jurnal_open_id = ? AND sumber = 'SALDO_AWAL' AND id <> ?`,
+            )
+            .get(pembukaan.id, id) as { total: number }
+        ).total,
+      );
+      const tersedia = debitNeto - sudahTercatat;
+      if (jumlah > tersedia)
+        return gagal(
+          `Jumlah panjar saldo awal ${formatRp(jumlah)} melebihi saldo 1040 jurnal ` +
+            `pembukaan ${pembukaan.id} yang belum direpresentasikan (${formatRp(
+              Math.max(0, tersedia),
+            )}). Kurangi jumlahnya agar tidak menghitung 1040 dua kali.`,
+        );
+
+      const penerima =
+        String(input?.penerima ?? '').trim() || 'Panjar saldo awal';
+      if (penerima.length > 200)
+        return gagal('Nama penerima panjar maks. 200 karakter.');
+
+      const akunKasSumber =
+        String(input?.akunKasSumber ?? input?.akun_kas_sumber ?? '').trim() ||
+        '1001';
+      const akunKas = getAkun(db, akunKasSumber);
+      if (!isAkunKasData(akunKas) || akunKas?.aktif === false)
+        return gagal(
+          'Akun kas sumber panjar saldo awal wajib akun kas/bank aktif yang dikenal.',
+        );
+
+      const createdAt = new Date().toISOString();
+      const panjar: Panjar = {
+        id,
+        tanggal,
+        penerima,
+        jumlah,
+        akun_kas_sumber: akunKasSumber,
+        status: 'OPEN',
+        sumber: 'SALDO_AWAL',
+        tanggal_close: null,
+        jurnal_open_id: pembukaan.id,
+        jurnal_close_id: null,
+        created_at: createdAt,
+      };
+      const catatan = String(input?.catatan ?? input?.alasan ?? '').trim();
+      const audit = buatAuditLog(
+        `PANJAR-SALDO-AWAL ${id}`,
+        catatan,
+        undefined,
+        { panjar, pembukaan },
+        { ref_type: 'panjar', ref_id: id },
+      );
+
+      db.prepare(
+        `INSERT INTO panjar
+           (id, tanggal, penerima, jumlah, akun_kas_sumber, status, sumber,
+            tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
+         VALUES (?, ?, ?, ?, ?, 'OPEN', 'SALDO_AWAL', NULL, ?, NULL, ?)`,
+      ).run(
+        id,
+        tanggal,
+        penerima,
+        jumlah,
+        akunKasSumber,
+        pembukaan.id,
+        createdAt,
+      );
+      insertAuditLog(db, audit);
+
+      return {
+        boleh: true,
+        errors: [],
+        peringatan: [],
+        perluKonfirmasi: false,
+        tersimpan: true,
+        panjar,
+      };
+    });
+    return simpan();
+  } catch (e) {
+    const pesan = e instanceof Error ? e.message : String(e);
+    if (pesan.includes('UNIQUE constraint failed: panjar.jurnal_open_id'))
+      return gagal(
+        'Jurnal pembukaan ini sudah punya dokumen panjar saldo awal. ' +
+          'Satu jurnal pembukaan hanya boleh punya satu dokumen.',
+      );
+    return gagal(`Panjar saldo awal gagal disimpan: ${pesan}`);
+  }
+}
+
+/** Pertanggungjawaban panjar. Menolak panjar yang tidak ada / sudah CLOSED,
  * tanggal close sebelum tanggal serah, dan kekurangan tanpa konfirmasi.
  * Jurnal close, update status, item, dan audit ditulis atomik.
  */
@@ -595,6 +803,15 @@ export function batalPanjarV2(
 
   const panjar = getPanjar(db, id);
   if (!panjar) return gagal(`Panjar ${id} tidak ditemukan.`);
+  // T-A11: reversal generik akan membalik jurnal pembukaan (1040 dan kas
+  // sumber), padahal panjar ini hanya representasi bagian 1040 yang sudah
+  // tercatat di sana. Pembatalannya wajib lewat jalur khusus.
+  if (panjar.sumber === 'SALDO_AWAL')
+    return gagal(
+      `Panjar ${id} adalah representasi saldo awal. Pembatalan generik akan ` +
+        'membalik jurnal pembukaan, sehingga tidak diizinkan. Gunakan ' +
+        'pembatalan khusus panjar saldo awal (tanpa jurnal balik).',
+    );
   if (panjar.jurnal_batal_id)
     return gagal(
       `Panjar ${id} sudah dibatalkan` +
@@ -700,6 +917,125 @@ export function batalPanjarV2(
       `Pembatalan panjar gagal disimpan: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+}
+
+/**
+ * T-A11 — batalkan HANYA dokumen representasi panjar saldo awal.
+ *
+ * Berbeda dari `batalPanjarV2`, alur ini TIDAK membuat jurnal balik: jurnal
+ * pembukaan bukan milik dokumen panjar dan tidak boleh dibalik dari menu
+ * Panjar. Dokumen dihapus dalam transaksi + audit `PANJAR-SALDO-AWAL-BATAL`.
+ * Saldo 1040 di jurnal pembukaan tetap apa adanya; bila memang salah, operator
+ * wajib memakai alur koreksi saldo awal. Audit integritas akan melaporkan
+ * selisih 1040 selama saldo itu belum dikoreksi — jadi tidak ada “1040 hantu”
+ * yang diam-diam dianggap terepresentasi.
+ *
+ * Hanya boleh untuk status OPEN, belum dibatalkan, tanpa item realisasi.
+ */
+export function batalkanPanjarSaldoAwal(
+  db: Database.Database,
+  idInput: string,
+  alasanInput: string,
+): HasilBatalPanjarSaldoAwal {
+  const id = String(idInput ?? '').trim();
+  if (!id) return gagalBatalSaldoAwal('Panjar saldo awal yang akan dibatalkan belum dipilih.');
+
+  const alasan = String(alasanInput ?? '').trim();
+  if (alasan.length < 5)
+    return gagalBatalSaldoAwal(
+      'Alasan pembatalan panjar saldo awal wajib diisi minimal 5 karakter.',
+    );
+
+  try {
+    const simpan = db.transaction((): HasilBatalPanjarSaldoAwal => {
+      const panjar = getPanjar(db, id);
+      if (!panjar)
+        return gagalBatalSaldoAwal(`Panjar ${id} tidak ditemukan.`);
+      if (panjar.sumber !== 'SALDO_AWAL')
+        return gagalBatalSaldoAwal(
+          `Panjar ${id} bukan panjar saldo awal. Gunakan pembatalan panjar biasa ` +
+            'yang membuat jurnal balik.',
+        );
+      if (panjar.jurnal_batal_id)
+        return gagalBatalSaldoAwal(
+          `Panjar saldo awal ${id} sudah dibatalkan. Pembatalan tidak bisa diulang.`,
+        );
+      if (panjar.status !== 'OPEN')
+        return gagalBatalSaldoAwal(
+          'Hanya panjar saldo awal berstatus OPEN yang bisa dibatalkan. ' +
+            'Panjar yang sudah dipertanggungjawabkan tidak punya representasi opening untuk dihapus.',
+        );
+
+      const jumlahItem = Number(
+        (
+          db
+            .prepare('SELECT COUNT(*) AS n FROM panjar_item WHERE panjar_id = ?')
+            .get(id) as { n: number }
+        ).n,
+      );
+      if (jumlahItem > 0)
+        return gagalBatalSaldoAwal(
+          `Panjar saldo awal ${id} sudah punya ${jumlahItem} item realisasi. ` +
+            'Pembatalan representasi opening hanya boleh sebelum ada realisasi.',
+        );
+
+      const audit = buatAuditLog(
+        `PANJAR-SALDO-AWAL-BATAL ${id}`,
+        alasan,
+        panjar,
+        {
+          dihapus: panjar,
+          jurnal_open_id: panjar.jurnal_open_id,
+          catatan:
+            'Dokumen representasi saldo awal dihapus tanpa jurnal balik; ' +
+            'jurnal pembukaan tidak diubah.',
+        },
+        { ref_type: 'panjar', ref_id: id },
+      );
+
+      const hapus = db
+        .prepare(
+          `DELETE FROM panjar
+            WHERE id = ?
+              AND status = 'OPEN'
+              AND sumber = 'SALDO_AWAL'
+              AND (jurnal_batal_id IS NULL OR jurnal_batal_id = '')`,
+        )
+        .run(id);
+      if (Number(hapus.changes) !== 1)
+        throw new Error(
+          'Panjar saldo awal sudah berubah oleh proses lain. Muat ulang daftar panjar.',
+        );
+      insertAuditLog(db, audit);
+
+      return {
+        boleh: true,
+        errors: [],
+        peringatan: [],
+        perluKonfirmasi: false,
+        tersimpan: true,
+        id,
+        panjar,
+      };
+    });
+    return simpan();
+  } catch (e) {
+    return gagalBatalSaldoAwal(
+      `Pembatalan panjar saldo awal gagal disimpan: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+  }
+}
+
+function gagalBatalSaldoAwal(pesan: string): HasilBatalPanjarSaldoAwal {
+  return {
+    boleh: false,
+    errors: [pesan],
+    peringatan: [],
+    perluKonfirmasi: false,
+    tersimpan: false,
+  };
 }
 
 /**

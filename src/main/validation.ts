@@ -128,6 +128,62 @@ export function validasiBentukPanjarSerah(
   };
 }
 
+export type BentukPanjarSaldoAwal = {
+  id?: string;
+  jumlah: number;
+  penerima?: string;
+  akunKasSumber?: string;
+  tanggal?: string;
+  catatan?: string;
+  alasan?: string;
+};
+
+/**
+ * T-A11: normalisasi input panjar saldo awal. Tidak ada jurnal baru; adapter
+ * tetap memvalidasi pembukaan aktif, tanggal, duplikat, dan kapasitas 1040.
+ */
+export function validasiBentukPanjarSaldoAwal(
+  nilai: unknown,
+): HasilBentuk<BentukPanjarSaldoAwal> {
+  if (!objek(nilai)) return { ok: false, error: 'Data panjar saldo awal tidak lengkap.' };
+
+  const id = teksOpsional(nilai.id, 'ID panjar', 200);
+  if (!id.ok) return id;
+
+  const jumlah = nilai.jumlah;
+  if (typeof jumlah !== 'number' || !Number.isSafeInteger(jumlah) || jumlah <= 0)
+    return {
+      ok: false,
+      error: 'Jumlah panjar saldo awal harus bilangan bulat lebih dari 0 (satuan sen).',
+    };
+
+  const penerima = teksOpsional(nilai.penerima, 'Nama penerima', 200);
+  if (!penerima.ok) return penerima;
+  const akunKasSumber = teksOpsional(nilai.akunKasSumber, 'Akun kas sumber', 20);
+  if (!akunKasSumber.ok) return akunKasSumber;
+  const tanggal = teksOpsional(nilai.tanggal, 'Tanggal panjar', 10);
+  if (!tanggal.ok) return tanggal;
+  if (tanggal.nilai && !tanggalKalenderValid(tanggal.nilai))
+    return { ok: false, error: PESAN_TANGGAL_TIDAK_VALID };
+  const catatan = teksOpsional(nilai.catatan, 'Catatan', 1000);
+  if (!catatan.ok) return catatan;
+  const alasan = teksOpsional(nilai.alasan, 'Alasan', 1000);
+  if (!alasan.ok) return alasan;
+
+  return {
+    ok: true,
+    input: {
+      ...(id.nilai ? { id: id.nilai } : {}),
+      jumlah,
+      ...(penerima.nilai ? { penerima: penerima.nilai } : {}),
+      ...(akunKasSumber.nilai ? { akunKasSumber: akunKasSumber.nilai } : {}),
+      ...(tanggal.nilai ? { tanggal: tanggal.nilai } : {}),
+      ...(catatan.nilai ? { catatan: catatan.nilai } : {}),
+      ...(alasan.nilai ? { alasan: alasan.nilai } : {}),
+    },
+  };
+}
+
 /** Normalisasi objek close panjar; item boleh memakai `akun` atau `kategori_baga`. */
 export function validasiBentukPanjarClose(
   nilai: unknown,

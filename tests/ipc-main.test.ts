@@ -197,10 +197,12 @@ const CHANNEL_IPC = [
   'lock:unlock',
   'panjar:batal',
   'panjar:batal-close',
+  'panjar:batal-saldo-awal',
   'panjar:close',
   'panjar:create',
   'panjar:items',
   'panjar:list',
+  'panjar:saldo-awal',
   'pengaturan:get',
   'pengaturan:simpan',
   'pinjaman:bayar',
@@ -224,11 +226,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 65 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 67 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(65);
+    expect(env.handlers.size).toBe(67);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(65);
+    expect(CHANNEL_IPC).toHaveLength(67);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -1695,6 +1697,68 @@ describe('DB-21 — IPC pembatalan panjar OPEN', () => {
     const integritas = await env.panggil('audit:integritas');
     expect(integritas.ok, integritas.error).toBe(true);
     expect(integritas.data.ok).toBe(true);
+  });
+});
+
+describe('T-A11 — IPC panjar saldo awal', () => {
+  it('mencatat representasi opening dan membatalkannya tanpa jurnal baru', async () => {
+    const env = buatEnv();
+    const awal = await env.panggil('saldo-awal:posting', {
+      tanggal: '2026-07-01',
+      saldo: [{ akun_kode: '1040', nominal: 200_000 }],
+    });
+    expect(awal.ok, awal.error).toBe(true);
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+
+    const lebih = await env.panggil('panjar:saldo-awal', {
+      jumlah: 200_001,
+    });
+    expect(lebih.ok).toBe(false);
+    expect(lebih.error).toMatch(/melebihi saldo 1040/i);
+
+    const buat = await env.panggil(
+      'panjar:saldo-awal',
+      {
+        jumlah: 200_000,
+        penerima: 'Panitia Cut-over',
+        catatan: 'Panjar beredar saat cut-over',
+      },
+      'Panjar beredar saat cut-over',
+    );
+    expect(buat.ok, buat.error).toBe(true);
+    expect(buat.data.panjar).toMatchObject({
+      sumber: 'SALDO_AWAL',
+      jumlah: 200_000,
+      status: 'OPEN',
+    });
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+
+    const id = buat.data.panjar.id as string;
+    const list = await env.panggil('panjar:list');
+    expect(list.data).toHaveLength(1);
+    expect(list.data[0]).toMatchObject({ id, sumber: 'SALDO_AWAL' });
+
+    const reversal = await env.panggil(
+      'panjar:batal',
+      id,
+      'Coba reversal biasa',
+    );
+    expect(reversal.ok).toBe(false);
+    expect(reversal.error).toMatch(/representasi saldo awal/i);
+
+    const pendek = await env.panggil('panjar:batal-saldo-awal', id, 'sala');
+    expect(pendek.ok).toBe(false);
+    expect(pendek.error).toMatch(/minimal 5 karakter/i);
+
+    const batal = await env.panggil(
+      'panjar:batal-saldo-awal',
+      id,
+      'Saldo awal sudah tidak beredar',
+    );
+    expect(batal.ok, batal.error).toBe(true);
+    expect(batal.data).toEqual({ id });
+    expect((await env.panggil('jurnal:list', {})).data).toHaveLength(1);
+    expect((await env.panggil('panjar:list')).data).toEqual([]);
   });
 });
 

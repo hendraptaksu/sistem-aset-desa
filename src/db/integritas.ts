@@ -98,6 +98,7 @@ export type KodeTemuan =
   | 'PANJAR_BATAL_TIDAK_LENGKAP'
   | 'PANJAR_BATAL_GANDA'
   | 'PANJAR_BATAL_TIDAK_KONSISTEN'
+  | 'PANJAR_OPENING_TIDAK_LENGKAP'
   | 'REKONSILIASI_PANJAR_GL_SELISIH'
   | 'REKONSILIASI_PINJAMAN_SELISIH'
   | 'SNAPSHOT_TUTUP_BERUBAH'
@@ -293,6 +294,16 @@ type PanjarBatalGanda = {
   jurnal_batal_id: string;
   jumlah: number;
   ids: string;
+};
+
+type PanjarOpeningTidakLengkap = {
+  id?: string;
+  jurnal_open_id: string;
+  status?: string;
+  jumlah?: number;
+  debit_neto?: number;
+  peran?: string | null;
+  alasan: string[];
 };
 
 type RekonsiliasiPanjarGlSelisih = {
@@ -940,6 +951,9 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       'jurnal_id',
     ]);
   const panjarLengkap = panjarV2 && panjarItemV2;
+  // T-A11: dokumen opening hanya bisa diperiksa bila kolom `sumber` ada.
+  // Backup/DB lama tanpa kolom ini tidak dianggap rusak.
+  const panjarSumberSiap = panjarV2 && kolomPanjar.has('sumber');
   // Baris legacy yang dibatalkan masih berstatus OPEN tetapi punya
   // jurnal_batal_id. Jangan perlakukan sebagai panjar OPEN aktif.
   const filterBatal = kolomPanjar.has('jurnal_batal_id')
@@ -1157,10 +1171,12 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   // Tanggal/jumlah/akun kas harus sama dengan jurnal open. Jurnal yang hilang
   // sudah dilaporkan lewat FK/PANJAR_OPEN_TIDAK_LENGKAP, jadi query ini hanya
   // memeriksa panjar yang tautan jurnal serahnya benar-benar ada.
+  const selectSumberPanjar = panjarSumberSiap ? 'p.sumber' : "'NORMAL'";
   const panjarHeader = panjarV2
     ? (db
         .prepare(
-      `SELECT p.id, p.tanggal, p.jumlah, p.akun_kas_sumber, p.jurnal_open_id,
+      `SELECT p.id, ${selectSumberPanjar} AS sumber,
+              p.tanggal, p.jumlah, p.akun_kas_sumber, p.jurnal_open_id,
               j.tanggal AS tanggal_jurnal,
               COALESCE((
                 SELECT SUM(b.debit)
@@ -1187,6 +1203,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     )
     .all() as {
     id: string;
+    sumber: string;
     tanggal: string;
     jumlah: number;
     akun_kas_sumber: string;
@@ -1209,7 +1226,14 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         `jumlah header ${formatRp(jumlah)} vs debit ${AKUN_PANJAR} jurnal ` +
           `${formatRp(debitPanjar)}`,
       );
-    if (r.akun_kredit !== r.akun_kas_sumber || kreditKas !== jumlah)
+    // T-A11: jurnal pembukaan tidak selalu mengkredit kas sumber; bisa
+    // dikredit modal/akun neraca lain. Untuk SALDO_AWAL, `akun_kas_sumber`
+    // hanya tujuan pengembalian sisa saat close, jadi jangan dibandingkan
+    // dengan kredit jurnal pembukaan. Jumlah vs debit 1040 tetap diperiksa.
+    if (
+      r.sumber !== 'SALDO_AWAL' &&
+      (r.akun_kredit !== r.akun_kas_sumber || kreditKas !== jumlah)
+    )
       alasan.push(
         `akun kas header ${r.akun_kas_sumber} (${formatRp(jumlah)}) vs kredit ` +
           `jurnal ${r.akun_kredit ?? '-'} (${formatRp(kreditKas)})`,
@@ -1234,6 +1258,139 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         `${r.jurnal_open_id}: ${alasan.join('; ')}.`,
       detail,
     });
+  }
+
+  // T-A11: dokumen panjar `SALDO_AWAL` adalah representasi bagian 1040 yang
+  // sudah ada di jurnal pembukaan, bukan jurnal serah kedua. Periksa
+  // konsistensi dokumennya saja; kasus 1040 pembukaan TANPA dokumen opening
+  // tetap menjadi tanggung jawab REKONSILIASI_PANJAR_GL_SELISIH di bawah agar
+  // tidak ada temuan ganda.
+  if (panjarSumberSiap) {
+    const openingRows = db
+      .prepare(
+        `SELECT p.id, p.status, p.jumlah, p.jurnal_open_id, p.jurnal_batal_id,
+                j.peran
+           FROM panjar p
+           LEFT JOIN jurnal j ON j.id = p.jurnal_open_id
+          WHERE p.sumber = 'SALDO_AWAL'
+          ORDER BY p.id`,
+      )
+      .all() as {
+      id: string;
+      status: string;
+      jumlah: number;
+      jurnal_open_id: string;
+      jurnal_batal_id: string | null;
+      peran: string | null;
+    }[];
+
+    for (const r of openingRows) {
+      const alasan: string[] = [];
+      if (!String(r.jurnal_open_id ?? '').trim()) {
+        alasan.push('jurnal_open_id kosong');
+      } else if (!r.peran) {
+        alasan.push(`jurnal ${r.jurnal_open_id} tidak ditemukan`);
+      } else if (
+        r.peran !== 'OPENING' &&
+        r.peran !== 'OPENING_REPLACEMENT'
+      ) {
+        alasan.push(
+          `jurnal ${r.jurnal_open_id} berperan ${r.peran}, bukan OPENING/OPENING_REPLACEMENT`,
+        );
+      }
+      if (alasan.length === 0) continue;
+      const detail: PanjarOpeningTidakLengkap = {
+        id: r.id,
+        jurnal_open_id: r.jurnal_open_id,
+        status: r.status,
+        jumlah: Number(r.jumlah),
+        peran: r.peran,
+        alasan,
+      };
+      temuan.push({
+        kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
+        pesan:
+          `Panjar saldo awal ${r.id} menunjuk jurnal yang bukan pembukaan yang sah: ` +
+          `${alasan.join('; ')}.`,
+        detail,
+      });
+    }
+
+    const openingOpen = db
+      .prepare(
+        `SELECT p.jurnal_open_id, SUM(p.jumlah) AS total_open
+           FROM panjar p
+           JOIN jurnal j ON j.id = p.jurnal_open_id
+          WHERE p.sumber = 'SALDO_AWAL'
+            AND p.status = 'OPEN'${filterBatalP}
+            AND j.peran IN ('OPENING', 'OPENING_REPLACEMENT')
+          GROUP BY p.jurnal_open_id
+          ORDER BY p.jurnal_open_id`,
+      )
+      .all() as { jurnal_open_id: string; total_open: number }[];
+
+    for (const r of openingOpen) {
+      const totalOpen = Number(r.total_open);
+      const debitNeto = Number(
+        (
+          db
+            .prepare(
+              `SELECT COALESCE(SUM(debit - kredit), 0) AS saldo
+                 FROM jurnal_baris
+                WHERE jurnal_id = ? AND akun_kode = ?`,
+            )
+            .get(r.jurnal_open_id, AKUN_PANJAR) as { saldo: number }
+        ).saldo,
+      );
+      if (totalOpen <= debitNeto) continue;
+      const alasan = [
+        `total panjar opening OPEN ${formatRp(totalOpen)} melebihi debit neto ` +
+          `1040 jurnal pembukaan ${formatRp(debitNeto)}`,
+      ];
+      const detail: PanjarOpeningTidakLengkap = {
+        jurnal_open_id: r.jurnal_open_id,
+        jumlah: totalOpen,
+        debit_neto: debitNeto,
+        alasan,
+      };
+      temuan.push({
+        kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
+        pesan:
+          `Panjar saldo awal pada jurnal ${r.jurnal_open_id} tidak lengkap: ` +
+          `${alasan[0]}.`,
+        detail,
+      });
+    }
+
+    const adaOpeningOpen = openingRows.some(
+      (r) =>
+        r.status === 'OPEN' &&
+        (r.jurnal_batal_id === null || r.jurnal_batal_id === ''),
+    );
+    if (adaOpeningOpen) {
+      const aktif = getPembukaanAktif(db);
+      const pointerSah =
+        aktif !== null &&
+        (aktif.peran === 'OPENING' || aktif.peran === 'OPENING_REPLACEMENT');
+      if (!pointerSah) {
+        const alasan = [
+          aktif
+            ? `penunjuk pembukaan aktif menunjuk ${aktif.id} berperan ${aktif.peran}`
+            : 'penunjuk pembukaan aktif kosong atau tidak valid',
+        ];
+        const detail: PanjarOpeningTidakLengkap = {
+          jurnal_open_id: '',
+          alasan,
+        };
+        temuan.push({
+          kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
+          pesan:
+            'Ada panjar saldo awal berstatus OPEN tetapi ' +
+            `${alasan[0]}. Perbaiki penunjuk pembukaan sebelum cut-over dipakai.`,
+          detail,
+        });
+      }
+    }
   }
 
   // DB-19: jurnal close adalah sumber total. Untuk panjar CLOSED yang sudah

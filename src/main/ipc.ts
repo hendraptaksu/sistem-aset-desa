@@ -45,7 +45,9 @@ import {
 } from '../db/saldoAwal.js';
 import {
   batalPanjarV2,
+  batalkanPanjarSaldoAwal,
   batalkanPertanggungjawabanPanjar,
+  catatPanjarSaldoAwal,
   closePanjarV2,
   listPanjarItemsV2,
   listPanjarV2,
@@ -116,6 +118,7 @@ import {
   validasiKodeAkun,
   validasiStatusAkunAktif,
   validasiBentukPanjarClose,
+  validasiBentukPanjarSaldoAwal,
   validasiBentukPanjarSerah,
   validasiBentukPembatalanPertanggungjawabanPanjar,
   validasiBentukPengaturanPembukuan,
@@ -1060,6 +1063,68 @@ export function registerIpc(deps: IpcDeps): void {
           panjar: hasil.panjar,
           jurnal: hasil.jurnal,
         });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:saldo-awal',
+    (_e, input: unknown, alasan?: unknown) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+
+        const bentuk = validasiBentukPanjarSaldoAwal(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const alasanTeks = typeof alasan === 'string' ? alasan.trim() : '';
+
+        const hasil = catatPanjarSaldoAwal(deps.db(), {
+          ...bentuk.input,
+          ...(alasanTeks ? { alasan: alasanTeks } : {}),
+        });
+        if (!hasil.tersimpan || !hasil.panjar) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Panjar saldo awal gagal disimpan.';
+          return fail(pesan);
+        }
+        return ok({ panjar: hasil.panjar });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:batal-saldo-awal',
+    (_e, id: unknown, alasan: unknown) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        if (typeof id !== 'string' || !id.trim())
+          return fail('ID panjar saldo awal yang akan dibatalkan wajib diisi.');
+        const alasanTeks = typeof alasan === 'string' ? alasan.trim() : '';
+        if (alasanTeks.length < 5)
+          return fail(
+            'Alasan pembatalan panjar saldo awal wajib diisi minimal 5 karakter.',
+          );
+
+        const hasil = batalkanPanjarSaldoAwal(
+          deps.db(),
+          id.trim(),
+          alasanTeks,
+        );
+        if (!hasil.tersimpan || !hasil.id) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Pembatalan panjar saldo awal gagal disimpan.';
+          return fail(pesan);
+        }
+        return ok({ id: hasil.id });
       } catch (e) {
         return fail(pesanError(e, GAGAL_PANJAR));
       }

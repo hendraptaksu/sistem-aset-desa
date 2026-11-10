@@ -482,6 +482,28 @@ export const api = {
   panjarList: (status?: 'OPEN' | 'CLOSED' | 'DIBATALKAN') =>
     call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
+  /**
+   * T-A11: catat panjar yang sudah beredar pada cut-over. Tidak membuat jurnal
+   * baru; 1040 sudah ada di jurnal pembukaan.
+   */
+  panjarSaldoAwal: (
+    input: {
+      id?: string;
+      jumlah: number;
+      penerima?: string;
+      akunKasSumber?: string;
+      tanggal?: string;
+      catatan?: string;
+      alasan?: string;
+    },
+    alasan?: string,
+  ) => call<{ panjar: Panjar }>('panjar:saldo-awal', input, alasan),
+  /**
+   * T-A11: hapus HANYA dokumen representasi saldo awal, tanpa jurnal balik.
+   * Jurnal pembukaan tidak diubah; alasan wajib >= 5 karakter.
+   */
+  panjarBatalSaldoAwal: (id: string, alasan: string) =>
+    call<{ id: string }>('panjar:batal-saldo-awal', id, alasan),
   /** DB-21: batalkan panjar OPEN; alasan wajib >= 5 karakter. */
   panjarBatal: (
     id: string,

@@ -19,7 +19,9 @@ import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
   batalPanjarV2,
+  batalkanPanjarSaldoAwal,
   batalkanPertanggungjawabanPanjar,
+  catatPanjarSaldoAwal,
   closePanjarV2,
   getPanjar,
   listPanjarItemsV2,
@@ -76,6 +78,28 @@ function dbKas(): Database.Database {
       jenis: 'SALDO_AWAL',
     },
     baris: [D('1001', RP(10_000_000)), K(AKUN_MODAL, RP(10_000_000))],
+  });
+  expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+  return db;
+}
+
+/**
+ * DB dengan jurnal pembukaan yang memuat 1040 (D 1040 / K modal). Ini kondisi
+ * cut-over dengan panjar yang masih beredar; tidak ada jurnal serah.
+ */
+function dbPanjarSaldoAwal(
+  jumlah1040 = RP(2_000_000),
+): Database.Database {
+  const db = openDb(':memory:');
+  const awal = simpanSaldoAwal(db, {
+    header: {
+      id: 'awal-panjar',
+      tanggal: '2026-01-01',
+      no_bukti: 'T-A11-0001',
+      keterangan: 'Saldo awal dengan panjar beredar',
+      jenis: 'SALDO_AWAL',
+    },
+    baris: [D('1040', jumlah1040), K(AKUN_MODAL, jumlah1040)],
   });
   expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
   return db;
@@ -1237,6 +1261,190 @@ describe('DB-21 — pembatalan panjar OPEN', () => {
         status: 'DIBATALKAN',
         jurnal_batal_id: 'j-batal-p1',
       });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('T-A11 — panjar OPEN saat cut-over (sumber SALDO_AWAL)', () => {
+  it('mencatat representasi saldo awal tanpa jurnal baru dan audit tetap ok', () => {
+    const db = dbPanjarSaldoAwal();
+    try {
+      const jumlahJurnal = listJurnal(db).length;
+      const jumlahAudit = listAuditLog(db).length;
+
+      const hasil = catatPanjarSaldoAwal(db, {
+        id: 'psa-1',
+        jumlah: RP(2_000_000),
+        penerima: 'Panitia Beredar',
+        alasan: 'Panjar masih beredar saat cut-over',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.panjar).toMatchObject({
+        id: 'psa-1',
+        tanggal: '2026-01-01',
+        penerima: 'Panitia Beredar',
+        jumlah: RP(2_000_000),
+        akun_kas_sumber: '1001',
+        status: 'OPEN',
+        sumber: 'SALDO_AWAL',
+        jurnal_open_id: 'awal-panjar',
+        jurnal_close_id: null,
+      });
+
+      // Tidak ada jurnal serah kedua; 1040 tetap satu kali di pembukaan.
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(listAuditLog(db)).toHaveLength(jumlahAudit + 1);
+      const audit = listAuditLog(db, {
+        aksi: 'PANJAR-SALDO-AWAL psa-1',
+      });
+      expect(audit).toHaveLength(1);
+      expect(audit[0]?.alasan).toBe('Panjar masih beredar saat cut-over');
+
+      expect(getPanjar(db, 'psa-1')?.sumber).toBe('SALDO_AWAL');
+      expect(listPanjarV2(db, 'OPEN')).toHaveLength(1);
+      expect(auditIntegritas(db).ok).toBe(true);
+      expect(auditIntegritas(db).temuan).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak jumlah melebihi 1040 pembukaan dan duplikat dokumen opening', () => {
+    const db = dbPanjarSaldoAwal();
+    try {
+      const lebih = catatPanjarSaldoAwal(db, {
+        id: 'psa-over',
+        jumlah: RP(2_000_001),
+      });
+      expect(lebih.tersimpan).toBe(false);
+      expect(lebih.errors.join(' ')).toMatch(/melebihi saldo 1040/i);
+      expect(getPanjar(db, 'psa-over')).toBeNull();
+
+      expect(
+        catatPanjarSaldoAwal(db, {
+          id: 'psa-1',
+          jumlah: RP(2_000_000),
+        }).tersimpan,
+      ).toBe(true);
+      const duplikat = catatPanjarSaldoAwal(db, {
+        id: 'psa-2',
+        jumlah: RP(1),
+      });
+      expect(duplikat.tersimpan).toBe(false);
+      expect(duplikat.errors.join(' ')).toMatch(
+        /sudah punya dokumen panjar|satu jurnal pembukaan/i,
+      );
+      expect(listPanjarV2(db)).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('close normal dengan realisasi menghabiskan 1040 dan mengembalikan sisa ke kas sumber', () => {
+    const db = dbPanjarSaldoAwal();
+    try {
+      expect(
+        catatPanjarSaldoAwal(db, {
+          id: 'psa-close',
+          jumlah: RP(2_000_000),
+        }).tersimpan,
+      ).toBe(true);
+
+      const kosong = closePanjarV2(db, {
+        id: 'psa-close',
+        tanggalClose: '2026-02-01',
+        items: [],
+      });
+      expect(kosong.tersimpan).toBe(false);
+      expect(kosong.errors.join(' ')).toMatch(/minimal satu baris beban/i);
+
+      const tutup = closePanjarV2(db, {
+        id: 'psa-close',
+        tanggalClose: '2026-02-01',
+        items: [{ akun: '5004', nominal: RP(1_000_000) }],
+      });
+      expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
+      expect(tutup.panjar).toMatchObject({
+        status: 'CLOSED',
+        sumber: 'SALDO_AWAL',
+        sisa: RP(1_000_000),
+        kurang: 0,
+      });
+      expect(ringkasBaris(tutup.jurnal!.id, db)).toEqual([
+        { akun: '5004', debit: RP(1_000_000), kredit: 0 },
+        { akun: '1001', debit: RP(1_000_000), kredit: 0 },
+        { akun: '1040', debit: 0, kredit: RP(2_000_000) },
+      ]);
+      expect(saldoAkun(listBarisJurnal(db), '1040')).toBe(0);
+      expect(listPanjarV2(db, 'OPEN')).toEqual([]);
+      expect(auditIntegritas(db).ok).toBe(true);
+
+      const batalTerlambat = batalkanPanjarSaldoAwal(
+        db,
+        'psa-close',
+        'Sudah terlanjur ditutup',
+      );
+      expect(batalTerlambat.tersimpan).toBe(false);
+      expect(batalTerlambat.errors.join(' ')).toMatch(/OPEN/i);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('batal khusus menghapus representasi tanpa membalik jurnal pembukaan', () => {
+    const db = dbPanjarSaldoAwal();
+    try {
+      expect(
+        catatPanjarSaldoAwal(db, {
+          id: 'psa-batal',
+          jumlah: RP(2_000_000),
+          penerima: 'Panitia Batal',
+        }).tersimpan,
+      ).toBe(true);
+      const jumlahJurnal = listJurnal(db).length;
+      const jurnalPembukaan = listJurnalBaris(db, 'awal-panjar');
+
+      const normal = batalPanjarV2(db, {
+        id: 'psa-batal',
+        alasan: 'Coba reversal generik',
+      });
+      expect(normal.tersimpan).toBe(false);
+      expect(normal.errors.join(' ')).toMatch(/representasi saldo awal/i);
+
+      const pendek = batalkanPanjarSaldoAwal(db, 'psa-batal', 'sala');
+      expect(pendek.tersimpan).toBe(false);
+      expect(pendek.errors.join(' ')).toMatch(/minimal 5 karakter/i);
+
+      const hasil = batalkanPanjarSaldoAwal(
+        db,
+        'psa-batal',
+        'Saldo awal 1040 sudah tidak beredar',
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.id).toBe('psa-batal');
+      expect(getPanjar(db, 'psa-batal')).toBeNull();
+      expect(listPanjarV2(db)).toEqual([]);
+
+      // Jurnal pembukaan tidak berubah dan tidak ada jurnal balik.
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(listJurnalBaris(db, 'awal-panjar')).toEqual(jurnalPembukaan);
+      expect(listJurnal(db, { reversal_of: 'awal-panjar' })).toEqual([]);
+      expect(listJurnal(db).some((j) => j.jenis === 'REVERSAL')).toBe(false);
+
+      const audit = listAuditLog(db, {
+        aksi: 'PANJAR-SALDO-AWAL-BATAL psa-batal',
+      });
+      expect(audit).toHaveLength(1);
+      expect(audit[0]?.alasan).toBe('Saldo awal 1040 sudah tidak beredar');
+      expect(audit[0]?.data_lama_json).toContain('SALDO_AWAL');
+
+      // 1040 pembukaan tetap ada dan TIDAK diam-diam dianggap terepresentasi:
+      // audit melaporkan selisih sampai saldo awal dikoreksi.
+      expect(
+        auditIntegritas(db).temuan.map((t) => t.kode),
+      ).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
     } finally {
       db.close();
     }

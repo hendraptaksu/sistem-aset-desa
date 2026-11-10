@@ -17,6 +17,7 @@ import {
   listTutupBukuSnapshot,
   setPengaturan,
 } from '../src/db/repository.js';
+import { catatPanjarSaldoAwal } from '../src/db/panjar.js';
 import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { tutupBuku } from '../src/db/tutup.js';
 
@@ -1709,6 +1710,174 @@ describe('AUD2-04 — rekonsiliasi saldo GL 1040 vs panjar OPEN', () => {
       const hasil = auditIntegritas(db);
       expect(hasil.temuan).toEqual([]);
       expect(hasil.ok).toBe(true);
+    });
+  });
+});
+
+describe('T-A11 — audit panjar opening saldo awal', () => {
+  const CUTOVER = '2026-07-01';
+
+  function buatPembukaan1040(
+    db: Database.Database,
+    jumlah: number,
+    id = 'sa-panjar',
+  ): string {
+    const hasil = simpanSaldoAwal(db, {
+      header: {
+        id,
+        tanggal: CUTOVER,
+        no_bukti: `SA-${id}`,
+        keterangan: 'Saldo awal dengan 1040',
+        jenis: 'SALDO_AWAL',
+      },
+      baris: [
+        { akun_kode: '1040', debit: jumlah, kredit: 0 },
+        { akun_kode: AKUN_MODAL, debit: 0, kredit: jumlah },
+      ],
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+    return hasil.jurnal!.id;
+  }
+
+  function simpanOpeningMentah(
+    db: Database.Database,
+    opsi: {
+      id: string;
+      jumlah: number;
+      jurnalOpenId: string;
+      tanggal?: string;
+    },
+  ): void {
+    db.prepare(
+      `INSERT INTO panjar
+         (id, tanggal, penerima, jumlah, akun_kas_sumber, status, sumber,
+          tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
+       VALUES (?, ?, 'Penerima Uji', ?, '1001', 'OPEN', 'SALDO_AWAL',
+               NULL, ?, NULL, ?)`,
+    ).run(
+      opsi.id,
+      opsi.tanggal ?? CUTOVER,
+      opsi.jumlah,
+      opsi.jurnalOpenId,
+      WAKTU,
+    );
+  }
+
+  it('saldo awal 1040 X + panjar opening X menghasilkan ok:true', () => {
+    denganDb((db) => {
+      buatPembukaan1040(db, 100_000);
+      const hasil = catatPanjarSaldoAwal(db, {
+        id: 'p-opening',
+        jumlah: 100_000,
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      expect(kodeTemuan(db)).not.toContain('REKONSILIASI_PANJAR_GL_SELISIH');
+      expect(kodeTemuan(db)).not.toContain('PANJAR_OPENING_TIDAK_LENGKAP');
+      expect(auditIntegritas(db).ok).toBe(true);
+      expect(auditIntegritas(db).temuan).toEqual([]);
+    });
+  });
+
+  it('total panjar opening melebihi debit neto 1040 menghasilkan PANJAR_OPENING_TIDAK_LENGKAP', () => {
+    denganDb((db) => {
+      buatPembukaan1040(db, 100_000);
+      simpanOpeningMentah(db, {
+        id: 'p-over',
+        jumlah: 150_000,
+        jurnalOpenId: 'sa-panjar',
+      });
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find(
+        (t) =>
+          t.kode === 'PANJAR_OPENING_TIDAK_LENGKAP' &&
+          (t.detail as { jurnal_open_id?: string })?.jurnal_open_id ===
+            'sa-panjar',
+      );
+      expect(temuan).toMatchObject({
+        kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
+        detail: {
+          jurnal_open_id: 'sa-panjar',
+          jumlah: 150_000,
+          debit_neto: 100_000,
+        },
+      });
+      expect(temuan?.pesan).toMatch(/melebihi debit neto 1040/i);
+    });
+  });
+
+  it('pointer jurnal berperan NORMAL menghasilkan PANJAR_OPENING_TIDAK_LENGKAP', () => {
+    denganDb((db) => {
+      jurnalOpenPanjar(db, 'j-bukan-pembukaan', '2026-02-01', 100_000, '1001');
+      simpanOpeningMentah(db, {
+        id: 'p-pointer-salah',
+        jumlah: 100_000,
+        jurnalOpenId: 'j-bukan-pembukaan',
+        tanggal: '2026-02-01',
+      });
+
+      const temuan = auditIntegritas(db).temuan.find(
+        (t) =>
+          t.kode === 'PANJAR_OPENING_TIDAK_LENGKAP' &&
+          (t.detail as { id?: string })?.id === 'p-pointer-salah',
+      );
+      expect(temuan).toBeDefined();
+      expect(temuan?.pesan).toMatch(/bukan OPENING\/OPENING_REPLACEMENT/i);
+      expect((temuan?.detail as { peran?: string })?.peran).toBe('NORMAL');
+    });
+  });
+
+  it('baris opening OPEN tanpa penunjuk pembukaan aktif menghasilkan temuan', () => {
+    denganDb((db) => {
+      buatPembukaan1040(db, 100_000);
+      expect(
+        catatPanjarSaldoAwal(db, { id: 'p-tanpa-pointer', jumlah: 100_000 })
+          .tersimpan,
+      ).toBe(true);
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, '');
+
+      const temuan = auditIntegritas(db).temuan.find(
+        (t) =>
+          t.kode === 'PANJAR_OPENING_TIDAK_LENGKAP' &&
+          (t.detail as { jurnal_open_id?: string })?.jurnal_open_id === '',
+      );
+      expect(temuan).toBeDefined();
+      expect(temuan?.pesan).toMatch(/penunjuk pembukaan aktif/i);
+    });
+  });
+
+  it('panjar normal tetap direkonsiliasi terhadap 1040 setelah ada opening', () => {
+    denganDb((db) => {
+      buatPembukaan1040(db, 100_000);
+      expect(
+        catatPanjarSaldoAwal(db, { id: 'p-opening', jumlah: 100_000 })
+          .tersimpan,
+      ).toBe(true);
+      // `buatPanjar` memakai header 100.000, jadi jurnal serah normal juga 100.000.
+      jurnalOpenPanjar(db, 'j-normal-ta11', '2026-02-01', 100_000, '1001');
+      buatPanjar(db, {
+        id: 'p-normal-ta11',
+        status: 'OPEN',
+        jurnalOpenId: 'j-normal-ta11',
+      });
+
+      expect(auditIntegritas(db).ok).toBe(true);
+
+      buatJurnal(db, 'j-liar-ta11', '2026-02-02', 'LIAR-TA11');
+      buatBaris(db, 'j-liar-ta11', '1040', 25_000, 0);
+      buatBaris(db, 'j-liar-ta11', '1001', 0, 25_000);
+
+      const selisih = auditIntegritas(db).temuan.find(
+        (t) => t.kode === 'REKONSILIASI_PANJAR_GL_SELISIH',
+      );
+      expect(selisih).toMatchObject({
+        detail: {
+          saldo_gl: 225_000,
+          total_panjar: 200_000,
+          selisih: 25_000,
+        },
+      });
     });
   });
 });
