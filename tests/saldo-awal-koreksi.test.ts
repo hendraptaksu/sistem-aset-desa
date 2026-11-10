@@ -213,6 +213,49 @@ describe('T1.7 — koreksi saldo awal sukses', () => {
       db.close();
     }
   });
+
+  it('T-A10: wizard tetap boleh memindahkan tanggal saldo awal lebih awal', () => {
+    const db = openDb(':memory:');
+    try {
+      const awal = simpanSaldoAwal(
+        db,
+        buatJurnalSaldoAwal(
+          form('2026-01-02', [
+            { akun_kode: '1001', nominal: RP(5_000_000) },
+            { akun_kode: '2050', nominal: RP(1_000_000) },
+          ], 'j-awal-lebih-awal'),
+        ).input,
+      );
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+      const hasil = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal(
+          form('2026-01-01', [
+            { akun_kode: '1001', nominal: RP(6_000_000) },
+          ]),
+        ).input,
+        { alasan: 'Pindahkan saldo awal lebih awal', sekarang: SEKARANG },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal).toMatchObject({
+        reversal_of: 'j-awal-lebih-awal',
+        tanggal: '2026-01-02',
+      });
+      expect(hasil.jurnal).toMatchObject({
+        peran: 'OPENING_REPLACEMENT',
+        tanggal: '2026-01-01',
+      });
+      expect(getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI)).toBe(
+        '2026-01-01',
+      );
+      expect(getPengaturan(db, KUNCI_CUTOVER_TANGGAL)).toBe('2026-01-01');
+      expect(saldoAkun(listBarisJurnal(db), '1001')).toBe(RP(6_000_000));
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('T1.7 — atomik dan penolakan koreksi saldo awal', () => {

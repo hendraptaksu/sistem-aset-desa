@@ -84,6 +84,32 @@ export const PESAN_REVERSAL_SALDO_AWAL =
 export const PESAN_REVERSAL_PEMBUKAAN_AKTIF =
   'Jurnal ini adalah jurnal pembukaan aktif atau penggantinya, sehingga tidak bisa dibalik dari Jurnal Umum. Gunakan Wizard Koreksi Saldo Awal untuk mengoreksinya.';
 
+/**
+ * T-A10: tanggal reversal/pengganti generik tidak boleh mundur dari jurnal
+ * asli. Koreksi yang memang perlu memindahkan tanggal lebih awal adalah
+ * koreksi saldo awal, yang punya alur wizard tersendiri (cut-over ikut
+ * disesuaikan). Aturan murni ini dipakai sebelum jurnal/audit ditulis.
+ */
+export function cekTanggalTidakMundur(
+  tanggal: string,
+  tanggalAsli: string,
+  peran: 'jurnal balik' | 'jurnal pengganti',
+): { boleh: boolean; pesan?: string } {
+  const baru = String(tanggal ?? '').trim();
+  const asli = String(tanggalAsli ?? '').trim();
+  // Tanggal tidak valid dibiarkan ditolak validator dengan pesan aslinya.
+  if (!tanggalKalenderValid(baru) || !tanggalKalenderValid(asli))
+    return { boleh: true };
+  if (baru >= asli) return { boleh: true };
+  return {
+    boleh: false,
+    pesan:
+      `Tanggal ${peran} (${baru}) tidak boleh sebelum tanggal jurnal asli (${asli}). ` +
+      `Tanggal yang diperbolehkan: ${asli} atau lebih baru. ` +
+      'Koreksi yang perlu memindahkan tanggal lebih awal hanya bisa dilakukan lewat Wizard Koreksi Saldo Awal.',
+  };
+}
+
 export type RencanaReversalInput = {
   /** Jurnal asli; null bila id tidak ditemukan. */
   jurnal: Jurnal | null;

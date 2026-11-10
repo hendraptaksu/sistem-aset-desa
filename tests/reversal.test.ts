@@ -1545,7 +1545,9 @@ describe('P0-6 — koreksi & isi ulang', () => {
       const pengganti = {
         header: {
           id: 'j-beban-baru',
-          tanggal: '2026-01-15',
+          // T-A10: pengganti tidak boleh lebih awal dari jurnal asli
+          // (1 Feb), jadi backdate dipakai 5 Feb — tetap sebelum tanggal balik.
+          tanggal: '2026-02-05',
           no_bukti: 'JU-2026-0303',
           keterangan: 'Beban koreksi (backdate)',
           jenis: 'BAYAR' as const,
@@ -1553,8 +1555,8 @@ describe('P0-6 — koreksi & isi ulang', () => {
         baris: pasangan('5000', '1001', RP(800)),
       };
 
-      // 15 Jan kas hanya Rp 500 → pengganti Rp 800 minus. Saldo 1 Apr tidak
-      // boleh dipakai karena pengganti bertanggal 15 Jan.
+      // 5 Feb kas hanya Rp 400 → pengganti Rp 800 minus. Saldo 1 Apr tidak
+      // boleh dipakai karena pengganti bertanggal 5 Feb.
       const belum = koreksiDanIsiUlang(
         db,
         'j-beban-asli',
@@ -1866,6 +1868,144 @@ describe('AUD-07 — reversal jurnal yang terhubung ke panjar diblokir', () => {
         'PANJAR-BATAL p1',
         'PANJAR-OPEN p1',
       ]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-A10 — tanggal reversal/koreksi generik tidak boleh mundur dari asli
+// ---------------------------------------------------------------------------
+
+describe('T-A10 — batas tanggal reversal dan koreksi generik', () => {
+  it('menolak reversal H-1 tanpa menulis jurnal/audit dan menyebut tanggal asli + batas', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db); // jurnal asli bertanggal 2026-01-02
+      const sebelumJurnal = jumlahJurnal(db);
+      const sebelumAudit = listAuditLog(db).length;
+
+      const hasil = reverseJurnal(db, 'j-parkir', 'Salah input nominal', {
+        id: 'j-balik-mundur',
+        tanggal: '2026-01-01',
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      const pesan = hasil.errors.join(' ');
+      expect(pesan).toContain('2026-01-02');
+      expect(pesan).toContain('2026-01-02 atau lebih baru');
+      expect(pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+      expect(jumlahJurnal(db)).toBe(sebelumJurnal);
+      expect(listAuditLog(db)).toHaveLength(sebelumAudit);
+      expect(getJurnalDetail(db, 'j-balik-mundur')).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menerima reversal bertanggal sama dengan jurnal asli (H)', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db);
+
+      const hasil = reverseJurnal(db, 'j-parkir', 'Salah input nominal', {
+        id: 'j-balik-sama',
+        tanggal: '2026-01-02',
+      });
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal?.tanggal).toBe('2026-01-02');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menerima reversal bertanggal setelah jurnal asli (H+1)', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db);
+
+      const hasil = reverseJurnal(db, 'j-parkir', 'Salah input nominal', {
+        id: 'j-balik-setelah',
+        tanggal: '2026-01-03',
+      });
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal?.tanggal).toBe('2026-01-03');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak pengganti non-pembukaan yang bertanggal sebelum asli tanpa tulisan', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db); // jurnal asli bertanggal 2026-01-02
+      const sebelumJurnal = listJurnal(db).map((j) => j.id);
+      const sebelumAudit = listAuditLog(db).length;
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-parkir',
+        'Nominal parkir seharusnya 90rb',
+        {
+          header: {
+            id: 'j-parkir-baru-mundur',
+            tanggal: '2026-01-01',
+            no_bukti: 'JU-2026-0100',
+            keterangan: 'Parkir koreksi (mundur)',
+            jenis: 'TERIMA',
+          },
+          baris: pasangan('1001', '4005', RP(90_000)),
+        },
+        { id: 'j-parkir-balik-mundur', tanggal: '2026-01-02' },
+      );
+
+      expect(hasil.tersimpan).toBe(false);
+      const pesan = hasil.errors.join(' ');
+      expect(pesan).toContain('Tanggal jurnal pengganti');
+      expect(pesan).toContain('2026-01-02');
+      expect(pesan).toContain('2026-01-02 atau lebih baru');
+      expect(pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+      expect(listJurnal(db).map((j) => j.id)).toEqual(sebelumJurnal);
+      expect(listAuditLog(db)).toHaveLength(sebelumAudit);
+      expect(getJurnalDetail(db, 'j-parkir-baru-mundur')).toBeNull();
+      expect(getJurnalDetail(db, 'j-parkir-balik-mundur')).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menerima pengganti non-pembukaan pada tanggal asli atau setelahnya', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      parkir(db);
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-parkir',
+        'Nominal parkir seharusnya 90rb',
+        {
+          header: {
+            id: 'j-parkir-baru',
+            tanggal: '2026-01-03',
+            no_bukti: 'JU-2026-0101',
+            keterangan: 'Parkir koreksi',
+            jenis: 'TERIMA',
+          },
+          baris: pasangan('1001', '4005', RP(90_000)),
+        },
+        { id: 'j-parkir-balik', tanggal: '2026-01-02' },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnalBaru?.tanggal).toBe('2026-01-03');
     } finally {
       db.close();
     }

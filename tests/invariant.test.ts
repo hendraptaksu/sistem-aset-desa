@@ -337,9 +337,16 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
         // Reversal sesekali: jurnal asli tetap ada, saldo kembali, tetap nol.
         if (operasi === 3 && bisaDireversal.length > 0 && rnd() < 0.5) {
           const target = bisaDireversal.shift()!;
+          // T-A10: tanggal balik tidak boleh mundur dari jurnal asli. Untuk
+          // periode terkunci tetap pakai 31 Des 2025 (selalu >= tanggal asli).
+          const tanggalBalik = sudahTutup
+            ? '2025-12-31'
+            : tanggal >= target.tanggal
+              ? tanggal
+              : target.tanggal;
           const balik = reverseJurnal(db, target.id, 'Koreksi uji invariant', {
             id: `rev-${target.id}`,
-            tanggal: sudahTutup ? '2025-12-31' : tanggal,
+            tanggal: tanggalBalik,
             konfirmasiPeringatan: true,
           });
           expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);

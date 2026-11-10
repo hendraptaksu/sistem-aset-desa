@@ -14,6 +14,7 @@ import { buatAuditLog } from '../core/audit.js';
 import {
   barisCerminReversal,
   barisNonaktifPenggantiSah,
+  cekTanggalTidakMundur,
   jenisPenggantiSah,
   PESAN_AKUN_NONAKTIF_PENGGANTI,
   PESAN_REVERSAL,
@@ -58,7 +59,10 @@ export {
 export type OpsiReversal = {
   /** ID jurnal balik; default dibuat otomatis. */
   id?: string;
-  /** Tanggal jurnal balik; default tanggal jurnal asli agar periode tidak bergeser. */
+  /**
+   * Tanggal jurnal balik; default tanggal jurnal asli agar periode tidak
+   * bergeser. Bila diisi, tidak boleh lebih awal dari tanggal jurnal asli.
+   */
   tanggal?: string;
   /** Nomor bukti jurnal balik; opsional dan wajib unik bila diisi. */
   no_bukti?: string;
@@ -132,6 +136,18 @@ function rencanaUntuk(
 
   if (terhubungPinjaman(db, idAsli))
     return { boleh: false, errors: [PESAN_REVERSAL_PINJAMAN] };
+
+  // T-A10: tanggal eksplisit tidak boleh mundur dari jurnal asli. Tanpa
+  // tanggal eksplisit, default tetap tanggal asli (tidak berubah).
+  const tanggalEksplisit = String(opsi.tanggal ?? '').trim();
+  if (tanggalEksplisit && detail?.jurnal) {
+    const cekTanggal = cekTanggalTidakMundur(
+      tanggalEksplisit,
+      detail.jurnal.tanggal,
+      'jurnal balik',
+    );
+    if (!cekTanggal.boleh) return { boleh: false, errors: [cekTanggal.pesan!] };
+  }
 
   return rencanaReversal({
     jurnal: detail?.jurnal ?? null,
@@ -246,6 +262,19 @@ export function koreksiDanIsiUlang(
   // sehingga default DB `UMUM` tidak pernah mengambil alih.
   const detail = getJurnalDetail(db, id);
   if (!detail) return hasilGagal([PESAN_REVERSAL.tidakDitemukan]);
+
+  // T-A10: koreksi generik tidak boleh memindahkan tanggal pengganti ke
+  // belakang tanggal asli. Jurnal pembukaan/saldo awal sudah ditolak lebih
+  // awal di `rencanaUntuk()`; wizard koreksi saldo awal sengaja TIDAK memakai
+  // aturan ini karena wizard memang boleh memindahkan cut-over lebih awal.
+  const tanggalPengganti = String(inputBaru?.header?.tanggal ?? '').trim();
+  const cekTanggalPengganti = cekTanggalTidakMundur(
+    tanggalPengganti,
+    detail.jurnal.tanggal,
+    'jurnal pengganti',
+  );
+  if (!cekTanggalPengganti.boleh)
+    return hasilGagal([cekTanggalPengganti.pesan!]);
 
   const aturanJenis = jenisPenggantiSah(
     detail.jurnal.jenis,

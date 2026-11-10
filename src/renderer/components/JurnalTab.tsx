@@ -794,8 +794,12 @@ function KoreksiModal({
       lebar="3xl"
     >
       <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-        Jurnal balik mengikuti tanggal asli. Jika periode terkunci, isi alasan minimal{' '}
-        {ALASAN_REVERSAL_MIN} karakter.
+        Jurnal balik mengikuti tanggal asli. Tanggal balik/pengganti tidak boleh
+        sebelum tanggal jurnal asli. Jika periode terkunci, isi alasan minimal{' '}
+        {ALASAN_REVERSAL_MIN} karakter. Bila tanggal jatuh di tahun yang sudah
+        ditutup, snapshot tutup buku tidak ikut berubah — laporan tahun itu akan
+        berbeda dari snapshot, dan koreksi yang perlu memindahkan tanggal lebih
+        awal hanya bisa lewat Wizard Koreksi Saldo Awal.
       </p>
       <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
           <p className="font-semibold">{jurnal.keterangan}</p>
