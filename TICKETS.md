@@ -999,14 +999,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A09 — Audit dan validasi tanggal tautkan pembayaran pinjaman
+### [x] T-A09 — Audit dan validasi tanggal tautkan pembayaran pinjaman
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | S/M |
 | **Depends** | — |
-| **Status** | Belum |
+| **Status** | Selesai — commit 8a443ab |
 
 **Masalah**
 
@@ -1054,6 +1054,30 @@ bisa tidak konsisten dengan jurnal.
 npm test -- tests/pinjaman.test.ts tests/db-16d-pinjaman-bayar.test.ts tests/audit.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit 8a443ab):**
+
+- `src/db/pinjaman.ts` (`tautkanPembayaran`, jalur link-only): tanggal
+  pembayaran selalu diturunkan dari `detail.jurnal.tanggal`. `data.tanggal`
+  yang berbeda ditolak dengan pesan yang menyebut kedua tanggal; tanggal yang
+  sama diterima. Tanggal jurnal/pembayaran sebelum `pinjaman.tanggal_mulai`
+  juga ditolak dengan pesan yang menyebut tanggal mulai.
+- `catatAudit` ditulis di transaksi yang sama setelah insert `pinjaman_bayar`:
+  aksi `PINJAMAN-BAYAR-LINK <pinjaman_id>`, `ref_type = 'pinjaman_bayar'`,
+  `ref_id = pembayaran.id`, dan `baru` berisi link (pinjaman_id, angsuran_id,
+  jurnal_id), tanggal, serta rincian pokok/bunga/denda dari `cekJurnal.rincian`.
+  Kegagalan audit melempar error sehingga insert ikut di-rollback; audit
+  tertulis tepat satu kali. `bayarAngsuranPinjaman` tidak diubah.
+- Test regresi: `tests/pinjaman.test.ts` (sukses + tepat satu audit, tanggal
+  beda ditolak tanpa menambah baris, tanggal sama diterima, sebelum tanggal
+  mulai ditolak, audit gagal via trigger membatalkan insert),
+  `tests/db-16d-pinjaman-bayar.test.ts` (jalur `bayarAngsuranPinjaman` tetap
+  satu audit `PINJAMAN-BAYAR`), dan `tests/audit.test.ts` (filter
+  `ref_type`/`ref_id` menemukan audit link beserta rinciannya).
+- Verifikasi: `npm test -- tests/pinjaman.test.ts tests/db-16d-pinjaman-bayar.test.ts tests/audit.test.ts`
+  3 file / 43 test lulus; `npm test` 94 file / 1284 test lulus;
+  `npm run typecheck` lulus. Tidak ada perubahan skema; T-A10 dan seterusnya
+  tidak disentuh.
 
 ---
 
