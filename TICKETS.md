@@ -1359,14 +1359,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A14 — Satu command layer untuk semua penulisan jurnal
+### [x] T-A14 — Satu command layer untuk semua penulisan jurnal
 
 | | |
 | --- | --- |
 | **Prioritas** | P2 |
 | **Perkiraan** | L |
 | **Depends** | T-A00, T-A02, T-A03, T-A04, T-A05 |
-| **Status** | Belum |
+| **Status** | Selesai — commit e7835d7 |
 
 **Masalah**
 
@@ -1406,6 +1406,42 @@ Invariant akuntansi bisa terlewat di jalur yang tidak memanggil
 npm test
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit e7835d7):**
+
+- Inventaris produksi `insertJurnalTervalidasi()` sebelum refactor: hanya
+  `src/db/posting.ts`, `src/db/saldoAwal.ts`, `src/db/reversal.ts`, dan
+  `src/db/seed-dev.ts`. Setelah perubahan tidak ada modul produksi lain yang
+  memakai raw insert/wrapper test.
+- `src/db/repository.ts`: implementasi mentah kini
+  `insertJurnalInternal(db, header, baris, konteks)` dengan tipe eksplisit
+  `KonteksInsertJurnal` dan `sumber` wajib
+  (`POSTING|OPENING|REVERSAL|CORRECTION|SEED|TEST`). Validasi struktural,
+  penomoran, relasi peran/pengganti, akun nonaktif, dan immutability tidak
+  berubah. `insertJurnalTervalidasi()` dipertahankan sebagai wrapper
+  kompatibilitas test/data lama yang selalu memanggil internal dengan
+  `sumber:'TEST'`, disertai komentar larangan pemakaian produksi.
+- `src/db/posting.ts`: `OpsiPosting.mode` (`NORMAL|OPENING|REVERSAL|
+  CORRECTION`, default `NORMAL`) memetakan ke sumber insert internal.
+  `postingSaldoAwal()` selalu memaksa mode `OPENING`. Audit, cek periode, cek
+  akun, konfirmasi peringatan, dan guard saldo awal tetap satu pintu di
+  `postingJurnalInti()`; tidak ada aturan baru yang diduplikasi.
+  `reverseJurnal()` meneruskan mode `REVERSAL`.
+- `src/db/saldoAwal.ts`: koreksi saldo awal memakai internal dengan sumber
+  `REVERSAL` untuk jurnal balik dan `CORRECTION` untuk pengganti; urutan tulis
+  dan atomisitas audit/penunjuk pembukaan tetap sama. Saldo awal baru tetap
+  lewat `postingSaldoAwal()` mode `OPENING`.
+- `src/db/reversal.ts`: `koreksiDanIsiUlang()` memakai `REVERSAL` untuk jurnal
+  balik dan `CORRECTION` untuk pengganti, termasuk urutan `penggantiDulu`.
+  `src/db/seed-dev.ts` memakai `SEED`.
+- Test arsitektur baru `tests/arsitektur-insert-jurnal.test.ts`: gagal bila
+  `insertJurnalInternal` dipakai di luar empat service yang diizinkan, gagal
+  bila `insertJurnalTervalidasi` muncul di modul `src/` selain repository,
+  memastikan wrapper test tetap tersedia dan berfungsi, serta menghitung
+  jurnal/audit alur normal, pembukaan, dan koreksi (normal: 1 jurnal/1 audit;
+  koreksi: 3 jurnal/3 audit termasuk audit CREATE asli).
+- Verifikasi: `npm test` penuh dua kali 95 file / 1311 test lulus;
+  `npm run typecheck` lulus.
 
 ---
 
