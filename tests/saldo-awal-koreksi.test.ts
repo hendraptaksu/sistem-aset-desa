@@ -22,12 +22,16 @@ import {
 } from '../src/db/saldoAwal.js';
 import { postingJurnal } from '../src/db/posting.js';
 import {
+  PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   PESAN_REVERSAL_SALDO_AWAL,
+  koreksiDanIsiUlang,
   reverseJurnal,
 } from '../src/db/reversal.js';
 import {
   getPengaturan,
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
+  KUNCI_CUTOVER_TANGGAL,
+  KUNCI_SALDO_AWAL_AKTIF_ID,
   listAuditLog,
   listJurnal,
   setPengaturan,
@@ -367,13 +371,149 @@ describe('T1.7 — atomik dan penolakan koreksi saldo awal', () => {
         tanggal: '2026-01-02',
       });
       expect(balik.tersimpan).toBe(false);
-      expect(balik.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
-
+      // T-A03: saldo awal yang sudah menjadi pembukaan aktif punya pesan khusus
+      // yang mengarahkan ke wizard, bukan pesan SALDO_AWAL lama.
+      expect(balik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
       expect(listJurnal(db)).toHaveLength(jumlah);
       const sesudah = listBarisJurnal(db);
       expect(saldoAkun(sesudah, '1001')).toBe(saldoAkun(sebelum, '1001'));
       expect(saldoAkun(sesudah, '3000')).toBe(saldoAkun(sebelum, '3000'));
       expect(statusSaldoAwal(db).boleh).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// T-A03 — jurnal pengganti pembukaan aktif dilindungi dari reversal generik,
+// tetapi wizard koreksi saldo awal tetap bisa dipakai berulang.
+describe('T-A03 — pembukaan aktif hanya bisa dikoreksi lewat wizard', () => {
+  it('menolak reversal/koreksi generik atas pengganti tanpa menulis apa pun', () => {
+    const db = openDb(':memory:');
+    try {
+      siapkanAwal(db);
+      const pertama = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal(
+          form('2026-01-01', [
+            { akun_kode: '1001', nominal: RP(8_000_000) },
+          ]),
+        ).input,
+        { alasan: 'Koreksi pertama', sekarang: SEKARANG },
+      );
+      expect(pertama.tersimpan, pertama.errors.join(' ')).toBe(true);
+      const pengganti = pertama.jurnal!;
+      expect(pengganti.peran).toBe('OPENING_REPLACEMENT');
+
+      const jumlahJurnal = listJurnal(db).length;
+      const jumlahAudit = listAuditLog(db).length;
+
+      const balik = reverseJurnal(
+        db,
+        pengganti.id,
+        'Coba balik jurnal pengganti',
+        { id: 'j-balik-pengganti', tanggal: '2026-01-02' },
+      );
+      expect(balik.tersimpan).toBe(false);
+      expect(balik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
+      expect(balik.errors.join(' ')).toMatch(/Wizard Koreksi Saldo Awal/);
+
+      const koreksiGenerik = koreksiDanIsiUlang(
+        db,
+        pengganti.id,
+        'Coba koreksi generik jurnal pengganti',
+        {
+          header: {
+            id: 'j-pengganti-generik',
+            tanggal: '2026-01-02',
+            keterangan: 'Pengganti generik',
+            jenis: 'UMUM',
+          },
+          baris: [
+            { akun_kode: '1001', debit: RP(1_000_000), kredit: 0 },
+            { akun_kode: '3000', debit: 0, kredit: RP(1_000_000) },
+          ],
+        },
+        { id: 'j-balik-generik', tanggal: '2026-01-02' },
+      );
+      expect(koreksiGenerik.tersimpan).toBe(false);
+      expect(koreksiGenerik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
+
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(listAuditLog(db)).toHaveLength(jumlahAudit);
+      expect(
+        listJurnal(db).some(
+          (j) =>
+            j.id === 'j-balik-pengganti' ||
+            j.id === 'j-pengganti-generik' ||
+            j.id === 'j-balik-generik',
+        ),
+      ).toBe(false);
+      expect(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID)).toBe(pengganti.id);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('koreksi kedua dan ketiga tetap berhasil; pointer, cut-over, dan laporan ikut berubah', () => {
+    const db = openDb(':memory:');
+    try {
+      siapkanAwal(db);
+
+      const koreksi = [
+        { tanggal: '2026-01-01', nominal: RP(8_000_000), alasan: 'Koreksi pertama' },
+        { tanggal: '2026-01-02', nominal: RP(7_000_000), alasan: 'Koreksi kedua' },
+        { tanggal: '2026-01-03', nominal: RP(6_000_000), alasan: 'Koreksi ketiga' },
+      ];
+      const idPengganti: string[] = [];
+
+      for (const [i, langkah] of koreksi.entries()) {
+        const hasil = koreksiSaldoAwal(
+          db,
+          buatJurnalSaldoAwal(
+            form(langkah.tanggal, [
+              { akun_kode: '1001', nominal: langkah.nominal },
+            ]),
+          ).input,
+          { alasan: langkah.alasan, sekarang: SEKARANG },
+        );
+        expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+        expect(hasil.jurnal).toMatchObject({
+          peran: 'OPENING_REPLACEMENT',
+          jenis: 'UMUM',
+        });
+        expect(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID)).toBe(
+          hasil.jurnal?.id,
+        );
+        expect(getPengaturan(db, KUNCI_CUTOVER_TANGGAL)).toBe(langkah.tanggal);
+        expect(getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI)).toBe(
+          langkah.tanggal,
+        );
+        if (i > 0) expect(hasil.jurnalLama?.id).toBe(idPengganti[i - 1]);
+        idPengganti.push(hasil.jurnal!.id);
+      }
+
+      const baris = listBarisJurnal(db);
+      expect(saldoAkun(baris, '1001')).toBe(RP(6_000_000));
+      expect(saldoAkun(baris, '3000')).toBe(RP(6_000_000));
+      const ns = neracaSaldo(baris, SEKARANG);
+      expect(ns.selisih).toBe(0);
+      expect(ns.seimbang).toBe(true);
+      const laporan = neraca(baris, { cutoff: SEKARANG, tutup: [] });
+      expect(laporan.balance).toBe(true);
+      expect(laporan.totalAset).toBe(RP(6_000_000));
+      expect(laporan.totalPasiva).toBe(RP(6_000_000));
+      expect(listAuditLog(db, { aksi: 'KOREKSI-SALDO-AWAL' })).toHaveLength(3);
+      expect(statusSaldoAwal(db).boleh).toBe(false);
+
+      // Ketiga pengganti tetap ditolak dari jalur generik.
+      for (const id of idPengganti) {
+        const balik = reverseJurnal(db, id, 'Coba balik semua pengganti', {
+          tanggal: '2026-01-04',
+        });
+        expect(balik.tersimpan).toBe(false);
+        expect(balik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
+      }
     } finally {
       db.close();
     }

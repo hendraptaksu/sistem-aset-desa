@@ -14,6 +14,7 @@ import { buatAuditLog } from '../core/audit.js';
 import {
   jenisPenggantiSah,
   PESAN_REVERSAL,
+  PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   PESAN_REVERSAL_SALDO_AWAL,
   rencanaReversal,
 } from '../core/reversal.js';
@@ -38,6 +39,7 @@ import {
   terhubungPanjar,
   terhubungPinjaman,
 } from './kemampuanKoreksi.js';
+import { getPembukaanAktif } from './pembukaan.js';
 
 // T2.1/T2.2: helper dipindah ke modul bebas-impor-melingkar. Re-export
 // dipertahankan agar pemanggil/test lama tetap memakai jalur yang sama.
@@ -70,7 +72,7 @@ export type HasilKoreksi = HasilPosting & {
   jurnalBaru?: Jurnal;
 };
 
-export { PESAN_REVERSAL_SALDO_AWAL };
+export { PESAN_REVERSAL_PEMBUKAAN_AKTIF, PESAN_REVERSAL_SALDO_AWAL };
 
 const idBaru = (prefix: string): string => `${prefix}-${randomUUID()}`;
 
@@ -105,9 +107,20 @@ function rencanaUntuk(
   // Cek sebelum menyusun rencana agar kedua jalur (reversal & isi ulang)
   // berhenti tanpa menyentuh jurnal/audit.
   //
-  // T1.5: hanya jurnal yang berjenis SALDO_AWAL yang ditolak. Jurnal UMUM
-  // (mis. penyesuaian) dalam grup yang sama tetap boleh dikoreksi lewat jalur
-  // biasa; pengecekan per-jurnal ini sengaja tidak memblokir seluruh grup.
+  // T-A03: sumber kebenaran pembukaan aktif adalah penunjuk resmi + peran
+  // jurnal, bukan `jenis`/`grup_id`. Jurnal UMUM pengganti hasil wizard juga
+  // wajib ditolak agar pembukaan tidak "hilang" tanpa jalur pemulihan.
+  const pembukaan = getPembukaanAktif(db);
+  if (
+    (pembukaan && idAsli === pembukaan.id) ||
+    detail?.jurnal.peran === 'OPENING' ||
+    detail?.jurnal.peran === 'OPENING_REPLACEMENT'
+  )
+    return { boleh: false, errors: [PESAN_REVERSAL_PEMBUKAAN_AKTIF] };
+
+  // T1.5: saldo awal lama yang belum punya penunjuk/peran tetap ditolak.
+  // Jurnal NORMAL/ADJUSTMENT lain dalam grup pembukaan yang sama sengaja tidak
+  // ikut diblokir; pengecekan tetap per-jurnal, bukan per-grup.
   if (detail?.jurnal.jenis === 'SALDO_AWAL')
     return { boleh: false, errors: [PESAN_REVERSAL_SALDO_AWAL] };
 

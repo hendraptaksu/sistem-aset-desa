@@ -75,6 +75,15 @@ export function jenisPenggantiSah(
 export const PESAN_REVERSAL_SALDO_AWAL =
   'Jurnal saldo awal tidak bisa dibalik dari Jurnal Umum. Saldo awal hanya boleh dikoreksi lewat alur koreksi saldo awal.';
 
+/**
+ * T-A03: jurnal pembukaan aktif (OPENING/OPENING_REPLACEMENT) tidak boleh
+ * dibalik/dikoreksi lewat jalur generik. Pesan ini sengaja dibedakan dari
+ * `PESAN_REVERSAL_SALDO_AWAL` agar operator langsung diarahkan ke wizard yang
+ * memang bisa memulihkan/mengoreksi pembukaan secara berulang.
+ */
+export const PESAN_REVERSAL_PEMBUKAAN_AKTIF =
+  'Jurnal ini adalah jurnal pembukaan aktif atau penggantinya, sehingga tidak bisa dibalik dari Jurnal Umum. Gunakan Wizard Koreksi Saldo Awal untuk mengoreksinya.';
+
 export type RencanaReversalInput = {
   /** Jurnal asli; null bila id tidak ditemukan. */
   jurnal: Jurnal | null;

@@ -8,6 +8,7 @@
 import type Database from 'better-sqlite3';
 import {
   PESAN_REVERSAL,
+  PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   PESAN_REVERSAL_SALDO_AWAL,
 } from '../core/reversal.js';
 import type { Jurnal } from '../core/types.js';
@@ -44,9 +45,24 @@ export const PESAN_KOREKSI_JURNAL = {
   jurnalBalik: PESAN_REVERSAL.asliBalik,
   sudahDikoreksi: PESAN_REVERSAL.sudahDibalik,
   saldoAwal: PESAN_REVERSAL_SALDO_AWAL,
+  pembukaanAktif: PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   panjar: PESAN_REVERSAL_PANJAR,
   pinjaman: PESAN_REVERSAL_PINJAMAN,
 } as const;
+
+/**
+ * ID penunjuk pembukaan aktif dibaca langsung dari `pengaturan` agar modul ini
+ * tetap bebas impor `repository.ts` (menghindari siklus
+ * repository -> kemampuanKoreksi -> repository). Nilai pointer tetap dipakai
+ * walau `peran` jurnal lama tidak terbaca.
+ */
+function idPembukaanAktif(db: Database.Database): string | null {
+  const row = db
+    .prepare("SELECT nilai FROM pengaturan WHERE kunci = 'saldo_awal_aktif_id'")
+    .get() as { nilai: string } | undefined;
+  const id = String(row?.nilai ?? '').trim();
+  return id || null;
+}
 
 type JurnalRingkas = Pick<Jurnal, 'id' | 'jenis' | 'peran' | 'reversal_of'>;
 
@@ -175,6 +191,12 @@ export function kemampuanKoreksiJurnal(
   if (punyaReversal(db, asli.id))
     return tolak(PESAN_KOREKSI_JURNAL.sudahDikoreksi);
 
+  // T-A03: jurnal pembukaan aktif (termasuk pengganti UMUM) hanya boleh
+  // dikoreksi lewat wizard saldo awal. Penunjuk resmi diperiksa lebih dulu agar
+  // data lama dengan `peran` tidak terbaca tetap ditolak.
+  if (asli.id === idPembukaanAktif(db))
+    return tolak(PESAN_KOREKSI_JURNAL.pembukaanAktif);
+
   // Subledger: koreksi wajib lewat modul asalnya agar status dokumen tidak basi.
   if (terhubungPanjarTermasukBatal(db, asli.id))
     return tolak(PESAN_KOREKSI_JURNAL.panjar);
@@ -182,13 +204,11 @@ export function kemampuanKoreksiJurnal(
     return tolak(PESAN_KOREKSI_JURNAL.pinjaman);
 
   // Saldo awal dan jurnal pembukaan (OPENING/OPENING_REPLACEMENT) hanya boleh
-  // dikoreksi lewat wizard koreksi saldo awal (T1.8/T-A02). Jalur generik akan
-  // menolaknya, jadi UI tidak boleh menawarkan tombol yang pasti gagal.
-  if (
-    asli.jenis === 'SALDO_AWAL' ||
-    asli.peran === 'OPENING' ||
-    asli.peran === 'OPENING_REPLACEMENT'
-  )
+  // dikoreksi lewat wizard koreksi saldo awal (T1.8/T-A02/T-A03). Jalur generik
+  // akan menolaknya, jadi UI tidak boleh menawarkan tombol yang pasti gagal.
+  if (asli.peran === 'OPENING' || asli.peran === 'OPENING_REPLACEMENT')
+    return tolak(PESAN_KOREKSI_JURNAL.pembukaanAktif);
+  if (asli.jenis === 'SALDO_AWAL')
     return tolak(PESAN_KOREKSI_JURNAL.saldoAwal);
 
   return { bisaDibalik: true, bisaDikoreksi: true, alasan: null };

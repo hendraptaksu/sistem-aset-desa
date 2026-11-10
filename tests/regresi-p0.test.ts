@@ -25,7 +25,10 @@ import { neracaSaldo, saldoAkun } from '../src/core/reports.js';
 import { openDb } from '../src/db/database.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { listAuditLog, listJurnal } from '../src/db/repository.js';
-import { PESAN_REVERSAL_SALDO_AWAL, reverseJurnal } from '../src/db/reversal.js';
+import {
+  PESAN_REVERSAL_PEMBUKAAN_AKTIF,
+  reverseJurnal,
+} from '../src/db/reversal.js';
 import {
   koreksiSaldoAwal,
   simpanSaldoAwal,
@@ -174,7 +177,7 @@ describe('T1.9 — regresi P0 bertahan setelah DB ditutup dan dibuka ulang', () 
         tanggal: '2026-01-02',
       });
       expect(balik.tersimpan).toBe(false);
-      expect(balik.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+      expect(balik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
       expect(listJurnal(db)).toHaveLength(jumlahJurnal);
       expect(listAuditLog(db)).toHaveLength(jumlahAudit);
       expect(statusSaldoAwal(db).boleh).toBe(false);

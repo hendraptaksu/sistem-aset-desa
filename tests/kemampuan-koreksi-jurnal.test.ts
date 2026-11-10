@@ -10,12 +10,15 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
   insertJurnalTervalidasi,
+  KUNCI_SALDO_AWAL_AKTIF_ID,
   listJurnalLengkap,
+  setPengaturan,
 } from '../src/db/repository.js';
 import { PESAN_REVERSAL } from '../src/core/reversal.js';
 import {
   kemampuanKoreksiJurnal,
   PESAN_REVERSAL_PANJAR,
+  PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   PESAN_REVERSAL_PINJAMAN,
   PESAN_REVERSAL_SALDO_AWAL,
   reverseJurnal,
@@ -306,9 +309,50 @@ describe('T2.1 — kemampuan koreksi jurnal', () => {
       expect(kemampuanKoreksiJurnal(db, { id })).toEqual({
         bisaDibalik: false,
         bisaDikoreksi: false,
-        alasan: PESAN_REVERSAL_SALDO_AWAL,
+        alasan: PESAN_REVERSAL_PEMBUKAAN_AKTIF,
       });
     }
+  });
+
+  it('T-A03: penunjuk pembukaan aktif menolak walau peran jurnal lama tidak terbaca', () => {
+    const db = freshDb();
+    jurnalUmum(db, 'j-pembukaan-lama');
+    // Simulasi data lama: pointer resmi ada, tetapi jurnal masih berperan
+    // NORMAL. Pointer tetap menjadi sumber kebenaran.
+    setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'j-pembukaan-lama');
+
+    expect(kemampuanKoreksiJurnal(db, { id: 'j-pembukaan-lama' })).toEqual({
+      bisaDibalik: false,
+      bisaDikoreksi: false,
+      alasan: PESAN_REVERSAL_PEMBUKAAN_AKTIF,
+    });
+  });
+
+  it('T-A03: NORMAL/ADJUSTMENT lain di grup pembukaan yang sama tetap bisa dikoreksi', () => {
+    const db = freshDb();
+    saldoAwal(db);
+    insertJurnalTervalidasi(
+      db,
+      {
+        id: 'j-penyesuaian-grup',
+        tanggal: '2026-01-05',
+        no_bukti: 'JU-2026-0010',
+        keterangan: 'Penyesuaian dalam grup pembukaan',
+        jenis: 'UMUM',
+        peran: 'ADJUSTMENT',
+        grup_id: 'j-modal',
+      },
+      pasangan('1029', '1001', RP(50_000)),
+    );
+
+    // Pointer pembukaan tetap ke `j-modal`; jurnal penyesuaian bukan pembukaan.
+    setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'j-modal');
+
+    expect(kemampuanKoreksiJurnal(db, { id: 'j-penyesuaian-grup' })).toEqual({
+      bisaDibalik: true,
+      bisaDikoreksi: true,
+      alasan: null,
+    });
   });
 
   it('jurnal open dan close panjar ditolak dengan alasan panjar', () => {

@@ -21,6 +21,7 @@ import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   koreksiDanIsiUlang,
   PESAN_REVERSAL_PANJAR,
+  PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   PESAN_REVERSAL_SALDO_AWAL,
   reverseJurnal,
 } from '../src/db/reversal.js';
@@ -31,6 +32,11 @@ import {
   serahkanPanjar,
 } from '../src/db/panjar.js';
 import { neracaSaldo, labaTahun, saldoAkun } from '../src/core/reports.js';
+import { buatJurnalSaldoAwal } from '../src/core/forms.js';
+import {
+  koreksiSaldoAwal,
+  simpanSaldoAwal,
+} from '../src/db/saldoAwal.js';
 import {
   PESAN_REVERSAL,
   jenisPenggantiSah,
@@ -600,6 +606,134 @@ describe('T1.5 — reversal SALDO_AWAL diblokir dari jalur umum', () => {
       expect(saldoAkun(baris, '1029', '2026-12-31')).toBe(0);
       expect(saldoAkun(baris, '1001', '2026-12-31')).toBe(RP(1_000_000));
       expect(getJurnal(db, 'j-awal-grup')?.jenis).toBe('SALDO_AWAL');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-A03: reversal & koreksi generik atas pengganti pembukaan aktif ditolak tanpa menulis', () => {
+    const db = freshDb();
+    try {
+      const awal = simpanSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          id: 'j-awal-t-a03',
+          tanggal: '2026-01-01',
+          saldo: [{ akun_kode: '1001', nominal: RP(5_000_000) }],
+        }).input,
+      );
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+      const koreksi = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          id: 'j-pengganti-t-a03',
+          tanggal: '2026-01-01',
+          saldo: [{ akun_kode: '1001', nominal: RP(8_000_000) }],
+        }).input,
+        { alasan: 'Koreksi pertama saldo awal', sekarang: '2026-12-31' },
+      );
+      expect(koreksi.tersimpan, koreksi.errors.join(' ')).toBe(true);
+      const pengganti = koreksi.jurnal!;
+      expect(pengganti.peran).toBe('OPENING_REPLACEMENT');
+
+      const sebelumJurnal = jumlahJurnal(db);
+      const sebelumAudit = listAuditLog(db).length;
+
+      const balik = reverseJurnal(db, pengganti.id, 'Coba balik pengganti', {
+        id: 'j-balik-t-a03',
+        tanggal: '2026-01-02',
+      });
+      expect(balik.tersimpan).toBe(false);
+      expect(balik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
+      expect(balik.errors.join(' ')).toMatch(/Wizard Koreksi Saldo Awal/);
+
+      const generik = koreksiDanIsiUlang(
+        db,
+        pengganti.id,
+        'Coba koreksi generik pengganti',
+        {
+          header: {
+            id: 'j-generik-t-a03',
+            tanggal: '2026-01-02',
+            keterangan: 'Pengganti generik',
+            jenis: 'UMUM',
+          },
+          baris: pasangan('1001', '3000', RP(1_000_000)),
+        },
+        { id: 'j-balik-generik-t-a03', tanggal: '2026-01-02' },
+      );
+      expect(generik.tersimpan).toBe(false);
+      expect(generik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
+
+      expect(jumlahJurnal(db)).toBe(sebelumJurnal);
+      expect(listAuditLog(db)).toHaveLength(sebelumAudit);
+      expect(getJurnalDetail(db, 'j-balik-t-a03')).toBeNull();
+      expect(getJurnalDetail(db, 'j-generik-t-a03')).toBeNull();
+      expect(getJurnalDetail(db, 'j-balik-generik-t-a03')).toBeNull();
+      expect(getJurnalDetail(db, pengganti.id)).not.toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-A03: NORMAL/ADJUSTMENT lain dalam grup pembukaan tetap bisa dibalik', () => {
+    const db = freshDb();
+    try {
+      simpanSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          id: 'j-awal-grup-a03',
+          tanggal: '2026-01-01',
+          saldo: [{ akun_kode: '1001', nominal: RP(5_000_000) }],
+        }).input,
+      );
+      const koreksi = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          id: 'j-pengganti-grup-a03',
+          tanggal: '2026-01-01',
+          saldo: [{ akun_kode: '1001', nominal: RP(8_000_000) }],
+        }).input,
+        { alasan: 'Koreksi saldo awal', sekarang: '2026-12-31' },
+      );
+      expect(koreksi.tersimpan, koreksi.errors.join(' ')).toBe(true);
+
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-adjustment-grup-a03',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-9101',
+          keterangan: 'Penyesuaian dalam grup pembukaan',
+          jenis: 'UMUM',
+          peran: 'ADJUSTMENT',
+          grup_id: koreksi.jurnal!.grup_id,
+        },
+        pasangan('1029', '1001', RP(50_000)),
+      );
+
+      const hasil = reverseJurnal(
+        db,
+        'j-adjustment-grup-a03',
+        'Salah pindah kas',
+        { id: 'j-adjustment-grup-a03-balik', tanggal: '2026-01-06' },
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal).toMatchObject({
+        reversal_of: 'j-adjustment-grup-a03',
+        grup_id: koreksi.jurnal!.grup_id,
+      });
+
+      // Jurnal pengganti pembukaan tetap terlindungi.
+      const tetap = reverseJurnal(
+        db,
+        koreksi.jurnal!.id,
+        'Coba balik pengganti pembukaan',
+        { tanggal: '2026-01-06' },
+      );
+      expect(tetap.tersimpan).toBe(false);
+      expect(tetap.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
     } finally {
       db.close();
     }
