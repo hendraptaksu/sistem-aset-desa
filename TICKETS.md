@@ -321,14 +321,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A02 — Larang perubahan jenis jurnal pada koreksi
+### [x] T-A02 — Larang perubahan jenis jurnal pada koreksi
 
 | | |
 | --- | --- |
 | **Prioritas** | P0 |
 | **Perkiraan** | S |
 | **Depends** | T-A00 |
-| **Status** | Belum |
+| **Status** | Selesai — commit 7a317a6 |
 
 **Masalah**
 
@@ -388,6 +388,31 @@ dapat salah mengelompokkan transaksi.
 npm test -- tests/reversal.test.ts tests/kemampuan-koreksi-jurnal.test.ts tests/saldo-awal-koreksi.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit 7a317a6):**
+
+- `src/core/reversal.ts`: fungsi murni `jenisPenggantiSah()` + konstanta pesan
+  `PESAN_JENIS_PENGGANTI`. `REVERSAL` selalu ditolak; pengganti kosong mewarisi
+  jenis asli; jenis lain wajib sama; asli `SALDO_AWAL` hanya sah menjadi `UMUM`
+  lewat wizard. Pesan menyebut jenis asli & pengganti serta menegaskan jenis
+  tidak boleh diubah.
+- `src/db/reversal.ts`: aturan dipanggil sebelum jurnal balik/audit disusun.
+  Pengganti generik kini menyimpan `jenis` hasil aturan, `peran = 'ADJUSTMENT'`,
+  dan `replaces_id = idAsli`; jurnal balik tetap `REVERSAL`/`NORMAL` dengan
+  `reversal_of`. Pengecekan lama yang hanya menolak `REVERSAL`/`SALDO_AWAL`
+  diganti.
+- `src/db/kemampuanKoreksi.ts`: membaca `peran` dari DB dan tidak menawarkan
+  koreksi generik untuk `SALDO_AWAL`, `OPENING`, atau `OPENING_REPLACEMENT`
+  (pesan sama dengan larangan saldo awal).
+- Trigger skema v2 yang sudah ada menolak pengganti berjenis berbeda; kini ada
+  test langsung di `tests/skema-hardening.test.ts`.
+- Test regresi: `BAYAR` → `PANJAR` ditolak tanpa jurnal/audit baru; `BAYAR` →
+  `BAYAR` dan jenis kosong diterima dengan jenis tersimpan `BAYAR`, peran
+  `ADJUSTMENT`, `replaces_id` menunjuk asli; `auditIntegritas().ok === true`;
+  koreksi saldo awal tetap menghasilkan `OPENING_REPLACEMENT`/`UMUM`/
+  `replaces_id`. T-A03 dan seterusnya tidak disentuh.
+- Verifikasi: test target 74 lulus; `npm test` 94 file / 1245 test lulus;
+  `npm run typecheck` lulus. Tidak ada perubahan skema.
 
 ---
 
