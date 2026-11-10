@@ -816,14 +816,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A07 — Audit integritas berbasis laporan
+### [x] T-A07 — Audit integritas berbasis laporan
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | M |
 | **Depends** | T-A01, T-A06 |
-| **Status** | Belum |
+| **Status** | Selesai — commit 554bd4a |
 
 **Masalah**
 
@@ -884,6 +884,40 @@ Tambahkan pemeriksaan dan kode temuan baru:
 npm test -- tests/integritas.test.ts tests/tutup.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit 554bd4a):**
+
+- `src/db/integritas.ts`: kode temuan baru `NERACA_TIDAK_SEIMBANG`,
+  `NERACA_SALDO_SELISIH`, `CUTOVER_TIDAK_KONSISTEN`,
+  `PEMBUKAAN_AKTIF_HILANG`, `LABA_RUGI_SEBELUM_CUTOVER`, dan
+  `SALDO_AWAL_MEMUAT_LABA_RUGI`, dengan pesan Indonesia yang mengarahkan ke
+  Wizard Koreksi Saldo Awal/data yang harus diperiksa.
+- Pemeriksaan laporan membaca baris jurnal/akun/tutup satu kali lalu memakai
+  mesin `neraca`, `neracaSaldo`, dan `neracaSaldoPeriode` (cut-over eksplisit)
+  pada cutoff tanggal jurnal terakhir atau tanggal lokal bila DB kosong. Audit
+  tetap read-only dan melewati pemeriksaan laporan dengan aman bila laporan
+  tidak bisa dihitung (mis. akun asing); temuan struktural lain melaporkan
+  penyebabnya.
+- Pemeriksaan penunjuk memakai relasi eksplisit `saldo_awal_aktif_id`,
+  `cutover_tanggal`, `jurnal.peran`, `reversal_of`, dan `replaces_id`; jurnal
+  pembukaan yang sudah dibalik/digantikan atau penunjuk yatim dilaporkan
+  `PEMBUKAAN_AKTIF_HILANG`. P&L pra-cut-over di luar grup pembukaan dan P&L di
+  jurnal pembukaan dilaporkan terpisah tanpa false positive pada jurnal
+  pembukaan sendiri.
+- `tutupBuku()` tidak diubah: temuan laporan baru otomatis memblokir karena
+  hanya `SNAPSHOT_TUTUP_BERUBAH` yang dikecualikan. Test baru membuktikan tahun
+  dengan Neraca/Neraca Saldo selisih ditolak walau setiap jurnal seimbang,
+  sedangkan TUTUP-ULANG dengan snapshot berubah + konfirmasi tetap tersimpan.
+- Test regresi di `tests/integritas.test.ts` mencakup SEMUA kode temuan baru
+  (fixture cut-over + P&L, SQL jurnal pincang, setting cut-over manual,
+  pointer yatim, P&L pra-cut-over, dan SALDO_AWAL P&L via SQL), DB bersih
+  cut-over normal DB-38 tetap `ok:true`, serta audit tidak menulis. Test
+  `tests/tutup.test.ts` menambah regresi blokir laporan. Fixture lama yang
+  membuat SALDO_AWAL tanpa penunjuk disesuaikan ke jalur resmi
+  `simpanSaldoAwal`/penunjuk eksplisit agar tidak menjadi false positive.
+- Verifikasi: `npm test -- tests/integritas.test.ts tests/tutup.test.ts`
+  92 test lulus; `npm test` 94 file / 1276 test lulus; `npm run typecheck`
+  lulus. Tidak ada perubahan skema; T-A08 dan seterusnya tidak disentuh.
 
 ---
 
