@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
 import { tutupBuku } from '../src/db/tutup.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
@@ -105,7 +106,8 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
     try {
       // Saldo awal cukup untuk sebagian besar operasi; kas minus tetap diuji
       // lewat cabang khusus di bawah (konfirmasi sadar).
-      const awal = postingJurnal(db, {
+      // T-A07: jalur resmi saldo awal menulis penunjuk pembukaan + cut-over.
+      const awal = simpanSaldoAwal(db, {
         header: {
           id: 'inv-awal',
           tanggal: '2025-01-01',
@@ -465,7 +467,8 @@ describe('P0-10 — koreksi setelah tutup buku tidak pernah selisih', () => {
   it('reversal + jurnal pengganti di periode terkunci tetap seimbang', () => {
     const db = openDb(':memory:');
     try {
-      const modal = postingJurnal(db, {
+      // T-A07: jalur resmi saldo awal menulis penunjuk pembukaan + cut-over.
+      const modal = simpanSaldoAwal(db, {
         header: {
           id: 'k-modal',
           tanggal: '2025-01-01',

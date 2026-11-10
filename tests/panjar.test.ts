@@ -28,6 +28,7 @@ import {
 } from '../src/db/panjar.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   getJurnal,
@@ -64,7 +65,9 @@ const K = (akun: string, nominal: number): JurnalBarisInput => ({
 /** DB bersih + kas 1001 Rp 10.000.000 (lawan modal). */
 function dbKas(): Database.Database {
   const db = openDb(':memory:');
-  const awal = postingJurnal(db, {
+  // T-A07: saldo awal lewat jalur resmi agar penunjuk pembukaan aktif dan
+  // cut-over tertulis; audit tidak lagi menganggapnya pembukaan hilang.
+  const awal = simpanSaldoAwal(db, {
     header: {
       id: 'awal',
       tanggal: '2026-01-01',

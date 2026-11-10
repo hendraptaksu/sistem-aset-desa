@@ -305,7 +305,9 @@ describe('DB-12 — IPC audit integritas read-only', () => {
     expect(hasil.ok, hasil.error).toBe(true);
     expect(hasil.data.ok).toBe(false);
     expect(hasil.data.temuan[0]).toMatchObject({ kode: 'JURNAL_TIDAK_SEIMBANG' });
-    expect(hasil.data.ringkasan).toMatch(/1 temuan/i);
+    // T-A07: jurnal pincang juga menghasilkan temuan laporan, jadi ringkasan
+    // tidak lagi selalu "1 temuan".
+    expect(hasil.data.ringkasan).toMatch(/\d+ temuan integritas/i);
     expect(ulang.data).toEqual(hasil.data);
     expect(hitung()).toEqual(sebelum);
     expect(env.setDbCalls).toHaveLength(0);

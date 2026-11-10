@@ -9,8 +9,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
+import { AKUN_MODAL } from '../src/db/coa.js';
 import { auditIntegritas, auditIntegritasDb } from '../src/db/integritas.js';
-import { listTutupBukuSnapshot } from '../src/db/repository.js';
+import {
+  KUNCI_CUTOVER_TANGGAL,
+  KUNCI_SALDO_AWAL_AKTIF_ID,
+  listTutupBukuSnapshot,
+  setPengaturan,
+} from '../src/db/repository.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { tutupBuku } from '../src/db/tutup.js';
 
 const WAKTU = '2026-10-29T00:00:00.000Z';
@@ -236,15 +243,25 @@ describe('AKT-09 — audit integritas akuntansi', () => {
       buatBaris(db, 'j-tidak-seimbang', '4001', 0, 900);
 
       const hasil = auditIntegritas(db);
+      const tidakSeimbang = hasil.temuan.find(
+        (t) => t.kode === 'JURNAL_TIDAK_SEIMBANG',
+      );
 
       expect(hasil.ok).toBe(false);
-      expect(hasil.temuan).toHaveLength(1);
-      expect(hasil.temuan[0]).toMatchObject({
+      expect(tidakSeimbang).toMatchObject({
         kode: 'JURNAL_TIDAK_SEIMBANG',
         detail: { id: 'j-tidak-seimbang', debit: 1_000, kredit: 900 },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/tidak seimbang/i);
-      expect(hasil.ringkasan).toMatch(/1 temuan/i);
+      expect(tidakSeimbang?.pesan).toMatch(/tidak seimbang/i);
+      // T-A07: jurnal yang tidak seimbang juga membuat Neraca dan Neraca Saldo
+      // (kumulatif & tahun) selisih; keduanya dilaporkan terpisah.
+      expect(hasil.temuan.map((t) => t.kode)).toEqual(
+        expect.arrayContaining([
+          'NERACA_TIDAK_SEIMBANG',
+          'NERACA_SALDO_SELISIH',
+        ]),
+      );
+      expect(hasil.ringkasan).toMatch(/temuan/i);
     });
   });
 
@@ -438,10 +455,14 @@ describe('DB-12 — perluasan audit integritas', () => {
       buatBaris(db, 'j-tidak-seimbang', '4001', 0, 900);
 
       const daftar = auditIntegritasDb(db);
+      const barisJurnal = daftar.find((d) =>
+        d.startsWith('JURNAL_TIDAK_SEIMBANG: '),
+      );
 
-      expect(daftar).toHaveLength(1);
-      expect(daftar[0]).toMatch(/^JURNAL_TIDAK_SEIMBANG: /);
-      expect(daftar[0]).toMatch(/tidak seimbang/i);
+      expect(barisJurnal).toBeDefined();
+      expect(barisJurnal).toMatch(/tidak seimbang/i);
+      // T-A07 menambahkan temuan laporan; format "KODE: pesan" tetap sama.
+      for (const baris of daftar) expect(baris).toMatch(/^[A-Z_]+: /);
     });
   });
 
@@ -1770,6 +1791,282 @@ describe('T-A06 — audit snapshot tutup buku', () => {
           (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n,
         ),
       }).toEqual(sebelum);
+    });
+  });
+});
+
+describe('T-A07 — audit konsistensi laporan dan penunjuk pembukaan', () => {
+  const CUTOVER = '2026-07-01';
+
+  /**
+   * Saldo awal resmi lewat jalur aplikasi: menulis jurnal SALDO_AWAL
+   * (peran OPENING), penunjuk `saldo_awal_aktif_id`, dan `cutover_tanggal`
+   * secara atomik. Dipakai sebagai kondisi awal semua fixture di bawah.
+   */
+  function buatPembukaan(
+    db: Database.Database,
+    opsi: {
+      id?: string;
+      tanggal?: string;
+      baris?: [akun: string, debit: number, kredit: number][];
+    } = {},
+  ): string {
+    const id = opsi.id ?? 'sa-uji';
+    const hasil = simpanSaldoAwal(db, {
+      header: {
+        id,
+        tanggal: opsi.tanggal ?? CUTOVER,
+        no_bukti: `SA-${id}`,
+        keterangan: 'Saldo awal uji T-A07',
+        jenis: 'SALDO_AWAL',
+      },
+      baris: (opsi.baris ?? [
+        ['1001', 1_000_000, 0],
+        [AKUN_MODAL, 0, 1_000_000],
+      ]).map(([akun_kode, debit, kredit]) => ({
+        akun_kode,
+        debit,
+        kredit,
+      })),
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+    return hasil.jurnal!.id;
+  }
+
+  it('DB bersih dengan cut-over normal (DB-38) tetap ok:true', () => {
+    denganDb((db) => {
+      buatPembukaan(db);
+      // P&L setelah cut-over tetap boleh dan tidak boleh memicu temuan laporan.
+      buatJurnalLengkap(db, 'j-pendapatan-setelah', {
+        tanggal: '2026-08-01',
+        baris: [
+          ['1001', 200_000, 0],
+          ['4001', 0, 200_000],
+        ],
+      });
+      buatJurnalLengkap(db, 'j-beban-setelah', {
+        tanggal: '2026-09-01',
+        baris: [
+          ['5001', 50_000, 0],
+          ['1001', 0, 50_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+
+      expect(hasil.temuan).toEqual([]);
+      expect(hasil.ok).toBe(true);
+    });
+  });
+
+  it('NERACA_TIDAK_SEIMBANG: P&L sebelum cut-over di luar pembukaan membuat Neraca selisih', () => {
+    denganDb((db) => {
+      buatPembukaan(db);
+      // Jurnal ini seimbang per-jurnal (D kas / K pendapatan). Neraca tetap
+      // selisih karena P&L sebelum cut-over dikecualikan dari laba, sedangkan
+      // kasnya masuk aset. Ini bukan korupsi baris jurnal, melainkan
+      // inkonsistensi laporan/cut-over yang harus ditangkap T-A07.
+      buatJurnalLengkap(db, 'j-pl-pra-cutover', {
+        tanggal: '2026-06-15',
+        baris: [
+          ['1001', 100_000, 0],
+          ['4001', 0, 100_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+      const neraca = hasil.temuan.find(
+        (t) => t.kode === 'NERACA_TIDAK_SEIMBANG',
+      );
+      const saldo = hasil.temuan.filter(
+        (t) => t.kode === 'NERACA_SALDO_SELISIH',
+      );
+
+      expect(kodeTemuan(db)).not.toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(neraca).toMatchObject({
+        kode: 'NERACA_TIDAK_SEIMBANG',
+        detail: {
+          cutoff: CUTOVER,
+          total_aset: 1_100_000,
+          total_pasiva: 1_000_000,
+          selisih: 100_000,
+        },
+      });
+      expect(neraca?.pesan).toMatch(/tidak seimbang/i);
+      expect(neraca?.pesan).toMatch(/selisih/i);
+
+      // Mode kumulatif tetap seimbang karena seluruh jurnal seimbang; hanya
+      // mode tahun yang mengecualikan P&L pra-cut-over.
+      expect(saldo.map((t) => (t.detail as { mode: string }).mode)).toEqual([
+        'tahun',
+      ]);
+      expect(saldo[0]?.detail).toMatchObject({
+        mode: 'tahun',
+        total_debit: 1_100_000,
+        total_kredit: 1_000_000,
+        selisih: 100_000,
+      });
+    });
+  });
+
+  it('NERACA_SALDO_SELISIH: fixture SQL jurnal tidak seimbang menghasilkan satu temuan per mode', () => {
+    denganDb((db) => {
+      // Korupsi SQL terkontrol: total debit 1.000 vs kredit 900. Tidak ada
+      // cut-over/pembukaan, jadi temuan berasal murni dari Neraca Saldo.
+      buatJurnal(db, 'j-selisih-laporan', '2026-01-10', 'JU-TA07-01');
+      buatBaris(db, 'j-selisih-laporan', '1001', 1_000, 0);
+      buatBaris(db, 'j-selisih-laporan', '4001', 0, 900);
+
+      const hasil = auditIntegritas(db);
+      const saldo = hasil.temuan
+        .filter((t) => t.kode === 'NERACA_SALDO_SELISIH')
+        .map((t) => t.detail as Record<string, unknown>);
+      const modes = saldo.map((d) => d.mode).sort();
+
+      expect(modes).toEqual(['kumulatif', 'tahun']);
+      for (const detail of saldo) {
+        expect(detail).toMatchObject({
+          total_debit: 1_000,
+          total_kredit: 900,
+          selisih: 100,
+        });
+      }
+      expect(
+        hasil.temuan.find((t) => t.kode === 'NERACA_TIDAK_SEIMBANG'),
+      ).toBeDefined();
+    });
+  });
+
+  it('CUTOVER_TIDAK_KONSISTEN: setting cut-over diubah manual setelah saldo awal', () => {
+    denganDb((db) => {
+      const idPembukaan = buatPembukaan(db);
+      // Meniru drift: penunjuk pembukaan tetap, tetapi cut-over diubah manual.
+      setPengaturan(db, KUNCI_CUTOVER_TANGGAL, '2026-08-01');
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find(
+        (t) => t.kode === 'CUTOVER_TIDAK_KONSISTEN',
+      );
+
+      expect(temuan).toMatchObject({
+        kode: 'CUTOVER_TIDAK_KONSISTEN',
+        detail: {
+          cutover_tanggal: '2026-08-01',
+          pembukaan_id: idPembukaan,
+          tanggal_pembukaan: CUTOVER,
+        },
+      });
+      expect(temuan?.pesan).toContain('2026-08-01');
+      expect(temuan?.pesan).toContain(CUTOVER);
+      expect(temuan?.pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+      // Penunjuk pembukaan masih sah, jadi bukan PEMBUKAAN_AKTIF_HILANG.
+      expect(kodeTemuan(db)).not.toContain('PEMBUKAAN_AKTIF_HILANG');
+    });
+  });
+
+  it('PEMBUKAAN_AKTIF_HILANG: penunjuk menunjuk jurnal yang sudah tidak ada', () => {
+    denganDb((db) => {
+      const idPembukaan = buatPembukaan(db);
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'pembukaan-hilang');
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find(
+        (t) => t.kode === 'PEMBUKAAN_AKTIF_HILANG',
+      );
+
+      expect(temuan).toMatchObject({
+        kode: 'PEMBUKAAN_AKTIF_HILANG',
+        detail: {
+          penunjuk: 'pembukaan-hilang',
+          jurnal_saldo_awal: [idPembukaan],
+        },
+      });
+      expect((temuan?.detail as { alasan: string }).alasan).toMatch(
+        /sudah tidak ada/i,
+      );
+      expect(temuan?.pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+    });
+  });
+
+  it('LABA_RUGI_SEBELUM_CUTOVER: P&L sebelum cut-over di luar grup pembukaan', () => {
+    denganDb((db) => {
+      const idPembukaan = buatPembukaan(db);
+      buatJurnalLengkap(db, 'j-pl-luar-pembukaan', {
+        tanggal: '2026-06-15',
+        baris: [
+          ['1001', 100_000, 0],
+          ['4001', 0, 100_000],
+        ],
+      });
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.filter(
+        (t) => t.kode === 'LABA_RUGI_SEBELUM_CUTOVER',
+      );
+
+      // Hanya baris P&L di luar grup pembukaan; jurnal pembukaan sendiri tidak
+      // boleh menjadi false positive.
+      expect(temuan).toHaveLength(1);
+      expect(temuan[0]).toMatchObject({
+        kode: 'LABA_RUGI_SEBELUM_CUTOVER',
+        detail: {
+          cutover_tanggal: CUTOVER,
+          jurnal_id: 'j-pl-luar-pembukaan',
+          tanggal: '2026-06-15',
+          akun_kode: '4001',
+          tipe: 'PENDAPATAN',
+        },
+      });
+      expect((temuan[0]?.detail as { jurnal_id: string }).jurnal_id).not.toBe(
+        idPembukaan,
+      );
+      expect(temuan[0]?.pesan).toMatch(/sebelum cut-over resmi/i);
+      expect(temuan[0]?.pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+    });
+  });
+
+  it('SALDO_AWAL_MEMUAT_LABA_RUGI: data lama/direct SQL dengan akun P&L', () => {
+    denganDb((db) => {
+      // T-A05 hanya menolak jalur aplikasi. Trigger DB sengaja tidak memeriksa
+      // tipe akun, jadi fixture ini meniru data lama yang dibuat lewat SQL.
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, peran, grup_id,
+            reversal_of, created_at)
+         VALUES (?, ?, ?, ?, 'SALDO_AWAL', 'OPENING', ?, NULL, ?)`,
+      ).run(
+        'sa-laba-rugi',
+        CUTOVER,
+        'SA-TA07-PL',
+        'Saldo awal lama memuat P&L',
+        'sa-laba-rugi',
+        WAKTU,
+      );
+      buatBaris(db, 'sa-laba-rugi', '1001', 1_000_000, 0);
+      buatBaris(db, 'sa-laba-rugi', '4001', 0, 1_000_000);
+      // Penunjuk + cut-over diselaraskan agar temuan yang diuji benar-benar
+      // hanya isi jurnal pembukaan.
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'sa-laba-rugi');
+      setPengaturan(db, KUNCI_CUTOVER_TANGGAL, CUTOVER);
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find(
+        (t) => t.kode === 'SALDO_AWAL_MEMUAT_LABA_RUGI',
+      );
+
+      expect(temuan).toMatchObject({
+        kode: 'SALDO_AWAL_MEMUAT_LABA_RUGI',
+        detail: {
+          jurnal_id: 'sa-laba-rugi',
+          tanggal: CUTOVER,
+          akun: [
+            expect.objectContaining({ akun_kode: '4001', tipe: 'PENDAPATAN' }),
+          ],
+        },
+      });
+      expect(temuan?.pesan).toMatch(/hanya boleh memuat AKTIVA/i);
+      expect(kodeTemuan(db)).not.toContain('PEMBUKAAN_AKTIF_HILANG');
+      expect(kodeTemuan(db)).not.toContain('CUTOVER_TIDAK_KONSISTEN');
     });
   });
 });

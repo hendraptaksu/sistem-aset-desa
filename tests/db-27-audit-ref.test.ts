@@ -20,7 +20,8 @@ import {
   closePanjarV2,
   serahkanPanjar,
 } from '../src/db/panjar.js';
-import { postingJurnal, postingSaldoAwal } from '../src/db/posting.js';
+import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import {
   catatAudit,
   hitungAuditLog,
@@ -51,7 +52,8 @@ const dbTerbuka: Database.Database[] = [];
 function dbKas(): Database.Database {
   const db = openDb(':memory:');
   dbTerbuka.push(db);
-  const awal = postingSaldoAwal(db, {
+  // T-A07: jalur resmi menulis penunjuk pembukaan aktif + cut-over.
+  const awal = simpanSaldoAwal(db, {
     header: {
       id: 'awal-db27',
       tanggal: '2026-01-01',

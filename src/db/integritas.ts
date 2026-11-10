@@ -30,17 +30,39 @@
 // ringkasan agregat: kredit neto 2050 Buku Besar tidak boleh kurang dari
 // outstanding seluruh pinjaman aktif. Kelebihan GL tetap bukan temuan karena
 // dapat berasal dari utang non-LPD.
+// T-A07 memeriksa konsistensi LAPORAN dan penunjuk pembukaan, bukan hanya
+// per-jurnal:
+// - Neraca dan Neraca Saldo (mode kumulatif & tahun) dihitung dengan mesin
+//   laporan yang sama dengan UI, memakai cutoff jurnal terakhir/hari ini;
+// - hubungan `pengaturan.cutover_tanggal` dengan jurnal pembukaan aktif;
+// - keberadaan penunjuk pembukaan saat jurnal SALDO_AWAL masih ada;
+// - P&L sebelum cut-over di luar grup pembukaan dan P&L di jurnal pembukaan.
+// Seluruh pemeriksaan tetap READ-ONLY dan tidak pernah menulis audit log/angka.
 
 import type Database from 'better-sqlite3';
-import { JENIS_JURNAL } from '../core/posting.js';
+import { JENIS_JURNAL, tanggalKalenderValid } from '../core/posting.js';
+import { neraca, neracaSaldo, neracaSaldoPeriode } from '../core/reports.js';
 import { AKUN_PANJAR, POSISI_NORMAL, type CoaTipe } from './coa.js';
 import { formatRp } from '../utils/format.js';
+import { tanggalLokal } from '../utils/tanggal.js';
+import { listBarisJurnal } from './laporan.js';
 import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
+import {
+  getCutoverEksplisit,
+  getCutoverTanggal,
+  getPembukaanAktif,
+} from './pembukaan.js';
 import {
   rekonsiliasiGl2050,
   rekonsiliasiSaldoAwal2050,
   rekonsiliasiSemuaPinjaman,
 } from './pinjamanRekonsiliasi.js';
+import {
+  KUNCI_SALDO_AWAL_AKTIF_ID,
+  getPengaturan,
+  listAkun,
+  listTutupBuku,
+} from './repository.js';
 import { bandingkanSnapshotTutup } from './tutupSnapshot.js';
 
 export type KodeTemuan =
@@ -78,7 +100,13 @@ export type KodeTemuan =
   | 'PANJAR_BATAL_TIDAK_KONSISTEN'
   | 'REKONSILIASI_PANJAR_GL_SELISIH'
   | 'REKONSILIASI_PINJAMAN_SELISIH'
-  | 'SNAPSHOT_TUTUP_BERUBAH';
+  | 'SNAPSHOT_TUTUP_BERUBAH'
+  | 'NERACA_TIDAK_SEIMBANG'
+  | 'NERACA_SALDO_SELISIH'
+  | 'CUTOVER_TIDAK_KONSISTEN'
+  | 'PEMBUKAAN_AKTIF_HILANG'
+  | 'LABA_RUGI_SEBELUM_CUTOVER'
+  | 'SALDO_AWAL_MEMUAT_LABA_RUGI';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
 export type Temuan = {
@@ -283,6 +311,50 @@ type AkunTidakValid = {
   tipe_aktif: string;
 };
 
+type NeracaTidakSeimbang = {
+  cutoff: string;
+  total_aset: number;
+  total_pasiva: number;
+  selisih: number;
+};
+
+type NeracaSaldoSelisih = {
+  mode: 'kumulatif' | 'tahun';
+  cutoff: string;
+  total_debit: number;
+  total_kredit: number;
+  selisih: number;
+};
+
+type CutoverTidakKonsisten = {
+  cutover_tanggal: string;
+  pembukaan_id: string;
+  tanggal_pembukaan: string;
+};
+
+type PembukaanAktifHilang = {
+  penunjuk: string | null;
+  jurnal_saldo_awal: string[];
+  alasan: string;
+};
+
+type LabaRugiSebelumCutover = {
+  cutover_tanggal: string;
+  jurnal_id: string;
+  tanggal: string;
+  grup_id: string;
+  akun_kode: string;
+  tipe: string;
+  debit: number;
+  kredit: number;
+};
+
+type SaldoAwalMemuatLabaRugi = {
+  jurnal_id: string;
+  tanggal: string;
+  akun: { akun_kode: string; tipe: string; debit: number; kredit: number }[];
+};
+
 const DAFTAR_TIPE = Object.keys(POSISI_NORMAL) as CoaTipe[];
 const TIPE_DIKENAL = new Set<string>(DAFTAR_TIPE);
 
@@ -313,6 +385,86 @@ function kolomTabel(db: Database.Database, nama: string): Set<string> {
 
 function punyaSemuaKolom(kolom: Set<string>, wajib: readonly string[]): boolean {
   return wajib.every((k) => kolom.has(k));
+}
+
+/** Tanggal jurnal terakhir, atau `null` bila belum ada jurnal bertanggal sah. */
+function tanggalJurnalTerakhir(db: Database.Database): string | null {
+  const row = db.prepare('SELECT MAX(tanggal) AS terakhir FROM jurnal').get() as
+    | { terakhir: string | null }
+    | undefined;
+  const teks = String(row?.terakhir ?? '').trim();
+  return tanggalKalenderValid(teks) ? teks : null;
+}
+
+/** ID seluruh jurnal SALDO_AWAL (urut insert) untuk pemeriksaan penunjuk. */
+function daftarJurnalSaldoAwal(db: Database.Database): string[] {
+  return (
+    db
+      .prepare("SELECT id FROM jurnal WHERE jenis = 'SALDO_AWAL' ORDER BY rowid")
+      .all() as { id: string }[]
+  ).map((r) => String(r.id));
+}
+
+/**
+ * Grup jurnal pembukaan: grup jurnal pembukaan aktif bila ada, fallback ke
+ * grup SALDO_AWAL pertama. Dipakai untuk mengecualikan baris pembukaan dari
+ * pemeriksaan P&L pra-cut-over.
+ */
+function grupPembukaan(
+  db: Database.Database,
+  pembukaanId: string | null,
+): string | null {
+  const bacaGrup = (idJurnal: string): string | null => {
+    const row = db
+      .prepare('SELECT grup_id FROM jurnal WHERE id = ?')
+      .get(idJurnal) as { grup_id: string | null } | undefined;
+    if (!row) return null;
+    const grup = String(row.grup_id ?? '').trim();
+    return grup || idJurnal;
+  };
+
+  if (pembukaanId) return bacaGrup(pembukaanId);
+  const awal = db
+    .prepare("SELECT id FROM jurnal WHERE jenis = 'SALDO_AWAL' ORDER BY rowid LIMIT 1")
+    .get() as { id: string } | undefined;
+  return awal ? bacaGrup(String(awal.id)) : null;
+}
+
+/**
+ * Alasan penunjuk `saldo_awal_aktif_id` tidak menunjuk jurnal pembukaan yang
+ * masih aktif; `null` berarti penunjuk sah. Pemeriksaan ini sengaja tidak
+ * memakai `MIN(tanggal)`/tebakan grup: hanya relasi eksplisit yang dinilai.
+ */
+function alasanPembukaanTidakAktif(
+  db: Database.Database,
+  penunjuk: string,
+): string | null {
+  if (!penunjuk) return 'penunjuk saldo_awal_aktif_id masih kosong';
+  const row = db
+    .prepare('SELECT id, tanggal, peran FROM jurnal WHERE id = ?')
+    .get(penunjuk) as
+    | { id: string; tanggal: string; peran: string | null }
+    | undefined;
+  if (!row) return `penunjuk menunjuk jurnal ${penunjuk} yang sudah tidak ada`;
+  if (!tanggalKalenderValid(String(row.tanggal ?? '')))
+    return `jurnal ${penunjuk} tidak punya tanggal yang valid`;
+
+  const peran = String(row.peran ?? 'NORMAL');
+  if (peran !== 'OPENING' && peran !== 'OPENING_REPLACEMENT')
+    return `jurnal ${penunjuk} berperan ${peran}, bukan OPENING/OPENING_REPLACEMENT`;
+
+  const balik = db
+    .prepare('SELECT id FROM jurnal WHERE reversal_of = ? ORDER BY rowid LIMIT 1')
+    .get(penunjuk) as { id: string } | undefined;
+  if (balik) return `jurnal ${penunjuk} sudah dibalik oleh ${String(balik.id)}`;
+
+  const pengganti = db
+    .prepare('SELECT id FROM jurnal WHERE replaces_id = ? ORDER BY rowid LIMIT 1')
+    .get(penunjuk) as { id: string } | undefined;
+  if (pengganti)
+    return `jurnal ${penunjuk} sudah digantikan oleh ${String(pengganti.id)}`;
+
+  return null;
 }
 
 /** Agregat debit/kredit per akun; baris ganda dijumlahkan agar tidak false positive. */
@@ -368,10 +520,26 @@ function petaSisiJurnal(
  * 17. DB-16f: outstanding 2050 yang tertaut ke pinjaman sama dengan outstanding
  *     jadwal (selisih != 0 menjadi temuan, tanpa koreksi otomatis);
  * 18. AUD2-04: saldo normal debit 1040 di Buku Besar sama dengan total panjar
- *     OPEN aktif (selisih != 0 menjadi REKONSILIASI_PANJAR_GL_SELISIH).
+ *     OPEN aktif (selisih != 0 menjadi REKONSILIASI_PANJAR_GL_SELISIH);
+ * 19. T-A07: Neraca pada cutoff jurnal terakhir/hari ini seimbang
+ *     (`NERACA_TIDAK_SEIMBANG`);
+ * 20. T-A07: Neraca Saldo mode kumulatif dan tahun seimbang
+ *     (`NERACA_SALDO_SELISIH` per mode);
+ * 21. T-A07: `cutover_tanggal` sama dengan tanggal pembukaan aktif
+ *     (`CUTOVER_TIDAK_KONSISTEN`);
+ * 22. T-A07: ada SALDO_AWAL tetapi penunjuk pembukaan aktif kosong/tidak sah
+ *     (`PEMBUKAAN_AKTIF_HILANG`);
+ * 23. T-A07: P&L sebelum cut-over di luar grup pembukaan
+ *     (`LABA_RUGI_SEBELUM_CUTOVER`);
+ * 24. T-A07: jurnal pembukaan memuat PENDAPATAN/BEBAN
+ *     (`SALDO_AWAL_MEMUAT_LABA_RUGI`);
+ * 25. T-A06: snapshot tutup buku berbeda dari data live
+ *     (`SNAPSHOT_TUTUP_BERUBAH`, temuan kontrol, tidak memblokir TUTUP-ULANG).
  *
  * Pemeriksaan panjar dan pinjaman dilewati dengan aman bila tabel/kolom belum
- * ada (backup v2/v3, atau backup lama sebelum tabel pinjaman v20).
+ * ada (backup v2/v3, atau backup lama sebelum tabel pinjaman v20). Pemeriksaan
+ * laporan juga tidak melempar error bila laporan tidak bisa dihitung; temuan
+ * struktural lain sudah melaporkan penyebabnya.
  *
  * Hasil selalu deterministik dan tidak mengubah database.
  */
@@ -1205,6 +1373,269 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         // Laporan tidak bisa dihitung (mis. akun asing); temuan integritas
         // lain pada pemeriksaan akun/jurnal sudah melaporkan penyebabnya.
       }
+    }
+  }
+
+  // T-A07: konsistensi penunjuk pembukaan dan cut-over resmi. Pemeriksaan ini
+  // hanya memakai relasi eksplisit (`saldo_awal_aktif_id`, `cutover_tanggal`,
+  // `jurnal.peran`) — tidak menebak dari MIN(tanggal) SALDO_AWAL.
+  const idsSaldoAwal = daftarJurnalSaldoAwal(db);
+  const penunjukPembukaan = String(
+    getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID) ?? '',
+  ).trim();
+  const pembukaanAktif = getPembukaanAktif(db);
+  const alasanPenunjuk =
+    penunjukPembukaan.length > 0
+      ? alasanPembukaanTidakAktif(db, penunjukPembukaan)
+      : idsSaldoAwal.length > 0
+        ? 'penunjuk saldo_awal_aktif_id masih kosong'
+        : null;
+
+  if (idsSaldoAwal.length > 0 && alasanPenunjuk) {
+    const detail: PembukaanAktifHilang = {
+      penunjuk: penunjukPembukaan || null,
+      jurnal_saldo_awal: idsSaldoAwal,
+      alasan: alasanPenunjuk,
+    };
+    temuan.push({
+      kode: 'PEMBUKAAN_AKTIF_HILANG',
+      pesan:
+        `Ada jurnal SALDO_AWAL (${idsSaldoAwal.join(', ')}) tetapi ${alasanPenunjuk}. ` +
+        'Penunjuk pembukaan aktif wajib menunjuk jurnal berperan OPENING/OPENING_REPLACEMENT ' +
+        'yang belum dibalik/digantikan. Perbaiki lewat Wizard Koreksi Saldo Awal; ' +
+        'jangan membuat jurnal pembukaan baru atau mengubah jurnal lama.',
+      detail,
+    });
+  }
+
+  const cutoverEksplisit = getCutoverEksplisit(db);
+  if (
+    cutoverEksplisit.eksplisit &&
+    cutoverEksplisit.tanggal &&
+    pembukaanAktif &&
+    cutoverEksplisit.tanggal !== pembukaanAktif.tanggal
+  ) {
+    const detail: CutoverTidakKonsisten = {
+      cutover_tanggal: cutoverEksplisit.tanggal,
+      pembukaan_id: pembukaanAktif.id,
+      tanggal_pembukaan: pembukaanAktif.tanggal,
+    };
+    temuan.push({
+      kode: 'CUTOVER_TIDAK_KONSISTEN',
+      pesan:
+        `Tanggal cut-over resmi (${cutoverEksplisit.tanggal}) berbeda dari tanggal ` +
+        `jurnal pembukaan aktif ${pembukaanAktif.id} (${pembukaanAktif.tanggal}). ` +
+        'Jangan mengubah tanggal cut-over manual; jalankan Wizard Koreksi Saldo Awal ' +
+        'agar penunjuk pembukaan dan tanggal cut-over diperbarui bersama.',
+      detail,
+    });
+  }
+
+  const cutover = getCutoverTanggal(db);
+  const grup = grupPembukaan(
+    db,
+    alasanPenunjuk === null ? pembukaanAktif?.id ?? null : null,
+  );
+
+  // T-A07: P&L sebelum cut-over resmi di luar grup pembukaan membuat Laba Rugi
+  // tahun pertama dan Neraca tidak konsisten. Baris milik grup pembukaan
+  // dikecualikan agar jurnal pembukaan sendiri tidak menjadi false positive;
+  // P&L di dalam pembukaan dilaporkan terpisah oleh
+  // SALDO_AWAL_MEMUAT_LABA_RUGI.
+  if (cutover) {
+    const params: unknown[] = [cutover];
+    const filterGrup = grup ? 'AND (j.grup_id IS NULL OR j.grup_id <> ?)' : '';
+    if (grup) params.push(grup);
+    const barisPraCutover = db
+      .prepare(
+        `SELECT j.id AS jurnal_id, j.tanggal AS tanggal, j.grup_id AS grup_id,
+                b.akun_kode AS akun_kode, a.tipe AS tipe,
+                b.debit AS debit, b.kredit AS kredit
+           FROM jurnal_baris b
+           JOIN jurnal j ON j.id = b.jurnal_id
+           JOIN akun a ON a.kode = b.akun_kode
+          WHERE a.tipe IN ('PENDAPATAN', 'BEBAN')
+            AND j.tanggal < ?
+            ${filterGrup}
+          ORDER BY j.tanggal, j.id, b.id`,
+      )
+      .all(...params) as Omit<LabaRugiSebelumCutover, 'cutover_tanggal'>[];
+    for (const r of barisPraCutover) {
+      const detail: LabaRugiSebelumCutover = {
+        cutover_tanggal: cutover,
+        jurnal_id: String(r.jurnal_id),
+        tanggal: String(r.tanggal),
+        grup_id: String(r.grup_id ?? ''),
+        akun_kode: String(r.akun_kode),
+        tipe: String(r.tipe),
+        debit: Number(r.debit),
+        kredit: Number(r.kredit),
+      };
+      temuan.push({
+        kode: 'LABA_RUGI_SEBELUM_CUTOVER',
+        pesan:
+          `Baris ${detail.akun_kode} (${detail.tipe}) pada jurnal ${detail.jurnal_id} ` +
+          `tanggal ${detail.tanggal} berada sebelum cut-over resmi ` +
+          `${cutover} dan di luar grup pembukaan. Pindahkan atau benahi baris ` +
+          'ini lewat Wizard Koreksi Saldo Awal; P&L sebelum cut-over tidak boleh ' +
+          'dilaporkan sebagai laba tahun pertama.',
+        detail,
+      });
+    }
+  }
+
+  // T-A07: jurnal pembukaan aktif tidak boleh memuat PENDAPATAN/BEBAN. Ini
+  // menangkap data lama/direct SQL sebelum T-A05 (validator aplikasi sudah
+  // menolak, tetapi backup/data lama bisa lolos). Bila penunjuk tidak sah,
+  // seluruh jurnal SALDO_AWAL diperiksa agar masalah tetap terlihat.
+  const kandidatPembukaan =
+    alasanPenunjuk === null && pembukaanAktif
+      ? [pembukaanAktif.id]
+      : idsSaldoAwal;
+  for (const idJurnal of kandidatPembukaan) {
+    const barisPembukaan = db
+      .prepare(
+        `SELECT b.akun_kode AS akun_kode, a.tipe AS tipe,
+                b.debit AS debit, b.kredit AS kredit
+           FROM jurnal_baris b
+           JOIN akun a ON a.kode = b.akun_kode
+          WHERE b.jurnal_id = ?
+            AND a.tipe IN ('PENDAPATAN', 'BEBAN')
+          ORDER BY b.id`,
+      )
+      .all(idJurnal) as {
+      akun_kode: string;
+      tipe: string;
+      debit: number;
+      kredit: number;
+    }[];
+    if (barisPembukaan.length === 0) continue;
+    const jurnal = db
+      .prepare('SELECT tanggal FROM jurnal WHERE id = ?')
+      .get(idJurnal) as { tanggal: string } | undefined;
+    const detail: SaldoAwalMemuatLabaRugi = {
+      jurnal_id: idJurnal,
+      tanggal: String(jurnal?.tanggal ?? ''),
+      akun: barisPembukaan.map((b) => ({
+        akun_kode: String(b.akun_kode),
+        tipe: String(b.tipe),
+        debit: Number(b.debit),
+        kredit: Number(b.kredit),
+      })),
+    };
+    const daftarAkunPl = detail.akun
+      .map((b) => `${b.akun_kode} ${b.tipe}`)
+      .join(', ');
+    temuan.push({
+      kode: 'SALDO_AWAL_MEMUAT_LABA_RUGI',
+      pesan:
+        `Jurnal pembukaan ${idJurnal} tanggal ${detail.tanggal} memuat akun laba rugi ` +
+        `(${daftarAkunPl}). Saldo awal hanya boleh memuat AKTIVA, KEWAJIBAN, dan ` +
+        'EKUITAS (modal penyeimbang). Perbaiki lewat Wizard Koreksi Saldo Awal.',
+      detail,
+    });
+  }
+
+  // T-A07: pemeriksaan laporan memakai mesin yang sama dengan UI. Satu kali
+  // baca baris/akun/tutup, lalu hitung Neraca + Neraca Saldo kumulatif/tahun.
+  // Cutoff memakai tanggal jurnal terakhir; DB tanpa jurnal memakai tanggal
+  // lokal hari ini sehingga hasilnya nol dan tidak menimbulkan false positive.
+  // Bila laporan tidak bisa dihitung (mis. akun asing), temuan struktural lain
+  // sudah melaporkan penyebabnya; audit tidak boleh melempar error.
+  const cutoff = tanggalJurnalTerakhir(db) ?? tanggalLokal();
+  let barisLaporan: ReturnType<typeof listBarisJurnal> | null = null;
+  let akunLaporan: ReturnType<typeof listAkun> | null = null;
+  let tutupLaporan: ReturnType<typeof listTutupBuku> | null = null;
+  try {
+    barisLaporan = listBarisJurnal(db);
+    akunLaporan = listAkun(db);
+    tutupLaporan = listTutupBuku(db);
+  } catch {
+    barisLaporan = null;
+  }
+
+  if (barisLaporan && akunLaporan && tutupLaporan) {
+    try {
+      const posisi = neraca(
+        barisLaporan,
+        { cutoff, tutup: tutupLaporan },
+        akunLaporan,
+        cutover,
+      );
+      if (posisi.selisih !== 0) {
+        const detail: NeracaTidakSeimbang = {
+          cutoff,
+          total_aset: posisi.totalAset,
+          total_pasiva: posisi.totalPasiva,
+          selisih: posisi.selisih,
+        };
+        temuan.push({
+          kode: 'NERACA_TIDAK_SEIMBANG',
+          pesan:
+            `Neraca per ${cutoff} tidak seimbang: total aset ` +
+            `${formatRp(posisi.totalAset)} vs total pasiva ` +
+            `${formatRp(posisi.totalPasiva)} (selisih ` +
+            `${formatRp(posisi.selisih)}). Periksa jurnal, cut-over, dan saldo awal; ` +
+            'jangan menutup periode sebelum laporan seimbang.',
+          detail,
+        });
+      }
+    } catch {
+      // Penyebab (mis. akun asing) sudah dilaporkan pemeriksaan akun/jurnal.
+    }
+
+    try {
+      const kumulatif = neracaSaldo(barisLaporan, cutoff, akunLaporan);
+      if (kumulatif.selisih !== 0) {
+        const detail: NeracaSaldoSelisih = {
+          mode: 'kumulatif',
+          cutoff,
+          total_debit: kumulatif.totalDebit,
+          total_kredit: kumulatif.totalKredit,
+          selisih: kumulatif.selisih,
+        };
+        temuan.push({
+          kode: 'NERACA_SALDO_SELISIH',
+          pesan:
+            `Neraca Saldo mode kumulatif per ${cutoff} selisih ` +
+            `${formatRp(kumulatif.selisih)} (debit ` +
+            `${formatRp(kumulatif.totalDebit)} vs kredit ` +
+            `${formatRp(kumulatif.totalKredit)}). Periksa baris jurnal yang tidak ` +
+            'seimbang atau saldo yang tidak masuk laporan.',
+          detail,
+        });
+      }
+    } catch {
+      // idem: kesalahan struktural sudah dilaporkan di atas.
+    }
+
+    try {
+      const tahun = neracaSaldoPeriode(barisLaporan, {
+        mulai: `${cutoff.slice(0, 4)}-01-01`,
+        sampai: cutoff,
+        daftarAkun: akunLaporan,
+        cutover,
+      });
+      if (tahun.selisih !== 0) {
+        const detail: NeracaSaldoSelisih = {
+          mode: 'tahun',
+          cutoff,
+          total_debit: tahun.totalDebit,
+          total_kredit: tahun.totalKredit,
+          selisih: tahun.selisih,
+        };
+        temuan.push({
+          kode: 'NERACA_SALDO_SELISIH',
+          pesan:
+            `Neraca Saldo mode tahun per ${cutoff} selisih ` +
+            `${formatRp(tahun.selisih)} (debit ${formatRp(tahun.totalDebit)} vs ` +
+            `kredit ${formatRp(tahun.totalKredit)}). Periksa P&L sebelum cut-over ` +
+            'dan baris jurnal yang tidak seimbang; jangan menutup periode.',
+          detail,
+        });
+      }
+    } catch {
+      // idem.
     }
   }
 

@@ -26,6 +26,7 @@ import {
 } from '../src/db/tutupSnapshot.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { labaDitahan, validasiTutupBuku } from '../src/core/tutup.js';
 import { neraca, neracaSaldo } from '../src/core/reports.js';
 import type { JurnalBarisInput, JurnalJenis } from '../src/core/types.js';
@@ -72,7 +73,10 @@ const keluar = (akun: string, nominal: number): JurnalBarisInput[] => [
  */
 function dbPanjarOpen2025(): Database.Database {
   const db = freshDb();
-  const awal = postingJurnal(db, {
+  // T-A07: pakai jalur resmi saldo awal agar penunjuk pembukaan aktif dan
+  // cut-over ikut tertulis; POSTING langsung SALDO_AWAL (tanpa penunjuk) kini
+  // dilaporkan PEMBUKAAN_AKTIF_HILANG oleh audit.
+  const awal = simpanSaldoAwal(db, {
     header: {
       id: 'saldo-awal-2025',
       tanggal: '2025-01-01',
@@ -857,6 +861,79 @@ describe('T-A06 — snapshot tutup buku immutable', () => {
     } finally {
       dbA.close();
       dbB.close();
+    }
+  });
+});
+
+describe('T-A07 — tutup buku memakai temuan konsistensi laporan', () => {
+  it('menolak tahun dengan Neraca/Neraca Saldo selisih walau setiap jurnal seimbang', () => {
+    const db = freshDb();
+    try {
+      const awal = simpanSaldoAwal(db, {
+        header: {
+          id: 'sa-2025-ta07',
+          tanggal: '2025-07-01',
+          no_bukti: 'SA-2025-TA07',
+          keterangan: 'Saldo awal cut-over 1 Juli 2025',
+          jenis: 'SALDO_AWAL',
+        },
+        baris: [
+          { akun_kode: '1001', debit: 10_000_000, kredit: 0 },
+          { akun_kode: AKUN_MODAL, debit: 0, kredit: 10_000_000 },
+        ],
+      });
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+      // Jurnal seimbang per-jurnal, tetapi P&L-nya bertanggal sebelum cut-over
+      // di luar grup pembukaan. Inilah fixture laporan: tidak ada
+      // JURNAL_TIDAK_SEIMBANG, tetapi Neraca dan Neraca Saldo mode tahun tidak
+      // seimbang sehingga tutup buku wajib diblokir.
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of,
+            created_at)
+         VALUES (?, ?, ?, ?, 'UMUM', ?, NULL,
+                 '2026-10-29T00:00:00.000Z')`,
+      ).run(
+        'j-pl-pra-2025',
+        '2025-06-15',
+        'JU-TA07-PL',
+        'P&L sebelum cut-over',
+        'j-pl-pra-2025',
+      );
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-pl-pra-2025', '1001', 100000, 0, '')`,
+      ).run();
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-pl-pra-2025', '4005', 0, 100000, '')`,
+      ).run();
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      const kode = pratinjau.temuanIntegritas.map((t) => t.kode);
+
+      expect(pratinjau.boleh).toBe(false);
+      expect(pratinjau.errors.join(' ')).toMatch(/audit integritas/i);
+      expect(kode).toEqual(
+        expect.arrayContaining([
+          'NERACA_TIDAK_SEIMBANG',
+          'NERACA_SALDO_SELISIH',
+          'LABA_RUGI_SEBELUM_CUTOVER',
+        ]),
+      );
+      expect(kode).not.toContain('JURNAL_TIDAK_SEIMBANG');
+
+      const hasil = tutupBuku(db, 2025, {
+        sekarang: SEKARANG,
+        catatan: 'Tidak boleh tersimpan',
+      });
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toContain('NERACA_TIDAK_SEIMBANG');
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(audit(db).some((a) => a.aksi.startsWith('TUTUP'))).toBe(false);
+    } finally {
+      db.close();
     }
   });
 });

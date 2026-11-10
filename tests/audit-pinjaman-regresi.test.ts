@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import {
   simpanPinjamanLpd, bayarAngsuranPinjaman, getPinjaman,
   batalkanPembayaranPinjaman, batalkanPinjaman, laporanMutasiPinjaman,
@@ -23,7 +24,9 @@ afterEach(() => dbs.splice(0).forEach((db) => db.close()));
 function fixture() {
   const db = openDb(':memory:');
   dbs.push(db);
-  expect(postingJurnal(db, {
+  // T-A07: gunakan jalur resmi saldo awal agar penunjuk pembukaan aktif dan
+  // cut-over tertulis; fixture lama tanpa penunjuk kini dilaporkan audit.
+  expect(simpanSaldoAwal(db, {
     header: { id: 'awal', tanggal: '2025-01-01', jenis: 'SALDO_AWAL', keterangan: 'Kas awal' },
     baris: [
       { akun_kode: '1001', debit: RP(20_000_000), kredit: 0 },

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
+  KUNCI_SALDO_AWAL_AKTIF_ID,
   getJurnal,
   getJurnalDetail,
   insertJurnalTervalidasi,
@@ -16,6 +17,7 @@ import {
   listJurnal,
   listJurnalLengkap,
   setAkunAktif,
+  setPengaturan,
 } from '../src/db/repository.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
@@ -81,9 +83,14 @@ function modal(db: ReturnType<typeof openDb>, nominal = RP(1_000_000)): void {
       no_bukti: 'JU-2026-0001',
       keterangan: 'Saldo awal kas',
       jenis: 'SALDO_AWAL',
+      // T-A07: jurnal pembukaan wajib menunjuk penunjuk aktif. Fixture memakai
+      // insert mentah agar beberapa test tetap memeriksa audit kosong; karena
+      // itu penunjuk/cut-over ditulis langsung tanpa audit tambahan.
+      peran: 'OPENING',
     },
     pasangan('1001', '3000', nominal),
   );
+  setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'j-modal');
 }
 
 function parkir(db: ReturnType<typeof openDb>, nominal = RP(100_000)): void {
@@ -674,7 +681,10 @@ describe('T1.5 — reversal SALDO_AWAL diblokir dari jalur umum', () => {
         tanggal: '2026-01-02',
       });
       expect(balik.tersimpan).toBe(false);
-      expect(balik.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+      // T-A07: fixture sekarang punya penunjuk pembukaan aktif, sehingga
+      // penolakan memakai pesan proteksi pembukaan aktif (T-A03) yang lebih
+      // spesifik daripada pesan generik SALDO_AWAL.
+      expect(balik.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
 
       const koreksi = koreksiDanIsiUlang(
         db,
@@ -692,7 +702,7 @@ describe('T1.5 — reversal SALDO_AWAL diblokir dari jalur umum', () => {
         { id: 'j-modal-balik', tanggal: '2026-01-02' },
       );
       expect(koreksi.tersimpan).toBe(false);
-      expect(koreksi.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+      expect(koreksi.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
 
       expect(jumlahJurnal(db)).toBe(sebelumJurnal);
       expect(listAuditLog(db)).toHaveLength(sebelumAudit);
@@ -1265,7 +1275,7 @@ describe('P0-6 — koreksi & isi ulang', () => {
       );
 
       expect(ditolakDb.tersimpan).toBe(false);
-      expect(ditolakDb.errors).toContain(PESAN_REVERSAL_SALDO_AWAL);
+      expect(ditolakDb.errors).toContain(PESAN_REVERSAL_PEMBUKAAN_AKTIF);
       expect(jumlahJurnal(db)).toBe(sebelum);
       expect(getJurnalDetail(db, 'j-modal-balik')).toBeNull();
       expect(getJurnalDetail(db, 'j-modal-baru')).toBeNull();
