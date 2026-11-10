@@ -16,6 +16,7 @@ import {
 } from '../src/features/dashboard/dashboard.js';
 import {
   labaRugi,
+  neraca,
   neracaSaldo,
   totalKas,
   type BarisJurnalSumber,
@@ -138,14 +139,50 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
       seimbang: true,
     });
     expect(d.neracaSaldo.selisih).toBe(neracaSaldo(BARIS, CUTOFF).selisih);
-    expect(d.selisih).toBe(d.neracaSaldo.selisih);
+
+    // T-A08: balance/selisih dashboard mengikuti Neraca, bukan trial balance.
+    const n = neraca(BARIS, { cutoff: CUTOFF, tutup: TUTUP });
+    expect(d.balance).toBe(n.balance);
+    expect(d.selisih).toBe(n.selisih);
     expect(d.balance).toBe(true);
     expect(d.badge).toBe('BALANCE');
 
     // Field lama tetap konsisten dengan Neraca mesin laporan.
     expect(d.aktiva).toBe(RP(18_500_000));
+    expect(d.aktiva).toBe(n.totalAset);
     expect(d.pasiva).toBe(RP(18_500_000));
+    expect(d.pasiva).toBe(n.totalPasiva);
     expect(d.totalLpd).toBe(RP(2_000_000));
+  });
+
+  it('Neraca selisih: badge bukan BALANCE walau trial balance seimbang', () => {
+    // Cut-over resmi 1 Mar 2026: P&L Jan–Feb 2026 berada di luar cakupan
+    // Neraca, sehingga aset tetap memuat kasnya tetapi laba/ekuitas tidak.
+    // Jurnalnya sendiri tetap double-entry, jadi Neraca Saldo seimbang.
+    const cutoverTanggal = '2026-03-01';
+    const ns = neracaSaldo(BARIS, CUTOFF);
+    const n = neraca(BARIS, { cutoff: CUTOFF, tutup: TUTUP }, undefined, cutoverTanggal);
+    expect(ns.seimbang).toBe(true);
+    expect(n.balance).toBe(false);
+    expect(n.selisih).not.toBe(0);
+
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, {
+      sekarang: CUTOFF,
+      cutoverTanggal,
+    });
+
+    expect(d.balance).toBe(n.balance);
+    expect(d.selisih).toBe(n.selisih);
+    expect(d.balance).toBe(false);
+    expect(d.selisih).not.toBe(0);
+    expect(d.badge).not.toBe('BALANCE');
+    expect(d.badge).toBe(`SELISIH ${n.selisih}`);
+    expect(d.aktiva).toBe(n.totalAset);
+    expect(d.pasiva).toBe(n.totalPasiva);
+
+    // Trial balance tetap dikirim apa adanya sebagai informasi terpisah.
+    expect(d.neracaSaldo.seimbang).toBe(true);
+    expect(d.neracaSaldo.selisih).toBe(0);
   });
 
   it('periode menampilkan 2025 terkunci & 2026 terbuka', () => {

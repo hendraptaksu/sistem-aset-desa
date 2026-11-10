@@ -319,6 +319,11 @@ export function buildDashboardJurnal(
     ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
   };
 
+  // T-A08: Neraca dihitung lebih dulu dan menjadi SATU-SATUNYA definisi
+  // balance. Trial balance hanya informasi tambahan; jurnal bisa seimbang
+  // sementara Neraca selisih (mis. P&L di luar cakupan cut-over).
+  const n = neraca(baris, { cutoff, tutup }, coa, opsi.cutoverTanggal);
+
   const ns = hitungNeracaSaldo(baris, cutoff, coa);
   const neracaSaldo: DashboardNeracaSaldo = {
     totalDebit: ns.totalDebit,
@@ -327,7 +332,6 @@ export function buildDashboardJurnal(
     seimbang: ns.seimbang,
   };
 
-  const n = neraca(baris, { cutoff, tutup }, coa, opsi.cutoverTanggal);
   const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? tanggalLokal());
 
   return {
@@ -342,9 +346,10 @@ export function buildDashboardJurnal(
     rincianLpd: lpd,
     aktiva: n.totalAset,
     pasiva: n.totalPasiva,
-    selisih: ns.selisih,
-    balance: ns.seimbang,
-    badge: ns.seimbang ? 'BALANCE' : `SELISIH ${ns.selisih}`,
+    // T-A08: `selisih`/`balance`/`badge` mengikuti Neraca, bukan trial balance.
+    selisih: n.selisih,
+    balance: n.balance,
+    badge: n.balance ? 'BALANCE' : `SELISIH ${n.selisih}`,
   };
 }
 

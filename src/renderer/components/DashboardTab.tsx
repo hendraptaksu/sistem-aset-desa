@@ -389,8 +389,8 @@ export function DashboardTab({
             <h2 className="text-lg font-bold">
               Dashboard Akuntan{' '}
               {data && (
-                <Badge tone={data.neracaSaldo.seimbang ? 'green' : 'red'}>
-                  {data.neracaSaldo.seimbang ? 'Seimbang' : 'Selisih'}
+                <Badge tone={data.balance ? 'green' : 'red'}>
+                  {data.balance ? 'Neraca seimbang' : 'Neraca selisih'}
                 </Badge>
               )}
             </h2>
@@ -581,6 +581,20 @@ export function DashboardTab({
                   </div>
                 )}
               </dl>
+              {data.neracaSaldo.seimbang && !data.balance && (
+                <div
+                  role="alert"
+                  data-testid="peringatan-neraca-tidak-balance"
+                  className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900"
+                >
+                  <p className="font-bold">Neraca tidak balance.</p>
+                  <p className="mt-1">
+                    Neraca Saldo seimbang, tetapi Neraca selisih{' '}
+                    {formatRp(data.selisih)}. Jangan kunci periode; periksa
+                    cut-over/pembukaan dan Jurnal Umum.
+                  </p>
+                </div>
+              )}
               <p className="mt-2 text-sm text-stone-600">
                 Bila selisih, jangan kunci periode. Periksa Jurnal Umum terlebih dahulu.
               </p>
