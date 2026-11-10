@@ -52,6 +52,7 @@ import {
   serahkanPanjar,
 } from '../db/panjar.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
+import { bandingkanSnapshotTutup } from '../db/tutupSnapshot.js';
 import {
   bayarAngsuranPinjaman,
   batalkanPembayaranPinjaman,
@@ -68,10 +69,7 @@ import {
 } from '../db/pinjamanRekonsiliasi.js';
 import { auditIntegritas } from '../db/integritas.js';
 import { AKUN_PIUTANG } from '../db/coa.js';
-import {
-  labaTahun as labaTahunJurnal,
-  saldoSemuaKas as saldoSemuaKasJurnal,
-} from '../core/reports.js';
+import { saldoSemuaKas as saldoSemuaKasJurnal } from '../core/reports.js';
 import {
   laporanArusKas,
   laporanBukuBesar,
@@ -1449,18 +1447,25 @@ export function registerIpc(deps: IpcDeps): void {
   daftarkan('tutup:list', () => {
     const k = perluBuka();
     if (k) return fail(k);
-    // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
-    const baris = listBarisJurnal(deps.db());
-    const daftarAkun = listAkun(deps.db());
+    // T-A06: laba riwayat diambil dari snapshot yang disahkan saat tutup.
+    // Angka live + hash tetap dibandingkan agar UI bisa memperingatkan bahwa
+    // data jurnal sudah berubah setelah periode dikunci.
     const cutover = getCutoverTanggal(deps.db());
     return ok(
       listTutupBuku(deps.db()).map((t) => {
         const tahun = Number(t.tahun);
         const catatanTahunPertama =
           catatanTahunPertamaParsial(cutover, tahun) ?? undefined;
+        const beda = bandingkanSnapshotTutup(deps.db(), tahun);
         return {
           ...t,
-          laba: labaTahunJurnal(baris, tahun, daftarAkun, cutover),
+          // `laba` tetap field utama; snapshot lebih diutamakan bila ada.
+          laba: beda.snapshot ? beda.snapshot.laba : beda.live.laba,
+          labaSnapshot: beda.snapshot ? beda.snapshot.laba : null,
+          labaLive: beda.live.laba,
+          snapshotTerbaru: beda.snapshot,
+          snapshotBerubah: beda.berubah,
+          perbedaanSnapshot: beda.perbedaan,
           ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
         };
       }),
@@ -1577,6 +1582,9 @@ export function registerIpc(deps: IpcDeps): void {
           labaDitahan: hasil.labaDitahan,
           aksi: hasil.aksi,
           data: hasil.data,
+          snapshot: hasil.snapshot ?? null,
+          snapshotBerubah: hasil.snapshotBerubah ?? false,
+          perbedaanSnapshot: hasil.perbedaanSnapshot ?? [],
         });
       } catch (e) {
         return fail(pesanError(e, GAGAL_TUTUP));

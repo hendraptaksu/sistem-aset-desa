@@ -1,12 +1,15 @@
-// Adapter DB untuk tutup buku (P0-7, AKT-10).
+// Adapter DB untuk tutup buku (P0-7, AKT-10, T-A06).
 //
 // `tutup_buku` hanya menyimpan penanda tahun + created_at + catatan.
-// Laba tidak pernah disimpan; preview/riwayat selalu menghitung ulang
-// dari jurnal lewat mesin laporan (P0-5).
+// Snapshot angka (laba + Neraca + hash jurnal) disimpan append-only di
+// `tutup_buku_snapshot`: bukan sumber angka laporan, tetapi bukti angka yang
+// disahkan saat tutup. Preview/riwayat tetap menghitung ulang dari jurnal untuk
+// membandingkan snapshot dengan kondisi live.
 //
-// AKT-10: sebelum mengizinkan tutup buku, jalankan audit integritas. Bila ada
-// jurnal tidak seimbang/akun asing/kerusakan lain, operasi ditolak tanpa
-// menulis apa pun.
+// AKT-10: sebelum mengizinkan tutup buku, jalankan audit integritas. Temuan
+// selain SNAPSHOT_TUTUP_BERUBAH menolak operasi tanpa menulis apa pun.
+// SNAPSHOT_TUTUP_BERUBAH hanya peringatan kontrol agar TUTUP-ULANG yang
+// dikonfirmasi tetap bisa mencatat snapshot versi baru.
 
 import type Database from 'better-sqlite3';
 import { buatAuditLog } from '../core/audit.js';
@@ -18,7 +21,7 @@ import {
 } from '../core/tutup.js';
 import { labaTahun } from '../core/reports.js';
 import { catatanTahunPertamaParsial } from '../core/pengaturan.js';
-import type { TutupBuku } from '../core/types.js';
+import type { TutupBuku, TutupBukuSnapshot } from '../core/types.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 import type { Coa } from './coa.js';
 import {
@@ -34,6 +37,11 @@ import {
   listAkun,
   listTutupBuku,
 } from './repository.js';
+import {
+  bandingkanSnapshotTutup,
+  buatSnapshotTutup,
+  versiSnapshotBerikutnya,
+} from './tutupSnapshot.js';
 
 export type TutupPreview = HasilValidasiTutup & {
   tahun: number;
@@ -48,6 +56,14 @@ export type TutupPreview = HasilValidasiTutup & {
   temuanIntegritas: Temuan[];
   /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
   catatanTahunPertama?: string;
+  /** T-A06: snapshot terbaru untuk tahun ini, bila sudah pernah ditutup. */
+  snapshotTerbaru: TutupBukuSnapshot | null;
+  /** T-A06: angka/hash live sudah berbeda dari snapshot terbaru. */
+  snapshotBerubah: boolean;
+  /** T-A06: rincian perbedaan snapshot vs live (kosong bila sama). */
+  perbedaanSnapshot: string[];
+  /** T-A06: versi snapshot yang akan ditulis bila tutup berhasil. */
+  versiSnapshotBerikutnya: number;
 };
 
 export type OpsiTutupBuku = {
@@ -68,6 +84,12 @@ export type HasilTutupBuku = HasilValidasiTutup & {
   temuanIntegritas: Temuan[];
   /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
   catatanTahunPertama?: string;
+  /** T-A06: snapshot yang baru ditulis saat tutup berhasil. */
+  snapshot?: TutupBukuSnapshot;
+  /** T-A06: status perbandingan setelah snapshot baru ditulis. */
+  snapshotBerubah?: boolean;
+  /** T-A06: rincian perbedaan snapshot vs live setelah penulisan. */
+  perbedaanSnapshot?: string[];
 };
 
 const hariIni = (): string => tanggalLokal();
@@ -106,15 +128,27 @@ function bacaPanjarOpenAktif(
 }
 
 /**
- * Gabungkan validasi tahun dengan audit integritas. Temuan apa pun membuat
- * tutup buku diblokir, termasuk tutup ulang; konfirmasi operator tidak boleh
- * melewati kerusakan data.
+ * Gabungkan validasi tahun dengan audit integritas. Temuan integritas selain
+ * `SNAPSHOT_TUTUP_BERUBAH` memblokir tutup buku, termasuk tutup ulang.
+ * `SNAPSHOT_TUTUP_BERUBAH` adalah temuan kontrol: tetap dilaporkan (UI wajib
+ * menampilkan peringatan), tetapi tidak boleh memblokir TUTUP-ULANG yang sudah
+ * dikonfirmasi. Penutupan pertama tidak terpengaruh karena snapshot belum ada.
  */
 function validasiDenganIntegritas(
   validasi: HasilValidasiTutup,
   audit: HasilAuditIntegritas,
 ): HasilValidasiTutup & { temuanIntegritas: Temuan[] } {
   if (audit.ok) return { ...validasi, temuanIntegritas: [] };
+
+  const temuanKontrol = audit.temuan.filter(
+    (t) => t.kode === 'SNAPSHOT_TUTUP_BERUBAH',
+  );
+  const temuanMemblokir = audit.temuan.filter(
+    (t) => t.kode !== 'SNAPSHOT_TUTUP_BERUBAH',
+  );
+  if (temuanMemblokir.length === 0) {
+    return { ...validasi, temuanIntegritas: temuanKontrol };
+  }
 
   return {
     ...validasi,
@@ -123,7 +157,7 @@ function validasiDenganIntegritas(
     errors: [
       ...validasi.errors,
       `Audit integritas akuntansi gagal. ${audit.ringkasan} Kunci periode diblokir sampai data diperbaiki.`,
-      ...audit.temuan.map((t) => `[${t.kode}] ${t.pesan}`),
+      ...temuanMemblokir.map((t) => `[${t.kode}] ${t.pesan}`),
     ],
     temuanIntegritas: audit.temuan,
   };
@@ -183,6 +217,9 @@ export function previewTutupBuku(
     ? labaTahun(baris, angka, daftarAkun, cutover)
     : 0;
   const sudahDitutup = daftar.some((t) => Number(t.tahun) === angka);
+  const perbandingan = Number.isInteger(angka)
+    ? bandingkanSnapshotTutup(db, angka)
+    : { snapshot: null, perbedaan: [], berubah: false };
 
   const tahunSesudah = new Set(tahunTutupTerurut(daftar));
   if (Number.isInteger(angka)) tahunSesudah.add(angka);
@@ -200,6 +237,12 @@ export function previewTutupBuku(
       cutover,
     ),
     sudahDitutup,
+    snapshotTerbaru: perbandingan.snapshot,
+    snapshotBerubah: perbandingan.berubah,
+    perbedaanSnapshot: perbandingan.perbedaan,
+    versiSnapshotBerikutnya: Number.isInteger(angka)
+      ? versiSnapshotBerikutnya(db, angka)
+      : 1,
     ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
   };
 }
@@ -274,10 +317,13 @@ export function tutupBuku(
 
   const simpan = db.transaction(() => {
     insertTutupBuku(db, data);
+    const snapshot = buatSnapshotTutup(db, angka);
     insertAuditLog(db, audit);
+    return snapshot;
   });
-  simpan();
+  const snapshot = simpan();
 
+  const perbandinganSesudah = bandingkanSnapshotTutup(db, angka);
   const sesudah = [...daftar.filter((t) => Number(t.tahun) !== angka), data];
   return {
     ...validasi,
@@ -285,6 +331,9 @@ export function tutupBuku(
     laba,
     labaDitahan: hitungLabaDitahan(baris, sesudah, daftarAkun, cutover),
     data,
+    snapshot,
+    snapshotBerubah: perbandinganSesudah.berubah,
+    perbedaanSnapshot: perbandinganSesudah.perbedaan,
     ...(catatanParsial ? { catatanTahunPertama: catatanParsial } : {}),
   };
 }

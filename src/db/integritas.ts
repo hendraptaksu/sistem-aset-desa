@@ -41,6 +41,7 @@ import {
   rekonsiliasiSaldoAwal2050,
   rekonsiliasiSemuaPinjaman,
 } from './pinjamanRekonsiliasi.js';
+import { bandingkanSnapshotTutup } from './tutupSnapshot.js';
 
 export type KodeTemuan =
   | 'JURNAL_TANPA_BARIS'
@@ -76,7 +77,8 @@ export type KodeTemuan =
   | 'PANJAR_BATAL_GANDA'
   | 'PANJAR_BATAL_TIDAK_KONSISTEN'
   | 'REKONSILIASI_PANJAR_GL_SELISIH'
-  | 'REKONSILIASI_PINJAMAN_SELISIH';
+  | 'REKONSILIASI_PINJAMAN_SELISIH'
+  | 'SNAPSHOT_TUTUP_BERUBAH';
 
 /** Satu temuan integritas; `detail` berisi data mentah untuk diagnosis. */
 export type Temuan = {
@@ -1164,6 +1166,45 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           'boleh berasal dari menu Buku Panjar.',
         detail,
       });
+    }
+  }
+
+  // T-A06: bandingkan snapshot yang disahkan saat tutup buku dengan kondisi
+  // jurnal sekarang. Temuan ini bersifat KONTROL: read-only, tidak mengubah
+  // snapshot, dan pemanggil (tutupBuku) boleh melanjutkan TUTUP-ULANG yang
+  // dikonfirmasi. Backup lama tanpa tabel snapshot melewati pemeriksaan ini.
+  if (tabelAda(db, 'tutup_buku_snapshot')) {
+    const tahunSnapshot = db
+      .prepare(
+        `SELECT DISTINCT tahun
+           FROM tutup_buku_snapshot
+          ORDER BY tahun`,
+      )
+      .all() as { tahun: number }[];
+    for (const { tahun } of tahunSnapshot) {
+      try {
+        const beda = bandingkanSnapshotTutup(db, Number(tahun));
+        if (!beda.snapshot || !beda.berubah) continue;
+        const utama = beda.perbedaan.slice(0, 4).join('; ');
+        temuan.push({
+          kode: 'SNAPSHOT_TUTUP_BERUBAH',
+          pesan:
+            `Snapshot tutup buku tahun ${tahun} versi ${beda.snapshot.versi} ` +
+            `berbeda dari data jurnal saat ini: ${utama}. ` +
+            'Snapshot tidak diubah; periksa apakah perbedaan berasal dari ' +
+            'koreksi setelah tutup atau data rusak.',
+          detail: {
+            tahun: Number(tahun),
+            versi: beda.snapshot.versi,
+            perbedaan: beda.perbedaan,
+            snapshot: beda.snapshot,
+            live: beda.live,
+          },
+        });
+      } catch {
+        // Laporan tidak bisa dihitung (mis. akun asing); temuan integritas
+        // lain pada pemeriksaan akun/jurnal sudah melaporkan penyebabnya.
+      }
     }
   }
 

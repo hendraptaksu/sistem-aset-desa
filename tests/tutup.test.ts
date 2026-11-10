@@ -16,9 +16,14 @@ import {
   insertTutupBuku,
   listAkun,
   listTutupBuku,
+  listTutupBukuSnapshot,
   tambahAkun,
 } from '../src/db/repository.js';
 import { previewTutupBuku, tutupBuku } from '../src/db/tutup.js';
+import {
+  bandingkanSnapshotTutup,
+  hitungHashJurnalTahun,
+} from '../src/db/tutupSnapshot.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { labaDitahan, validasiTutupBuku } from '../src/core/tutup.js';
@@ -713,6 +718,145 @@ describe('AUD2-01 — laba tahun & laba ditahan memakai master akun DB', () => {
       ).toBe(-1_500_000);
     } finally {
       db.close();
+    }
+  });
+});
+
+describe('T-A06 — snapshot tutup buku immutable', () => {
+  it('tutup sukses menulis laba, Neraca, hash, dan versi 1', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-pendapatan-2025', '2025-03-01', masuk('4005', 10_000_000));
+      catat(db, 'j-beban-2025', '2025-04-01', keluar('5000', 4_000_000));
+
+      const hasil = tutupBuku(db, 2025, { sekarang: SEKARANG });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      const snapshot = listTutupBukuSnapshot(db, 2025);
+      expect(snapshot).toHaveLength(1);
+      expect(snapshot[0]).toMatchObject({
+        tahun: 2025,
+        versi: 1,
+        laba: 6_000_000,
+        total_aset: 6_000_000,
+        total_kewajiban: 0,
+        total_ekuitas: 6_000_000,
+        total_pasiva: 6_000_000,
+        selisih: 0,
+      });
+      expect(snapshot[0]!.hash_jurnal).toMatch(/^[0-9a-f]{64}$/);
+      expect(snapshot[0]!.hash_jurnal).toBe(
+        hitungHashJurnalTahun(db, 2025).hash_jurnal,
+      );
+      expect(hasil.snapshot).toMatchObject({ versi: 1, laba: 6_000_000 });
+      expect(hasil.snapshotBerubah).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('TUTUP-ULANG menambah versi 2 tanpa menghapus versi 1', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-pendapatan-2025', '2025-03-01', masuk('4005', 10_000_000));
+      catat(db, 'j-beban-2025', '2025-04-01', keluar('5000', 4_000_000));
+      expect(tutupBuku(db, 2025, { sekarang: SEKARANG }).tersimpan).toBe(true);
+      const versi1 = listTutupBukuSnapshot(db, 2025)[0]!;
+      expect(versi1.versi).toBe(1);
+      expect(versi1.laba).toBe(6_000_000);
+
+      // Koreksi setelah tutup: snapshot lama tetap, angka live berubah.
+      catat(db, 'j-koreksi-2025', '2025-12-31', masuk('4005', 1_000_000));
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.snapshotTerbaru?.versi).toBe(1);
+      expect(pratinjau.snapshotBerubah).toBe(true);
+      expect(pratinjau.perbedaanSnapshot.length).toBeGreaterThan(0);
+      expect(pratinjau.versiSnapshotBerikutnya).toBe(2);
+      expect(pratinjau.temuanIntegritas.map((t) => t.kode)).toContain(
+        'SNAPSHOT_TUTUP_BERUBAH',
+      );
+
+      // Konfirmasi TUTUP-ULANG tetap tersimpan walau snapshot berubah.
+      const ulang = tutupBuku(db, 2025, {
+        sekarang: SEKARANG,
+        konfirmasiTimpak: true,
+        catatan: 'Koreksi disahkan',
+      });
+      expect(ulang.tersimpan, ulang.errors.join(' ')).toBe(true);
+      expect(ulang.snapshot?.versi).toBe(2);
+
+      const semua = listTutupBukuSnapshot(db, 2025);
+      expect(semua.map((s) => s.versi)).toEqual([2, 1]);
+      const v2 = semua.find((s) => s.versi === 2)!;
+      const v1 = semua.find((s) => s.versi === 1)!;
+      expect(v2.laba).toBe(7_000_000);
+      expect(v1).toEqual(versi1);
+      expect(bandingkanSnapshotTutup(db, 2025).snapshot?.versi).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('penutupan gagal validasi tidak menulis snapshot/penanda/audit', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-seimbang-2025', '2025-02-01', masuk('4005', 1_000_000));
+      korupsiJurnalTidakSeimbang(db, 'j-rusak-2025', '2025-03-01');
+
+      const hasil = tutupBuku(db, 2025, { sekarang: SEKARANG });
+      expect(hasil.tersimpan).toBe(false);
+      expect(listTutupBuku(db)).toHaveLength(0);
+      expect(listTutupBukuSnapshot(db)).toHaveLength(0);
+      expect(audit(db)).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('temuan integritas lain tetap memblokir walau snapshot sudah berubah', () => {
+    const db = freshDb();
+    try {
+      catat(db, 'j-pendapatan-2025', '2025-03-01', masuk('4005', 10_000_000));
+      expect(tutupBuku(db, 2025, { sekarang: SEKARANG }).tersimpan).toBe(true);
+      catat(db, 'j-koreksi-2025', '2025-12-31', masuk('4005', 1_000_000));
+      korupsiJurnalTidakSeimbang(db, 'j-rusak-2025', '2025-04-01');
+
+      const pratinjau = previewTutupBuku(db, 2025, SEKARANG);
+      expect(pratinjau.temuanIntegritas.map((t) => t.kode)).toEqual(
+        expect.arrayContaining([
+          'JURNAL_TIDAK_SEIMBANG',
+          'SNAPSHOT_TUTUP_BERUBAH',
+        ]),
+      );
+      expect(pratinjau.boleh).toBe(false);
+
+      const ulang = tutupBuku(db, 2025, {
+        sekarang: SEKARANG,
+        konfirmasiTimpak: true,
+      });
+      expect(ulang.tersimpan).toBe(false);
+      expect(ulang.errors.join(' ')).toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(listTutupBukuSnapshot(db, 2025)).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('hash kanonik tidak bergantung pada urutan insert jurnal/baris', () => {
+    const dbA = freshDb();
+    const dbB = freshDb();
+    try {
+      catat(dbA, 'j-a', '2025-01-02', masuk('4005', 1_000_000));
+      catat(dbA, 'j-b', '2025-01-01', masuk('4005', 2_000_000));
+      catat(dbB, 'j-b', '2025-01-01', masuk('4005', 2_000_000));
+      catat(dbB, 'j-a', '2025-01-02', masuk('4005', 1_000_000));
+
+      expect(hitungHashJurnalTahun(dbA, 2025)).toEqual(
+        hitungHashJurnalTahun(dbB, 2025),
+      );
+    } finally {
+      dbA.close();
+      dbB.close();
     }
   });
 });

@@ -970,9 +970,10 @@ const rowToTutupBukuSnapshot = (r: Record<string, unknown>): TutupBukuSnapshot =
 });
 
 /**
- * T-A00 — tulis satu snapshot tutup buku. Tabel append-only: trigger menolak
- * UPDATE/DELETE, dan UNIQUE(tahun, versi) mencegah versi yang sama tertimpa.
- * Perilaku pemakaian snapshot pada alur tutup buku menyusul di T-A06.
+ * T-A00/T-A06 — tulis satu snapshot tutup buku. Tabel append-only: trigger
+ * menolak UPDATE/DELETE, dan UNIQUE(tahun, versi) mencegah versi yang sama
+ * tertimpa. Pemanggil (tutupBuku) menghitung versi berikutnya dan memanggil
+ * fungsi ini di dalam transaksi yang sama dengan penanda + audit.
  */
 export function insertTutupBukuSnapshot(
   db: Database.Database,

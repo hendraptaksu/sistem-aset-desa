@@ -116,8 +116,8 @@ describe('DB-29 — Kunci Periode di UI dan audit', () => {
   it('TutupTab menjelaskan penanda + kunci, bukan jurnal penutup', () => {
     const html = renderToStaticMarkup(createElement(TutupTab));
     expect(html).toContain('<h1 class="mb-3 text-lg font-bold">Kunci Periode</h1>');
-    expect(html).toContain('hanya menandai tahun selesai dan mengunci tanggalnya');
-    expect(html).toContain('laba selalu dihitung ulang dari jurnal');
+    expect(html).toContain('snapshot laba + Neraca + hash jurnal disahkan');
+    expect(html).toContain('Angka laporan tetap dihitung dari jurnal');
     expect(html).toContain('Ini bukan jurnal penutup');
     expect(html).toContain('tidak ada jurnal yang dibuat atau dipindahkan ke ekuitas');
     expect(html).toContain('Riwayat kunci periode');

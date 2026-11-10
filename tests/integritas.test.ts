@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
 import { auditIntegritas, auditIntegritasDb } from '../src/db/integritas.js';
+import { listTutupBukuSnapshot } from '../src/db/repository.js';
+import { tutupBuku } from '../src/db/tutup.js';
 
 const WAKTU = '2026-10-29T00:00:00.000Z';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -1686,6 +1688,88 @@ describe('AUD2-04 — rekonsiliasi saldo GL 1040 vs panjar OPEN', () => {
       const hasil = auditIntegritas(db);
       expect(hasil.temuan).toEqual([]);
       expect(hasil.ok).toBe(true);
+    });
+  });
+});
+
+describe('T-A06 — audit snapshot tutup buku', () => {
+  it('snapshot yang cocok tidak menghasilkan temuan pada DB bersih', () => {
+    denganDb((db) => {
+      jurnalSeimbang(db, 'j-snapshot-bersih', '2025-01-05', 'JU-SNAP-001');
+      const tutup = tutupBuku(db, 2025, { sekarang: '2026-10-29' });
+      expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
+
+      const hasil = auditIntegritas(db);
+      expect(hasil.ok).toBe(true);
+      expect(hasil.temuan).toEqual([]);
+    });
+  });
+
+  it('jurnal baru di tahun tertutup mengubah live tetapi snapshot tetap', () => {
+    denganDb((db) => {
+      jurnalSeimbang(db, 'j-snapshot-awal', '2025-01-05', 'JU-SNAP-002');
+      expect(
+        tutupBuku(db, 2025, { sekarang: '2026-10-29' }).tersimpan,
+      ).toBe(true);
+      const sebelum = listTutupBukuSnapshot(db, 2025);
+      expect(sebelum).toHaveLength(1);
+      expect(sebelum[0]!.laba).toBe(1_000);
+
+      // Jurnal baru (tetap seimbang) di tahun yang sudah dikunci.
+      jurnalSeimbang(db, 'j-snapshot-baru', '2025-06-01', 'JU-SNAP-003');
+
+      const hasil = auditIntegritas(db);
+      const temuan = hasil.temuan.find(
+        (t) => t.kode === 'SNAPSHOT_TUTUP_BERUBAH',
+      );
+      expect(temuan).toBeDefined();
+      expect(temuan?.pesan).toContain('2025');
+      expect(temuan?.pesan).toContain('versi 1');
+      expect(temuan?.pesan).toMatch(/Laba tahun|Hash jurnal/);
+
+      const sesudah = listTutupBukuSnapshot(db, 2025);
+      expect(sesudah).toEqual(sebelum);
+      expect(sesudah[0]!.laba).toBe(1_000);
+      expect(
+        (temuan?.detail as { live: { laba: number } }).live.laba,
+      ).toBe(2_000);
+    });
+  });
+
+  it('auditIntegritas tidak menulis apa pun ke DB', () => {
+    denganDb((db) => {
+      jurnalSeimbang(db, 'j-snapshot-readonly', '2025-01-05', 'JU-SNAP-004');
+      expect(
+        tutupBuku(db, 2025, { sekarang: '2026-10-29' }).tersimpan,
+      ).toBe(true);
+      jurnalSeimbang(db, 'j-snapshot-readonly-2', '2025-06-01', 'JU-SNAP-005');
+
+      const hitung = (sql: string): number =>
+        Number((db.prepare(sql).get() as { n: number }).n);
+      const sebelum = {
+        audit: hitung('SELECT COUNT(*) AS n FROM audit_log'),
+        tutup: hitung('SELECT COUNT(*) AS n FROM tutup_buku'),
+        snapshot: hitung('SELECT COUNT(*) AS n FROM tutup_buku_snapshot'),
+        jurnal: hitung('SELECT COUNT(*) AS n FROM jurnal'),
+        baris: hitung('SELECT COUNT(*) AS n FROM jurnal_baris'),
+        perubahan: Number(
+          (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n,
+        ),
+      };
+
+      auditIntegritas(db);
+      auditIntegritasDb(db);
+
+      expect({
+        audit: hitung('SELECT COUNT(*) AS n FROM audit_log'),
+        tutup: hitung('SELECT COUNT(*) AS n FROM tutup_buku'),
+        snapshot: hitung('SELECT COUNT(*) AS n FROM tutup_buku_snapshot'),
+        jurnal: hitung('SELECT COUNT(*) AS n FROM jurnal'),
+        baris: hitung('SELECT COUNT(*) AS n FROM jurnal_baris'),
+        perubahan: Number(
+          (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n,
+        ),
+      }).toEqual(sebelum);
     });
   });
 });

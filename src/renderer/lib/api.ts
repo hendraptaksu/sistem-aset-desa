@@ -14,6 +14,7 @@ import type {
   PinjamanBayar,
   RincianPembayaranPinjaman,
   TutupBuku,
+  TutupBukuSnapshot,
 } from '../../core/types.js';
 import type {
   ArusKasHasil,
@@ -231,9 +232,20 @@ export type OpsiKoreksiSaldoAwalApi = {
   wajibAlasanPeringatan?: boolean;
 };
 
-/** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
+/** Riwayat tutup buku + laba snapshot yang disahkan saat periode dikunci. */
 export type TutupBukuTampil = TutupBuku & {
+  /** Laba snapshot bila ada; fallback laba live untuk data lama. */
   laba: number;
+  /** Laba yang disahkan saat tutup; null bila belum ada snapshot. */
+  labaSnapshot: number | null;
+  /** Laba yang dihitung ulang dari jurnal saat ini. */
+  labaLive: number;
+  /** Snapshot versi terbaru untuk tahun ini. */
+  snapshotTerbaru: TutupBukuSnapshot | null;
+  /** Angka/hash live sudah berbeda dari snapshot terbaru. */
+  snapshotBerubah: boolean;
+  /** Rincian perbedaan snapshot vs live. */
+  perbedaanSnapshot: string[];
   /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
   catatanTahunPertama?: string;
 };
@@ -255,6 +267,14 @@ export type TutupPreviewData = {
   temuanIntegritas: TemuanIntegritasTampil[];
   /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
   catatanTahunPertama?: string;
+  /** T-A06: snapshot terbaru untuk tahun ini, bila sudah pernah ditutup. */
+  snapshotTerbaru: TutupBukuSnapshot | null;
+  /** T-A06: angka/hash live sudah berbeda dari snapshot terbaru. */
+  snapshotBerubah: boolean;
+  /** T-A06: rincian perbedaan snapshot vs live. */
+  perbedaanSnapshot: string[];
+  /** T-A06: versi snapshot yang akan ditulis bila tutup berhasil. */
+  versiSnapshotBerikutnya: number;
 };
 
 export type TemuanIntegritasTampil = {
@@ -268,6 +288,9 @@ export type TutupTersimpanData = {
   labaDitahan: number;
   aksi: 'TUTUP' | 'TUTUP-ULANG';
   data: TutupBuku;
+  snapshot: TutupBukuSnapshot | null;
+  snapshotBerubah: boolean;
+  perbedaanSnapshot: string[];
 };
 
 declare global {
