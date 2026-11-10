@@ -1170,14 +1170,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A11 — Representasikan panjar OPEN saat cut-over
+### [x] T-A11 — Representasikan panjar OPEN saat cut-over
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | L |
 | **Depends** | T-A00 |
-| **Status** | Belum |
+| **Status** | Selesai — commit be2e638 |
 
 **Masalah**
 
@@ -1234,6 +1234,47 @@ lebih merusak.
 npm test -- tests/panjar.test.ts tests/integritas.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit be2e638):**
+
+- `src/db/panjar.ts`: service `catatPanjarSaldoAwal()` mencatat dokumen
+  `panjar` dengan `sumber='SALDO_AWAL'`, `jurnal_open_id` pembukaan aktif,
+  `status='OPEN'`, dan akun kas default 1001. Tidak membuat jurnal baru;
+  tanggal wajib sama dengan jurnal pembukaan; jumlah dibatasi debit neto 1040
+  yang belum direpresentasikan; duplikat per jurnal pembukaan ditolak dengan
+  pesan jelas; audit `PANJAR-SALDO-AWAL <id>` ditulis atomik.
+- `src/db/panjar.ts`: `batalPanjarV2()` menolak `sumber='SALDO_AWAL'` agar
+  reversal generik tidak membalik jurnal pembukaan. Alur khusus
+  `batalkanPanjarSaldoAwal(db, id, alasan)` menghapus HANYA dokumen
+  representasi opening (alasan >= 5 karakter, status OPEN, tanpa item),
+  menulis audit `PANJAR-SALDO-AWAL-BATAL`, dan tidak membuat/membalik jurnal.
+  Close normal tetap memakai validasi minimal satu item realisasi dan jurnal
+  close mengkredit 1040 serta mengembalikan sisa ke `akun_kas_sumber`.
+- `src/db/integritas.ts`: rekonsiliasi 1040 tetap menghitung seluruh panjar
+  OPEN (termasuk opening) satu kali. Header opening tidak lagi membandingkan
+  kredit jurnal pembukaan dengan kas sumber (pembukaan bisa dikredit modal),
+  tetapi jumlah vs debit 1040 dan tanggal tetap diperiksa. Temuan baru
+  `PANJAR_OPENING_TIDAK_LENGKAP` mencakup pointer bukan
+  OPENING/OPENING_REPLACEMENT, total opening OPEN melebihi debit neto 1040,
+  dan penunjuk pembukaan aktif hilang. Kasus 1040 pembukaan tanpa dokumen
+  opening tetap menjadi `REKONSILIASI_PANJAR_GL_SELISIH` (tanpa temuan ganda).
+- `src/main/ipc.ts` + `src/main/validation.ts`: IPC `panjar:saldo-awal` dan
+  `panjar:batal-saldo-awal` dengan validasi sesi; hasil `{ panjar }` / `{ id }`.
+- `src/renderer/lib/api.ts` + `src/renderer/components/PanjarTab.tsx`: badge
+  `Saldo awal`, kartu alur "Panjar Saldo Awal (Cut-over)" yang hanya muncul
+  bila pembukaan aktif ada dan belum ada dokumen opening, serta tombol
+  pembatalan khusus tanpa jalur reversal normal beserta penjelasan bahwa
+  koreksi 1040 dilakukan lewat Wizard Koreksi Saldo Awal.
+- Test regresi: `tests/panjar.test.ts` (catat tanpa jurnal baru, tolak
+  overrepresentasi/duplikat, close dengan realisasi, batal khusus + audit
+  tanpa reversal, `batalPanjarV2` menolak opening), `tests/integritas.test.ts`
+  (saldo awal 1040 X + opening X `ok:true`, overrepresentasi/pointer
+  salah/pointer hilang menghasilkan `PANJAR_OPENING_TIDAK_LENGKAP`, panjar
+  normal tetap direkonsiliasi), dan `tests/ipc-main.test.ts` (dua handler baru
+  + registrasi 67 channel).
+- Verifikasi: `npm test -- tests/panjar.test.ts tests/integritas.test.ts
+  tests/ipc-main.test.ts` 3 file / 164 test lulus; `npm test` penuh dua kali
+  94 file / 1300 test lulus; `npm run typecheck` lulus.
 
 ---
 
