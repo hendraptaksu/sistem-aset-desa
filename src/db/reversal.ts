@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { kodeKasDariDaftarAkun } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
 import {
+  jenisPenggantiSah,
   PESAN_REVERSAL,
   PESAN_REVERSAL_SALDO_AWAL,
   rencanaReversal,
@@ -195,22 +196,28 @@ export function koreksiDanIsiUlang(
   if (!rencana.boleh || !rencana.input) return hasilGagal(rencana.errors);
 
   // Baca jurnal asli sekali: jenis & grup_id pengganti wajib mengikuti aslinya,
-  // bukan input renderer (AKT-22). Reversal tidak boleh mengarah ke jenis
-  // REVERSAL palsu, dan SALDO_AWAL hanya sah bila jurnal asli juga SALDO_AWAL.
+  // bukan input renderer (AKT-22). T-A02: jenis dokumen tidak boleh berubah;
+  // aturan murni ini dipanggil SEBELUM jurnal balik/audit disusun agar
+  // penolakan tidak menulis apa pun. `pengganti` kosong mewarisi jenis asli,
+  // sehingga default DB `UMUM` tidak pernah mengambil alih.
   const detail = getJurnalDetail(db, id);
   if (!detail) return hasilGagal([PESAN_REVERSAL.tidakDitemukan]);
 
-  const jenisPengganti = inputBaru?.header?.jenis;
-  if (jenisPengganti === 'REVERSAL')
-    return hasilGagal(['Jurnal pengganti tidak boleh berjenis REVERSAL.']);
-  if (jenisPengganti === 'SALDO_AWAL' && detail.jurnal.jenis !== 'SALDO_AWAL')
-    return hasilGagal([
-      'Jurnal pengganti berjenis SALDO_AWAL hanya boleh bila jurnal asli juga SALDO_AWAL.',
-    ]);
+  const aturanJenis = jenisPenggantiSah(
+    detail.jurnal.jenis,
+    inputBaru?.header?.jenis,
+  );
+  if (!aturanJenis.boleh)
+    return hasilGagal([aturanJenis.pesan ?? PESAN_REVERSAL.tidakDitemukan]);
 
   const headerBaru: JurnalHeaderInput = {
     ...inputBaru.header,
     id: String(inputBaru.header?.id ?? '').trim() || idBaru('j'),
+    // T-A02: pengganti memakai jenis hasil aturan (bukan default DB) dan
+    // relasi eksplisit ke jurnal asli. Jurnal balik tetap REVERSAL/NORMAL.
+    jenis: aturanJenis.jenis,
+    peran: 'ADJUSTMENT',
+    replaces_id: id,
     // Pengganti tetap satu grup dengan jurnal asli + jurnal balik agar
     // penelusuran (drill-down) menunjukkan satu peristiwa koreksi utuh.
     // Nilai dari renderer selalu diabaikan: grup yang diubah dari luar akan

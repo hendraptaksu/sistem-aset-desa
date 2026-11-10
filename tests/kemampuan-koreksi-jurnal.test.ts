@@ -261,6 +261,56 @@ describe('T2.1 — kemampuan koreksi jurnal', () => {
     });
   });
 
+  it('T-A02: jurnal pembukaan OPENING/OPENING_REPLACEMENT tidak ditawarkan koreksi generik', () => {
+    const db = freshDb();
+
+    insertJurnalTervalidasi(
+      db,
+      {
+        id: 'j-opening',
+        tanggal: '2026-01-01',
+        no_bukti: 'SA-2026-0001',
+        keterangan: 'Saldo awal berperan OPENING',
+        jenis: 'SALDO_AWAL',
+        peran: 'OPENING',
+      },
+      pasangan('1001', '3000', RP(1_000_000)),
+    );
+
+    insertJurnalTervalidasi(
+      db,
+      {
+        id: 'j-asal',
+        tanggal: '2026-01-02',
+        no_bukti: 'JU-2026-0001',
+        keterangan: 'Jurnal asal',
+        jenis: 'UMUM',
+      },
+      pasangan('1001', '4005', RP(100_000)),
+    );
+    insertJurnalTervalidasi(
+      db,
+      {
+        id: 'j-pengganti-pembukaan',
+        tanggal: '2026-01-02',
+        no_bukti: 'JU-2026-0002',
+        keterangan: 'Pengganti pembukaan',
+        jenis: 'UMUM',
+        peran: 'OPENING_REPLACEMENT',
+        replaces_id: 'j-asal',
+      },
+      pasangan('1001', '4005', RP(90_000)),
+    );
+
+    for (const id of ['j-opening', 'j-pengganti-pembukaan']) {
+      expect(kemampuanKoreksiJurnal(db, { id })).toEqual({
+        bisaDibalik: false,
+        bisaDikoreksi: false,
+        alasan: PESAN_REVERSAL_SALDO_AWAL,
+      });
+    }
+  });
+
   it('jurnal open dan close panjar ditolak dengan alasan panjar', () => {
     const db = freshDb();
     siapkanPanjar(db, { tutup: true });

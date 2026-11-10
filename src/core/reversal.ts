@@ -8,9 +8,64 @@
 // periode terkunci, nomor bukti, dan penyimpanan tetap dilakukan posting layer.
 
 import { tanggalKalenderValid, type JurnalInput } from './posting.js';
-import type { Jurnal, JurnalBaris } from './types.js';
+import type { Jurnal, JurnalBaris, JurnalJenis } from './types.js';
 
 export const ALASAN_REVERSAL_MIN = 5;
+
+/** Pesan aturan jenis pengganti (T-A02). */
+export const PESAN_JENIS_PENGGANTI = {
+  reversal:
+    'Jurnal pengganti tidak boleh berjenis REVERSAL. Jenis jurnal tidak boleh diubah saat koreksi.',
+  saldoAwal: (asli: JurnalJenis): string =>
+    `Jurnal pengganti tidak boleh berjenis SALDO_AWAL bila jurnal asli berjenis ${asli}. ` +
+    'Jenis jurnal tidak boleh diubah saat koreksi.',
+  beda: (asli: JurnalJenis, pengganti: JurnalJenis): string =>
+    `Jenis jurnal tidak boleh diubah saat koreksi: jurnal asli berjenis ${asli}, ` +
+    `jurnal pengganti berjenis ${pengganti}. Gunakan jenis ${asli}.`,
+} as const;
+
+export type HasilJenisPenggantiSah = {
+  boleh: boolean;
+  /** Jenis final yang wajib dipakai jurnal pengganti. */
+  jenis: JurnalJenis;
+  pesan?: string;
+};
+
+/**
+ * T-A02: jenis jurnal pengganti tidak boleh mengubah jenis dokumen aslinya.
+ *
+ * - `REVERSAL` selalu ditolak (jurnal balik dibuat terpisah).
+ * - `SALDO_AWAL` hanya boleh dikoreksi lewat wizard saldo awal; hasil akhirnya
+ *   selalu `UMUM`. Jalur generik tetap menolak jurnal asli `SALDO_AWAL` lebih
+ *   awal di `rencanaUntuk()`.
+ * - Selain itu pengganti wajib sama dengan jenis asli.
+ * - `pengganti` kosong/null mewarisi jenis asli, sehingga default DB `UMUM`
+ *   tidak pernah mengambil alih.
+ */
+export function jenisPenggantiSah(
+  asli: JurnalJenis,
+  pengganti?: JurnalJenis | null,
+): HasilJenisPenggantiSah {
+  const diminta = pengganti ?? asli;
+
+  if (diminta === 'REVERSAL')
+    return { boleh: false, jenis: asli, pesan: PESAN_JENIS_PENGGANTI.reversal };
+
+  if (asli === 'SALDO_AWAL') {
+    if (diminta !== 'SALDO_AWAL' && diminta !== 'UMUM')
+      return { boleh: false, jenis: asli, pesan: PESAN_JENIS_PENGGANTI.beda(asli, diminta) };
+    // Wizard koreksi saldo awal selalu menulis pengganti UMUM.
+    return { boleh: true, jenis: 'UMUM' };
+  }
+
+  if (diminta === 'SALDO_AWAL')
+    return { boleh: false, jenis: asli, pesan: PESAN_JENIS_PENGGANTI.saldoAwal(asli) };
+
+  if (diminta !== asli)
+    return { boleh: false, jenis: asli, pesan: PESAN_JENIS_PENGGANTI.beda(asli, diminta) };
+
+  return { boleh: true, jenis: asli };
+}
 
 /**
  * T1.5: saldo awal tidak boleh dibalik dari jalur umum. Saldo awal hanya

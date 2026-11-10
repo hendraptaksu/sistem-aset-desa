@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   objekSkemaTidakSesuai,
   openDb,
+  PESAN_JENIS_PENGGANTI_JURNAL_DB,
   PESAN_REVERSAL_JURNAL_DB,
   PESAN_TANGGAL_KALENDER_JURNAL_DB,
 } from '../src/db/database.js';
@@ -56,8 +57,10 @@ type JurnalInput = {
   no_bukti?: string;
   keterangan?: string;
   jenis?: string;
+  peran?: string;
   grup_id?: string;
   reversal_of?: string | null;
+  replaces_id?: string | null;
   created_at?: string;
 };
 
@@ -65,16 +68,19 @@ type JurnalInput = {
 function insertJurnal(input: JurnalInput): string {
   db.prepare(
     `INSERT INTO jurnal
-       (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, tanggal, no_bukti, keterangan, jenis, peran, grup_id,
+        reversal_of, replaces_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.id,
     input.tanggal ?? '2026-01-02',
     input.no_bukti ?? '',
     input.keterangan ?? `Jurnal ${input.id}`,
     input.jenis ?? 'UMUM',
+    input.peran ?? 'NORMAL',
     input.grup_id ?? input.id,
     input.reversal_of ?? null,
+    input.replaces_id ?? null,
     input.created_at ?? WAKTU,
   );
   return input.id;
@@ -332,6 +338,57 @@ describe('T2.3 — validasi tanggal dan reversal di trigger jurnal', () => {
       { id: 'j-balik', jenis: 'REVERSAL', reversal_of: asli },
     ]);
     expect(balik).toBe('j-balik');
+  });
+});
+
+describe('T-A02 — trigger menolak pengganti yang mengubah jenis', () => {
+  it('menolak insert langsung pengganti berjenis berbeda dari jurnal asli', () => {
+    const asli = insertJurnal({ id: 'j-bayar-asli', jenis: 'BAYAR' });
+
+    expect(() =>
+      insertJurnal({
+        id: 'j-bayar-jadi-panjar',
+        jenis: 'PANJAR',
+        peran: 'ADJUSTMENT',
+        replaces_id: asli,
+      }),
+    ).toThrow(PESAN_JENIS_PENGGANTI_JURNAL_DB);
+
+    expect(
+      db.prepare('SELECT COUNT(*) AS n FROM jurnal WHERE replaces_id IS NOT NULL').get(),
+    ).toEqual({ n: 0 });
+  });
+
+  it('menerima pengganti berjenis sama dan SALDO_AWAL → UMUM lewat OPENING_REPLACEMENT', () => {
+    const bayar = insertJurnal({ id: 'j-bayar-asli', jenis: 'BAYAR' });
+    insertJurnal({
+      id: 'j-bayar-pengganti',
+      jenis: 'BAYAR',
+      peran: 'ADJUSTMENT',
+      replaces_id: bayar,
+    });
+
+    const awal = insertJurnal({ id: 'j-saldo-awal', jenis: 'SALDO_AWAL', peran: 'OPENING' });
+    insertJurnal({
+      id: 'j-saldo-awal-pengganti',
+      jenis: 'UMUM',
+      peran: 'OPENING_REPLACEMENT',
+      replaces_id: awal,
+    });
+
+    expect(
+      db
+        .prepare('SELECT id, jenis, peran, replaces_id FROM jurnal WHERE replaces_id IS NOT NULL ORDER BY id')
+        .all(),
+    ).toEqual([
+      { id: 'j-bayar-pengganti', jenis: 'BAYAR', peran: 'ADJUSTMENT', replaces_id: bayar },
+      {
+        id: 'j-saldo-awal-pengganti',
+        jenis: 'UMUM',
+        peran: 'OPENING_REPLACEMENT',
+        replaces_id: awal,
+      },
+    ]);
   });
 });
 

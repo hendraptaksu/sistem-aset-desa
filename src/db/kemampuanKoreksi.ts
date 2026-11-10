@@ -48,7 +48,7 @@ export const PESAN_KOREKSI_JURNAL = {
   pinjaman: PESAN_REVERSAL_PINJAMAN,
 } as const;
 
-type JurnalRingkas = Pick<Jurnal, 'id' | 'jenis' | 'reversal_of'>;
+type JurnalRingkas = Pick<Jurnal, 'id' | 'jenis' | 'peran' | 'reversal_of'>;
 
 /** Baca ulang dari DB: data `jenis` dari renderer tidak boleh dipercaya. */
 function bacaJurnal(
@@ -56,14 +56,20 @@ function bacaJurnal(
   id: string,
 ): JurnalRingkas | null {
   const row = db
-    .prepare('SELECT id, jenis, reversal_of FROM jurnal WHERE id = ?')
+    .prepare('SELECT id, jenis, peran, reversal_of FROM jurnal WHERE id = ?')
     .get(id) as
-    | { id: string; jenis: Jurnal['jenis']; reversal_of: string | null }
+    | {
+        id: string;
+        jenis: Jurnal['jenis'];
+        peran: Jurnal['peran'];
+        reversal_of: string | null;
+      }
     | undefined;
   if (!row) return null;
   return {
     id: String(row.id),
     jenis: row.jenis,
+    peran: row.peran,
     reversal_of: row.reversal_of ? String(row.reversal_of) : null,
   };
 }
@@ -175,8 +181,14 @@ export function kemampuanKoreksiJurnal(
   if (terhubungPinjaman(db, asli.id))
     return tolak(PESAN_KOREKSI_JURNAL.pinjaman);
 
-  // Saldo awal hanya boleh dikoreksi lewat wizard koreksi saldo awal (T1.8).
-  if (asli.jenis === 'SALDO_AWAL')
+  // Saldo awal dan jurnal pembukaan (OPENING/OPENING_REPLACEMENT) hanya boleh
+  // dikoreksi lewat wizard koreksi saldo awal (T1.8/T-A02). Jalur generik akan
+  // menolaknya, jadi UI tidak boleh menawarkan tombol yang pasti gagal.
+  if (
+    asli.jenis === 'SALDO_AWAL' ||
+    asli.peran === 'OPENING' ||
+    asli.peran === 'OPENING_REPLACEMENT'
+  )
     return tolak(PESAN_KOREKSI_JURNAL.saldoAwal);
 
   return { bisaDibalik: true, bisaDikoreksi: true, alasan: null };

@@ -90,6 +90,8 @@ describe('T1.7 — koreksi saldo awal sukses', () => {
       });
       expect(hasil.jurnal).toMatchObject({
         jenis: 'UMUM',
+        peran: 'OPENING_REPLACEMENT',
+        replaces_id: 'j-awal',
         reversal_of: null,
         grup_id: 'j-awal',
         tanggal: '2026-01-01',

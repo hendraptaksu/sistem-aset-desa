@@ -16,6 +16,7 @@ import {
   listJurnal,
   listJurnalLengkap,
 } from '../src/db/repository.js';
+import { auditIntegritas } from '../src/db/integritas.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   koreksiDanIsiUlang,
@@ -32,6 +33,7 @@ import {
 import { neracaSaldo, labaTahun, saldoAkun } from '../src/core/reports.js';
 import {
   PESAN_REVERSAL,
+  jenisPenggantiSah,
   rencanaReversal,
   type RencanaReversalInput,
 } from '../src/core/reversal.js';
@@ -92,6 +94,26 @@ function parkir(db: ReturnType<typeof openDb>, nominal = RP(100_000)): void {
 
 function jumlahJurnal(db: ReturnType<typeof openDb>): number {
   return (db.prepare('SELECT COUNT(*) AS c FROM jurnal').get() as { c: number }).c;
+}
+
+function bayar(
+  db: ReturnType<typeof openDb>,
+  id = 'j-bayar',
+  tanggal = '2026-01-03',
+  nominal = RP(50_000),
+  noBukti = 'JU-2026-0003',
+): void {
+  insertJurnalTervalidasi(
+    db,
+    {
+      id,
+      tanggal,
+      no_bukti: noBukti,
+      keterangan: 'Belanja operasional',
+      jenis: 'BAYAR',
+    },
+    pasangan('5000', '1001', nominal),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +199,50 @@ describe('P0-6 — rencana jurnal balik (murni)', () => {
     expect(
       rencana({ jurnal: { ...JURNAL_ASLI, reversal_of: 'j-asli-lain' } }).errors,
     ).toContain(PESAN_REVERSAL.asliBalik);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-A02 — aturan murni jenis pengganti
+// ---------------------------------------------------------------------------
+
+describe('T-A02 — jenis pengganti sah (murni)', () => {
+  it('menolak REVERSAL sebagai pengganti', () => {
+    const hasil = jenisPenggantiSah('BAYAR', 'REVERSAL');
+    expect(hasil.boleh).toBe(false);
+    expect(hasil.jenis).toBe('BAYAR');
+    expect(hasil.pesan).toMatch(/REVERSAL/);
+    expect(hasil.pesan).toMatch(/tidak boleh diubah/i);
+  });
+
+  it('menolak perubahan jenis dan menyebut jenis asli serta pengganti', () => {
+    const hasil = jenisPenggantiSah('BAYAR', 'PANJAR');
+    expect(hasil.boleh).toBe(false);
+    expect(hasil.jenis).toBe('BAYAR');
+    expect(hasil.pesan).toContain('BAYAR');
+    expect(hasil.pesan).toContain('PANJAR');
+    expect(hasil.pesan).toMatch(/tidak boleh diubah/i);
+  });
+
+  it('mewarisi jenis asli bila pengganti kosong/null', () => {
+    expect(jenisPenggantiSah('BAYAR')).toEqual({ boleh: true, jenis: 'BAYAR' });
+    expect(jenisPenggantiSah('BAYAR', null)).toEqual({ boleh: true, jenis: 'BAYAR' });
+    expect(jenisPenggantiSah('TERIMA', 'TERIMA')).toEqual({ boleh: true, jenis: 'TERIMA' });
+  });
+
+  it('hanya mengizinkan SALDO_AWAL dikoreksi menjadi UMUM lewat wizard', () => {
+    expect(jenisPenggantiSah('SALDO_AWAL', 'UMUM')).toEqual({
+      boleh: true,
+      jenis: 'UMUM',
+    });
+    // Tanpa jenis eksplisit pun hasil akhir pembukaan harus UMUM.
+    expect(jenisPenggantiSah('SALDO_AWAL')).toEqual({ boleh: true, jenis: 'UMUM' });
+
+    const salah = jenisPenggantiSah('BAYAR', 'SALDO_AWAL');
+    expect(salah.boleh).toBe(false);
+    expect(salah.pesan).toContain('BAYAR');
+    expect(salah.pesan).toContain('SALDO_AWAL');
+    expect(salah.pesan).toMatch(/tidak boleh diubah/i);
   });
 });
 
@@ -653,6 +719,128 @@ describe('P0-6 — koreksi & isi ulang', () => {
         'KOREKSI-ISI-ULANG j-parkir',
         'REVERSAL j-parkir',
       ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-A02: BAYAR → PANJAR ditolak tanpa menulis jurnal pengganti/audit', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      bayar(db);
+      const sebelumJurnal = listJurnal(db).map((j) => j.id);
+      const sebelumAudit = listAuditLog(db).length;
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-bayar',
+        'Coba ubah belanja menjadi panjar',
+        {
+          header: {
+            id: 'j-bayar-jadi-panjar',
+            tanggal: '2026-01-03',
+            keterangan: 'Belanja diubah menjadi panjar',
+            jenis: 'PANJAR',
+          },
+          baris: pasangan('1040', '1001', RP(50_000)),
+        },
+        { id: 'j-bayar-balik', tanggal: '2026-01-03' },
+      );
+
+      expect(hasil.tersimpan).toBe(false);
+      expect(hasil.errors.join(' ')).toContain('BAYAR');
+      expect(hasil.errors.join(' ')).toContain('PANJAR');
+      expect(hasil.errors.join(' ')).toMatch(/tidak boleh diubah/i);
+      expect(listJurnal(db).map((j) => j.id)).toEqual(sebelumJurnal);
+      expect(listAuditLog(db)).toHaveLength(sebelumAudit);
+      expect(getJurnalDetail(db, 'j-bayar-jadi-panjar')).toBeNull();
+      expect(getJurnalDetail(db, 'j-bayar-balik')).toBeNull();
+      expect(getJurnal(db, 'j-bayar')?.jenis).toBe('BAYAR');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-A02: BAYAR → BAYAR diterima; jenis, peran ADJUSTMENT, dan replaces_id tersimpan', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      bayar(db);
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-bayar',
+        'Nominal belanja seharusnya 60rb',
+        {
+          header: {
+            id: 'j-bayar-baru',
+            tanggal: '2026-01-03',
+            no_bukti: 'JU-2026-0100',
+            keterangan: 'Belanja operasional (koreksi)',
+            jenis: 'BAYAR',
+          },
+          baris: pasangan('5000', '1001', RP(60_000)),
+        },
+        { id: 'j-bayar-balik', tanggal: '2026-01-03' },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal).toMatchObject({
+        jenis: 'REVERSAL',
+        peran: 'NORMAL',
+        reversal_of: 'j-bayar',
+        replaces_id: null,
+      });
+      expect(hasil.jurnalBaru).toMatchObject({
+        id: 'j-bayar-baru',
+        jenis: 'BAYAR',
+        peran: 'ADJUSTMENT',
+        replaces_id: 'j-bayar',
+        reversal_of: null,
+      });
+      expect(getJurnal(db, 'j-bayar-baru')).toMatchObject({
+        jenis: 'BAYAR',
+        peran: 'ADJUSTMENT',
+        replaces_id: 'j-bayar',
+      });
+      expect(auditIntegritas(db).ok).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-A02: jenis pengganti kosong mewarisi jenis asli, bukan default UMUM', () => {
+    const db = freshDb();
+    try {
+      modal(db);
+      bayar(db);
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-bayar',
+        'Nominal belanja seharusnya 55rb',
+        {
+          header: {
+            id: 'j-bayar-tanpa-jenis',
+            tanggal: '2026-01-03',
+            no_bukti: 'JU-2026-0101',
+            keterangan: 'Belanja operasional (tanpa jenis)',
+          },
+          baris: pasangan('5000', '1001', RP(55_000)),
+        },
+        { id: 'j-bayar-balik', tanggal: '2026-01-03' },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnalBaru).toMatchObject({
+        jenis: 'BAYAR',
+        peran: 'ADJUSTMENT',
+        replaces_id: 'j-bayar',
+      });
+      expect(getJurnal(db, 'j-bayar-tanpa-jenis')?.jenis).toBe('BAYAR');
+      expect(getJurnal(db, 'j-bayar-tanpa-jenis')?.jenis).not.toBe('UMUM');
+      expect(auditIntegritas(db).ok).toBe(true);
     } finally {
       db.close();
     }
