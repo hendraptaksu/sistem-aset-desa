@@ -616,14 +616,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A05 — Tolak akun P&L pada jurnal saldo awal
+### [x] T-A05 — Tolak akun P&L pada jurnal saldo awal
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | S |
 | **Depends** | — |
-| **Status** | Belum |
+| **Status** | Selesai — commit bc066c1 |
 
 **Masalah**
 
@@ -671,6 +671,31 @@ maknanya salah.
 npm test -- tests/posting.test.ts tests/saldo-awal.test.ts tests/saldo-awal-koreksi.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit bc066c1):**
+
+- `src/core/posting.ts`: aturan baru di `validasiJurnal()` untuk
+  `jenis === 'SALDO_AWAL'` **atau** `konteks.koreksiSaldoAwal === true`.
+  Setiap baris bertipe `PENDAPATAN`/`BEBAN` menghasilkan error per baris yang
+  menyebut kode + nama akun dan tipenya, lalu menjelaskan bahwa saldo awal
+  hanya sah memakai `AKTIVA`, `KEWAJIBAN`, dan `EKUITAS` (modal penyeimbang).
+  Aturan koreksi saldo awal lama tetap dipertahankan untuk jalur UMUM koreksi
+  agar tidak muncul pesan ganda.
+- Konstanta pesan baru: `PESAN_SALDO_AWAL_HANYA_NERACA` dan
+  `PESAN_KOREKSI_SALDO_AWAL_HANYA_NERACA`.
+- `src/db/posting.ts` dan `src/db/saldoAwal.ts` tidak berubah: keduanya sudah
+  melewati `validasiJurnal()` yang sama, sehingga `postingSaldoAwal()` dan
+  `simpanSaldoAwal()` otomatis menolak P&L sebelum transaksi tulis. Tidak ada
+  jurnal/audit yang tertulis saat ditolak (`tersimpan: false`, `HasilPosting.errors`
+  terisi).
+- Test regresi di `tests/posting.test.ts`: pemanggilan langsung
+  `postingSaldoAwal()` dengan D 1001 / K 4001 dan dengan beban 5000 ditolak
+  tanpa jurnal/audit; `simpanSaldoAwal()` juga menolak P&L; saldo awal valid
+  (aset/kewajiban + modal otomatis 3000) tetap tersimpan dan
+  `auditIntegritas(db).ok === true` pada DB bersih. Dua test lama yang memakai
+  P&L pada saldo awal disesuaikan (kas minus diuji lewat D 1050 / K 1001).
+- Verifikasi: test target 3 file / 83 test lulus; `npm test` 94 file /
+  1260 test lulus; `npm run typecheck` lulus. Tidak ada perubahan skema.
 
 ---
 
