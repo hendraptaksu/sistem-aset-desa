@@ -1538,14 +1538,14 @@ npm test -- tests/dokumentasi.test.ts
 
 ---
 
-### [ ] T-A16 — Tampilkan temuan audit integritas saat aplikasi mulai
+### [x] T-A16 — Tampilkan temuan audit integritas saat aplikasi mulai
 
 | | |
 | --- | --- |
 | **Prioritas** | P2 |
 | **Perkiraan** | S |
 | **Depends** | T-A07 |
-| **Status** | Belum |
+| **Status** | Selesai — commit 73352bb |
 
 **Masalah**
 
@@ -1591,6 +1591,27 @@ terasa “normal”.
 npm test -- tests/audit-awal.test.ts
 npm run typecheck
 ```
+
+**Hasil**
+
+- `src/core/auditAwalRingkasan.ts` — helper murni `ringkasanAuditAwal()` (jumlah
+  temuan, maksimal 5 teratas, kode kritis unik) + `KODE_AUDIT_KRITIS`; diekspor
+  ulang dari `src/main/auditAwal.ts`.
+- `src/main/index.ts` — hasil `auditIntegritasSaatMulai()` disimpan di memori,
+  diaudit ulang setiap `setDb()` (restore), lalu dibaca `buatIpcDeps()`.
+- `src/main/ipc.ts` — `IpcDeps.auditAwal?()` dan kanal read-only `audit:awal`
+  yang dijaga `perluBuka`; tidak menjalankan audit/tulis DB.
+- `src/renderer/lib/api.ts` — `api.auditAwal()`.
+- `src/renderer/components/AuditAwalBanner.tsx` + `src/renderer/App.tsx` —
+  banner setelah sesi terbuka: jumlah + 5 temuan teratas, tombol “Buka Audit”
+  ke Pengaturan, tombol abaikan/tutup, merah untuk kode kritis dan kuning untuk
+  temuan lain; tidak memblokir aplikasi dan tidak tampil saat DB bersih.
+- `tests/audit-awal.test.ts`, `tests/ipc-main.test.ts` — regresi helper, banner,
+  startup rusak/bersih, logger, IPC hasil/null/read-only/gembok PIN.
+
+Verifikasi: `npm test -- tests/audit-awal.test.ts tests/ipc-main.test.ts
+tests/audit-detail.test.ts` (99 lulus), `npm test` penuh dua kali (95 file /
+1.326 test lulus), dan `npm run typecheck` lulus.
 
 ---
 
