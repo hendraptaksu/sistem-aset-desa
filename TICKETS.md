@@ -212,14 +212,14 @@ menyentuh skema secara paralel sebelum DDL v2 stabil.
 
 ---
 
-### [ ] T-A01 — Satukan sumber tanggal cut-over
+### [x] T-A01 — Satukan sumber tanggal cut-over
 
 | | |
 | --- | --- |
 | **Prioritas** | P0 |
 | **Perkiraan** | M/L |
 | **Depends** | T-A00 |
-| **Status** | Belum |
+| **Status** | Selesai — commit 2c45d84 |
 
 **Masalah**
 
@@ -294,6 +294,30 @@ mengunci angka yang salah.
 npm test -- tests/saldo-awal-koreksi.test.ts tests/db-38-tengah-tahun.test.ts tests/laporan.test.ts tests/dashboard.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit 2c45d84):**
+
+- `src/db/repository.ts`: `getPengaturanPembukuan()` kini membaca
+  `cutover_tanggal` lebih dulu (fallback `akuntansi_tanggal_mulai` untuk data
+  lama). `simpanPengaturanPembukuan()` menolak perubahan manual tanggal bila
+  pembukaan aktif ada (`PESAN_TANGGAL_CUTOVER_DIKUNCI`, diarahkan ke Wizard
+  Koreksi Saldo Awal), tetap mengizinkan simpan field lain dengan tanggal yang
+  sama, dan menulis `cutover_tanggal` bersama kunci lama saat belum ada
+  pembukaan.
+- `src/db/laporan.ts`, `src/db/tutup.ts`, `src/features/dashboard/dashboard.ts`,
+  dan `src/main/ipc.ts`: label/catatan tahun pertama dan seluruh jalur laporan
+  memakai `getCutoverTanggal(db)`, bukan `getPengaturanPembukuan()`/inferensi
+  tanggal `SALDO_AWAL`.
+- `tests/ta01-cutover.test.ts` baru: reproduksi tiket (saldo awal 2026-07-01 →
+  koreksi 2026-06-01 → pendapatan 2026-06-15 Rp10.000.000) memverifikasi Laba
+  Rugi Rp10.000.000, Neraca seimbang, Neraca Saldo mode tahun/kumulatif
+  `selisih 0`, dashboard `balance` + `aktiva === pasiva`, dan preview tutup
+  buku. Juga menguji koreksi ke tanggal lebih akhir, penolakan ubah tanggal
+  manual, penyimpanan sebelum saldo awal, serta `cutover_tanggal` menang atas
+  kunci lama yang basi. P&L pra-cut-over tidak dihitung.
+- Verifikasi: test target 75 lulus; `tests/ta01-cutover.test.ts` 7 lulus;
+  `npm test` 94 file / 1235 test lulus; `npm run typecheck` lulus. Tidak ada
+  perubahan skema; T-A02/T-A03/T-A07/T-A08 tidak disentuh.
 
 ---
 
