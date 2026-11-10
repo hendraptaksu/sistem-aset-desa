@@ -29,7 +29,7 @@ import { tanggalLokal } from '../utils/tanggal.js';
 import {
   getJurnalDetail,
   insertAuditLog,
-  insertJurnalTervalidasi,
+  insertJurnalInternal,
   listJurnal,
 } from './repository.js';
 import {
@@ -227,6 +227,8 @@ export function reverseJurnal(
     // Metadata subledger pihak sudah tidak ada sejak skema v12 (DB-23b/DB-33).
     // Reversal hanya membuat jurnal balik seperti biasa.
     return postingJurnal(db, rencana.input!, {
+      // T-A14: jurnal balik selalu tercatat sebagai REVERSAL.
+      mode: 'REVERSAL',
       konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
       alasanPeringatan: alasan.trim(),
       wajibAlasanPeringatan: true,
@@ -408,23 +410,31 @@ export function koreksiDanIsiUlang(
       let reversal: Jurnal;
       let jurnalBaru: Jurnal;
       if (penggantiDulu) {
-        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris, {
+        jurnalBaru = insertJurnalInternal(db, headerBaru, baru.baris, {
+          sumber: 'CORRECTION',
           akunNonaktifDiizinkan: akunNonaktifBaruSet,
         });
-        reversal = insertJurnalTervalidasi(
+        reversal = insertJurnalInternal(
           db,
           rencana.input!.header,
           rencana.input!.baris,
-          { akunNonaktifDiizinkan: akunNonaktifBalikSet },
+          {
+            sumber: 'REVERSAL',
+            akunNonaktifDiizinkan: akunNonaktifBalikSet,
+          },
         );
       } else {
-        reversal = insertJurnalTervalidasi(
+        reversal = insertJurnalInternal(
           db,
           rencana.input!.header,
           rencana.input!.baris,
-          { akunNonaktifDiizinkan: akunNonaktifBalikSet },
+          {
+            sumber: 'REVERSAL',
+            akunNonaktifDiizinkan: akunNonaktifBalikSet,
+          },
         );
-        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris, {
+        jurnalBaru = insertJurnalInternal(db, headerBaru, baru.baris, {
+          sumber: 'CORRECTION',
           akunNonaktifDiizinkan: akunNonaktifBaruSet,
         });
       }

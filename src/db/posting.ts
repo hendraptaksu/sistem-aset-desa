@@ -8,9 +8,10 @@ import { buatAuditLog } from '../core/audit.js';
 import {
   getPengaturanPembukuan,
   insertAuditLog,
-  insertJurnalTervalidasi,
+  insertJurnalInternal,
   listAkun,
   listTutupBuku,
+  type SumberJurnal,
 } from './repository.js';
 import {
   validasiJurnal,
@@ -21,7 +22,15 @@ import {
 import type { AuditLog, Jurnal, JurnalBarisInput } from '../core/types.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 
+/** T-A14: mode eksplisit command layer penulisan jurnal. */
+export type ModePosting = 'NORMAL' | 'OPENING' | 'REVERSAL' | 'CORRECTION';
+
 export type OpsiPosting = {
+  /**
+   * T-A14: asal penulisan jurnal; default `NORMAL`. Mode ini hanya memetakan
+   * `sumber` untuk lapisan insert — validasi/audit tetap satu pintu yang sama.
+   */
+  mode?: ModePosting;
   /** Internal: layanan koreksi telah memverifikasi asal grup saldo pembukaan. */
   koreksiSaldoAwal?: boolean;
   /** Operator sudah melihat peringatan (mis. kas minus) dan memilih lanjut. */
@@ -62,6 +71,14 @@ export type OpsiPosting = {
 
 export const PESAN_WAJIB_SALDO_AWAL =
   'Belum ada saldo awal. Isi Wizard Saldo Awal dulu, atau konfirmasi mulai tanpa saldo awal.';
+
+/** T-A14: pemetaan mode command layer ke sumber insert internal. */
+const SUMBER_DARI_MODE: Record<ModePosting, SumberJurnal> = {
+  NORMAL: 'POSTING',
+  OPENING: 'OPENING',
+  REVERSAL: 'REVERSAL',
+  CORRECTION: 'CORRECTION',
+};
 
 /** AKT-06: pesan saat konfirmasi peringatan tidak disertai alasan yang cukup. */
 export const PESAN_WAJIB_ALASAN_PERINGATAN =
@@ -289,7 +306,8 @@ function postingJurnalInti(
       // AKT-01/AKT-02: cek dan tulis berada di transaksi yang sama agar dua
       // posting pertama tidak bisa sama-sama lolos. Saldo awal dikecualikan.
       pastikanWajibSaldoAwal(db, opsi, input.header.jenis);
-      const jurnal = insertJurnalTervalidasi(db, input.header, input.baris, {
+      const jurnal = insertJurnalInternal(db, input.header, input.baris, {
+        sumber: SUMBER_DARI_MODE[opsi.mode ?? 'NORMAL'],
         akunNonaktifDiizinkan: opsi.akunNonaktifDiizinkan,
       });
       // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
@@ -350,13 +368,18 @@ export function postingSaldoAwal(
     headerMentah && typeof headerMentah === 'object'
       ? { ...headerMentah, jenis: 'SALDO_AWAL' as const }
       : headerMentah;
-  return postingJurnalInti(db, { ...dasar, header } as JurnalInput, opsi, (jurnal, hasil) =>
-    buatAuditLog(
-      `SALDO-AWAL ${header.id}`,
-      String(input?.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
-      undefined,
-      dataAuditJurnal(jurnal, input?.baris ?? [], hasil.peringatan, opsi),
-      { ref_type: 'jurnal', ref_id: jurnal.id },
-    ),
+  return postingJurnalInti(
+    db,
+    { ...dasar, header } as JurnalInput,
+    // T-A14: saldo awal selalu tercatat sebagai OPENING, apa pun opsi pemanggil.
+    { ...opsi, mode: 'OPENING' },
+    (jurnal, hasil) =>
+      buatAuditLog(
+        `SALDO-AWAL ${header.id}`,
+        String(input?.alasan ?? 'Saldo awal').trim() || 'Saldo awal',
+        undefined,
+        dataAuditJurnal(jurnal, input?.baris ?? [], hasil.peringatan, opsi),
+        { ref_type: 'jurnal', ref_id: jurnal.id },
+      ),
   );
 }

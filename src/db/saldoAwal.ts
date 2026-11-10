@@ -30,7 +30,7 @@ import {
   KUNCI_SALDO_AWAL_AKTIF_ID,
   getJurnalDetail,
   insertAuditLog,
-  insertJurnalTervalidasi,
+  insertJurnalInternal,
   listAkun,
   listJurnal,
   setPengaturan,
@@ -541,11 +541,19 @@ export function koreksiSaldoAwal(
       let reversal: Jurnal;
       let jurnalBaru: Jurnal;
       if (penggantiDulu) {
-        jurnalBaru = insertJurnalTervalidasi(db, headerPengganti, pengganti.baris);
-        reversal = insertJurnalTervalidasi(db, balik.header, balik.baris);
+        jurnalBaru = insertJurnalInternal(db, headerPengganti, pengganti.baris, {
+          sumber: 'CORRECTION',
+        });
+        reversal = insertJurnalInternal(db, balik.header, balik.baris, {
+          sumber: 'REVERSAL',
+        });
       } else {
-        reversal = insertJurnalTervalidasi(db, balik.header, balik.baris);
-        jurnalBaru = insertJurnalTervalidasi(db, headerPengganti, pengganti.baris);
+        reversal = insertJurnalInternal(db, balik.header, balik.baris, {
+          sumber: 'REVERSAL',
+        });
+        jurnalBaru = insertJurnalInternal(db, headerPengganti, pengganti.baris, {
+          sumber: 'CORRECTION',
+        });
       }
       insertAuditLog(db, audit);
       // T-A00: penunjuk pembukaan aktif pindah ke jurnal pengganti dan

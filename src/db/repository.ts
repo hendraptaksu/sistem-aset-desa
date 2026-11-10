@@ -484,6 +484,25 @@ export type JurnalFilter = {
   offset?: number;
 };
 
+/** T-A14: asal penulisan jurnal; wajib eksplisit di setiap jalur tulis. */
+export type SumberJurnal =
+  | 'POSTING'
+  | 'OPENING'
+  | 'REVERSAL'
+  | 'CORRECTION'
+  | 'SEED'
+  | 'TEST';
+
+/**
+ * T-A14: konteks wajib untuk penulisan jurnal mentah. `sumber` memaksa setiap
+ * pemanggil menyatakan asal jurnalnya agar audit/aturan tidak tersamar.
+ */
+export type KonteksInsertJurnal = {
+  sumber: SumberJurnal;
+  /** T-A04: pengecualian sempit untuk baris historis yang akunnya nonaktif. */
+  akunNonaktifDiizinkan?: ReadonlySet<string>;
+};
+
 /**
  * Simpan satu jurnal + barisnya secara atomik SETELAH pemanggil memvalidasi
  * aturan posting (kunci periode, tanggal mulai, jenis, peringatan kas minus).
@@ -491,16 +510,17 @@ export type JurnalFilter = {
  * hanya debit atau kredit > 0, akun harus ada di master `akun`, total debit =
  * total kredit, total > 0. Error dilempar dengan pesan berbahasa Indonesia.
  *
- * AKT-25: fungsi ini adalah jalur insert mentah dan sengaja TIDAK diekspor
- * sebagai `insertJurnal`. Pemakai yang sah hanya posting layer (`postingJurnal`
- * / `postingSaldoAwal`), koreksi yang sudah memvalidasi (`koreksiDanIsiUlang`),
- * seed dev, dan test. Input produksi wajib lewat `postingJurnal`.
+ * T-A14: ini satu-satunya implementasi insert mentah. Pemakai produksi yang
+ * sah hanya `posting.ts`, `saldoAwal.ts`, `reversal.ts`, dan `seed-dev.ts`
+ * (dijaga test arsitektur). Modul produksi baru wajib lewat command layer
+ * `postingJurnal()`/`postingSaldoAwal()` atau service di atas, bukan menulis
+ * langsung ke sini.
  */
-export function insertJurnalTervalidasi(
+export function insertJurnalInternal(
   db: Database.Database,
   header: JurnalHeaderInput,
   baris: JurnalBarisInput[],
-  opsi: { akunNonaktifDiizinkan?: ReadonlySet<string> } = {},
+  konteks: KonteksInsertJurnal,
 ): Jurnal {
   const id = String(header.id ?? '').trim();
   if (!id) throw new Error('ID jurnal wajib diisi.');
@@ -600,7 +620,8 @@ export function insertJurnalTervalidasi(
     // oleh pemanggil internal yang sudah memverifikasi baris historis. Akun
     // legacy tetap ditolak karena pengecekan di bawah memperlakukannya aktif.
     const diizinkanNonaktif =
-      Number(akunDb.aktif) !== 1 && opsi.akunNonaktifDiizinkan?.has(akunKode) === true;
+      Number(akunDb.aktif) !== 1 &&
+      konteks.akunNonaktifDiizinkan?.has(akunKode) === true;
     if (Number(akunDb.aktif) !== 1 && !diizinkanNonaktif)
       throw new Error(`Baris ${i + 1}: akun ${akunKode} sudah tidak aktif.`);
     if (
@@ -715,6 +736,25 @@ export function insertJurnalTervalidasi(
     throw e;
   }
   return row;
+}
+
+/**
+ * T-A14: wrapper kompatibilitas HANYA untuk test dan pembuatan data lama.
+ * JANGAN dipakai modul produksi di `src/` — semua jalur produksi wajib memakai
+ * `insertJurnalInternal` dengan `sumber` yang benar atau, lebih baik, command
+ * layer `postingJurnal()`/`postingSaldoAwal()`. Test arsitektur menegakkan
+ * larangan ini.
+ */
+export function insertJurnalTervalidasi(
+  db: Database.Database,
+  header: JurnalHeaderInput,
+  baris: JurnalBarisInput[],
+  opsi: { akunNonaktifDiizinkan?: ReadonlySet<string> } = {},
+): Jurnal {
+  return insertJurnalInternal(db, header, baris, {
+    sumber: 'TEST',
+    akunNonaktifDiizinkan: opsi.akunNonaktifDiizinkan,
+  });
 }
 
 export function getJurnal(db: Database.Database, id: string): Jurnal | null {
@@ -901,7 +941,7 @@ export function listJurnalLengkapPage(
 
 /**
  * Saran nomor bukti berikutnya untuk pratinjau form (P1-11/P1-13). Hanya
- * membaca DB; penomoran final tetap dilakukan atomik oleh `insertJurnalTervalidasi`
+ * membaca DB; penomoran final tetap dilakukan atomik oleh `insertJurnalInternal`
  * lewat `postingJurnal`.
  * Prefix & padding mengikuti pengaturan pembukuan saat ini.
  */
