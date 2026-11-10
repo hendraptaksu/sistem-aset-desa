@@ -25,7 +25,7 @@ import {
   type PinjamanAngsuranInput,
 } from '../src/db/pinjaman.js';
 import { postingJurnal } from '../src/db/posting.js';
-import { getJurnalDetail } from '../src/db/repository.js';
+import { getJurnalDetail, listAuditLog } from '../src/db/repository.js';
 import {
   kemampuanKoreksiJurnal,
   PESAN_REVERSAL_PINJAMAN,
@@ -331,6 +331,14 @@ function jurnalBayar(
   expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
 }
 
+function jumlahBayar(db: Database.Database): number {
+  return (
+    db.prepare('SELECT COUNT(*) AS n FROM pinjaman_bayar').get() as {
+      n: number;
+    }
+  ).n;
+}
+
 describe('DB-16b — pembayaran link-only', () => {
   it('menautkan jurnal nyata dan menurunkan outstanding dari debit 2050', () => {
     const db = dbKas();
@@ -506,6 +514,136 @@ describe('DB-16b — pembayaran link-only', () => {
         n: number;
       }).n,
     ).toBe(0);
+  });
+
+  it('menulis tepat satu audit PINJAMAN-BAYAR-LINK dengan link dan rincian jurnal', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const a = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+    jurnalBayar(db, 'j-bayar-audit', { denda: RP(25_000) });
+
+    const hasil = tautkanPembayaran(db, {
+      id: 'pby-audit',
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      jurnal_id: 'j-bayar-audit',
+      tanggal: '2026-03-01',
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+    const audit = listAuditLog(db, { aksi: 'PINJAMAN-BAYAR-LINK pjr-1' });
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      aksi: 'PINJAMAN-BAYAR-LINK pjr-1',
+      ref_type: 'pinjaman_bayar',
+      ref_id: 'pby-audit',
+    });
+    expect(JSON.parse(audit[0]!.data_baru_json)).toEqual({
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      jurnal_id: 'j-bayar-audit',
+      tanggal: '2026-03-01',
+      pokok: RP(1_000_000),
+      bunga: RP(100_000),
+      denda: RP(25_000),
+    });
+  });
+
+  it('menolak tanggal berbeda dari jurnal tanpa menambah pembayaran/audit', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const a = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+    jurnalBayar(db, 'j-bayar-tanggal', { tanggal: '2026-03-01' });
+    const sebelumBayar = jumlahBayar(db);
+    const sebelumAudit = listAuditLog(db, {
+      aksi: 'PINJAMAN-BAYAR-LINK pjr-1',
+    }).length;
+
+    const hasil = tautkanPembayaran(db, {
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      jurnal_id: 'j-bayar-tanggal',
+      tanggal: '2026-03-02',
+    });
+    expect(hasil.tersimpan).toBe(false);
+    expect(hasil.errors.join(' ')).toMatch(/berbeda dari tanggal jurnal/i);
+    expect(hasil.errors.join(' ')).toContain('2026-03-02');
+    expect(hasil.errors.join(' ')).toContain('2026-03-01');
+    expect(jumlahBayar(db)).toBe(sebelumBayar);
+    expect(
+      listAuditLog(db, { aksi: 'PINJAMAN-BAYAR-LINK pjr-1' }),
+    ).toHaveLength(sebelumAudit);
+  });
+
+  it('menerima tanggal yang sama dengan tanggal jurnal', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const a = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+    jurnalBayar(db, 'j-bayar-sama', { tanggal: '2026-03-01' });
+
+    const hasil = tautkanPembayaran(db, {
+      id: 'pby-sama',
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      jurnal_id: 'j-bayar-sama',
+      tanggal: '2026-03-01',
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+    expect(hasil.pembayaran?.tanggal).toBe('2026-03-01');
+    expect(
+      listAuditLog(db, { aksi: 'PINJAMAN-BAYAR-LINK pjr-1' }),
+    ).toHaveLength(1);
+  });
+
+  it('menolak pembayaran sebelum tanggal mulai pinjaman dan menyebut tanggal mulai', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const a = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+    jurnalBayar(db, 'j-bayar-lampau', { tanggal: '2026-01-01' });
+
+    const hasil = tautkanPembayaran(db, {
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      jurnal_id: 'j-bayar-lampau',
+    });
+    expect(hasil.tersimpan).toBe(false);
+    expect(hasil.errors.join(' ')).toMatch(
+      /sebelum tanggal mulai pinjaman 2026-01-02/i,
+    );
+    expect(jumlahBayar(db)).toBe(0);
+    expect(
+      listAuditLog(db, { aksi: 'PINJAMAN-BAYAR-LINK pjr-1' }),
+    ).toHaveLength(0);
+  });
+
+  it('membatalkan insert bila audit gagal ditulis', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const a = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+    jurnalBayar(db, 'j-bayar-audit-gagal');
+    db.exec(`CREATE TRIGGER gagal_audit_pinjaman
+      BEFORE INSERT ON audit_log
+      BEGIN
+        SELECT RAISE(ABORT, 'simulasi audit gagal');
+      END`);
+
+    const hasil = tautkanPembayaran(db, {
+      id: 'pby-audit-gagal',
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      jurnal_id: 'j-bayar-audit-gagal',
+    });
+    expect(hasil.tersimpan).toBe(false);
+    expect(hasil.errors.join(' ')).toMatch(/simulasi audit gagal/i);
+    expect(jumlahBayar(db)).toBe(0);
+    expect(
+      listAuditLog(db, { aksi: 'PINJAMAN-BAYAR-LINK pjr-1' }),
+    ).toHaveLength(0);
   });
 });
 

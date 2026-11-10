@@ -334,6 +334,29 @@ describe('DB-16d — jurnal pembayaran angsuran', () => {
       catatan: 'Realisasi angsuran',
     });
   });
+
+  it('tetap menulis tepat satu audit PINJAMAN-BAYAR tanpa aksi LINK', () => {
+    const db = dbKas();
+    const { pinjamanId, angsuran } = pinjamanUji(db);
+    const hasil = bayarAngsuranPinjaman(db, inputBayar(pinjamanId, angsuran[0].id));
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+    const audit = db
+      .prepare(
+        `SELECT aksi, ref_type, ref_id
+           FROM audit_log
+          WHERE aksi LIKE 'PINJAMAN-BAYAR%'
+          ORDER BY id`,
+      )
+      .all() as { aksi: string; ref_type: string; ref_id: string }[];
+    expect(audit).toEqual([
+      {
+        aksi: `PINJAMAN-BAYAR ${pinjamanId}`,
+        ref_type: 'pinjaman',
+        ref_id: pinjamanId,
+      },
+    ]);
+  });
 });
 
 describe('DB-16d — selisih jadwal dan penolakan', () => {

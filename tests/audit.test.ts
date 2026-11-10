@@ -28,6 +28,8 @@ import {
   ubahPin,
 } from '../src/main/kunci.js';
 import { buatAuditLog, jsonAuditAman } from '../src/core/audit.js';
+import { AKUN_MODAL } from '../src/db/coa.js';
+import { buatPinjaman, tautkanPembayaran } from '../src/db/pinjaman.js';
 import type { AuditLog } from '../src/core/types.js';
 
 function dbKosong(): Database.Database {
@@ -444,6 +446,108 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
     } finally {
       db.close();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('T-A09 — audit tautkan pembayaran pinjaman', () => {
+  it('mencatat ref_type/ref_id pinjaman_bayar serta rincian jurnal', () => {
+    const db = dbKosong();
+    try {
+      const rp = (n: number): number => n * 100;
+      const saldo = postingJurnal(db, {
+        header: {
+          id: 'awal-t-a09',
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal uji T-A09',
+          jenis: 'SALDO_AWAL',
+        },
+        baris: [
+          { akun_kode: '1001', debit: rp(10_000_000), kredit: 0 },
+          { akun_kode: AKUN_MODAL, debit: 0, kredit: rp(10_000_000) },
+        ],
+      });
+      expect(saldo.tersimpan, saldo.errors.join(' ')).toBe(true);
+
+      const cair = postingJurnal(db, {
+        header: {
+          id: 'j-cair-t-a09',
+          tanggal: '2026-01-02',
+          keterangan: 'Pencairan uji T-A09',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '1001', debit: rp(1_000_000), kredit: 0 },
+          { akun_kode: '2050', debit: 0, kredit: rp(1_000_000) },
+        ],
+      });
+      expect(cair.tersimpan, cair.errors.join(' ')).toBe(true);
+
+      const buat = buatPinjaman(db, {
+        id: 'pjr-t-a09',
+        kreditur: 'LPD Uji',
+        akun_kas: '1001',
+        akun_bunga: '5063',
+        pokok_awal: rp(1_000_000),
+        sisa_pokok_awal: rp(1_000_000),
+        tanggal_mulai: '2026-01-02',
+        tenor_bulan: 1,
+        jurnal_pencairan_id: 'j-cair-t-a09',
+        angsuran: [
+          {
+            ke: 1,
+            jatuh_tempo: '2026-02-02',
+            pokok: rp(1_000_000),
+            bunga: 0,
+            catatan: 'Angsuran uji',
+          },
+        ],
+      });
+      expect(buat.tersimpan, buat.errors.join(' ')).toBe(true);
+
+      const bayar = postingJurnal(db, {
+        header: {
+          id: 'j-bayar-t-a09',
+          tanggal: '2026-03-01',
+          keterangan: 'Bayar uji T-A09',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '2050', debit: rp(1_000_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: rp(1_000_000) },
+        ],
+      });
+      expect(bayar.tersimpan, bayar.errors.join(' ')).toBe(true);
+
+      const hasil = tautkanPembayaran(db, {
+        id: 'pby-t-a09',
+        pinjaman_id: 'pjr-t-a09',
+        jurnal_id: 'j-bayar-t-a09',
+        tanggal: '2026-03-01',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      const audit = listAuditLog(db, {
+        ref_type: 'pinjaman_bayar',
+        ref_id: 'pby-t-a09',
+      });
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        aksi: 'PINJAMAN-BAYAR-LINK pjr-t-a09',
+        ref_type: 'pinjaman_bayar',
+        ref_id: 'pby-t-a09',
+      });
+      expect(JSON.parse(audit[0]!.data_baru_json)).toMatchObject({
+        pinjaman_id: 'pjr-t-a09',
+        angsuran_id: null,
+        jurnal_id: 'j-bayar-t-a09',
+        tanggal: '2026-03-01',
+        pokok: rp(1_000_000),
+        bunga: 0,
+        denda: 0,
+      });
+    } finally {
+      db.close();
     }
   });
 });

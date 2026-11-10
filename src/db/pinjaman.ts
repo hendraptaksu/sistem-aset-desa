@@ -1188,9 +1188,24 @@ export function tautkanPembayaran(
     );
 
   const detail = getJurnalDetail(db, jurnalId);
-  const tanggal = teks(data.tanggal) || detail?.jurnal.tanggal || '';
+  // Tanggal pembayaran selalu mengikuti jurnal yang ditautkan. Pemanggil yang
+  // mengirim tanggal berbeda ditolak agar laporan pinjaman tidak menyimpang
+  // diam-diam dari jurnalnya.
+  const tanggalJurnal = teks(detail?.jurnal.tanggal);
+  const tanggalInput = teks(data.tanggal);
+  if (tanggalInput && tanggalInput !== tanggalJurnal)
+    return gagalBayar(
+      `Tanggal pembayaran ${tanggalInput} berbeda dari tanggal jurnal ` +
+        `${jurnalId} (${tanggalJurnal}). Gunakan tanggal jurnal atau perbaiki jurnalnya.`,
+    );
+  const tanggal = tanggalJurnal;
   if (!tanggalKalenderValid(tanggal))
     return gagalBayar('Tanggal pembayaran tidak valid (YYYY-MM-DD).');
+  if (tanggal < pinjaman.tanggal_mulai)
+    return gagalBayar(
+      `Tanggal pembayaran ${tanggal} tidak boleh sebelum tanggal mulai ` +
+        `pinjaman ${pinjaman.tanggal_mulai}.`,
+    );
 
   const id = teks(data.id) || uid('pby');
   const pembayaran = {
@@ -1228,6 +1243,24 @@ export function tautkanPembayaran(
         pembayaran.catatan,
         pembayaran.created_at,
       );
+
+      // Audit wajib satu kali dan satu transaksi dengan insert di atas; bila
+      // audit gagal, tautan pembayaran ikut dibatalkan.
+      catatAudit(db, {
+        aksi: `PINJAMAN-BAYAR-LINK ${pinjamanId}`,
+        alasan: `Menautkan jurnal pembayaran ${jurnalId} ke pinjaman ${pinjamanId}.`,
+        baru: {
+          pinjaman_id: pembayaran.pinjaman_id,
+          angsuran_id: pembayaran.angsuran_id,
+          jurnal_id: pembayaran.jurnal_id,
+          tanggal: pembayaran.tanggal,
+          pokok: cekJurnal.rincian.pokok,
+          bunga: cekJurnal.rincian.bunga,
+          denda: cekJurnal.rincian.denda,
+        },
+        ref_type: 'pinjaman_bayar',
+        ref_id: pembayaran.id,
+      });
     });
     simpan();
   } catch (e) {
