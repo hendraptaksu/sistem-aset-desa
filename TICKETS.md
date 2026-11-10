@@ -1445,14 +1445,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A15 — Sinkronkan dokumentasi akuntansi
+### [x] T-A15 — Sinkronkan dokumentasi akuntansi
 
 | | |
 | --- | --- |
 | **Prioritas** | P2 |
 | **Perkiraan** | S |
 | **Depends** | T-A01–T-A11 |
-| **Status** | Belum |
+| **Status** | Selesai — commit 97ee7cc |
 
 **Masalah**
 
@@ -1499,6 +1499,42 @@ melatih pengguna baru.
 ```bash
 npm test -- tests/dokumentasi.test.ts
 ```
+
+**Catatan penyelesaian (commit 97ee7cc):**
+
+- `docs/prinsip-akuntansi.md`: status skema v2; §10 koreksi saldo awal
+  ditulis ulang mengikuti kode — tanggal boleh pindah (termasuk lebih awal),
+  batas atas memakai jurnal non-pembukaan paling awal,
+  `saldo_awal_aktif_id`/`cutover_tanggal`/`akuntansi_tanggal_mulai` ditulis
+  atomik, laporan memakai penunjuk resmi (bukan `MIN(tanggal)` `SALDO_AWAL`),
+  pengganti `UMUM` + `OPENING_REPLACEMENT` + `replaces_id`. Ditambahkan
+  larangan ganti jenis, larangan reversal/koreksi generik atas pembukaan
+  aktif/pengganti, larangan tanggal reversal/pengganti mundur (koreksi mundur
+  hanya wizard), snapshot kunci periode immutable + versi `TUTUP-ULANG`, dan
+  panjar `sumber = 'SALDO_AWAL'`. Pernyataan lama bahwa
+  `KUNCI_AKUNTANSI_TANGGAL_MULAI`/tanggal saldo awal tidak berubah dihapus.
+- `docs/skema.md`: ditegaskan baseline v2 (`SCHEMA_VERSION = 2`, 12 tabel),
+  `jurnal.peran`/`replaces_id`, `panjar.sumber`, penunjuk pembukaan di
+  `pengaturan`, serta `tutup_buku_snapshot` sebagai bukti kunci periode —
+  bukan sumber angka laporan. Rujukan audit dipindah ke §12.
+- `docs/panduan-pemeriksaan.md`: aturan tanggal koreksi generik diperbarui;
+  §14 baru memuat 8 kode temuan (`NERACA_TIDAK_SEIMBANG`,
+  `NERACA_SALDO_SELISIH`, `CUTOVER_TIDAK_KONSISTEN`, `PEMBUKAAN_AKTIF_HILANG`,
+  `LABA_RUGI_SEBELUM_CUTOVER`, `SALDO_AWAL_MEMUAT_LABA_RUGI`,
+  `SNAPSHOT_TUTUP_BERUBAH`, `PANJAR_OPENING_TIDAK_LENGKAP`) beserta arti,
+  tindakan, dan status blokir. Semua temuan memblokir kunci periode kecuali
+  `SNAPSHOT_TUTUP_BERUBAH` (kontrol non-blok); checklist pemulihan memakai
+  skema v2/12 tabel.
+- `README.md`, `docs/panduan-pengguna.md`, `docs/panduan-portable.md`:
+  penyebutan skema v1/11 tabel diganti v2/12 tabel; `npm run db:reset-dev`
+  didokumentasikan untuk DB dev; restore memvalidasi skema v2.
+- `tests/dokumentasi.test.ts`: menambah pengunci istilah/kode T-A15 (penunjuk
+  pembukaan, tanggal boleh pindah, larangan ganti jenis/reversal pembukaan,
+  snapshot non-blok, 8 kode temuan, skema v2, `db:reset-dev`) tanpa
+  melemahkan assertion lama.
+- Verifikasi: `npm test -- tests/dokumentasi.test.ts tests/skema.test.ts
+  tests/skema-baseline.test.ts` 3 file/34 test lulus; `npm test` penuh 95
+  file/1315 test lulus; `npm run typecheck` lulus.
 
 ---
 
