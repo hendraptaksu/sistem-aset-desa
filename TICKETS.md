@@ -699,14 +699,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A06 — Simpan snapshot tutup buku yang tidak berubah
+### [x] T-A06 — Simpan snapshot tutup buku yang tidak berubah
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | L |
 | **Depends** | T-A00, T-A01 |
-| **Status** | Belum |
+| **Status** | Selesai — commit a1875f4 |
 
 **Masalah**
 
@@ -779,6 +779,40 @@ pastikan:
 npm test -- tests/tutup.test.ts tests/integritas.test.ts tests/db-28-tutup-pengaturan.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit a1875f4):**
+
+- `src/db/tutupSnapshot.ts` (baru): `hitungHashJurnalTahun()` membuat hash
+  SHA-256 kanonik dari seluruh kepala + baris jurnal setahun; jurnal diurutkan
+  menurut id dan baris menurut isi/urutan deterministik, sehingga urutan query
+  atau rowid tidak mengubah hash. `hitungAngkaSnapshotTutup()` memakai
+  `labaTahun()` dan `neraca()` cutoff `YYYY-12-31` dengan daftar tutup buku;
+  `total_ekuitas`/`total_pasiva` memakai `totalEkuitas`/`totalPasiva` Neraca.
+  `bandingkanSnapshotTutup()` mengembalikan snapshot terbaru, angka+hash live,
+  daftar perbedaan Indonesia, dan `berubah`; tanpa snapshot `berubah:false`.
+  `versiSnapshotBerikutnya()` dan `buatSnapshotTutup()` menulis versi baru.
+- `src/db/tutup.ts`: preview membawa `snapshotTerbaru`, `snapshotBerubah`,
+  `perbedaanSnapshot`, dan `versiSnapshotBerikutnya`. `tutupBuku()` menulis
+  penanda + snapshot + audit dalam satu transaksi; TUTUP-ULANG menambah versi
+  baru tanpa mengubah versi lama. `validasiDenganIntegritas()` melaporkan
+  `SNAPSHOT_TUTUP_BERUBAH` sebagai temuan kontrol (tidak memblokir), sedangkan
+  temuan integritas lain tetap memblokir. Validasi gagal tidak menulis apa pun.
+- `src/db/integritas.ts`: kode `SNAPSHOT_TUTUP_BERUBAH` ditambahkan. Audit
+  membandingkan setiap tahun yang punya snapshot dan menyebut tahun, versi,
+  serta perbedaan utama; audit tetap read-only.
+- IPC/UI: `tutup:list` memakai laba snapshot (fallback live) + status perubahan,
+  `tutup:preview`/`tutup:create` membawa field snapshot. `TutupTab` menampilkan
+  versi/laba/aset/pasiva/selisih snapshot, peringatan kuning bila live berbeda,
+  dan tidak memblokir preview karena temuan snapshot; temuan kritis lain tetap
+  diblokir.
+- Test: `tests/tutup.test.ts` menguji snapshot versi 1, TUTUP-ULANG versi 2
+  tanpa menghapus versi 1, kegagalan tanpa tulisan, temuan lain tetap memblokir,
+  dan hash tidak bergantung urutan insert. `tests/integritas.test.ts` menguji
+  deteksi `SNAPSHOT_TUTUP_BERUBAH`, snapshot tetap, DB bersih tetap ok, dan audit
+  tidak menulis. `tests/db-29-sidebar-kunci-periode.test.ts` disesuaikan dengan
+  teks Kunci Periode yang baru. Tidak ada perubahan skema.
+- Verifikasi: test target 4 file / 100 test lulus; `npm test` 94 file /
+  1268 test lulus; `npm run typecheck` lulus.
 
 ---
 
