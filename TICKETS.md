@@ -1280,14 +1280,14 @@ npm run typecheck
 
 ## P2 — Hardening, desain, dan dokumentasi
 
-### [ ] T-A12 — Validasi jadwal angsuran pinjaman
+### [x] T-A12 — Validasi jadwal angsuran pinjaman
 
 | | |
 | --- | --- |
 | **Prioritas** | P2 |
 | **Perkiraan** | S |
 | **Depends** | — |
-| **Status** | Belum |
+| **Status** | Selesai — commit 79ea6fc |
 
 **Masalah**
 
@@ -1332,6 +1332,30 @@ status angsuran dan laporan pinjaman.
 npm test -- tests/pinjaman.test.ts tests/aud2-15-jadwal-otomatis.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit 79ea6fc):**
+
+- `src/db/pinjaman.ts`: `buatPinjaman()` kini menyimpan status validitas
+  `tanggal_mulai` dan menolak setiap baris dengan `jatuh_tempo` sebelum
+  tanggal mulai; pesan menyebut nomor baris, tanggal jatuh tempo, dan tanggal
+  mulai. Baris dengan `pokok === 0 && bunga === 0` ditolak dengan pesan bahwa
+  baris tanpa kewajiban bukan angsuran. Validasi urutan tanggal naik dan total
+  pokok tidak diubah. `simpanPinjamanLpd()` otomatis ikut karena tetap memanggil
+  `buatPinjaman()` sebagai validator bisnis terakhir; tidak ada aturan ganda.
+- `src/core/pinjamanAngsuran.ts`: `ringkasanAngsuran()` menghitung
+  `adaRealisasi` dari pokok/bunga/denda > 0. `dibayar` hanya `true` bila sisa
+  pokok dan bunga 0 DAN ada realisasi; `LUNAS` hanya untuk kondisi itu, jadwal
+  nol tanpa pembayaran menjadi `BELUM`, pembayaran sebagian tetap `SEBAGIAN`.
+  Arti `sisa_pokok`/`sisa_bunga` tidak berubah.
+- Test regresi: `tests/pinjaman.test.ts` (jadwal sebelum tanggal mulai ditolak
+  lewat `buatPinjaman` dan `simpanPinjamanLpd` tanpa jurnal tertinggal, baris
+  pokok/bunga nol ditolak, ringkasan jadwal nol tanpa realisasi `BELUM`/tidak
+  dibayar, pelunasan dengan realisasi tetap `LUNAS`, pembayaran sebagian tetap
+  `SEBAGIAN`) dan `tests/aud2-15-jadwal-otomatis.test.ts` (jadwal otomatis
+  normal tanpa baris nol/tanggal mundur diterima `buatPinjaman`).
+- Verifikasi: `npm test -- tests/pinjaman.test.ts
+  tests/aud2-15-jadwal-otomatis.test.ts` 2 file / 33 test lulus; `npm test`
+  penuh dua kali 94 file / 1305 test lulus; `npm run typecheck` lulus.
 
 ---
 
