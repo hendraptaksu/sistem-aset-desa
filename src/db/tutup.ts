@@ -29,7 +29,6 @@ import {
 import { listBarisJurnal } from './laporan.js';
 import { getCutoverTanggal } from './pembukaan.js';
 import {
-  getPengaturanPembukuan,
   insertAuditLog,
   insertTutupBuku,
   listAkun,
@@ -151,10 +150,7 @@ function catatanTahunPertama(
 ): string | undefined {
   if (!Number.isInteger(tahun)) return undefined;
   return (
-    catatanTahunPertamaParsial(
-      getPengaturanPembukuan(db).tanggalMulaiPembukuan,
-      tahun,
-    ) ?? undefined
+    catatanTahunPertamaParsial(getCutoverTanggal(db), tahun) ?? undefined
   );
 }
 

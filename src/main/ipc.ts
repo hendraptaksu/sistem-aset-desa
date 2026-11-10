@@ -1452,13 +1452,12 @@ export function registerIpc(deps: IpcDeps): void {
     // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
     const baris = listBarisJurnal(deps.db());
     const daftarAkun = listAkun(deps.db());
-    const tanggalMulai = getPengaturanPembukuan(deps.db()).tanggalMulaiPembukuan;
     const cutover = getCutoverTanggal(deps.db());
     return ok(
       listTutupBuku(deps.db()).map((t) => {
         const tahun = Number(t.tahun);
         const catatanTahunPertama =
-          catatanTahunPertamaParsial(tanggalMulai, tahun) ?? undefined;
+          catatanTahunPertamaParsial(cutover, tahun) ?? undefined;
         return {
           ...t,
           laba: labaTahunJurnal(baris, tahun, daftarAkun, cutover),

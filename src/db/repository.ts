@@ -1244,9 +1244,35 @@ export const KUNCI_AKUNTANSI_TANGGAL_MULAI = 'akuntansi_tanggal_mulai';
 export const KUNCI_SALDO_AWAL_AKTIF_ID = 'saldo_awal_aktif_id';
 /** T-A00: tanggal cut-over pembukuan efektif (sumber resmi laporan). */
 export const KUNCI_CUTOVER_TANGGAL = 'cutover_tanggal';
+/** T-A01: perubahan manual tanggal cut-over saat pembukaan aktif. */
+export const PESAN_TANGGAL_CUTOVER_DIKUNCI =
+  'Tanggal mulai/cut-over pembukuan tidak boleh diubah manual saat saldo awal aktif sudah ada. Gunakan Wizard Koreksi Saldo Awal untuk memindahkan tanggal mulai.';
 export const KUNCI_AKUNTANSI_AWAL_TAHUN = 'akuntansi_awal_tahun_buku';
 export const KUNCI_AKUNTANSI_PREFIX_BUKTI = 'akuntansi_prefix_bukti';
 export const KUNCI_AKUNTANSI_PADDING_BUKTI = 'akuntansi_padding_bukti';
+
+/**
+ * Tanggal cut-over resmi untuk pembaca pengaturan. Sumber utamanya
+ * `cutover_tanggal`; kunci lama `akuntansi_tanggal_mulai` hanya fallback data
+ * lama. Nilai tidak valid diabaikan agar posting/laporan tidak memakai tanggal
+ * rusak.
+ */
+function tanggalCutoverDariPengaturan(db: Database.Database): string {
+  const primer = String(getPengaturan(db, KUNCI_CUTOVER_TANGGAL) ?? '').trim();
+  if (primer && tanggalKalenderValid(primer)) return primer;
+  return String(getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI) ?? '').trim();
+}
+
+/** Tanggal jurnal pembukaan aktif; null bila belum ada/pointer tidak sah. */
+function tanggalPembukaanAktif(db: Database.Database): string | null {
+  const id = String(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID) ?? '').trim();
+  if (!id) return null;
+  const row = db.prepare('SELECT tanggal FROM jurnal WHERE id = ?').get(id) as
+    | { tanggal: string }
+    | undefined;
+  const tanggal = String(row?.tanggal ?? '').trim();
+  return tanggal && tanggalKalenderValid(tanggal) ? tanggal : null;
+}
 
 /**
  * Baca pengaturan pembukuan lengkap. DB kosong / field belum pernah disimpan
@@ -1260,8 +1286,7 @@ export function getPengaturanPembukuan(
       getPengaturan(db, KUNCI_AKUNTANSI_NAMA_ENTITAS) ??
       DEFAULT_PENGATURAN.namaEntitas,
     kopTambahan: getPengaturan(db, KUNCI_AKUNTANSI_KOP_TAMBAHAN) ?? '',
-    tanggalMulaiPembukuan:
-      getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI) ?? '',
+    tanggalMulaiPembukuan: tanggalCutoverDariPengaturan(db),
     awalTahunBuku:
       getPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN) ??
       DEFAULT_PENGATURAN.awalTahunBuku,
@@ -1317,6 +1342,17 @@ export function simpanPengaturanPembukuan(
 
   const lama = getPengaturanPembukuan(db);
   const simpan = db.transaction(() => {
+    // T-A01: setelah pembukaan aktif ada, tanggal mulai/cut-over hanya boleh
+    // dipindahkan lewat Wizard Koreksi Saldo Awal. Simpan field lain tetap
+    // diizinkan selama tanggal yang dikirim sama dengan tanggal pembukaan.
+    const pembukaanAktif = tanggalPembukaanAktif(db);
+    if (
+      pembukaanAktif &&
+      bersih.tanggalMulaiPembukuan !== pembukaanAktif
+    ) {
+      throw new Error(PESAN_TANGGAL_CUTOVER_DIKUNCI);
+    }
+
     // AKT-03: setting tidak boleh bertentangan dengan jurnal yang sudah ada.
     // Batas bawah setelah jurnal paling awal akan membuat jurnal lama tidak
     // mungkin diposting ulang; mengosongkan nilai lama juga butuh konfirmasi.
@@ -1347,6 +1383,14 @@ export function simpanPengaturanPembukuan(
     setPengaturan(db, KUNCI_AKUNTANSI_NAMA_ENTITAS, bersih.namaEntitas);
     setPengaturan(db, KUNCI_AKUNTANSI_KOP_TAMBAHAN, bersih.kopTambahan);
     setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, bersih.tanggalMulaiPembukuan);
+    // T-A01: `cutover_tanggal` adalah sumber resmi laporan. Saat belum ada
+    // pembukaan, simpan tanggal yang dipilih operator; saat pembukaan aktif
+    // ada, nilainya wajib sama dengan tanggal pembukaan (dijaga di atas).
+    setPengaturan(
+      db,
+      KUNCI_CUTOVER_TANGGAL,
+      pembukaanAktif ?? bersih.tanggalMulaiPembukuan,
+    );
     setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, String(bersih.awalTahunBuku));
     setPengaturan(db, KUNCI_AKUNTANSI_PREFIX_BUKTI, bersih.prefixNomorBukti);
     setPengaturan(db, KUNCI_AKUNTANSI_PADDING_BUKTI, String(bersih.paddingNomorBukti));

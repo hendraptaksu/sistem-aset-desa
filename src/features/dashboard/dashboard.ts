@@ -302,9 +302,13 @@ export function buildDashboardJurnal(
     coa,
     opsi.cutoverTanggal,
   );
+  const tanggalTahunPertama =
+    String(opsi.cutoverTanggal ?? '').trim() || opsi.tanggalMulaiPembukuan;
   const catatanTahunPertama =
-    catatanTahunPertamaParsial(opsi.tanggalMulaiPembukuan, rentang.tahunBuku) ??
-    undefined;
+    catatanTahunPertamaParsial(
+      tanggalTahunPertama,
+      rentang.tahunBuku,
+    ) ?? undefined;
   const labaRugiBerjalan: DashboardLabaRugi = {
     ...rentang,
     totalPendapatan: lr.totalPendapatan,

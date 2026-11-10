@@ -5,7 +5,6 @@
 import type Database from 'better-sqlite3';
 import {
   getJurnalDetail,
-  getPengaturanPembukuan,
   listAkun,
   listJurnalLengkap,
   listTutupBuku,
@@ -267,7 +266,7 @@ function tahunPertamaDalamRentang(
   mulai?: string,
   sampai?: string,
 ): number | null {
-  const tanggalMulai = getPengaturanPembukuan(db).tanggalMulaiPembukuan;
+  const tanggalMulai = getCutoverTanggal(db);
   if (!tanggalMulai) return null;
   const tahun = Number(tanggalMulai.slice(0, 4));
   if (!Number.isInteger(tahun)) return null;
@@ -291,7 +290,7 @@ function denganCatatanTahunPertama<T extends { catatanTahunPertama?: string }>(
 ): T {
   if (tahun === null) return hasil;
   const catatan = catatanTahunPertamaParsial(
-    getPengaturanPembukuan(db).tanggalMulaiPembukuan,
+    getCutoverTanggal(db),
     tahun,
   );
   return catatan ? { ...hasil, catatanTahunPertama: catatan } : hasil;
@@ -340,10 +339,7 @@ export function laporanNeraca(
   return denganCatatanTahunPertama(
     db,
     hasil,
-    catatanTahunPertamaParsial(
-      getPengaturanPembukuan(db).tanggalMulaiPembukuan,
-      tahun,
-    )
+    catatanTahunPertamaParsial(getCutoverTanggal(db), tahun)
       ? tahun
       : null,
   );
