@@ -107,6 +107,93 @@ export type RencanaReversal = {
   input?: JurnalInput;
 };
 
+/** T-A04: pesan penolakan bila pengganti memakai akun nonaktif pada baris berubah. */
+export const PESAN_AKUN_NONAKTIF_PENGGANTI = (kode: string): string =>
+  `Jurnal pengganti memakai akun nonaktif ${kode} pada baris yang berubah atau baris baru. ` +
+  'Baris berubah wajib memakai akun aktif — ganti ke akun aktif sebelum menyimpan koreksi.';
+
+type BarisRingkas = {
+  akun_kode: string;
+  debit: number;
+  kredit: number;
+};
+
+const kunciBaris = (b: BarisRingkas): string =>
+  `${String(b.akun_kode).trim()}\u0000${b.debit}\u0000${b.kredit}`;
+
+function multisetBaris(baris: readonly BarisRingkas[]): Map<string, number> {
+  const hasil = new Map<string, number>();
+  for (const b of baris) {
+    const kunci = kunciBaris(b);
+    hasil.set(kunci, (hasil.get(kunci) ?? 0) + 1);
+  }
+  return hasil;
+}
+
+/** Apakah dua daftar baris sama persis sebagai multiset (urutan tidak penting). */
+export function barisMultisetSama(
+  a: readonly BarisRingkas[],
+  b: readonly BarisRingkas[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const sisa = multisetBaris(a);
+  for (const item of b) {
+    const kunci = kunciBaris(item);
+    const jumlah = sisa.get(kunci) ?? 0;
+    if (jumlah <= 0) return false;
+    sisa.set(kunci, jumlah - 1);
+  }
+  return true;
+}
+
+/**
+ * T-A04: jurnal balik harus benar-benar cermin jurnal asli — jumlah baris sama,
+ * akun & nominal sama, sisi debit/kredit tertukar. Hanya bila cermin, akun
+ * nonaktif jurnal asli boleh dipakai untuk jurnal balik.
+ */
+export function barisCerminReversal(
+  asli: readonly BarisRingkas[],
+  balik: readonly BarisRingkas[],
+): boolean {
+  if (asli.length !== balik.length) return false;
+  return barisMultisetSama(
+    asli.map((b) => ({
+      akun_kode: b.akun_kode,
+      debit: b.kredit,
+      kredit: b.debit,
+    })),
+    balik,
+  );
+}
+
+/**
+ * T-A04: akun nonaktif pada jurnal pengganti hanya boleh dipakai untuk baris
+ * yang persis sama dengan baris asli (akun, sisi, nominal). Baris baru atau
+ * baris yang nominal/sisinya berubah wajib memakai akun aktif. Perbandingan
+ * memakai multiset agar urutan baris tidak penting, tetapi jumlah baris yang
+ * sama juga harus tersedia (tidak boleh memakai satu baris asli dua kali).
+ */
+export function barisNonaktifPenggantiSah(
+  asli: readonly BarisRingkas[],
+  pengganti: readonly BarisRingkas[],
+  akunNonaktif: ReadonlySet<string>,
+): { boleh: boolean; akunBermasalah: string[] } {
+  const sisaAsli = multisetBaris(asli);
+  const bermasalah: string[] = [];
+  for (const b of pengganti) {
+    const kode = String(b.akun_kode).trim();
+    if (!akunNonaktif.has(kode)) continue;
+    const kunci = kunciBaris(b);
+    const jumlah = sisaAsli.get(kunci) ?? 0;
+    if (jumlah <= 0) bermasalah.push(kode);
+    else sisaAsli.set(kunci, jumlah - 1);
+  }
+  return {
+    boleh: bermasalah.length === 0,
+    akunBermasalah: [...new Set(bermasalah)],
+  };
+}
+
 /** Pesan standar agar UI & test memakai bahasa yang sama. */
 export const PESAN_REVERSAL = {
   tidakDitemukan: 'Jurnal yang mau dikoreksi tidak ditemukan.',

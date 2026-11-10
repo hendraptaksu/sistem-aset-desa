@@ -12,7 +12,10 @@ import { randomUUID } from 'node:crypto';
 import { kodeKasDariDaftarAkun } from './coa.js';
 import { buatAuditLog } from '../core/audit.js';
 import {
+  barisCerminReversal,
+  barisNonaktifPenggantiSah,
   jenisPenggantiSah,
+  PESAN_AKUN_NONAKTIF_PENGGANTI,
   PESAN_REVERSAL,
   PESAN_REVERSAL_PEMBUKAAN_AKTIF,
   PESAN_REVERSAL_SALDO_AWAL,
@@ -148,6 +151,30 @@ function rencanaUntuk(
 const gabungUnik = (a: string[], b: string[]): string[] => [...new Set([...a, ...b])];
 
 /**
+ * T-A04: set akun yang boleh nonaktif untuk jurnal balik. Hanya diisi bila
+ * baris rencana benar-benar cermin jurnal asli; bila tidak, `undefined` membuat
+ * validator menolak akun nonaktif seperti jalur biasa.
+ */
+function akunNonaktifBalik(
+  barisAsli: readonly { akun_kode: string; debit: number; kredit: number }[],
+  barisBalik: readonly { akun_kode: string; debit: number; kredit: number }[],
+): ReadonlySet<string> | undefined {
+  if (!barisCerminReversal(barisAsli, barisBalik)) return undefined;
+  return new Set(barisAsli.map((b) => b.akun_kode));
+}
+
+/** Kode akun nonaktif yang dipakai baris tertentu menurut konteks DB. */
+function kodeAkunNonaktif(
+  akun: readonly { kode: string; aktif: boolean }[],
+  baris: readonly { akun_kode: string }[],
+): ReadonlySet<string> {
+  const nonaktif = new Set(akun.filter((a) => !a.aktif).map((a) => a.kode));
+  return new Set(
+    baris.map((b) => String(b.akun_kode).trim()).filter((kode) => nonaktif.has(kode)),
+  );
+}
+
+/**
  * Buat jurnal balik untuk `idAsli`.
  *
  * Jurnal baru menukar debit/kredit, memakai `grup_id` yang sama,
@@ -165,6 +192,9 @@ export function reverseJurnal(
   if (!rencana.boleh || !rencana.input) return hasilGagal(rencana.errors);
 
   const detail = getJurnalDetail(db, id)!;
+  // T-A04: akun nonaktif hanya boleh dipakai karena histori. Pastikan rencana
+  // benar-benar cermin jurnal asli sebelum memberi pengecualian.
+  const akunNonaktifDiizinkan = akunNonaktifBalik(detail.baris, rencana.input.baris);
   const audit = buatAuditLog(
     `REVERSAL ${id}`,
     alasan.trim(),
@@ -185,6 +215,7 @@ export function reverseJurnal(
       alasanPeringatan: alasan.trim(),
       wajibAlasanPeringatan: true,
       koreksiSaldoAwal: anggotaSaldoAwal(db, detail.jurnal),
+      akunNonaktifDiizinkan,
       audit: [audit],
     });
   });
@@ -278,13 +309,34 @@ export function koreksiDanIsiUlang(
   const kasBalik = new Set(kodeKasDariDaftarAkun(ctxBalik.akun ?? []));
   const kasBaru = new Set(kodeKasDariDaftarAkun(ctxBaru.akun ?? []));
 
+  // T-A04: jurnal balik boleh memakai akun nonaktif hanya bila cermin persis.
+  // Pengganti lebih ketat: akun nonaktif hanya untuk baris yang persis sama
+  // dengan baris asli (akun, sisi, nominal); baris berubah/baru ditolak.
+  const akunNonaktifBalikSet = akunNonaktifBalik(detail.baris, rencana.input.baris);
+  const akunNonaktifBaruSet = kodeAkunNonaktif(ctxBaru.akun ?? [], baru.baris);
+  const cekPengganti = barisNonaktifPenggantiSah(
+    detail.baris,
+    baru.baris,
+    akunNonaktifBaruSet,
+  );
+  if (!cekPengganti.boleh)
+    return hasilGagal(cekPengganti.akunBermasalah.map(PESAN_AKUN_NONAKTIF_PENGGANTI));
+
   const saldoBalik: Record<string, number> = { ...(ctxBalik.saldoKas ?? {}) };
   if (tanggalBaru <= tanggalBalik) tambahDeltaKas(saldoBalik, baru.baris, kasBaru);
-  const validasiBalik = validasiJurnal(rencana.input, { ...ctxBalik, saldoKas: saldoBalik });
+  const validasiBalik = validasiJurnal(rencana.input, {
+    ...ctxBalik,
+    saldoKas: saldoBalik,
+    akunNonaktifDiizinkan: akunNonaktifBalikSet,
+  });
 
   const saldoBaru: Record<string, number> = { ...(ctxBaru.saldoKas ?? {}) };
   if (tanggalBalik <= tanggalBaru) tambahDeltaKas(saldoBaru, rencana.input.baris, kasBalik);
-  const validasiBaru = validasiJurnal(baru, { ...ctxBaru, saldoKas: saldoBaru });
+  const validasiBaru = validasiJurnal(baru, {
+    ...ctxBaru,
+    saldoKas: saldoBaru,
+    akunNonaktifDiizinkan: akunNonaktifBaruSet,
+  });
 
   const errors = [
     ...validasiBalik.errors.map((e) => `Jurnal balik: ${e}`),
@@ -327,11 +379,25 @@ export function koreksiDanIsiUlang(
       let reversal: Jurnal;
       let jurnalBaru: Jurnal;
       if (penggantiDulu) {
-        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris);
-        reversal = insertJurnalTervalidasi(db, rencana.input!.header, rencana.input!.baris);
+        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris, {
+          akunNonaktifDiizinkan: akunNonaktifBaruSet,
+        });
+        reversal = insertJurnalTervalidasi(
+          db,
+          rencana.input!.header,
+          rencana.input!.baris,
+          { akunNonaktifDiizinkan: akunNonaktifBalikSet },
+        );
       } else {
-        reversal = insertJurnalTervalidasi(db, rencana.input!.header, rencana.input!.baris);
-        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris);
+        reversal = insertJurnalTervalidasi(
+          db,
+          rencana.input!.header,
+          rencana.input!.baris,
+          { akunNonaktifDiizinkan: akunNonaktifBalikSet },
+        );
+        jurnalBaru = insertJurnalTervalidasi(db, headerBaru, baru.baris, {
+          akunNonaktifDiizinkan: akunNonaktifBaruSet,
+        });
       }
       insertAuditLog(db, auditBalik);
       insertAuditLog(db, auditBaru);

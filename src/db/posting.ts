@@ -52,6 +52,12 @@ export type OpsiPosting = {
    * tanggal mesin.
    */
   sekarang?: string;
+  /**
+   * T-A04: pengecualian sempit untuk koreksi histori. Hanya reversal/koreksi
+   * yang sudah memverifikasi cermin/persis jurnal asli yang boleh mengisi ini.
+   * Jalur input manual tidak pernah mengirim field ini.
+   */
+  akunNonaktifDiizinkan?: ReadonlySet<string>;
 };
 
 export const PESAN_WAJIB_SALDO_AWAL =
@@ -193,11 +199,15 @@ export function validasiJurnalDb(
   db: Database.Database,
   input: JurnalInput | null | undefined,
   /** AKT-14: override tanggal acuan agar test tidak bergantung tanggal mesin. */
-  opsi: Pick<OpsiPosting, 'sekarang' | 'koreksiSaldoAwal'> = {},
+  opsi: Pick<
+    OpsiPosting,
+    'sekarang' | 'koreksiSaldoAwal' | 'akunNonaktifDiizinkan'
+  > = {},
 ): HasilValidasiJurnal {
   return validasiJurnal(input, {
     ...buatKonteksPosting(db, input?.header, opsi.sekarang),
     koreksiSaldoAwal: opsi.koreksiSaldoAwal === true,
+    akunNonaktifDiizinkan: opsi.akunNonaktifDiizinkan,
   });
 }
 
@@ -242,6 +252,7 @@ function postingJurnalInti(
   const hasil = validasiJurnalDb(db, input, {
     sekarang: opsi.sekarang,
     koreksiSaldoAwal: opsi.koreksiSaldoAwal === true,
+    akunNonaktifDiizinkan: opsi.akunNonaktifDiizinkan,
   });
   if (hasil.errors.length > 0) return { ...hasil, tersimpan: false };
   if (!input || !input.header || !Array.isArray(input.baris)) {
@@ -278,7 +289,9 @@ function postingJurnalInti(
       // AKT-01/AKT-02: cek dan tulis berada di transaksi yang sama agar dua
       // posting pertama tidak bisa sama-sama lolos. Saldo awal dikecualikan.
       pastikanWajibSaldoAwal(db, opsi, input.header.jenis);
-      const jurnal = insertJurnalTervalidasi(db, input.header, input.baris);
+      const jurnal = insertJurnalTervalidasi(db, input.header, input.baris, {
+        akunNonaktifDiizinkan: opsi.akunNonaktifDiizinkan,
+      });
       // P0-9: setiap jurnal baru otomatis diaudit. Reversal/koreksi sudah
       // mengirim `opsi.audit` sendiri, jadi tidak boleh dobel.
       const audit = opsi.audit === undefined ? [buatAudit(jurnal, hasil)] : opsi.audit;

@@ -500,6 +500,7 @@ export function insertJurnalTervalidasi(
   db: Database.Database,
   header: JurnalHeaderInput,
   baris: JurnalBarisInput[],
+  opsi: { akunNonaktifDiizinkan?: ReadonlySet<string> } = {},
 ): Jurnal {
   const id = String(header.id ?? '').trim();
   if (!id) throw new Error('ID jurnal wajib diisi.');
@@ -595,9 +596,18 @@ export function insertJurnalTervalidasi(
     const akunDb = cekAkun.get(akunKode) as { kode: string; aktif: number } | undefined;
     if (!akunKode || !akunDb)
       throw new Error(`Baris ${i + 1}: akun ${akunKode || '(kosong)'} tidak dikenal.`);
-    if (Number(akunDb.aktif) !== 1)
+    // T-A04: akun nonaktif hanya boleh dipakai bila kodenya eksplisit diizinkan
+    // oleh pemanggil internal yang sudah memverifikasi baris historis. Akun
+    // legacy tetap ditolak karena pengecekan di bawah memperlakukannya aktif.
+    const diizinkanNonaktif =
+      Number(akunDb.aktif) !== 1 && opsi.akunNonaktifDiizinkan?.has(akunKode) === true;
+    if (Number(akunDb.aktif) !== 1 && !diizinkanNonaktif)
       throw new Error(`Baris ${i + 1}: akun ${akunKode} sudah tidak aktif.`);
-    if (!akunBolehDiposting(akunKode, Number(akunDb.aktif) === 1, { dikenal: true }))
+    if (
+      !akunBolehDiposting(akunKode, Number(akunDb.aktif) === 1 || diizinkanNonaktif, {
+        dikenal: true,
+      })
+    )
       throw new Error(`Baris ${i + 1}: akun ${akunKode} ${PESAN_AKUN_LEGACY}`);
     if (!Number.isSafeInteger(b.debit) || b.debit < 0)
       throw new Error(`Baris ${i + 1}: debit harus bilangan bulat ≥ 0.`);

@@ -375,6 +375,57 @@ describe('DB-15 — nonaktifkan akun bawaan tanpa menghapus histori', () => {
     }
   });
 
+  it('T-A04: 4001 nonaktif lewat API tetap menyimpan histori dan memblokir input baru', () => {
+    const db = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-4001',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0400',
+          keterangan: 'Pendapatan historis sebelum nonaktif',
+          jenis: 'UMUM',
+        },
+        [
+          { akun_kode: '1001', debit: RP(75_000), kredit: 0 },
+          { akun_kode: '4001', debit: 0, kredit: RP(75_000) },
+        ],
+      );
+
+      const off = setAkunAktif(db, '4001', false, 'Digantikan akun pendapatan baru');
+      expect(off.aktif).toBe(false);
+      expect(listAkun(db, { aktif: true }).some((a) => a.kode === '4001')).toBe(false);
+      expect(listAkun(db, { aktif: false }).some((a) => a.kode === '4001')).toBe(true);
+
+      // Histori tetap dapat dibaca dan masuk laporan.
+      expect(listJurnalLengkap(db, { akun_kode: '4001' }).some((j) => j.id === 'j-4001')).toBe(
+        true,
+      );
+      const lr = laporanLabaRugi(db, { mulai: '2026-01-01', sampai: '2026-12-31' });
+      expect(lr.pendapatan.find((r) => r.kode === '4001')?.nominal).toBe(RP(75_000));
+
+      // Input manual baru ke akun nonaktif tetap ditolak.
+      const input = {
+        header: {
+          id: 'j-4001-baru',
+          tanggal: '2026-02-01',
+          keterangan: 'Coba input baru ke akun nonaktif',
+          jenis: 'UMUM' as const,
+        },
+        baris: [
+          { akun_kode: '1001', debit: RP(10_000), kredit: 0 },
+          { akun_kode: '4001', debit: 0, kredit: RP(10_000) },
+        ],
+      };
+      expect(validasiJurnalDb(db, input).errors.join(' ')).toMatch(/tidak aktif/i);
+      expect(postingJurnal(db, input).tersimpan).toBe(false);
+      expect(listJurnalLengkap(db).some((j) => j.id === 'j-4001-baru')).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
   it('menolak nonaktif akun sistem 3000/1040/1050/2050/2060/5063/5050 dengan pesan Indonesia', () => {
     const db = freshDb();
     try {

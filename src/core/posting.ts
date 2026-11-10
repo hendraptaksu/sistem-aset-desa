@@ -86,6 +86,13 @@ export type PostingContext = {
    * dan test murni). `buatKonteksPosting` mengisinya dengan `tanggalLokal()`.
    */
   sekarang?: string;
+  /**
+   * T-A04: pengecualian sempit untuk koreksi histori. Akun yang kodenya ada di
+   * set ini boleh dipakai meski `aktif = 0`, tetapi aturan legacy/tipe tetap
+   * berlaku. Jangan diisi oleh jalur input manual; hanya reversal/koreksi yang
+   * sudah memverifikasi barisnya benar-benar cermin/persis jurnal asli.
+   */
+  akunNonaktifDiizinkan?: ReadonlySet<string>;
 };
 
 /** AKT-14: pesan penolakan tanggal jurnal setelah hari ini. */
@@ -256,11 +263,22 @@ export function validasiJurnal(
     const item = b !== null && typeof b === 'object' ? b : ({} as JurnalBarisInput);
     const kode = String(item.akun_kode ?? '').trim();
     const akunBaris = petaAkun.get(kode);
+    // T-A04: akun nonaktif hanya boleh dipakai bila kodenya secara eksplisit
+    // diizinkan (reversal/koreksi baris historis yang persis sama). Untuk
+    // pengecekan legacy, akun yang diizinkan diperlakukan seperti aktif agar
+    // 3001/3002 tetap ditolak.
+    const diizinkanNonaktif =
+      akunBaris !== undefined &&
+      !akunBaris.aktif &&
+      konteks.akunNonaktifDiizinkan?.has(kode) === true;
 
     if (!kode) errors.push(`Baris ${no}: akun belum dipilih.`);
     else if (!akunBaris) errors.push(`Baris ${no}: akun ${kode} tidak dikenal.`);
-    else if (!akunBaris.aktif) errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} sudah tidak aktif.`);
-    else if (!akunBolehDiposting(kode, akunBaris.aktif, { dikenal: true }))
+    else if (!akunBaris.aktif && !diizinkanNonaktif)
+      errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} sudah tidak aktif.`);
+    else if (
+      !akunBolehDiposting(kode, akunBaris.aktif || diizinkanNonaktif, { dikenal: true })
+    )
       errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} ${PESAN_AKUN_LEGACY}`);
 
     if (akunBaris) {

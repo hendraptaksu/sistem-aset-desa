@@ -15,6 +15,7 @@ import {
   listAuditLog,
   listJurnal,
   listJurnalLengkap,
+  setAkunAktif,
 } from '../src/db/repository.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
@@ -39,6 +40,7 @@ import {
 } from '../src/db/saldoAwal.js';
 import {
   PESAN_REVERSAL,
+  barisCerminReversal,
   jenisPenggantiSah,
   rencanaReversal,
   type RencanaReversalInput,
@@ -503,6 +505,153 @@ describe('P0-6 — reversal di database', () => {
       });
       expect(lanjut.tersimpan).toBe(true);
       expect(jumlahJurnal(db)).toBe(3);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('T-A04 — reversal & koreksi historis dengan akun nonaktif', () => {
+  function histori4001(db: ReturnType<typeof openDb>): void {
+    insertJurnalTervalidasi(
+      db,
+      {
+        id: 'j-histori-4001',
+        tanggal: '2026-01-05',
+        no_bukti: 'JU-2026-0400',
+        keterangan: 'Pendapatan historis sebelum akun dinonaktifkan',
+        jenis: 'UMUM',
+      },
+      pasangan('1001', '4001', RP(75_000)),
+    );
+  }
+
+  it('helper cermin hanya menerima baris yang benar-benar tertukar dan lengkap', () => {
+    const asli = [
+      { akun_kode: '1001', debit: RP(75_000), kredit: 0 },
+      { akun_kode: '4001', debit: 0, kredit: RP(75_000) },
+    ];
+    const cermin = [
+      { akun_kode: '1001', debit: 0, kredit: RP(75_000) },
+      { akun_kode: '4001', debit: RP(75_000), kredit: 0 },
+    ];
+    expect(barisCerminReversal(asli, cermin)).toBe(true);
+    // Urutan tidak penting selama multiset baris tetap sama.
+    expect(barisCerminReversal(asli, [...cermin].reverse())).toBe(true);
+    // Nominal berubah.
+    expect(
+      barisCerminReversal(asli, [
+        { akun_kode: '1001', debit: 0, kredit: RP(75_000) },
+        { akun_kode: '4001', debit: RP(50_000), kredit: 0 },
+      ]),
+    ).toBe(false);
+    // Sisi debit/kredit tidak tertukar.
+    expect(
+      barisCerminReversal(asli, [
+        { akun_kode: '1001', debit: RP(75_000), kredit: 0 },
+        { akun_kode: '4001', debit: 0, kredit: RP(75_000) },
+      ]),
+    ).toBe(false);
+    // Jumlah baris berbeda.
+    expect(barisCerminReversal(asli, cermin.slice(0, 1))).toBe(false);
+  });
+
+  it('reverseJurnal berhasil memakai 4001 nonaktif dan hasilnya cermin persis', () => {
+    const db = freshDb();
+    try {
+      histori4001(db);
+      const off = setAkunAktif(db, '4001', false, 'Akun lama diganti akun baru');
+      expect(off.aktif).toBe(false);
+
+      const hasil = reverseJurnal(db, 'j-histori-4001', 'Koreksi jurnal historis', {
+        id: 'j-balik-4001',
+        tanggal: '2026-02-01',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.reversal).toMatchObject({
+        id: 'j-balik-4001',
+        jenis: 'REVERSAL',
+        reversal_of: 'j-histori-4001',
+      });
+
+      const detail = getJurnalDetail(db, 'j-balik-4001');
+      expect(detail?.baris).toHaveLength(2);
+      expect(detail?.baris.find((b) => b.akun_kode === '4001')).toMatchObject({
+        debit: RP(75_000),
+        kredit: 0,
+      });
+      expect(detail?.baris.find((b) => b.akun_kode === '1001')).toMatchObject({
+        debit: 0,
+        kredit: RP(75_000),
+      });
+      expect(auditIntegritas(db).ok).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('pengganti boleh memakai akun nonaktif pada baris yang persis sama', () => {
+    const db = freshDb();
+    try {
+      histori4001(db);
+      setAkunAktif(db, '4001', false, 'Akun lama diganti akun baru');
+
+      const hasil = koreksiDanIsiUlang(
+        db,
+        'j-histori-4001',
+        'Rapikan keterangan tanpa mengubah nilai',
+        {
+          header: {
+            id: 'j-histori-4001-baru',
+            tanggal: '2026-01-05',
+            no_bukti: 'JU-2026-0401',
+            keterangan: 'Pendapatan historis (koreksi keterangan)',
+            jenis: 'UMUM',
+          },
+          baris: pasangan('1001', '4001', RP(75_000)),
+        },
+        { id: 'j-balik-4001', tanggal: '2026-02-01' },
+      );
+
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(getJurnalDetail(db, 'j-histori-4001-baru')).not.toBeNull();
+      expect(auditIntegritas(db).ok).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('pengganti dengan nominal/sisi berubah pada akun nonaktif ditolak tanpa jejak', () => {
+    const db = freshDb();
+    try {
+      histori4001(db);
+      setAkunAktif(db, '4001', false, 'Akun lama diganti akun baru');
+      const sebelumJurnal = jumlahJurnal(db);
+      const sebelumAudit = listAuditLog(db).length;
+
+      const nominalBerubah = koreksiDanIsiUlang(
+        db,
+        'j-histori-4001',
+        'Nominal historis seharusnya berbeda',
+        {
+          header: {
+            id: 'j-histori-4001-baru',
+            tanggal: '2026-01-05',
+            no_bukti: 'JU-2026-0401',
+            keterangan: 'Pendapatan historis (nominal berubah)',
+            jenis: 'UMUM',
+          },
+          baris: pasangan('1001', '4001', RP(50_000)),
+        },
+        { id: 'j-balik-4001', tanggal: '2026-02-01' },
+      );
+      expect(nominalBerubah.tersimpan).toBe(false);
+      expect(nominalBerubah.errors.join(' ')).toMatch(/akun nonaktif 4001/i);
+      expect(nominalBerubah.errors.join(' ')).toMatch(/ganti ke akun aktif/i);
+      expect(jumlahJurnal(db)).toBe(sebelumJurnal);
+      expect(listAuditLog(db)).toHaveLength(sebelumAudit);
+      expect(getJurnalDetail(db, 'j-balik-4001')).toBeNull();
+      expect(getJurnalDetail(db, 'j-histori-4001-baru')).toBeNull();
     } finally {
       db.close();
     }

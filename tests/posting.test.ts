@@ -236,6 +236,62 @@ describe('P0-4 — satu pintu posting jurnal', () => {
     }
   });
 
+  it('T-A04: konteks internal boleh melewati akun nonaktif, input manual tetap ditolak', () => {
+    const { db } = freshDb();
+    try {
+      repository.setAkunAktif(db, '4001', false, 'Uji pengecualian histori');
+      const input = {
+        header: header({ id: 'j-4001', no_bukti: 'JU-2026-0400' }),
+        baris: pasangan('1001', '4001'),
+      };
+
+      // Tanpa konteks (form/manual): tetap ditolak dengan pesan akun tidak aktif.
+      const tanpaKonteks = validasiJurnalDb(db, input);
+      expect(tanpaKonteks.boleh).toBe(false);
+      expect(tanpaKonteks.errors.join(' ')).toMatch(/akun 4001 .*sudah tidak aktif/i);
+      const postingManual = postingJurnal(db, input);
+      expect(postingManual.tersimpan).toBe(false);
+      expect(postingManual.errors.join(' ')).toMatch(/sudah tidak aktif/i);
+      expect(() => insertJurnalTervalidasi(db, input.header, input.baris)).toThrow(
+        /tidak aktif/,
+      );
+      expect(jumlahJurnal(db)).toBe(0);
+
+      // Hanya kode yang eksplisit ada di set yang boleh dipakai.
+      const izin = new Set(['4001']);
+      const denganKonteks = validasiJurnalDb(db, input, {
+        akunNonaktifDiizinkan: izin,
+      });
+      expect(denganKonteks.boleh, denganKonteks.errors.join(' ')).toBe(true);
+      expect(() =>
+        insertJurnalTervalidasi(db, input.header, input.baris, {
+          akunNonaktifDiizinkan: izin,
+        }),
+      ).not.toThrow();
+      expect(jumlahJurnal(db)).toBe(1);
+
+      // Set kosong/akun lain tidak melonggarkan apa pun.
+      expect(
+        validasiJurnalDb(db, {
+          header: header({ id: 'j-4001-lagi', no_bukti: 'JU-2026-0401' }),
+          baris: pasangan('1001', '4001'),
+        }, { akunNonaktifDiizinkan: new Set(['4005']) }).boleh,
+      ).toBe(false);
+
+      // Akun legacy tetap ditolak meski kodenya ada di set pengecualian.
+      expect(() =>
+        insertJurnalTervalidasi(
+          db,
+          header({ id: 'j-legacy', no_bukti: 'JU-2026-0402' }),
+          pasangan('1001', '3001'),
+          { akunNonaktifDiizinkan: new Set(['3001']) },
+        ),
+      ).toThrow(/tidak boleh diposting/);
+    } finally {
+      db.close();
+    }
+  });
+
   it('menolak akun legacy 3001/3002 di semua pintu, tetapi 3000 tetap boleh', () => {
     const { db } = freshDb();
     try {
