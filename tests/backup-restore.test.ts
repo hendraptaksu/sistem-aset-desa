@@ -573,7 +573,7 @@ describe('P0-8 — validasiKandidatRestore: versi skema tidak didukung ditolak',
       expect(hasil.valid).toBe(false);
       if (hasil.valid) throw new Error('backup v23 seharusnya ditolak');
       expect(hasil.error).toContain('v23');
-      expect(hasil.error).toContain('v1');
+      expect(hasil.error).toContain('v2');
 
       // restoreDbAman juga menolak sebelum DB aktif disentuh.
       const restore = restoreDbAman(aktif, {
@@ -1209,11 +1209,11 @@ describe('T3.1 — verifikasiFileBackup: backup korup tidak menggantikan backup 
       const versiSalah = join(dir, 'versi-salah.db');
       const dbVersi = new Database(versiSalah);
       dbVersi.exec(DDL);
-      dbVersi.pragma('user_version = 2');
+      dbVersi.pragma('user_version = 3');
       dbVersi.close();
       expect(() => verifikasiFileBackup(versiSalah)).toThrow(/Backup tidak valid/i);
       expect(() => verifikasiFileBackup(versiSalah)).toThrow(/versi skema/i);
-      expect(() => verifikasiFileBackup(versiSalah)).toThrow(/ditemukan v2, seharusnya v1/);
+      expect(() => verifikasiFileBackup(versiSalah)).toThrow(/ditemukan v3, seharusnya v2/);
 
       const tanpaTabel = join(dir, 'tanpa-tabel.db');
       const dbTabel = new Database(tanpaTabel);

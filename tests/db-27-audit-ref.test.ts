@@ -374,8 +374,8 @@ describe('DB-27 — audit append-only pada skema v1', () => {
   it('mencatat versi skema 1 dan menolak perubahan/penghapusan baris audit', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(1);
-      expect(Number(db.pragma('user_version', { simple: true }))).toBe(1);
+      expect(SCHEMA_VERSION).toBe(2);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(2);
 
       insertAuditLog(
         db,

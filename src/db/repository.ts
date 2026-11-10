@@ -41,7 +41,9 @@ import type {
   JurnalBaris,
   JurnalBarisInput,
   JurnalHeaderInput,
+  JurnalPeran,
   TutupBuku,
+  TutupBukuSnapshot,
 } from '../core/types.js';
 
 export type AkunDb = {
@@ -423,14 +425,36 @@ export function hapusAkun(
 // Jurnal double-entry (P0-2)
 // ---------------------------------------------------------------------------
 
+const DAFTAR_PERAN_JURNAL: readonly JurnalPeran[] = [
+  'NORMAL',
+  'OPENING',
+  'OPENING_REPLACEMENT',
+  'ADJUSTMENT',
+];
+
+export const PESAN_PERAN_JURNAL_TIDAK_DIKENAL =
+  'Peran jurnal tidak dikenal. Gunakan NORMAL, OPENING, OPENING_REPLACEMENT, atau ADJUSTMENT.';
+
+export const PESAN_REPLACES_TIDAK_SAH =
+  'Relasi jurnal pengganti tidak sah: replaces_id tidak boleh menunjuk diri sendiri, ' +
+  'harus menunjuk jurnal yang ada, dan hanya boleh untuk peran OPENING_REPLACEMENT atau ADJUSTMENT.';
+
+export const PESAN_JENIS_PENGGANTI_TIDAK_COCOK =
+  'Jenis jurnal pengganti harus sama dengan jurnal aslinya, kecuali pengganti SALDO_AWAL harus berjenis UMUM dengan peran OPENING_REPLACEMENT.';
+
 const rowToJurnal = (r: Record<string, unknown>): Jurnal => ({
   id: String(r.id),
   tanggal: String(r.tanggal),
   no_bukti: String(r.no_bukti ?? ''),
   keterangan: String(r.keterangan),
   jenis: String(r.jenis) as Jurnal['jenis'],
+  peran: String(r.peran ?? 'NORMAL') as Jurnal['peran'],
   grup_id: String(r.grup_id),
   reversal_of: r.reversal_of === null || r.reversal_of === undefined ? null : String(r.reversal_of),
+  replaces_id:
+    r.replaces_id === null || r.replaces_id === undefined
+      ? null
+      : String(r.replaces_id),
   created_at: String(r.created_at),
 });
 
@@ -489,6 +513,43 @@ export function insertJurnalTervalidasi(
 
   const jenis = header.jenis ?? 'UMUM';
   if (!JENIS_JURNAL.includes(jenis)) throw new Error('Jenis jurnal tidak dikenal.');
+
+  // T-A00: peran & relasi pengganti eksplisit. Trigger DB menjadi backstop,
+  // tetapi validasi di sini memberi pesan Indonesia yang lebih jelas.
+  const peran = (header.peran ?? 'NORMAL') as JurnalPeran;
+  if (!DAFTAR_PERAN_JURNAL.includes(peran))
+    throw new Error(PESAN_PERAN_JURNAL_TIDAK_DIKENAL);
+  const replacesId = String(header.replaces_id ?? '').trim() || null;
+  if (replacesId) {
+    if (replacesId === id || !['OPENING_REPLACEMENT', 'ADJUSTMENT'].includes(peran))
+      throw new Error(PESAN_REPLACES_TIDAK_SAH);
+    const asli = getJurnal(db, replacesId);
+    if (!asli) throw new Error(PESAN_REPLACES_TIDAK_SAH);
+    const sudahDiganti = db
+      .prepare('SELECT id FROM jurnal WHERE replaces_id = ? LIMIT 1')
+      .get(replacesId) as { id: string } | undefined;
+    if (sudahDiganti)
+      throw new Error(
+        `Jurnal ${replacesId} sudah digantikan oleh jurnal ${sudahDiganti.id}; satu jurnal hanya boleh digantikan sekali.`,
+      );
+    const cocok =
+      asli.jenis === 'SALDO_AWAL'
+        ? jenis === 'UMUM' && peran === 'OPENING_REPLACEMENT'
+        : jenis === asli.jenis &&
+          (peran === 'OPENING_REPLACEMENT' || peran === 'ADJUSTMENT');
+    if (!cocok) throw new Error(PESAN_JENIS_PENGGANTI_TIDAK_COCOK);
+  }
+  if (peran === 'OPENING_REPLACEMENT' && (!replacesId || jenis !== 'UMUM'))
+    throw new Error(
+      'Jurnal OPENING_REPLACEMENT wajib berjenis UMUM dan menunjuk jurnal yang digantikan melalui replaces_id.',
+    );
+  if (
+    peran === 'OPENING' &&
+    (jenis !== 'SALDO_AWAL' || Boolean(String(header.reversal_of ?? '').trim()))
+  )
+    throw new Error(
+      'Jurnal OPENING wajib berjenis SALDO_AWAL dan tidak boleh mengisi reversal_of.',
+    );
 
   // Tahun divalidasi di sini (tanggal sudah lolos tanggalKalenderValid) supaya
   // penomoran otomatis tidak pernah memakai tahun aneh.
@@ -567,8 +628,10 @@ export function insertJurnalTervalidasi(
     no_bukti: noBukti,
     keterangan,
     jenis,
+    peran,
     grup_id: header.grup_id?.trim() || id,
     reversal_of: reversalOf,
+    replaces_id: replacesId,
     created_at: header.created_at ?? new Date().toISOString(),
   };
 
@@ -608,16 +671,20 @@ export function insertJurnalTervalidasi(
       if (dup) throw new Error(`Nomor bukti ${row.no_bukti} sudah dipakai jurnal ${dup.id}.`);
     }
     db.prepare(
-      `INSERT INTO jurnal (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, peran, grup_id,
+          reversal_of, replaces_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       row.id,
       row.tanggal,
       row.no_bukti,
       row.keterangan,
       row.jenis,
+      row.peran,
       row.grup_id,
       row.reversal_of,
+      row.replaces_id,
       row.created_at,
     );
     const insBaris = db.prepare(
@@ -878,6 +945,75 @@ export function insertTutupBuku(db: Database.Database, t: TutupBuku): void {
   ).run(t.tahun, t.created_at, t.catatan);
 }
 
+const rowToTutupBukuSnapshot = (r: Record<string, unknown>): TutupBukuSnapshot => ({
+  id: Number(r.id),
+  tahun: Number(r.tahun),
+  versi: Number(r.versi),
+  laba: Number(r.laba),
+  total_aset: Number(r.total_aset),
+  total_kewajiban: Number(r.total_kewajiban),
+  total_ekuitas: Number(r.total_ekuitas),
+  total_pasiva: Number(r.total_pasiva),
+  selisih: Number(r.selisih),
+  hash_jurnal: String(r.hash_jurnal),
+  created_at: String(r.created_at),
+});
+
+/**
+ * T-A00 — tulis satu snapshot tutup buku. Tabel append-only: trigger menolak
+ * UPDATE/DELETE, dan UNIQUE(tahun, versi) mencegah versi yang sama tertimpa.
+ * Perilaku pemakaian snapshot pada alur tutup buku menyusul di T-A06.
+ */
+export function insertTutupBukuSnapshot(
+  db: Database.Database,
+  snapshot: Omit<TutupBukuSnapshot, 'id'>,
+): TutupBukuSnapshot {
+  const info = db
+    .prepare(
+      `INSERT INTO tutup_buku_snapshot
+         (tahun, versi, laba, total_aset, total_kewajiban, total_ekuitas,
+          total_pasiva, selisih, hash_jurnal, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      snapshot.tahun,
+      snapshot.versi,
+      snapshot.laba,
+      snapshot.total_aset,
+      snapshot.total_kewajiban,
+      snapshot.total_ekuitas,
+      snapshot.total_pasiva,
+      snapshot.selisih,
+      snapshot.hash_jurnal,
+      snapshot.created_at,
+    );
+  const row = db
+    .prepare('SELECT * FROM tutup_buku_snapshot WHERE id = ?')
+    .get(Number(info.lastInsertRowid)) as Record<string, unknown>;
+  return rowToTutupBukuSnapshot(row);
+}
+
+/** T-A00 — daftar snapshot tutup buku, terbaru/versi tertinggi lebih dulu. */
+export function listTutupBukuSnapshot(
+  db: Database.Database,
+  tahun?: number,
+): TutupBukuSnapshot[] {
+  const rows = (
+    tahun === undefined
+      ? db
+          .prepare(
+            'SELECT * FROM tutup_buku_snapshot ORDER BY tahun DESC, versi DESC',
+          )
+          .all()
+      : db
+          .prepare(
+            'SELECT * FROM tutup_buku_snapshot WHERE tahun = ? ORDER BY versi DESC',
+          )
+          .all(tahun)
+  ) as Record<string, unknown>[];
+  return rows.map(rowToTutupBukuSnapshot);
+}
+
 const rowToAuditLog = (r: Record<string, unknown>): AuditLog => ({
   id: String(r.id),
   tanggal: String(r.tanggal),
@@ -1099,7 +1235,15 @@ export function getIdleMenit(db: Database.Database, fallback = 30): number {
 // --- Pengaturan pembukuan (P1-13). Tetap key-value di tabel `pengaturan`. ---
 export const KUNCI_AKUNTANSI_NAMA_ENTITAS = 'akuntansi_nama_entitas';
 export const KUNCI_AKUNTANSI_KOP_TAMBAHAN = 'akuntansi_kop_tambahan';
+/**
+ * Kunci lama tanggal mulai pembukuan. Dipertahankan untuk kompatibilitas
+ * setting/data lama; sumber cut-over resmi laporan adalah `cutover_tanggal`.
+ */
 export const KUNCI_AKUNTANSI_TANGGAL_MULAI = 'akuntansi_tanggal_mulai';
+/** T-A00: ID jurnal pembukaan aktif (OPENING/OPENING_REPLACEMENT). */
+export const KUNCI_SALDO_AWAL_AKTIF_ID = 'saldo_awal_aktif_id';
+/** T-A00: tanggal cut-over pembukuan efektif (sumber resmi laporan). */
+export const KUNCI_CUTOVER_TANGGAL = 'cutover_tanggal';
 export const KUNCI_AKUNTANSI_AWAL_TAHUN = 'akuntansi_awal_tahun_buku';
 export const KUNCI_AKUNTANSI_PREFIX_BUKTI = 'akuntansi_prefix_bukti';
 export const KUNCI_AKUNTANSI_PADDING_BUKTI = 'akuntansi_padding_bukti';

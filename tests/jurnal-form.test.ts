@@ -339,8 +339,10 @@ describe('P1-7 — template & duplikat jurnal', () => {
       no_bukti: 'JU-2025-0099',
       keterangan: 'Penerimaan parkir lama',
       jenis: 'UMUM',
+      peran: 'NORMAL',
       grup_id: 'j-lama',
       reversal_of: null,
+      replaces_id: null,
       created_at: '2025-12-31T10:00:00.000Z',
       baris: [
         {

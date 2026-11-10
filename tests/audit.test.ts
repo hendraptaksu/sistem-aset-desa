@@ -192,7 +192,7 @@ describe('T10b audit_log skema v1 baru', () => {
   it('langsung punya data_baru_json; audit lama utuh dan append-only', () => {
     const db = dbKosong();
     try {
-      expect(SCHEMA_VERSION).toBe(1);
+      expect(SCHEMA_VERSION).toBe(2);
       expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
       const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map((k) => k.name);

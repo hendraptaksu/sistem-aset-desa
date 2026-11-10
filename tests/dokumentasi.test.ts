@@ -163,8 +163,8 @@ describe('runbook pemulihan T3.9', () => {
     }
   });
 
-  it('skema menegaskan DB v1 tidak lengkap dipulihkan dari backup, bukan dibuat ulang', () => {
-    expect(SKEMA).toMatch(/SCHEMA_VERSION\s*=\s*1/);
+  it('skema menegaskan DB v2 tidak lengkap dipulihkan dari backup, bukan dibuat ulang', () => {
+    expect(SKEMA).toMatch(/SCHEMA_VERSION\s*=\s*2/);
     expect(SKEMA).toMatch(/tabel wajib hilang|kolom wajib hilang/i);
     expect(SKEMA).toMatch(/pulihkan dari backup/i);
     expect(SKEMA).toMatch(/tidak\s*\**\s*membuat ulang|bukan dibuat ulang/i);

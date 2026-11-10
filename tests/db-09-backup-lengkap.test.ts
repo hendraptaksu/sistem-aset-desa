@@ -53,7 +53,7 @@ describe('DB-09 — backup lengkap: pura.db + manifest, tanpa file lampiran', ()
       ) as Record<string, unknown>;
       expect(manifest.daftarFile).toEqual(['pura.db']);
       expect(manifest.schemaVersion).toBe(SCHEMA_VERSION);
-      expect(manifest.schemaVersion).toBe(1);
+      expect(manifest.schemaVersion).toBe(2);
       expect(manifest.ukuranDb).toBe(statSync(join(destDir, 'pura.db')).size);
       expect(manifest).not.toHaveProperty('jumlahLampiran');
       expect(manifest.auditIntegritas).toMatchObject({

@@ -1,18 +1,18 @@
-// Skema v1 — guard kompatibilitas DB saat dibuka.
+// Skema v2 — guard kompatibilitas DB saat dibuka.
 //
 // Fokus:
 // - DB `user_version = 23` ditolak `openDb` dengan pesan resmi dan file
 //   byte-for-byte tidak berubah (tidak ada `-wal`/`-shm` baru).
 // - DB `user_version = 0` yang sudah punya tabel ditolak tanpa mengubah file.
-// - DB `user_version = 1` dengan tabel asing ditolak.
-// - DB v1 yang kehilangan tabel wajib (mis. `jurnal_baris`) ditolak sebelum
+// - DB `user_version = 1` (skema lama) ditolak dengan pesan backup/reset khusus.
+// - DB v2 yang kehilangan tabel wajib (mis. `jurnal_baris`) ditolak sebelum
 //   DDL/WAL, tanpa membuat tabel kosong dan tanpa mengubah byte file.
-// - DB v1 yang tabelnya ada tetapi kehilangan kolom wajib (mis.
+// - DB v2 yang tabelnya ada tetapi kehilangan kolom wajib (mis.
 //   `pengaturan.nilai`) ditolak sebelum DDL/WAL tanpa menambah kolom.
 // - Peta `KOLOM_WAJIB` sinkron dengan `PRAGMA table_info` DB baru.
-// - DB v1 valid (11 tabel aktif) bisa dibuka, seed COA jalan, dan data
+// - DB v2 valid (12 tabel aktif) bisa dibuka, seed COA jalan, dan data
 //   `pengaturan` sentinel tetap.
-// - DB baru `:memory:` langsung v1, 11 tabel aktif, seluruhnya STRICT.
+// - DB baru `:memory:` langsung v2, 12 tabel aktif, seluruhnya STRICT.
 // - Kandidat backup v23 ditolak `validasiKandidatRestore` tanpa menyentuh DB
 //   aktif.
 
@@ -26,6 +26,7 @@ import {
   KOLOM_WAJIB,
   PESAN_DB_KOLOM_TIDAK_LENGKAP,
   PESAN_DB_TIDAK_KOMPATIBEL,
+  PESAN_DB_V1_KEDALUWARSA,
   PESAN_DB_TIDAK_LENGKAP,
   SCHEMA_VERSION,
   TABEL_AKTIF,
@@ -92,7 +93,7 @@ function pastikanTidakBerubah(path: string, sebelum: Buffer): void {
   expect(existsSync(`${path}-shm`)).toBe(false);
 }
 
-describe('skema v1 — openDb menolak DB tidak kompatibel', () => {
+describe('skema v2 — openDb menolak DB tidak kompatibel', () => {
   it('menolak DB v23 tanpa mengubah byte dan tanpa meninggalkan -wal/-shm', () => {
     const path = join(tmpDir('skema-v23-'), 'pura.db');
     buatDbMentah(path, (db) => {
@@ -136,7 +137,7 @@ describe('skema v1 — openDb menolak DB tidak kompatibel', () => {
     }
   });
 
-  it('menolak DB v1 yang punya tabel asing walau 11 tabel aktif lengkap', () => {
+  it('menolak DB v2 yang punya tabel asing walau 12 tabel aktif lengkap', () => {
     const path = join(tmpDir('skema-v1-asing-'), 'pura.db');
     buatDbMentah(path, (db) => {
       db.exec(DDL);
@@ -150,11 +151,11 @@ describe('skema v1 — openDb menolak DB tidak kompatibel', () => {
   });
 });
 
-describe('skema v1 — DB v1 tidak lengkap ditolak', () => {
-  it('menolak DB v1 tanpa jurnal_baris tanpa membuat tabel kosong dan tanpa mengubah byte', () => {
+describe('skema v2 — DB v2 tidak lengkap ditolak', () => {
+  it('menolak DB v2 tanpa jurnal_baris tanpa membuat tabel kosong dan tanpa mengubah byte', () => {
     const path = join(tmpDir('skema-v1-kurang-'), 'pura.db');
 
-    // DB v1 valid dibuat lewat jalur aplikasi, lalu ditutup agar tidak ada
+    // DB v2 valid dibuat lewat jalur aplikasi, lalu ditutup agar tidak ada
     // handle/WAL tersisa.
     const awal = openDb(path);
     awal
@@ -175,7 +176,7 @@ describe('skema v1 — DB v1 tidak lengkap ditolak', () => {
     expect(pesan).toMatch(/backup/i);
     pastikanTidakBerubah(path, sebelum);
 
-    // Guard berjalan sebelum DDL: tabel tidak dibuat ulang, versi tetap v1,
+    // Guard berjalan sebelum DDL: tabel tidak dibuat ulang, versi tetap v2,
     // dan data lain tidak berubah.
     const cek = new Database(path, { readonly: true });
     try {
@@ -190,7 +191,7 @@ describe('skema v1 — DB v1 tidak lengkap ditolak', () => {
     }
   });
 
-  it('DB v1 lengkap tetap bisa dibuka dan datanya utuh', () => {
+  it('DB v2 lengkap tetap bisa dibuka dan datanya utuh', () => {
     const path = join(tmpDir('skema-v1-lengkap-'), 'pura.db');
     const pertama = openDb(path);
     pertama
@@ -211,8 +212,8 @@ describe('skema v1 — DB v1 tidak lengkap ditolak', () => {
   });
 });
 
-describe('skema v1 — DB v1 kehilangan kolom wajib ditolak', () => {
-  it('menolak DB v1 tanpa pengaturan.nilai tanpa menambah kolom dan tanpa mengubah byte', () => {
+describe('skema v2 — DB v2 kehilangan kolom wajib ditolak', () => {
+  it('menolak DB v2 tanpa pengaturan.nilai tanpa menambah kolom dan tanpa mengubah byte', () => {
     const path = join(tmpDir('skema-v1-kolom-kurang-'), 'pura.db');
 
     const awal = openDb(path);
@@ -240,7 +241,7 @@ describe('skema v1 — DB v1 kehilangan kolom wajib ditolak', () => {
     pastikanTidakBerubah(path, sebelum);
 
     // Guard berjalan sebelum DDL: kolom tidak ditambahkan kembali, versi tetap
-    // v1, dan data lain tidak berubah.
+    // v2, dan data lain tidak berubah.
     const cek = new Database(path, { readonly: true });
     try {
       expect(versi(cek)).toBe(SCHEMA_VERSION);
@@ -269,8 +270,34 @@ describe('skema v1 — DB v1 kehilangan kolom wajib ditolak', () => {
   });
 });
 
-describe('skema v1 — DB kompatibel tetap bisa dibuka', () => {
-  it('membuka DB v1 valid, seed COA jalan, dan pengaturan sentinel tetap', () => {
+describe('skema v2 — DB v1 lama ditolak dengan pesan backup/reset', () => {
+  it('menolak DB user_version = 1 tanpa mengubah byte dan menyuruh backup', () => {
+    const path = join(tmpDir('skema-v1-lama-'), 'pura.db');
+    buatDbMentah(path, (db) => {
+      db.exec(DDL);
+      db.exec('DROP TABLE tutup_buku_snapshot');
+      db.pragma('user_version = 1');
+    });
+    const sebelum = readFileSync(path);
+
+    const pesan = tangkapPesan(() => openDb(path));
+    expect(pesan).toBe(PESAN_DB_V1_KEDALUWARSA);
+    expect(pesan).toMatch(/backup/i);
+    expect(pesan).toMatch(/buat database baru/i);
+    pastikanTidakBerubah(path, sebelum);
+
+    const cek = new Database(path, { readonly: true });
+    try {
+      expect(versi(cek)).toBe(1);
+      expect(namaTabelUser(cek)).not.toContain('tutup_buku_snapshot');
+    } finally {
+      cek.close();
+    }
+  });
+});
+
+describe('skema v2 — DB kompatibel tetap bisa dibuka', () => {
+  it('membuka DB v2 valid, seed COA jalan, dan pengaturan sentinel tetap', () => {
     const path = join(tmpDir('skema-v1-valid-'), 'pura.db');
     buatDbMentah(path, (db) => {
       db.exec(DDL);
@@ -293,7 +320,7 @@ describe('skema v1 — DB kompatibel tetap bisa dibuka', () => {
     }
   });
 
-  it('DB baru :memory: langsung v1 dengan 11 tabel aktif yang semuanya STRICT', () => {
+  it('DB baru :memory: langsung v2 dengan 12 tabel aktif yang semuanya STRICT', () => {
     const db = openDb(':memory:');
     try {
       expect(versi(db)).toBe(SCHEMA_VERSION);
@@ -315,8 +342,8 @@ describe('skema v1 — DB kompatibel tetap bisa dibuka', () => {
   });
 });
 
-describe('skema v1 — kandidat backup versi lain ditolak', () => {
-  it('menolak kandidat v23 dengan pesan v23/v1 tanpa menyentuh DB aktif', () => {
+describe('skema v2 — kandidat backup versi lain ditolak', () => {
+  it('menolak kandidat v23 dengan pesan v23/v2 tanpa menyentuh DB aktif', () => {
     const dir = tmpDir('skema-backup-v23-');
     const aktifPath = join(dir, 'aktif.db');
     const aktif = openDb(aktifPath);
@@ -335,7 +362,7 @@ describe('skema v1 — kandidat backup versi lain ditolak', () => {
       expect(hasil.valid).toBe(false);
       if (hasil.valid) throw new Error('backup v23 seharusnya ditolak');
       expect(hasil.error).toContain('v23');
-      expect(hasil.error).toContain('v1');
+      expect(hasil.error).toContain('v2');
 
       // DB aktif tetap terbuka, versinya tidak berubah, dan datanya utuh.
       expect(versi(aktif)).toBe(SCHEMA_VERSION);

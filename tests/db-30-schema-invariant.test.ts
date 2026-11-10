@@ -109,8 +109,8 @@ describe('DB-30 — invariant tabel aktif', () => {
   it('memakai tepat 11 tabel aktif dan tidak menghidupkan tabel lama', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(1);
-      expect(TABEL_AKTIF).toHaveLength(11);
+      expect(SCHEMA_VERSION).toBe(2);
+      expect(TABEL_AKTIF).toHaveLength(12);
       expect(namaTabel(db)).toEqual([...TABEL_AKTIF].sort());
       for (const tabel of TABEL_AKTIF) {
         expect(strict(db, tabel), `${tabel} harus STRICT`).toBe(1);

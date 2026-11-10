@@ -183,9 +183,10 @@ export function labaDitahan(
   baris: readonly BarisJurnalSumber[],
   tutup: ReadonlyArray<TutupBukuRef>,
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): number {
   return tahunTutupTerurut(tutup).reduce(
-    (total, tahun) => total + labaTahun(baris, tahun, daftarAkun),
+    (total, tahun) => total + labaTahun(baris, tahun, daftarAkun, cutover),
     0,
   );
 }

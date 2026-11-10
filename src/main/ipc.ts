@@ -29,6 +29,7 @@ import {
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
+import { getCutoverTanggal } from '../db/pembukaan.js';
 import {
   PESAN_WAJIB_ALASAN_PERINGATAN,
   postingJurnal,
@@ -1452,6 +1453,7 @@ export function registerIpc(deps: IpcDeps): void {
     const baris = listBarisJurnal(deps.db());
     const daftarAkun = listAkun(deps.db());
     const tanggalMulai = getPengaturanPembukuan(deps.db()).tanggalMulaiPembukuan;
+    const cutover = getCutoverTanggal(deps.db());
     return ok(
       listTutupBuku(deps.db()).map((t) => {
         const tahun = Number(t.tahun);
@@ -1459,7 +1461,7 @@ export function registerIpc(deps: IpcDeps): void {
           catatanTahunPertamaParsial(tanggalMulai, tahun) ?? undefined;
         return {
           ...t,
-          laba: labaTahunJurnal(baris, tahun, daftarAkun),
+          laba: labaTahunJurnal(baris, tahun, daftarAkun, cutover),
           ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
         };
       }),
@@ -1617,6 +1619,7 @@ export function registerIpc(deps: IpcDeps): void {
           sekarang: tanggalSekarang(),
           daftarAkun: listAkun(deps.db()),
           tanggalMulaiPembukuan: pengaturan.tanggalMulaiPembukuan,
+          cutoverTanggal: getCutoverTanggal(deps.db()),
         },
       );
       const dirBackup = deps.lokasiData().backupsDir;

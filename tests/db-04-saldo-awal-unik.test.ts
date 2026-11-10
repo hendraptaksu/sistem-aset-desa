@@ -198,12 +198,12 @@ describe('DB-04 — unique index saldo awal', () => {
 
 describe('DB-04 — skema v1 baru', () => {
   it('DB v1 baru langsung memiliki unique index parsial ux_jurnal_saldo_awal', () => {
-    expect(SCHEMA_VERSION).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
 
     const path = join(tmpDir('pura-db04-index-'), 'pura.db');
     const db = openDb(path);
     try {
-      expect(versi(db)).toBe(1);
+      expect(versi(db)).toBe(2);
       const index = indeksSaldoAwal(db);
       expect(index?.name).toBe('ux_jurnal_saldo_awal');
       expect(index?.sql).toMatch(/UNIQUE INDEX/);

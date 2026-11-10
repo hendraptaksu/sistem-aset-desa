@@ -104,8 +104,10 @@ const JURNAL_ASLI: Jurnal = {
   no_bukti: 'JU-2026-0002',
   keterangan: 'Uang parkir',
   jenis: 'TERIMA',
+  peran: 'NORMAL',
   grup_id: 'g-parkir',
   reversal_of: null,
+  replaces_id: null,
   created_at: '2026-01-02T08:00:00.000Z',
 };
 

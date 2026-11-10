@@ -24,6 +24,12 @@ export type Panjar = {
   tanggal_batal?: string | null;
   /** DB-21: alasan pembatalan yang juga tercatat di audit. */
   alasan_batal?: string;
+  /**
+   * T-A00: asal dokumen panjar. `SALDO_AWAL` menandai panjar yang sudah ada
+   * pada pembukaan/cut-over; `jurnal_open_id` tetap wajib menunjuk jurnal
+   * pembukaan. Default `NORMAL` untuk seluruh panjar baru.
+   */
+  sumber?: 'NORMAL' | 'SALDO_AWAL';
   created_at?: string; // ISO
   /**
    * Ringkasan TURUNAN untuk daftar UI (dihitung dari `panjar_item`), bukan
@@ -66,14 +72,31 @@ export type JurnalJenis =
   | 'SALDO_AWAL'
   | 'REVERSAL';
 
+/**
+ * T-A00 — peran jurnal dalam siklus hidup pembukuan, terpisah dari `jenis`
+ * dokumen. `OPENING` adalah jurnal saldo awal resmi; `OPENING_REPLACEMENT`
+ * menggantikan jurnal pembukaan lama setelah koreksi; `ADJUSTMENT` menandai
+ * penyesuaian eksplisit yang menggantikan jurnal lain; `NORMAL` untuk jurnal
+ * harian/reversal.
+ */
+export type JurnalPeran =
+  | 'NORMAL'
+  | 'OPENING'
+  | 'OPENING_REPLACEMENT'
+  | 'ADJUSTMENT';
+
 export type Jurnal = {
   id: string;
   tanggal: string; // YYYY-MM-DD
   no_bukti: string; // cth JU-2026-0001 (boleh kosong saat masih draft)
   keterangan: string;
   jenis: JurnalJenis;
+  /** T-A00: peran eksplisit dalam siklus pembukaan/koreksi. */
+  peran: JurnalPeran;
   grup_id: string; // default = id jurnal; reversal berbagi grup dengan aslinya
   reversal_of: string | null; // id jurnal yang dikoreksi (null = jurnal biasa)
+  /** T-A00: id jurnal yang digantikan jurnal ini (null = bukan pengganti). */
+  replaces_id: string | null;
   created_at: string; // ISO datetime
 };
 
@@ -98,9 +121,32 @@ export type JurnalHeaderInput = {
   keterangan: string;
   no_bukti?: string;
   jenis?: JurnalJenis;
+  /** T-A00: default `NORMAL` bila tidak diisi. */
+  peran?: JurnalPeran;
   grup_id?: string;
   reversal_of?: string | null;
+  /** T-A00: hanya sah untuk peran `OPENING_REPLACEMENT`/`ADJUSTMENT`. */
+  replaces_id?: string | null;
   created_at?: string;
+};
+
+/**
+ * T-A00 — snapshot angka tutup buku, append-only. Snapshot bukan sumber angka
+ * laporan: laba/saldo tetap dihitung ulang dari jurnal. Tabel ini menyimpan
+ * hasil pembacaan saat tutup buku agar riwayat dapat diaudit/dibandingkan.
+ */
+export type TutupBukuSnapshot = {
+  id: number;
+  tahun: number;
+  versi: number;
+  laba: number;
+  total_aset: number;
+  total_kewajiban: number;
+  total_ekuitas: number;
+  total_pasiva: number;
+  selisih: number;
+  hash_jurnal: string;
+  created_at: string;
 };
 
 // ---- Pinjaman LPD (DB-16b) ----

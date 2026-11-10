@@ -1,7 +1,7 @@
-// T4.8 — baseline skema v1 baru.
+// T4.8/T-A00 — baseline skema v2 baru.
 //
-// Test ini mengunci kontrak skema baseline v1:
-// - DB baru (memory & file) langsung `user_version = 1`, tepat 11 tabel aktif
+// Test ini mengunci kontrak skema baseline v2:
+// - DB baru (memory & file) langsung `user_version = 2`, tepat 12 tabel aktif
 //   STRICT, tanpa tabel legacy;
 // - seluruh index dan trigger wajib ada tepat satu;
 // - membuka ulang file DB idempoten (tidak menambah objek, data sentinel tetap)
@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { COA } from '../src/db/coa.js';
 import { SCHEMA_VERSION, TABEL_AKTIF, openDb } from '../src/db/database.js';
 
-/** Tabel modul lama yang tidak boleh muncul kembali pada skema v1. */
+/** Tabel modul lama yang tidak boleh muncul kembali pada skema v2. */
 const TABEL_LEGACY = [
   'transaksi',
   'coa',
@@ -39,6 +39,7 @@ const INDEX_WAJIB = [
   'idx_jurnal_no_bukti_tahun',
   'ux_jurnal_saldo_awal',
   'ux_jurnal_reversal',
+  'ux_jurnal_replaces',
   'ux_akun_nama_nocase',
   'idx_jurnal_baris_jurnal',
   'idx_jurnal_baris_akun',
@@ -61,7 +62,7 @@ const INDEX_WAJIB = [
   'idx_pinjaman_bayar_angsuran',
 ] as const;
 
-/** 12 trigger aplikasi yang wajib ada tepat satu. */
+/** 14 trigger aplikasi yang wajib ada tepat satu. */
 const TRIGGER_WAJIB = [
   'trg_akun_validasi_insert',
   'trg_akun_validasi_update',
@@ -75,6 +76,8 @@ const TRIGGER_WAJIB = [
   'trg_jurnal_immutable_delete',
   'trg_jurnal_validasi_insert',
   'trg_tutup_buku_immutable_delete',
+  'trg_tutup_buku_snapshot_immutable_update',
+  'trg_tutup_buku_snapshot_immutable_delete',
 ] as const;
 
 const dirs: string[] = [];
@@ -159,7 +162,7 @@ function pastikanIndexWajib(db: Database.Database): void {
   expect(rows.every((row) => Number(row.jumlah) === 1)).toBe(true);
 }
 
-/** Pastikan tepat 12 trigger wajib ada, masing-masing satu. */
+/** Pastikan tepat 14 trigger wajib ada, masing-masing satu. */
 function pastikanTriggerWajib(db: Database.Database): string[] {
   const rows = db
     .prepare(
@@ -176,24 +179,24 @@ function pastikanTriggerWajib(db: Database.Database): string[] {
   return rows.map((row) => row.name).sort();
 }
 
-describe('skema baseline v1 — DB baru', () => {
-  it('user_version DB baru adalah 1 (SCHEMA_VERSION)', () => {
+describe('skema baseline v2 — DB baru', () => {
+  it('user_version DB baru adalah 2 (SCHEMA_VERSION)', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(1);
-      expect(versi(db)).toBe(1);
+      expect(SCHEMA_VERSION).toBe(2);
+      expect(versi(db)).toBe(2);
       expect(versi(db)).toBe(SCHEMA_VERSION);
     } finally {
       db.close();
     }
   });
 
-  it('tepat 11 tabel aktif sama dengan TABEL_AKTIF tanpa tabel sqlite_%', () => {
+  it('tepat 12 tabel aktif sama dengan TABEL_AKTIF tanpa tabel sqlite_%', () => {
     const db = openDb(':memory:');
     try {
-      expect(TABEL_AKTIF).toHaveLength(11);
+      expect(TABEL_AKTIF).toHaveLength(12);
       expect(namaTabel(db)).toEqual([...TABEL_AKTIF].sort());
-      expect(namaTabel(db)).toHaveLength(11);
+      expect(namaTabel(db)).toHaveLength(12);
     } finally {
       db.close();
     }
@@ -255,7 +258,7 @@ describe('skema baseline v1 — DB baru', () => {
     }
   });
 
-  it('tepat 12 trigger aplikasi ada, masing-masing satu', () => {
+  it('tepat 14 trigger aplikasi ada, masing-masing satu', () => {
     const db = openDb(':memory:');
     try {
       const daftar = pastikanTriggerWajib(db);
@@ -278,7 +281,7 @@ describe('skema baseline v1 — DB baru', () => {
   });
 });
 
-describe('skema baseline v1 — file DB', () => {
+describe('skema baseline v2 — file DB', () => {
   it('buka ulang idempoten: versi, jumlah tabel/index/trigger, dan sentinel tetap', () => {
     const path = join(dirBaru(), 'pura.db');
 

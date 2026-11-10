@@ -175,8 +175,8 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       catatAktivitas2026(db);
       const baris = listBarisJurnal(db);
 
-      expect(labaTahun(baris, 2026)).toBe(RP(20_000_000));
-      expect(labaTahun(baris, 2025)).toBe(0);
+      expect(labaTahun(baris, 2026, undefined, CUTOVER)).toBe(RP(20_000_000));
+      expect(labaTahun(baris, 2025, undefined, CUTOVER)).toBe(0);
       const lr = labaRugi(baris, { mulai: CUTOVER, sampai: '2026-12-31' });
       expect(lr.totalPendapatan).toBe(RP(30_000_000));
       expect(lr.totalBeban).toBe(RP(10_000_000));
@@ -204,7 +204,7 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       expect(sebelum.errors).toContain(
         `Tanggal jurnal sebelum tanggal mulai pembukuan (${CUTOVER}).`,
       );
-      expect(labaTahun(listBarisJurnal(db), 2026)).toBe(0);
+      expect(labaTahun(listBarisJurnal(db), 2026, undefined, CUTOVER)).toBe(0);
 
       // Saldo awal tidak boleh berisi akun P&L; laba pra-cut-over masuk modal.
       expect(() =>
@@ -237,8 +237,8 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       catatAktivitas2026(db);
       const baris = listBarisJurnal(db);
 
-      expect(labaTahun(baris, 2026)).toBe(RP(20_000_000));
-      const lr = labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
+      expect(labaTahun(baris, 2026, undefined, CUTOVER)).toBe(RP(20_000_000));
+      const lr = labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' }, undefined, CUTOVER);
       expect(lr.totalBeban).toBe(RP(10_000_000));
       expect(lr.laba).toBe(RP(20_000_000));
     } finally {
@@ -252,7 +252,7 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       catatAktivitas2026(db);
       const baris = listBarisJurnal(db);
 
-      const n = neraca(baris, { cutoff: '2026-12-31', tutup: [] });
+      const n = neraca(baris, { cutoff: '2026-12-31', tutup: [] }, undefined, CUTOVER);
       expect(n.balance).toBe(true);
       expect(n.selisih).toBe(0);
       // Aset awal 150jt + laba 20jt; kewajiban tetap 40jt; modal awal 110jt.
@@ -265,7 +265,7 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       expect(n.totalEkuitas).toBe(RP(130_000_000));
       expect(n.totalPasiva).toBe(RP(170_000_000));
 
-      const sebelumCutover = neraca(baris, { cutoff: CUTOVER, tutup: [] });
+      const sebelumCutover = neraca(baris, { cutoff: CUTOVER, tutup: [] }, undefined, CUTOVER);
       expect(sebelumCutover.balance).toBe(true);
       expect(sebelumCutover.labaBerjalan).toBe(0);
       expect(sebelumCutover.totalAset).toBe(RP(150_000_000));
@@ -324,17 +324,17 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       const jumlahSebelum = sebelumTutup.length;
 
       const baris = listBarisJurnal(db);
-      expect(labaTahun(baris, 2026)).toBe(RP(20_000_000));
-      expect(labaTahun(baris, 2027)).toBe(RP(5_000_000));
+      expect(labaTahun(baris, 2026, undefined, CUTOVER)).toBe(RP(20_000_000));
+      expect(labaTahun(baris, 2027, undefined, CUTOVER)).toBe(RP(5_000_000));
 
       // Neraca 2026 tidak terpengaruh jurnal 2027.
-      const n2026 = neraca(baris, { cutoff: '2026-12-31', tutup: [] });
+      const n2026 = neraca(baris, { cutoff: '2026-12-31', tutup: [] }, undefined, CUTOVER);
       expect(n2026.totalAset).toBe(RP(170_000_000));
       expect(n2026.labaBerjalan).toBe(RP(20_000_000));
       expect(n2026.balance).toBe(true);
 
       // Pada 2027, laba 2026 yang belum dikunci tetap di labaBelumDitutup.
-      const n2027 = neraca(baris, { cutoff: '2027-12-31', tutup: [] });
+      const n2027 = neraca(baris, { cutoff: '2027-12-31', tutup: [] }, undefined, CUTOVER);
       expect(n2027.labaDitahan).toBe(0);
       expect(n2027.labaBelumDitutup).toBe(RP(20_000_000));
       expect(n2027.labaBerjalan).toBe(RP(5_000_000));
@@ -360,10 +360,15 @@ describe('DB-38 — cut-over 1 Juli 2026', () => {
       expect(listJurnal(db).map((j) => j.id)).toEqual(sebelumTutup.map((j) => j.id));
       expect(listAuditLog(db, { aksi: 'TUTUP 2026' })).toHaveLength(1);
 
-      const sesudah = neraca(baris, {
-        cutoff: '2027-12-31',
-        tutup: listTutupBuku(db),
-      });
+      const sesudah = neraca(
+        baris,
+        {
+          cutoff: '2027-12-31',
+          tutup: listTutupBuku(db),
+        },
+        undefined,
+        CUTOVER,
+      );
       expect(sesudah.labaDitahan).toBe(RP(20_000_000));
       expect(sesudah.labaBelumDitutup).toBe(0);
       expect(sesudah.labaBerjalan).toBe(RP(5_000_000));

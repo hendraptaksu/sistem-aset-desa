@@ -1,7 +1,7 @@
-// DB-07 — trigger skema v1 selalu dibuat dengan pola DROP + CREATE.
+// DB-07 — trigger skema v2 selalu dibuat dengan pola DROP + CREATE.
 //
 // Fokus:
-// - DB v1 baru (`openDb`) memiliki tepat 12 trigger aplikasi, masing-masing
+// - DB v2 baru (`openDb`) memiliki tepat 14 trigger aplikasi, masing-masing
 //   satu.
 // - Trigger yang dihapus dipulihkan oleh `siapkanSkema(db)` maupun `openDb`
 //   berikutnya.
@@ -32,6 +32,8 @@ const TRIGGER_APP = [
   'trg_jurnal_immutable_update',
   'trg_jurnal_validasi_insert',
   'trg_tutup_buku_immutable_delete',
+  'trg_tutup_buku_snapshot_immutable_delete',
+  'trg_tutup_buku_snapshot_immutable_update',
 ] as const;
 
 const dirs: string[] = [];
@@ -91,8 +93,8 @@ function buatBarisValid(db: Database.Database, jurnalId: string): void {
   ).run(jurnalId);
 }
 
-describe('DB-07 — trigger skema v1', () => {
-  it('DB v1 baru memiliki tepat 12 trigger aplikasi, masing-masing satu', () => {
+describe('DB-07 — trigger skema v2', () => {
+  it('DB v2 baru memiliki tepat 14 trigger aplikasi, masing-masing satu', () => {
     const db = openDb(':memory:');
     try {
       expect(versi(db)).toBe(SCHEMA_VERSION);

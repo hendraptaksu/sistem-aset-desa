@@ -26,8 +26,9 @@ import { AKUN_MODAL, kodeKasDariDaftarAkun } from './coa.js';
 import { listBarisJurnal } from './laporan.js';
 import {
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
+  KUNCI_CUTOVER_TANGGAL,
+  KUNCI_SALDO_AWAL_AKTIF_ID,
   getJurnalDetail,
-  getPengaturan,
   insertAuditLog,
   insertJurnalTervalidasi,
   listAkun,
@@ -252,22 +253,35 @@ export function simpanSaldoAwal(
         );
       }
 
-      const hasil = postingSaldoAwal(db, input, {
+      // T-A00: saldo awal resmi selalu berperan OPENING. `postingSaldoAwal`
+      // memaksa jenis SALDO_AWAL; peran diteruskan ke insert jurnal.
+      const inputPosting: JurnalInput = {
+        ...input,
+        header: {
+          ...input.header,
+          peran: 'OPENING',
+          replaces_id: null,
+        },
+      };
+      const hasil = postingSaldoAwal(db, inputPosting, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
         alasanPeringatan: opsi.alasanPeringatan,
         wajibAlasanPeringatan: opsi.wajibAlasanPeringatan === true,
         wajibSaldoAwal: opsi.wajibSaldoAwal === true,
         konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,
       });
-      // AKT-03: tanggal jurnal saldo awal menjadi batas bawah pembukuan.
-      // Ditulis di transaksi yang sama dengan jurnal + audit; bila penulisan
-      // setting gagal, seluruh saldo awal ikut dibatalkan.
-      if (hasil.tersimpan) {
+      // T-A00/AKT-03: penunjuk pembukaan aktif, cut-over resmi, dan kunci
+      // tanggal mulai lama ditulis ATOMIK bersama jurnal + audit. Bila salah
+      // satu penulisan gagal, seluruh saldo awal dibatalkan.
+      if (hasil.tersimpan && hasil.jurnal) {
         const tanggalMulai = String(
-          hasil.jurnal?.tanggal ?? input.header.tanggal ?? '',
+          hasil.jurnal.tanggal ?? input.header.tanggal ?? '',
         ).trim();
-        if (tanggalMulai)
+        setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, hasil.jurnal.id);
+        if (tanggalMulai) {
+          setPengaturan(db, KUNCI_CUTOVER_TANGGAL, tanggalMulai);
           setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, tanggalMulai);
+        }
       }
       return hasil;
     });
@@ -381,8 +395,11 @@ export function koreksiSaldoAwal(
         keterangan:
           String(input.header.keterangan ?? '').trim() || 'Koreksi saldo awal',
         jenis: 'UMUM',
+        // T-A00: relasi pengganti eksplisit, bukan ditebak dari grup/jenis.
+        peran: 'OPENING_REPLACEMENT',
         grup_id: grup,
         reversal_of: null,
+        replaces_id: aktif.id,
       };
       const pengganti: JurnalInput = {
         ...input,
@@ -531,8 +548,13 @@ export function koreksiSaldoAwal(
         jurnalBaru = insertJurnalTervalidasi(db, headerPengganti, pengganti.baris);
       }
       insertAuditLog(db, audit);
-      if (getPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI) !== tanggalBaru)
+      // T-A00: penunjuk pembukaan aktif pindah ke jurnal pengganti dan
+      // cut-over resmi mengikuti tanggal baru, atomik dengan jurnal/audit.
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, jurnalBaru.id);
+      if (tanggalBaru) {
+        setPengaturan(db, KUNCI_CUTOVER_TANGGAL, tanggalBaru);
         setPengaturan(db, KUNCI_AKUNTANSI_TANGGAL_MULAI, tanggalBaru);
+      }
 
       return {
         boleh: true,

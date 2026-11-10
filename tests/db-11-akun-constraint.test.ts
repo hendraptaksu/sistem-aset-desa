@@ -60,8 +60,8 @@ describe('DB-11 — constraint akun skema v1', () => {
   it('DB v1 baru langsung punya index nama NOCASE dan trigger validasi insert/update', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(1);
-      expect(versi(db)).toBe(1);
+      expect(SCHEMA_VERSION).toBe(2);
+      expect(versi(db)).toBe(2);
 
       const index = objekSql(db, 'index', 'ux_akun_nama_nocase');
       expect(index?.name).toBe('ux_akun_nama_nocase');

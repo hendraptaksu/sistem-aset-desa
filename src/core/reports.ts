@@ -74,33 +74,23 @@ const dalamRentang = (tanggal: string, mulai?: string, sampai?: string): boolean
   (!mulai || tanggal >= mulai) && (!sampai || tanggal <= sampai);
 
 /**
- * Tanggal cut-over per tahun, diambil dari jurnal SALDO_AWAL. Bila pembukuan
- * dimulai di tengah tahun, P&L sebelum tanggal saldo awal bukan laba tahun
- * berjalan: hasil usaha pra-cut-over sudah masuk ekuitas/modal awal (DB-38).
+ * Apakah baris P&L bertanggal `tanggal` boleh masuk laporan bila cut-over
+ * eksplisit diberikan.
+ *
+ * Aturan T-A00/DB-38: cut-over HANYA membatasi P&L pada tahun cut-over.
+ * Tanggal sebelum cut-over di tahun yang sama disaring; tahun lain dihitung
+ * penuh. Tanpa cut-over tidak ada penyaringan (data lama tetap bisa dilaporkan).
  */
-function petaCutoverSaldoAwal(
-  baris: readonly BarisJurnalSumber[],
-): Map<number, string> {
-  const peta = new Map<number, string>();
-  for (const b of baris) {
-    if (b.jenis !== 'SALDO_AWAL') continue;
-    const m = /^(\d{4})-\d{2}-\d{2}$/.exec(String(b.tanggal ?? ''));
-    if (!m) continue;
-    const tahun = Number(m[1]);
-    const ada = peta.get(tahun);
-    if (!ada || b.tanggal < ada) peta.set(tahun, b.tanggal);
-  }
-  return peta;
-}
-
-/** Baris P&L pada/ setelah cut-over tahunnya (selain filter rentang). */
-function setelahCutoverTahun(
+function setelahCutover(
   tanggal: string,
-  cutover: ReadonlyMap<number, string>,
+  cutover: string | null | undefined,
 ): boolean {
-  const tahun = Number(String(tanggal).slice(0, 4));
-  const mulai = cutover.get(tahun);
-  return !mulai || tanggal >= mulai;
+  const batas = String(cutover ?? '').trim();
+  if (!batas) return true;
+  const tahunTanggal = String(tanggal).slice(0, 4);
+  const tahunCutover = batas.slice(0, 4);
+  if (tahunTanggal !== tahunCutover) return true;
+  return tanggal >= batas;
 }
 
 /** Saldo bertanda normal: positif = sesuai posisi normal akun. */
@@ -373,6 +363,11 @@ export type NeracaSaldoPeriodeOpsi = {
   hanyaAdaSaldo?: boolean;
   /** Master COA; default COA bawaan. */
   daftarAkun?: readonly Coa[];
+  /**
+   * T-A00: cut-over eksplisit dari DB/pengaturan. Hanya membatasi P&L pada
+   * tahun cut-over; kosong = tanpa penyaringan.
+   */
+  cutover?: string | null;
 };
 
 /** Baris Neraca Saldo periode; `sintetis` menandai laba ditahan non-akun COA. */
@@ -441,7 +436,13 @@ export function neracaSaldoPeriode(
   baris: readonly BarisJurnalSumber[],
   opsi: NeracaSaldoPeriodeOpsi,
 ): NeracaSaldoPeriodeHasil {
-  const { mulai, sampai, hanyaAdaSaldo = false, daftarAkun = COA } = opsi;
+  const {
+    mulai,
+    sampai,
+    hanyaAdaSaldo = false,
+    daftarAkun = COA,
+    cutover,
+  } = opsi;
   if (!mulai || !sampai) {
     throw new Error('Neraca Saldo periode membutuhkan tanggal mulai dan sampai.');
   }
@@ -462,7 +463,6 @@ export function neracaSaldoPeriode(
   const debit = new Map<string, number>();
   const kredit = new Map<string, number>();
   const adaMutasi = new Set<string>();
-  const cutover = petaCutoverSaldoAwal(baris);
   for (const b of baris) {
     if (b.tanggal > sampai) continue;
     const a = peta.get(b.akun_kode)!;
@@ -471,7 +471,7 @@ export function neracaSaldoPeriode(
     if (a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN') {
       if (b.tanggal < mulai) continue;
       // DB-38: P&L sebelum cut-over tahun pertama bukan laba berjalan.
-      if (!setelahCutoverTahun(b.tanggal, cutover)) continue;
+      if (!setelahCutover(b.tanggal, cutover)) continue;
     }
     debit.set(b.akun_kode, (debit.get(b.akun_kode) ?? 0) + b.debit);
     kredit.set(b.akun_kode, (kredit.get(b.akun_kode) ?? 0) + b.kredit);
@@ -508,6 +508,7 @@ export function neracaSaldoPeriode(
     baris,
     { sampai: hariSebelum(mulai) },
     daftarAkun,
+    cutover,
   ).laba;
   if (labaDitahanSebelumPeriode !== 0) {
     const laba = labaDitahanSebelumPeriode;
@@ -591,6 +592,7 @@ export function labaRugi(
   baris: readonly BarisJurnalSumber[],
   rentang: RentangLaporan = {},
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): LabaRugiHasil {
   pastikanAkunDikenal(baris, daftarAkun);
   const { mulai, sampai } = rentang;
@@ -598,9 +600,8 @@ export function labaRugi(
   const beban: LabaRugiBaris[] = [];
   let totalPendapatan = 0;
   let totalBeban = 0;
-  const cutover = petaCutoverSaldoAwal(baris);
   const barisPeriode = baris.filter(
-    (b) => dalamRentang(b.tanggal, mulai, sampai) && setelahCutoverTahun(b.tanggal, cutover),
+    (b) => dalamRentang(b.tanggal, mulai, sampai) && setelahCutover(b.tanggal, cutover),
   );
 
   for (const a of [...daftarAkun].sort((x, y) => x.kode.localeCompare(y.kode))) {
@@ -630,19 +631,22 @@ export function labaRugi(
 }
 
 /**
- * Laba satu tahun kalender (1 Jan – 31 Des), dari jurnal. Bila ada jurnal
- * SALDO_AWAL bertanggal tengah tahun, P&L sebelum tanggal cut-over tersebut
- * tidak dihitung (tahun pertama parsial, DB-38).
+ * Laba satu tahun kalender (1 Jan – 31 Des), dari jurnal. Bila `cutover`
+ * eksplisit diberikan dan berada pada tahun yang sama, P&L sebelum tanggal
+ * cut-over tidak dihitung (tahun pertama parsial, DB-38). Tahun lain tetap
+ * dihitung penuh.
  */
 export function labaTahun(
   baris: readonly BarisJurnalSumber[],
   tahun: number,
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): number {
   return labaRugi(
     baris,
     { mulai: `${tahun}-01-01`, sampai: `${tahun}-12-31` },
     daftarAkun,
+    cutover,
   ).laba;
 }
 
@@ -705,6 +709,7 @@ export function neraca(
   baris: readonly BarisJurnalSumber[],
   cutoffAtauOpsi: string | NeracaOpsi,
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): NeracaHasil {
   const opsi: NeracaOpsi =
     typeof cutoffAtauOpsi === 'string' ? { cutoff: cutoffAtauOpsi } : cutoffAtauOpsi;
@@ -745,7 +750,7 @@ export function neraca(
   let labaDitahan = 0;
   let labaBelumDitutup = 0;
   for (let tahun = tahunAwal; tahun < tahunCutoff; tahun++) {
-    const laba = labaTahun(baris, tahun, daftarAkun);
+    const laba = labaTahun(baris, tahun, daftarAkun, cutover);
     if (!adaInfoTutup || tahunTutup.has(tahun)) labaDitahan += laba;
     else labaBelumDitutup += laba;
   }
@@ -754,6 +759,7 @@ export function neraca(
     baris,
     { mulai: `${tahunCutoff}-01-01`, sampai: cutoff },
     daftarAkun,
+    cutover,
   ).laba;
   const totalEkuitas =
     totalEkuitasAkun + labaDitahan + labaBelumDitutup + labaBerjalan;

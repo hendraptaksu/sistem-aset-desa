@@ -100,8 +100,8 @@ describe('DB-10 — constraint jurnal skema v1', () => {
   it('DB v1 baru langsung punya index reversal parsial dan trigger validasi insert', () => {
     const db = openDb(':memory:');
     try {
-      expect(SCHEMA_VERSION).toBe(1);
-      expect(versi(db)).toBe(1);
+      expect(SCHEMA_VERSION).toBe(2);
+      expect(versi(db)).toBe(2);
 
       const index = indeksReversal(db);
       expect(index?.name).toBe('ux_jurnal_reversal');
@@ -226,7 +226,7 @@ describe('DB-10 — constraint jurnal skema v1', () => {
     for (let i = 0; i < 2; i += 1) {
       const buka = openDb(path);
       try {
-        expect(versi(buka)).toBe(1);
+        expect(versi(buka)).toBe(2);
         expect(hitungObjek(buka, 'ux_jurnal_reversal')).toBe(1);
         expect(hitungObjek(buka, 'trg_jurnal_validasi_insert')).toBe(1);
         expect(indeksReversal(buka)?.sql).toMatch(/WHERE reversal_of IS NOT NULL/);

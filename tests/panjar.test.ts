@@ -710,7 +710,7 @@ describe('P1-4/DB-06 — metadata panjar v2 dipertahankan saat DB dibuka ulang',
     try {
       const db = openDb(path);
       try {
-        expect(Number(db.pragma('user_version', { simple: true }))).toBe(1);
+        expect(Number(db.pragma('user_version', { simple: true }))).toBe(2);
         expect(
           postingJurnal(db, {
             header: {
@@ -744,7 +744,7 @@ describe('P1-4/DB-06 — metadata panjar v2 dipertahankan saat DB dibuka ulang',
       // Buka ulang: skema baseline v1 tidak dimigrasikan dan data panjar utuh.
       const db2 = openDb(path);
       try {
-        expect(Number(db2.pragma('user_version', { simple: true }))).toBe(1);
+        expect(Number(db2.pragma('user_version', { simple: true }))).toBe(2);
         expect(getPanjar(db2, 'p1')).toMatchObject({
           status: 'CLOSED',
           jumlah: RP(1_000_000),

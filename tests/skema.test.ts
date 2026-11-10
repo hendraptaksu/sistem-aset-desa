@@ -101,20 +101,20 @@ function strictTabel(db: Database.Database, tabel: string): number {
 }
 
 describe('Skema baseline — docs/skema.md cocok dengan skema aktif', () => {
-  it('mendokumentasikan tepat 11 tabel aktif dan tidak ada tabel lain', () => {
+  it('mendokumentasikan tepat 12 tabel aktif dan tidak ada tabel lain', () => {
     const db = openDb(':memory:');
     try {
       const diDb = namaTabelAktif(db);
       const diSkema = parseTabelSkema(SKEMA).map((t) => t.nama);
 
-      expect(diDb).toHaveLength(11);
+      expect(diDb).toHaveLength(12);
       expect([...diSkema].sort()).toEqual(diDb);
     } finally {
       db.close();
     }
   });
 
-  it('seluruh 11 tabel aktif STRICT dan tidak punya kolom backup_path', () => {
+  it('seluruh 12 tabel aktif STRICT dan tidak punya kolom backup_path', () => {
     const db = openDb(':memory:');
     try {
       expect([...TABEL_AKTIF].sort()).toEqual(namaTabelAktif(db));
@@ -174,10 +174,10 @@ describe('Skema baseline — docs/skema.md cocok dengan skema aktif', () => {
     }
   });
 
-  it('menyebut skema baseline v1 dan versi skema aktif aplikasi', () => {
+  it('menyebut skema baseline v2 dan versi skema aktif aplikasi', () => {
     expect(SKEMA).toContain('Skema baseline');
     expect(SKEMA).toContain('Skema aktif');
     expect(SKEMA).toContain(`SCHEMA_VERSION = ${SCHEMA_VERSION}`);
-    expect(SCHEMA_VERSION).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
   });
 });

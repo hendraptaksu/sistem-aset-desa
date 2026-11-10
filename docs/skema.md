@@ -1,29 +1,35 @@
-# Skema Baseline v1
+# Skema Baseline v2
 
-**Status dokumen:** Skema baseline v1.
-**Skema aktif:** baseline v1 — satu-satunya skema yang didukung aplikasi.
-**Sumber kebenaran:** DDL di `src/db/database.ts` (`SCHEMA_VERSION = 1`) dan daftar akun di `src/db/coa.ts`.
-**Cakupan:** 11 tabel aktif — `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`, `audit_log`, `pengaturan`, `panjar`, `panjar_item`, `pinjaman`, `pinjaman_angsuran`, `pinjaman_bayar`.
+**Status dokumen:** Skema baseline v2 (T-A00).
+**Skema aktif:** baseline v2 — satu-satunya skema yang didukung aplikasi.
+**Sumber kebenaran:** DDL di `src/db/database.ts` (`SCHEMA_VERSION = 2`) dan daftar akun di `src/db/coa.ts`.
+**Cakupan:** 12 tabel aktif — `akun`, `jurnal`, `jurnal_baris`, `tutup_buku`, `tutup_buku_snapshot`, `audit_log`, `pengaturan`, `panjar`, `panjar_item`, `pinjaman`, `pinjaman_angsuran`, `pinjaman_bayar`.
 
-Dokumen ini adalah satu-satunya kontrak skema baseline v1. Setiap heading
+Dokumen ini adalah satu-satunya kontrak skema baseline v2. Setiap heading
 `### \`nama_tabel\`` diikuti tabel Markdown yang barisnya diawali
 `| \`nama_kolom\` |` harus cocok dengan database baru hasil `openDb(':memory:')`:
 tidak boleh ada tabel/kolom aktif yang lupa dicatat, dan tidak boleh ada
 tabel/kolom hantu di dokumen.
 
-**Kebijakan database:** aplikasi hanya mendukung skema v1
-(`SCHEMA_VERSION = 1` di `src/db/database.ts`). File database dengan
+**Kebijakan database:** aplikasi hanya mendukung skema v2
+(`SCHEMA_VERSION = 2` di `src/db/database.ts`). File database dengan
 `user_version` lain atau tabel asing ditolak sebelum file diubah; tidak ada
-konversi otomatis. Database v1 yang **tidak lengkap** — tabel wajib hilang atau
+konversi otomatis. Database v2 yang **tidak lengkap** — tabel wajib hilang atau
 kolom wajib hilang — juga ditolak sebelum `journal_mode = WAL` dan sebelum DDL.
 Aplikasi **tidak** membuat ulang tabel/kolom yang hilang dan **tidak**
 memigrasikan file: langkah yang benar adalah **memulihkan dari backup sehat**
 (Restore Lengkap atau Restore Import `.db`).
 
-**Pemulihan DB v1 tidak lengkap.** Pesan penolakan menyebut nama tabel/kolom
+**DB v1 kedaluwarsa.** Database dengan `user_version = 1` (11 tabel) ditolak
+dengan pesan `PESAN_DB_V1_KEDALUWARSA`. Backup dulu file DB beserta `-wal`/
+`-shm`, lalu buat database baru v2 — mis. `npm run db:reset-dev` untuk DB dev
+yang memindahkan file lama ke `data/backups/pre-reset-<timestamp>.db`. Aplikasi
+tidak mengubah atau memigrasikan file v1 secara otomatis.
+
+**Pemulihan DB tidak lengkap.** Pesan penolakan menyebut nama tabel/kolom
 yang hilang. Jangan membuka file itu berulang kali, membuat database baru, atau
 menambal dengan `ALTER TABLE`/alat SQLite. Salin file ke tempat aman, lalu
-pulihkan dari backup yang lolos validasi. Database v1 yang lengkap tetap dibuka
+pulihkan dari backup yang lolos validasi. Database v2 yang lengkap tetap dibuka
 normal. Membuat database baru hanya untuk file skema lain/asing yang tidak
 didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
 dipastikan tidak ada data yang perlu diselamatkan.
@@ -52,10 +58,24 @@ dipastikan tidak ada data yang perlu diselamatkan.
 7. **`akun.nama` unik tanpa membedakan huruf besar/kecil** lewat unique index
    `ux_akun_nama_nocase`. Constraint ini tidak diduplikasi di tempat lain;
    trigger akun hanya memvalidasi bentuk kode/nama/tipe/posisi/aktif.
+8. **`jurnal.peran` dan `jurnal.replaces_id` adalah model domain eksplisit.**
+   `peran` (`NORMAL`/`OPENING`/`OPENING_REPLACEMENT`/`ADJUSTMENT`) menjawab
+   siklus hidup jurnal, sedangkan `jenis` tetap jenis dokumen. `replaces_id`
+   menunjuk jurnal yang digantikan dan unik (`ux_jurnal_replaces`). Jurnal
+   `OPENING` wajib `SALDO_AWAL` tanpa `reversal_of`; pengganti saldo awal wajib
+   `UMUM` + `OPENING_REPLACEMENT`.
+9. **Pembukaan/cut-over resmi dibaca dari `pengaturan`, bukan ditebak.**
+   `saldo_awal_aktif_id` menunjuk jurnal `OPENING`/`OPENING_REPLACEMENT` aktif,
+   dan `cutover_tanggal` adalah tanggal cut-over resmi laporan.
+   `akuntansi_tanggal_mulai` dipertahankan sebagai fallback data lama. Laporan
+   tidak memakai `MIN(tanggal)` jurnal `SALDO_AWAL`.
+10. **`tutup_buku_snapshot` append-only.** Snapshot menyimpan angka hasil
+    pembacaan saat tutup buku beserta versi; bukan sumber angka laporan dan
+    tidak boleh diubah/dihapus.
 
 ## Kebijakan `STRICT`
 
-Seluruh 11 tabel aktif wajib memakai `STRICT` dan diverifikasi lewat
+Seluruh 12 tabel aktif wajib memakai `STRICT` dan diverifikasi lewat
 `pragma table_list` setiap database dibuka. Tabel aktif yang tidak `STRICT`
 membuat aplikasi menolak skema tersebut.
 
@@ -73,7 +93,7 @@ Kebijakan untuk tabel aktif:
   tanpa mengandalkan default DB.
 - Jangan membuat tabel aktif tanpa `STRICT`.
 
-Kolom waktu pada skema baseline v1:
+Kolom waktu pada skema baseline v2:
 
 | Tabel | Kolom waktu | Default DB | Catatan |
 |---|---|---|---|
@@ -146,21 +166,35 @@ bukan tanggal akuntansi.
 | `no_bukti` | TEXT | tidak | `''` | unik per tahun (partial index) |
 | `keterangan` | TEXT | tidak | — | — |
 | `jenis` | TEXT | tidak | `'UMUM'` | trigger: jenis resmi aplikasi |
+| `peran` | TEXT | tidak | `'NORMAL'` | CHECK: `NORMAL`/`OPENING`/`OPENING_REPLACEMENT`/`ADJUSTMENT`; trigger backstop peran |
 | `grup_id` | TEXT | tidak | — | index |
 | `reversal_of` | TEXT | ya | — | FK `jurnal(id)`; unik bila tidak NULL |
+| `replaces_id` | TEXT | ya | — | FK `jurnal(id)`; UNIQUE partial `ux_jurnal_replaces`; hanya untuk peran pengganti |
 | `created_at` | TEXT | tidak | — | ISO dari aplikasi |
 
 Jenis jurnal resmi: `UMUM`, `TERIMA`, `BAYAR`, `TRANSFER`, `PANJAR`, `PIUTANG`,
 `HUTANG`, `SALDO_AWAL`, `REVERSAL`.
 
+Peran jurnal resmi:
+
+- `NORMAL` — jurnal harian dan reversal;
+- `OPENING` — jurnal saldo awal resmi (`jenis = 'SALDO_AWAL'`, `reversal_of`
+  null), ditunjuk `pengaturan.saldo_awal_aktif_id`;
+- `OPENING_REPLACEMENT` — jurnal `UMUM` pengganti saldo awal, wajib mengisi
+  `replaces_id`;
+- `ADJUSTMENT` — penyesuaian eksplisit yang menggantikan jurnal lain.
+
 **Index:** `idx_jurnal_tanggal`, `idx_jurnal_grup`, `idx_jurnal_reversal`,
 `idx_jurnal_no_bukti_tahun` (UNIQUE partial per tahun + `no_bukti` NOCASE bila
 tidak kosong), `ux_jurnal_saldo_awal` (UNIQUE partial, hanya satu
-`SALDO_AWAL`), `ux_jurnal_reversal` (UNIQUE partial, satu reversal per jurnal).
-**Trigger:** `trg_jurnal_validasi_insert`, `trg_jurnal_immutable_update`,
+`SALDO_AWAL`), `ux_jurnal_reversal` (UNIQUE partial, satu reversal per jurnal),
+`ux_jurnal_replaces` (UNIQUE partial, satu jurnal hanya digantikan sekali).
+**Trigger:** `trg_jurnal_validasi_insert` (jenis/tanggal/reversal + backstop
+peran/`replaces_id`), `trg_jurnal_immutable_update`,
 `trg_jurnal_immutable_delete`.
 **Relasi:** induk `jurnal_baris`, `panjar` (open/close/batal), `panjar_item`,
-`pinjaman` (pencairan), `pinjaman_bayar`; self-reference `reversal_of`.
+`pinjaman` (pencairan), `pinjaman_bayar`; self-reference `reversal_of` dan
+`replaces_id`.
 
 ### `jurnal_baris`
 
@@ -195,6 +229,33 @@ penutup.
 | `catatan` | TEXT | tidak | `''` | — |
 
 **Trigger:** `trg_tutup_buku_immutable_delete`.
+**Relasi:** tidak ada foreign key.
+
+### `tutup_buku_snapshot`
+
+Snapshot append-only hasil pembacaan angka saat tutup buku (T-A00). Snapshot
+bukan sumber angka laporan; laba/saldo tetap dihitung ulang dari jurnal.
+`versi` naik pada `TUTUP-ULANG`, dan `UNIQUE(tahun, versi)` mencegah versi yang
+sama tertimpa. `hash_jurnal` menyimpan sidik jari jurnal saat snapshot dibuat
+sebagai bahan audit T-A06.
+
+| Kolom | Tipe | Null | Default | Kunci/Constraint |
+|---|---|---|---|---|
+| `id` | INTEGER | tidak | — | PRIMARY KEY AUTOINCREMENT |
+| `tahun` | INTEGER | tidak | — | UNIQUE `(tahun, versi)` |
+| `versi` | INTEGER | tidak | — | UNIQUE `(tahun, versi)` |
+| `laba` | INTEGER | tidak | — | sen |
+| `total_aset` | INTEGER | tidak | — | sen |
+| `total_kewajiban` | INTEGER | tidak | — | sen |
+| `total_ekuitas` | INTEGER | tidak | — | sen |
+| `total_pasiva` | INTEGER | tidak | — | sen |
+| `selisih` | INTEGER | tidak | — | sen |
+| `hash_jurnal` | TEXT | tidak | — | sidik jari jurnal |
+| `created_at` | TEXT | tidak | — | ISO dari aplikasi |
+
+**Index:** autoindex UNIQUE `(tahun, versi)`.
+**Trigger:** `trg_tutup_buku_snapshot_immutable_update`,
+`trg_tutup_buku_snapshot_immutable_delete`.
 **Relasi:** tidak ada foreign key.
 
 ### `audit_log`
@@ -237,6 +298,10 @@ preferensi UI).
 
 **Index:** hanya autoindex PRIMARY KEY.
 **Relasi:** tidak ada foreign key.
+**Kunci pembukaan v2:** `saldo_awal_aktif_id` (id jurnal pembukaan aktif) dan
+`cutover_tanggal` (tanggal cut-over resmi laporan). Keduanya ditulis atomik oleh
+`simpanSaldoAwal`/`koreksiSaldoAwal`. `akuntansi_tanggal_mulai` tetap ada
+sebagai fallback data lama; laporan tidak memakai `MIN(tanggal)` saldo awal.
 
 ### `panjar`
 
@@ -253,6 +318,7 @@ sebagai jejak jurnal balik.
 | `jumlah` | INTEGER | tidak | — | CHECK `jumlah > 0`; cermin nominal jurnal serah |
 | `akun_kas_sumber` | TEXT | tidak | — | FK `akun(kode)` |
 | `status` | TEXT | tidak | `'OPEN'` | CHECK `status IN ('OPEN','CLOSED','DIBATALKAN')` |
+| `sumber` | TEXT | tidak | `'NORMAL'` | CHECK `NORMAL`/`SALDO_AWAL`; `SALDO_AWAL` tetap wajib `jurnal_open_id` |
 | `tanggal_close` | TEXT | ya | — | diisi saat close |
 | `jurnal_open_id` | TEXT | tidak | — | FK `jurnal(id)`; UNIQUE |
 | `jurnal_close_id` | TEXT | ya | — | FK `jurnal(id)`; UNIQUE bila tidak NULL |
@@ -356,7 +422,7 @@ maupun saldo berjalan.
 **Tidak ada:** kolom `pokok`, `bunga`, `denda`, `nominal`, `sisa_pokok`, atau
 `running_balance`; semua nominal dibaca dari `jurnal_baris`.
 
-## Daftar 25 index
+## Daftar 26 index
 
 | # | Nama index | Tabel / kolom | Sifat |
 |---|---|---|---|
@@ -366,31 +432,33 @@ maupun saldo berjalan.
 | 4 | `idx_jurnal_no_bukti_tahun` | `jurnal(substr(tanggal,1,4), no_bukti COLLATE NOCASE)` | UNIQUE partial (`no_bukti <> ''`) |
 | 5 | `ux_jurnal_saldo_awal` | `jurnal(jenis)` | UNIQUE partial (`jenis = 'SALDO_AWAL'`) |
 | 6 | `ux_jurnal_reversal` | `jurnal(reversal_of)` | UNIQUE partial (`reversal_of IS NOT NULL`) |
-| 7 | `idx_jurnal_baris_jurnal` | `jurnal_baris(jurnal_id)` | biasa |
-| 8 | `idx_jurnal_baris_akun` | `jurnal_baris(akun_kode)` | biasa |
-| 9 | `idx_audit_tanggal` | `audit_log(tanggal)` | biasa |
-| 10 | `idx_audit_aksi` | `audit_log(aksi)` | biasa |
-| 11 | `idx_audit_ref` | `audit_log(ref_type, ref_id)` | biasa |
-| 12 | `idx_panjar_status` | `panjar(status)` | biasa |
-| 13 | `idx_panjar_tanggal` | `panjar(tanggal)` | biasa |
-| 14 | `idx_panjar_item_panjar` | `panjar_item(panjar_id)` | biasa |
-| 15 | `ux_panjar_jurnal_open` | `panjar(jurnal_open_id)` | UNIQUE |
-| 16 | `ux_panjar_jurnal_close` | `panjar(jurnal_close_id)` | UNIQUE partial (`jurnal_close_id IS NOT NULL`) |
-| 17 | `ux_panjar_jurnal_batal` | `panjar(jurnal_batal_id)` | UNIQUE partial (`jurnal_batal_id IS NOT NULL`) |
-| 18 | `idx_pinjaman_tanggal` | `pinjaman(tanggal_mulai)` | biasa |
-| 19 | `idx_pinjaman_kreditur` | `pinjaman(kreditur)` | biasa |
-| 20 | `idx_pinjaman_angsuran_pinjaman` | `pinjaman_angsuran(pinjaman_id)` | biasa |
-| 21 | `idx_pinjaman_angsuran_jatuh_tempo` | `pinjaman_angsuran(jatuh_tempo)` | biasa |
-| 22 | `idx_pinjaman_bayar_pinjaman` | `pinjaman_bayar(pinjaman_id)` | biasa |
-| 23 | `idx_pinjaman_bayar_tanggal` | `pinjaman_bayar(tanggal)` | biasa |
-| 24 | `idx_pinjaman_bayar_angsuran` | `pinjaman_bayar(angsuran_id)` | biasa (pembayaran boleh dicicil) |
-| 25 | `ux_akun_nama_nocase` | `akun(nama COLLATE NOCASE)` | UNIQUE |
+| 7 | `ux_jurnal_replaces` | `jurnal(replaces_id)` | UNIQUE partial (`replaces_id IS NOT NULL`) |
+| 8 | `idx_jurnal_baris_jurnal` | `jurnal_baris(jurnal_id)` | biasa |
+| 9 | `idx_jurnal_baris_akun` | `jurnal_baris(akun_kode)` | biasa |
+| 10 | `idx_audit_tanggal` | `audit_log(tanggal)` | biasa |
+| 11 | `idx_audit_aksi` | `audit_log(aksi)` | biasa |
+| 12 | `idx_audit_ref` | `audit_log(ref_type, ref_id)` | biasa |
+| 13 | `idx_panjar_status` | `panjar(status)` | biasa |
+| 14 | `idx_panjar_tanggal` | `panjar(tanggal)` | biasa |
+| 15 | `idx_panjar_item_panjar` | `panjar_item(panjar_id)` | biasa |
+| 16 | `ux_panjar_jurnal_open` | `panjar(jurnal_open_id)` | UNIQUE |
+| 17 | `ux_panjar_jurnal_close` | `panjar(jurnal_close_id)` | UNIQUE partial (`jurnal_close_id IS NOT NULL`) |
+| 18 | `ux_panjar_jurnal_batal` | `panjar(jurnal_batal_id)` | UNIQUE partial (`jurnal_batal_id IS NOT NULL`) |
+| 19 | `idx_pinjaman_tanggal` | `pinjaman(tanggal_mulai)` | biasa |
+| 20 | `idx_pinjaman_kreditur` | `pinjaman(kreditur)` | biasa |
+| 21 | `idx_pinjaman_angsuran_pinjaman` | `pinjaman_angsuran(pinjaman_id)` | biasa |
+| 22 | `idx_pinjaman_angsuran_jatuh_tempo` | `pinjaman_angsuran(jatuh_tempo)` | biasa |
+| 23 | `idx_pinjaman_bayar_pinjaman` | `pinjaman_bayar(pinjaman_id)` | biasa |
+| 24 | `idx_pinjaman_bayar_tanggal` | `pinjaman_bayar(tanggal)` | biasa |
+| 25 | `idx_pinjaman_bayar_angsuran` | `pinjaman_bayar(angsuran_id)` | biasa (pembayaran boleh dicicil) |
+| 26 | `ux_akun_nama_nocase` | `akun(nama COLLATE NOCASE)` | UNIQUE |
 
 Autoindex tambahan dibuat SQLite untuk PRIMARY KEY dan constraint UNIQUE inline:
 `pengaturan(kunci)`, `pinjaman(jurnal_pencairan_id)`,
-`pinjaman_angsuran(pinjaman_id, ke)`, dan `pinjaman_bayar(jurnal_id)`.
+`pinjaman_angsuran(pinjaman_id, ke)`, `pinjaman_bayar(jurnal_id)`, dan
+`tutup_buku_snapshot(tahun, versi)`.
 
-## Daftar 12 trigger
+## Daftar 14 trigger
 
 | # | Nama trigger | Tabel / event | Tujuan |
 |---|---|---|---|
@@ -400,23 +468,26 @@ Autoindex tambahan dibuat SQLite untuk PRIMARY KEY dan constraint UNIQUE inline:
 | 4 | `trg_jurnal_immutable_delete` | `jurnal` BEFORE DELETE | menolak penghapusan jurnal tersimpan |
 | 5 | `trg_jurnal_baris_immutable_update` | `jurnal_baris` BEFORE UPDATE | menolak perubahan baris jurnal |
 | 6 | `trg_jurnal_baris_immutable_delete` | `jurnal_baris` BEFORE DELETE | menolak penghapusan baris jurnal |
-| 7 | `trg_jurnal_validasi_insert` | `jurnal` BEFORE INSERT | validasi jenis resmi, tanggal `YYYY-MM-DD` + kalender nyata, dan konsistensi `REVERSAL`/`reversal_of` |
+| 7 | `trg_jurnal_validasi_insert` | `jurnal` BEFORE INSERT | validasi jenis resmi, tanggal `YYYY-MM-DD` + kalender nyata, konsistensi `REVERSAL`/`reversal_of`, serta backstop `peran`/`replaces_id` |
 | 8 | `trg_akun_validasi_insert` | `akun` BEFORE INSERT | validasi kode 4 digit, nama non-kosong, tipe resmi, posisi normal, aktif 0/1 |
 | 9 | `trg_akun_validasi_update` | `akun` BEFORE UPDATE | validasi akun yang sama saat update |
 | 10 | `trg_audit_log_immutable_update` | `audit_log` BEFORE UPDATE | menolak perubahan audit |
 | 11 | `trg_audit_log_immutable_delete` | `audit_log` BEFORE DELETE | menolak penghapusan audit |
 | 12 | `trg_tutup_buku_immutable_delete` | `tutup_buku` BEFORE DELETE | menolak penghapusan penanda kunci periode |
+| 13 | `trg_tutup_buku_snapshot_immutable_update` | `tutup_buku_snapshot` BEFORE UPDATE | menolak perubahan snapshot tutup buku |
+| 14 | `trg_tutup_buku_snapshot_immutable_delete` | `tutup_buku_snapshot` BEFORE DELETE | menolak penghapusan snapshot tutup buku |
 
 ## Invariant
 
-- Set tabel aktif tepat **11**; tidak ada tabel modul lama di skema baseline v1.
-- Semua 11 tabel aktif **`STRICT`** dan tidak punya kolom di luar daftar
+- Set tabel aktif tepat **12**; tidak ada tabel modul lama di skema baseline v2.
+- Semua 12 tabel aktif **`STRICT`** dan tidak punya kolom di luar daftar
   di atas.
 - Unique index yang harus ada dan unik: `ux_jurnal_saldo_awal`,
-  `ux_jurnal_reversal`, `ux_akun_nama_nocase`, `ux_panjar_jurnal_open`,
-  `ux_panjar_jurnal_close`, dan `ux_panjar_jurnal_batal`; unique inline
-  `pinjaman.jurnal_pencairan_id`, `pinjaman_bayar.jurnal_id`, serta
-  `(pinjaman_id, ke)` pada `pinjaman_angsuran`.
+  `ux_jurnal_reversal`, `ux_jurnal_replaces`, `ux_akun_nama_nocase`,
+  `ux_panjar_jurnal_open`, `ux_panjar_jurnal_close`, dan
+  `ux_panjar_jurnal_batal`; unique inline `pinjaman.jurnal_pencairan_id`,
+  `pinjaman_bayar.jurnal_id`, `(pinjaman_id, ke)` pada `pinjaman_angsuran`,
+  serta `(tahun, versi)` pada `tutup_buku_snapshot`.
 - `created_at` ada di `jurnal`, `tutup_buku`, `panjar`, `pinjaman`, dan
   `pinjaman_bayar`. `audit_log` memakai `tanggal` (waktu peristiwa), dan
   `pinjaman_angsuran` tidak memiliki timestamp sendiri.

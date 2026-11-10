@@ -117,6 +117,11 @@ export type DashboardOpsi = {
   daftarAkun?: readonly Coa[];
   /** DB-38: tanggal mulai pembukuan untuk label tahun pertama parsial. */
   tanggalMulaiPembukuan?: string;
+  /**
+   * T-A00: cut-over eksplisit dari DB/pengaturan. Pemanggil main wajib
+   * mengisinya agar Laba Rugi/Neraca tahun pertama tidak memakai inferensi.
+   */
+  cutoverTanggal?: string | null;
 };
 
 function bulanDalamTahun(iso: string): number {
@@ -291,7 +296,12 @@ export function buildDashboardJurnal(
   };
 
   const rentang = rentangLabaBerjalan(cutoff, opsi.awalTahunBuku ?? 1);
-  const lr = labaRugi(baris, { mulai: rentang.mulai, sampai: rentang.sampai }, coa);
+  const lr = labaRugi(
+    baris,
+    { mulai: rentang.mulai, sampai: rentang.sampai },
+    coa,
+    opsi.cutoverTanggal,
+  );
   const catatanTahunPertama =
     catatanTahunPertamaParsial(opsi.tanggalMulaiPembukuan, rentang.tahunBuku) ??
     undefined;
@@ -313,7 +323,7 @@ export function buildDashboardJurnal(
     seimbang: ns.seimbang,
   };
 
-  const n = neraca(baris, { cutoff, tutup }, coa);
+  const n = neraca(baris, { cutoff, tutup }, coa, opsi.cutoverTanggal);
   const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? tanggalLokal());
 
   return {

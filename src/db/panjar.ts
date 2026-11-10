@@ -188,6 +188,7 @@ function rowToPanjar(r: RowPanjar, totalRealisasi: number): Panjar {
       : statusDb === 'CLOSED'
         ? 'CLOSED'
         : 'OPEN';
+  const sumberDb = String(r.sumber ?? 'NORMAL');
   const p: Panjar = {
     id: String(r.id),
     tanggal: String(r.tanggal),
@@ -195,6 +196,7 @@ function rowToPanjar(r: RowPanjar, totalRealisasi: number): Panjar {
     jumlah,
     akun_kas_sumber: String(r.akun_kas_sumber),
     status,
+    sumber: sumberDb === 'SALDO_AWAL' ? 'SALDO_AWAL' : 'NORMAL',
     tanggal_close: r.tanggal_close === null || r.tanggal_close === undefined
       ? null
       : String(r.tanggal_close),
@@ -268,6 +270,7 @@ export function serahkanPanjar(
     jumlah: input.jumlah,
     akun_kas_sumber: akunKasSumber,
     status: 'OPEN',
+    sumber: 'NORMAL',
     tanggal_close: null,
     jurnal_open_id: jurnalId,
     jurnal_close_id: null,
@@ -301,9 +304,9 @@ export function serahkanPanjar(
 
       db.prepare(
         `INSERT INTO panjar
-           (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+           (id, tanggal, penerima, jumlah, akun_kas_sumber, status, sumber,
             tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
-         VALUES (?, ?, ?, ?, ?, 'OPEN', NULL, ?, NULL, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'OPEN', 'NORMAL', NULL, ?, NULL, ?)`,
       ).run(id, tanggal, penerima, input.jumlah, panjar.akun_kas_sumber, jurnalId, createdAt);
 
       return { ...hasil, panjar };
@@ -773,6 +776,7 @@ export function batalkanPertanggungjawabanPanjar(
     tanggal_close: null,
     jurnal_open_id: panjar.jurnal_open_id,
     jurnal_close_id: null,
+    sumber: panjar.sumber,
     jurnal_batal_id: panjar.jurnal_batal_id,
     tanggal_batal: panjar.tanggal_batal,
     alasan_batal: panjar.alasan_batal,

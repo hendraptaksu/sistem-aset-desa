@@ -30,6 +30,7 @@ import {
   type NeracaSaldoModeHasil,
 } from '../core/reports.js';
 import { catatanTahunPertamaParsial } from '../core/pengaturan.js';
+import { getCutoverTanggal } from './pembukaan.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 
 export type FilterBarisJurnal = {
@@ -194,7 +195,12 @@ export function laporanNeracaSaldo(
 
   const akhir = sampai ?? tanggalLokal();
   const mulai = `${akhir.slice(0, 4)}-01-01`;
-  const hasil = neracaSaldoPeriode(baris, { mulai, sampai: akhir, daftarAkun });
+  const hasil = neracaSaldoPeriode(baris, {
+    mulai,
+    sampai: akhir,
+    daftarAkun,
+    cutover: getCutoverTanggal(db),
+  });
   return denganCatatanTahunPertama(
     db,
     { ...hasil, mode: 'tahun' as const },
@@ -303,6 +309,7 @@ export function laporanLabaRugi(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     filter,
     listAkun(db),
+    getCutoverTanggal(db),
   );
   return denganCatatanTahunPertama(
     db,
@@ -327,6 +334,7 @@ export function laporanNeraca(
       tutup: listTutupBuku(db),
     },
     listAkun(db),
+    getCutoverTanggal(db),
   );
   const tahun = Number(cutoff.slice(0, 4));
   return denganCatatanTahunPertama(

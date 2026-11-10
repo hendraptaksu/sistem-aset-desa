@@ -1,4 +1,4 @@
-// Skema v1 — DB baru wajib langsung punya 11 tabel aktif yang semuanya STRICT.
+// Skema v2 — DB baru wajib langsung punya 12 tabel aktif yang semuanya STRICT.
 //
 // Tidak ada jalur migrasi/rebuild: setiap DB yang dibuat `openDb` harus sesuai
 // kontrak skema aktif sejak awal, baik di `:memory:` maupun di file sementara.
@@ -60,7 +60,7 @@ function infoTabel(
   }[];
 }
 
-/** Pastikan tepat 11 tabel aktif ada dan semuanya STRICT. */
+/** Pastikan tepat 12 tabel aktif ada dan semuanya STRICT. */
 function pastikanSemuaTabelAktifStrict(db: Database.Database): void {
   expect(namaTabelUser(db)).toEqual([...TABEL_AKTIF].sort());
 
@@ -81,8 +81,8 @@ function pastikanSemuaTabelAktifStrict(db: Database.Database): void {
   expect(nonStrict).toEqual([]);
 }
 
-describe('skema v1 — DB baru langsung STRICT', () => {
-  it('DB :memory: punya 11 tabel aktif, semuanya STRICT, tanpa tabel legacy', () => {
+describe('skema v2 — DB baru langsung STRICT', () => {
+  it('DB :memory: punya 12 tabel aktif, semuanya STRICT, tanpa tabel legacy', () => {
     const db = openDb(':memory:');
     try {
       expect(versi(db)).toBe(SCHEMA_VERSION);
@@ -97,7 +97,7 @@ describe('skema v1 — DB baru langsung STRICT', () => {
     }
   });
 
-  it('DB file baru langsung 11 tabel STRICT dan tetap sama saat dibuka ulang', () => {
+  it('DB file baru langsung 12 tabel STRICT dan tetap sama saat dibuka ulang', () => {
     const path = join(dirBaru(), 'pura.db');
 
     const db = openDb(path);

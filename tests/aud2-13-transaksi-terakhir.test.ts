@@ -68,8 +68,10 @@ function jurnal(
     no_bukti: `JU-${id}`,
     keterangan: `Transaksi ${id}`,
     jenis: 'UMUM',
+    peran: 'NORMAL',
     grup_id: id,
     reversal_of: null,
+    replaces_id: null,
     created_at: '2026-11-01T00:00:00.000Z',
     baris: [
       baris('1001', nominal, 0, 1),

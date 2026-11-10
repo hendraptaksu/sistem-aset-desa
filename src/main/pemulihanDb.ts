@@ -74,7 +74,7 @@ function dbTidakKompatibel(error: unknown): boolean {
 function pesanDbTidakKompatibel(lokasi: string): string {
   return [
     'Data Anda tidak dihapus oleh aplikasi.',
-    'Database ini dibuat oleh aplikasi versi lama dengan skema yang tidak didukung. Aplikasi ini hanya mendukung skema v1.',
+    'Database ini memakai skema lama/tidak didukung. Aplikasi ini hanya mendukung skema v2. Backup dulu file database (beserta -wal/-shm), lalu buat database baru v2.',
     `Pindahkan atau hapus file database di lokasi berikut, lalu jalankan aplikasi lagi: ${lokasiTampil(lokasi)}`,
     'Bila data lama masih dibutuhkan, salin file tersebut ke tempat lain sebelum memindahkan atau menghapusnya.',
     'Bila masih gagal, klik "Keluar" lalu hubungi pendamping.',

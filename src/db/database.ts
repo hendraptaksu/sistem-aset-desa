@@ -10,14 +10,14 @@ import { COA, KELOMPOK_AKUN, POSISI_NORMAL, metadataAkunBawaan } from './coa.js'
 
 /**
  * Versi skema baseline di `PRAGMA user_version`.
- * Aplikasi hanya mendukung skema v1. Database dengan skema lama ditolak dan
- * tidak dimigrasikan: pindahkan atau hapus file DB lama, lalu jalankan
- * aplikasi lagi.
+ * Aplikasi hanya mendukung skema v2. Database v1 ditolak dengan pesan khusus
+ * agar operator mem-backup file lama lalu membuat DB baru; tidak ada migrasi
+ * otomatis. Database dengan versi lain juga ditolak tanpa diubah.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
- * AUD2-09 — daftar resmi 11 tabel aktif yang wajib `STRICT`.
+ * AUD2-09 — daftar resmi 12 tabel aktif yang wajib `STRICT`.
  * Urutan mengikuti dokumen ERD; jangan menambah tabel legacy di sini.
  */
 export const TABEL_AKTIF = [
@@ -25,6 +25,7 @@ export const TABEL_AKTIF = [
   'jurnal',
   'jurnal_baris',
   'tutup_buku',
+  'tutup_buku_snapshot',
   'audit_log',
   'pengaturan',
   'panjar',
@@ -50,12 +51,27 @@ export const KOLOM_WAJIB: Record<(typeof TABEL_AKTIF)[number], readonly string[]
     'no_bukti',
     'keterangan',
     'jenis',
+    'peran',
     'grup_id',
     'reversal_of',
+    'replaces_id',
     'created_at',
   ],
   jurnal_baris: ['id', 'jurnal_id', 'akun_kode', 'debit', 'kredit', 'keterangan'],
   tutup_buku: ['tahun', 'created_at', 'catatan'],
+  tutup_buku_snapshot: [
+    'id',
+    'tahun',
+    'versi',
+    'laba',
+    'total_aset',
+    'total_kewajiban',
+    'total_ekuitas',
+    'total_pasiva',
+    'selisih',
+    'hash_jurnal',
+    'created_at',
+  ],
   audit_log: [
     'id',
     'tanggal',
@@ -74,6 +90,7 @@ export const KOLOM_WAJIB: Record<(typeof TABEL_AKTIF)[number], readonly string[]
     'jumlah',
     'akun_kas_sumber',
     'status',
+    'sumber',
     'tanggal_close',
     'jurnal_open_id',
     'jurnal_close_id',
@@ -131,17 +148,26 @@ export const KOLOM_WAJIB: Record<(typeof TABEL_AKTIF)[number], readonly string[]
  * operator harus memindahkan atau menghapus file DB lalu menjalankan ulang.
  */
 export const PESAN_DB_TIDAK_KOMPATIBEL =
-  'File database ini dibuat oleh versi/skema lama dan tidak kompatibel. ' +
-  'Aplikasi hanya mendukung skema v1. Pindahkan atau hapus file database lama ' +
+  'File database ini dibuat oleh versi/skema lain dan tidak kompatibel. ' +
+  'Aplikasi hanya mendukung skema v2. Pindahkan atau hapus file database lama ' +
   'tersebut, lalu jalankan aplikasi lagi.';
 
 /**
- * Awalan pesan penolakan DB v1 yang kehilangan tabel wajib. DB seperti ini
+ * T-A00 — DB v1 (11 tabel) tidak dimigrasikan otomatis. File lama harus
+ * di-backup lebih dulu, lalu DB baru v2 dibuat (mis. `npm run db:reset-dev`).
+ */
+export const PESAN_DB_V1_KEDALUWARSA =
+  'Database ini memakai skema v1 yang sudah tidak didukung aplikasi versi ini. ' +
+  'Backup dulu file database (dan file -wal/-shm bila ada), lalu buat database ' +
+  'baru skema v2. Aplikasi tidak mengubah atau memigrasikan file lama secara otomatis.';
+
+/**
+ * Awalan pesan penolakan DB v2 yang kehilangan tabel wajib. DB seperti ini
  * tidak boleh dibuat ulang dengan `CREATE TABLE IF NOT EXISTS` karena tabel
  * kosong akan menutupi data yang hilang.
  */
 export const PESAN_DB_TIDAK_LENGKAP =
-  'File database skema v1 tidak lengkap: tabel wajib tidak ditemukan:';
+  'File database skema v2 tidak lengkap: tabel wajib tidak ditemukan:';
 
 /** Pesan penolakan DB v1 tidak lengkap; menyebut tabel yang hilang. */
 export function pesanDbTidakLengkap(tabelKurang: readonly string[]): string {
@@ -154,12 +180,12 @@ export function pesanDbTidakLengkap(tabelKurang: readonly string[]): string {
 }
 
 /**
- * Awalan pesan penolakan DB v1 yang tabelnya ada tetapi kehilangan kolom
+ * Awalan pesan penolakan DB v2 yang tabelnya ada tetapi kehilangan kolom
  * wajib. DB seperti ini juga tidak boleh diperbaiki otomatis: `ALTER TABLE`
  * bisa menambah kolom kosong dan menutupi data yang hilang.
  */
 export const PESAN_DB_KOLOM_TIDAK_LENGKAP =
-  'File database skema v1 tidak lengkap: kolom wajib tidak ditemukan:';
+  'File database skema v2 tidak lengkap: kolom wajib tidak ditemukan:';
 
 /** Pesan penolakan DB v1 yang kolomnya hilang; menyebut tabel + kolom. */
 export function pesanDbKolomTidakLengkap(
@@ -207,6 +233,12 @@ DROP INDEX IF EXISTS ux_jurnal_reversal;
 CREATE UNIQUE INDEX ux_jurnal_reversal
   ON jurnal(reversal_of)
   WHERE reversal_of IS NOT NULL;
+-- T-A00: satu jurnal hanya boleh digantikan satu kali. Nama ux_ sekaligus
+-- menjadi index pencarian replaces_id; tidak perlu index biasa terpisah.
+DROP INDEX IF EXISTS ux_jurnal_replaces;
+CREATE UNIQUE INDEX ux_jurnal_replaces
+  ON jurnal(replaces_id)
+  WHERE replaces_id IS NOT NULL;
 
 DROP INDEX IF EXISTS idx_jurnal_baris_jurnal;
 CREATE INDEX idx_jurnal_baris_jurnal ON jurnal_baris(jurnal_id);
@@ -271,7 +303,7 @@ CREATE UNIQUE INDEX ux_akun_nama_nocase
 const KELOMPOK_AKUN_SQL = KELOMPOK_AKUN.map((kelompok) => `'${kelompok}'`).join(', ');
 
 /**
- * DDL tabel kanonik skema v1: 11 tabel aktif, semuanya `STRICT`.
+ * DDL tabel kanonik skema v2: 12 tabel aktif, semuanya `STRICT`.
  * Tabel modul lama (`transaksi`, `coa`, `pihak`, `jurnal_pihak`, `aset`,
  * `anggaran`, `rekonsiliasi_bank`, `lampiran_jurnal`) tidak pernah dibuat.
  *
@@ -309,10 +341,16 @@ CREATE TABLE IF NOT EXISTS jurnal (
   no_bukti TEXT NOT NULL DEFAULT '',
   keterangan TEXT NOT NULL,
   jenis TEXT NOT NULL DEFAULT 'UMUM',
+  -- T-A00: peran siklus hidup jurnal, terpisah dari jenis dokumen.
+  peran TEXT NOT NULL DEFAULT 'NORMAL'
+    CHECK (peran IN ('NORMAL', 'OPENING', 'OPENING_REPLACEMENT', 'ADJUSTMENT')),
   grup_id TEXT NOT NULL,
   reversal_of TEXT,
+  -- T-A00: relasi eksplisit "jurnal ini menggantikan jurnal X".
+  replaces_id TEXT,
   created_at TEXT NOT NULL,
-  FOREIGN KEY (reversal_of) REFERENCES jurnal(id)
+  FOREIGN KEY (reversal_of) REFERENCES jurnal(id),
+  FOREIGN KEY (replaces_id) REFERENCES jurnal(id)
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS jurnal_baris (
@@ -334,6 +372,24 @@ CREATE TABLE IF NOT EXISTS tutup_buku (
   tahun INTEGER PRIMARY KEY CHECK (tahun BETWEEN 1900 AND 9999),
   created_at TEXT NOT NULL,
   catatan TEXT NOT NULL DEFAULT ''
+) STRICT;
+
+-- T-A00: snapshot append-only hasil pembacaan angka saat tutup buku.
+-- Bukan sumber angka laporan; laba/saldo tetap dihitung ulang dari jurnal.
+-- Snapshot baru pada TUTUP-ULANG memakai versi berikutnya (UNIQUE tahun+versi).
+CREATE TABLE IF NOT EXISTS tutup_buku_snapshot (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tahun INTEGER NOT NULL,
+  versi INTEGER NOT NULL,
+  laba INTEGER NOT NULL,
+  total_aset INTEGER NOT NULL,
+  total_kewajiban INTEGER NOT NULL,
+  total_ekuitas INTEGER NOT NULL,
+  total_pasiva INTEGER NOT NULL,
+  selisih INTEGER NOT NULL,
+  hash_jurnal TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (tahun, versi)
 ) STRICT;
 
 -- Audit log lengkap: alasan + kondisi sebelum/sesudah dalam JSON.
@@ -378,6 +434,10 @@ CREATE TABLE IF NOT EXISTS panjar (
   jumlah INTEGER NOT NULL CHECK (jumlah > 0),
   akun_kas_sumber TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'DIBATALKAN')),
+  -- T-A00: panjar yang sudah ada saat pembukaan. jurnal_open_id tetap
+  -- NOT NULL dan wajib menunjuk jurnal berperan OPENING/OPENING_REPLACEMENT
+  -- (divalidasi aplikasi/audit, bukan CHECK lintas tabel yang rapuh).
+  sumber TEXT NOT NULL DEFAULT 'NORMAL' CHECK (sumber IN ('NORMAL', 'SALDO_AWAL')),
   tanggal_close TEXT,
   jurnal_open_id TEXT NOT NULL,
   jurnal_close_id TEXT,
@@ -489,6 +549,36 @@ export const PESAN_REVERSAL_JURNAL_DB =
 /** Daftar jenis jurnal resmi, disinkronkan langsung dari posting layer. */
 const JENIS_JURNAL_SQL = JENIS_JURNAL.map((jenis) => `'${jenis}'`).join(', ');
 
+/** T-A00: daftar peran jurnal resmi (sama dengan `JurnalPeran`). */
+const PERAN_JURNAL_SQL =
+  "'NORMAL', 'OPENING', 'OPENING_REPLACEMENT', 'ADJUSTMENT'";
+
+/** T-A00: pesan trigger untuk peran jurnal di luar daftar resmi. */
+export const PESAN_PERAN_JURNAL_DB =
+  'Peran jurnal tidak dikenal. Gunakan NORMAL, OPENING, OPENING_REPLACEMENT, atau ADJUSTMENT.';
+
+/** T-A00: pesan trigger untuk relasi replaces_id yang tidak sah. */
+export const PESAN_REPLACES_JURNAL_DB =
+  'Relasi jurnal pengganti tidak sah: replaces_id tidak boleh menunjuk diri sendiri, ' +
+  'harus menunjuk jurnal yang ada, dan hanya boleh diisi untuk peran ' +
+  'OPENING_REPLACEMENT atau ADJUSTMENT.';
+
+/** T-A00: pesan trigger untuk jurnal OPENING_REPLACEMENT yang tidak lengkap. */
+export const PESAN_OPENING_REPLACEMENT_JURNAL_DB =
+  'Jurnal OPENING_REPLACEMENT wajib berjenis UMUM dan menunjuk jurnal yang digantikan melalui replaces_id.';
+
+/** T-A00: pesan trigger untuk jurnal OPENING yang tidak sesuai. */
+export const PESAN_OPENING_JURNAL_DB =
+  'Jurnal OPENING wajib berjenis SALDO_AWAL dan tidak boleh mengisi reversal_of.';
+
+/** T-A00: pesan trigger saat jenis pengganti berbeda dari jurnal aslinya. */
+export const PESAN_JENIS_PENGGANTI_JURNAL_DB =
+  'Jenis jurnal pengganti harus sama dengan jurnal aslinya, kecuali pengganti SALDO_AWAL harus berjenis UMUM dengan peran OPENING_REPLACEMENT.';
+
+/** T-A00: pesan trigger snapshot tutup buku yang mencoba diubah/dihapus. */
+export const PESAN_SNAPSHOT_TUTUP_BUKU_DB =
+  'Snapshot tutup buku bersifat append-only dan tidak boleh diubah atau dihapus.';
+
 /** DB-11: pesan trigger untuk kode akun yang bukan tepat 4 digit angka. */
 export const PESAN_KODE_AKUN_DB = 'Kode akun harus tepat 4 digit angka.';
 
@@ -520,7 +610,7 @@ const POSISI_NORMAL_SQL = Object.entries(POSISI_NORMAL)
   .join(' ');
 
 /**
- * DDL trigger kanonik skema v1.
+ * DDL trigger kanonik skema v2.
  *
  * Semua trigger didefinisikan di sini lalu diinterpolasi ke `DDL` melalui
  * `DDL_TRIGGER`, sehingga `db.exec(DDL)` pada DB baru langsung membuat tabel +
@@ -612,6 +702,36 @@ BEGIN
   SELECT RAISE(ABORT, '${PESAN_REVERSAL_JURNAL_DB}')
   WHERE NEW.jenis = 'REVERSAL'
     AND (NEW.reversal_of IS NULL OR NEW.reversal_of = '');
+  SELECT RAISE(ABORT, '${PESAN_PERAN_JURNAL_DB}')
+  WHERE NEW.peran IS NULL OR NEW.peran NOT IN (${PERAN_JURNAL_SQL});
+  SELECT RAISE(ABORT, '${PESAN_OPENING_JURNAL_DB}')
+  WHERE NEW.peran = 'OPENING'
+    AND (NEW.jenis <> 'SALDO_AWAL'
+      OR (NEW.reversal_of IS NOT NULL AND NEW.reversal_of <> ''));
+  SELECT RAISE(ABORT, '${PESAN_OPENING_REPLACEMENT_JURNAL_DB}')
+  WHERE NEW.peran = 'OPENING_REPLACEMENT'
+    AND (NEW.replaces_id IS NULL OR NEW.replaces_id = '' OR NEW.jenis <> 'UMUM');
+  SELECT RAISE(ABORT, '${PESAN_REPLACES_JURNAL_DB}')
+  WHERE NEW.replaces_id IS NOT NULL AND NEW.replaces_id <> ''
+    AND (NEW.replaces_id = NEW.id
+      OR NEW.peran NOT IN ('OPENING_REPLACEMENT', 'ADJUSTMENT'));
+  SELECT RAISE(ABORT, '${PESAN_REPLACES_JURNAL_DB}')
+  WHERE NEW.replaces_id IS NOT NULL AND NEW.replaces_id <> ''
+    AND NOT EXISTS (SELECT 1 FROM jurnal a WHERE a.id = NEW.replaces_id);
+  SELECT RAISE(ABORT, '${PESAN_JENIS_PENGGANTI_JURNAL_DB}')
+  WHERE NEW.replaces_id IS NOT NULL AND NEW.replaces_id <> ''
+    AND EXISTS (
+      SELECT 1 FROM jurnal a
+       WHERE a.id = NEW.replaces_id
+         AND NOT (
+           (a.jenis = 'SALDO_AWAL'
+             AND NEW.jenis = 'UMUM'
+             AND NEW.peran = 'OPENING_REPLACEMENT')
+           OR (a.jenis <> 'SALDO_AWAL'
+             AND NEW.jenis = a.jenis
+             AND NEW.peran IN ('OPENING_REPLACEMENT', 'ADJUSTMENT'))
+         )
+    );
 END;
 
 DROP TRIGGER IF EXISTS trg_akun_validasi_insert;
@@ -668,10 +788,24 @@ BEFORE DELETE ON tutup_buku
 BEGIN
   SELECT RAISE(ABORT, 'Tutup buku tidak boleh dihapus.');
 END;
+
+DROP TRIGGER IF EXISTS trg_tutup_buku_snapshot_immutable_update;
+CREATE TRIGGER trg_tutup_buku_snapshot_immutable_update
+BEFORE UPDATE ON tutup_buku_snapshot
+BEGIN
+  SELECT RAISE(ABORT, '${PESAN_SNAPSHOT_TUTUP_BUKU_DB}');
+END;
+
+DROP TRIGGER IF EXISTS trg_tutup_buku_snapshot_immutable_delete;
+CREATE TRIGGER trg_tutup_buku_snapshot_immutable_delete
+BEFORE DELETE ON tutup_buku_snapshot
+BEGIN
+  SELECT RAISE(ABORT, '${PESAN_SNAPSHOT_TUTUP_BUKU_DB}');
+END;
 `;
 
 /**
- * DDL kanonik skema v1: 11 tabel + seluruh index + seluruh trigger.
+ * DDL kanonik skema v2: 12 tabel + seluruh index + seluruh trigger.
  * `DDL_TABEL` memuat tabel dan `${DDL_INDEX}`; `DDL_TRIGGER` memuat trigger.
  */
 export const DDL = DDL_TABEL + DDL_TRIGGER;
@@ -831,11 +965,12 @@ export function kolomWajibHilang(
 }
 
 /**
- * Guard kompatibilitas skema. Hanya DB baru (v0 tanpa tabel) dan DB v1 yang
+ * Guard kompatibilitas skema. Hanya DB baru (v0 tanpa tabel) dan DB v2 yang
  * lengkap — seluruh `TABEL_AKTIF` ada beserta kolom wajibnya, dan tidak ada
- * tabel asing — yang boleh dibuka. Database lama/tidak lengkap tidak
- * dimigrasikan dan tidak boleh disentuh: fungsi ini dipanggil SEBELUM
- * `journal_mode = WAL` agar file lama tidak berubah byte-for-byte.
+ * tabel asing — yang boleh dibuka. DB v1 ditolak dengan pesan backup/reset
+ * khusus; database lain/tidak lengkap tidak dimigrasikan dan tidak boleh
+ * disentuh: fungsi ini dipanggil SEBELUM `journal_mode = WAL` agar file lama
+ * tidak berubah byte-for-byte.
  */
 export function cekKompatibilitas(db: Database.Database): void {
   const versi = Number(db.pragma('user_version', { simple: true }) ?? 0);
@@ -843,10 +978,14 @@ export function cekKompatibilitas(db: Database.Database): void {
 
   if (versi === 0 && tabel.length === 0) return;
 
+  // T-A00: skema v1 sengaja tidak dimigrasikan. Periksa versi sebelum DDL/WAL
+  // agar file v1 tidak berubah; operator wajib backup lalu membuat DB baru.
+  if (versi === 1) throw new Error(PESAN_DB_V1_KEDALUWARSA);
+
   if (versi === SCHEMA_VERSION) {
     const tabelSet = new Set(tabel);
     const tabelKurang = TABEL_AKTIF.filter((nama) => !tabelSet.has(nama));
-    // DB v1 tanpa tabel wajib (mis. `jurnal_baris` terhapus) harus ditolak
+    // DB v2 tanpa tabel wajib (mis. `jurnal_baris` terhapus) harus ditolak
     // sebelum DDL, jangan sampai `CREATE TABLE IF NOT EXISTS` membuat tabel
     // kosong dan menutupi kehilangan data. Cek tabel lebih dulu agar DB yang
     // tabelnya hilang tetap memakai pesan T1.3.
@@ -864,9 +1003,9 @@ export function cekKompatibilitas(db: Database.Database): void {
 }
 
 /**
- * Siapkan skema v1 untuk DB baru/kompatibel: jalankan seluruh DDL (tabel,
+ * Siapkan skema v2 untuk DB baru/kompatibel: jalankan seluruh DDL (tabel,
  * index, trigger) dalam satu transaksi, verifikasi STRICT, lalu naikkan
- * `user_version` ke v1 bila DB sebelumnya baru (v0).
+ * `user_version` ke v2 bila DB sebelumnya baru (v0).
  *
  * T3.6 — setelah DDL, objek index/trigger wajib dibandingkan dengan definisi
  * kanonik. `DROP ... IF EXISTS` + `CREATE` di DDL sudah membuat ulang objek
