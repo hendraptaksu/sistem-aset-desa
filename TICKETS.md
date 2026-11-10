@@ -416,14 +416,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A03 — Blokir reversal generik atas jurnal pembukaan pengganti
+### [x] T-A03 — Blokir reversal generik atas jurnal pembukaan pengganti
 
 | | |
 | --- | --- |
 | **Prioritas** | P0 |
 | **Perkiraan** | M |
 | **Depends** | T-A00, T-A01 |
-| **Status** | Belum |
+| **Status** | Selesai — commit b583644 |
 
 **Masalah**
 
@@ -481,6 +481,34 @@ selisih laporan.
 npm test -- tests/reversal.test.ts tests/kemampuan-koreksi-jurnal.test.ts tests/saldo-awal-koreksi.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit b583644):**
+
+- `src/core/reversal.ts`: konstanta baru `PESAN_REVERSAL_PEMBUKAAN_AKTIF`
+  (dibedakan dari `PESAN_REVERSAL_SALDO_AWAL`) yang menyebut jurnal pembukaan
+  aktif/pengganti dan mengarahkan ke **Wizard Koreksi Saldo Awal**.
+- `src/db/reversal.ts`: `rencanaUntuk()` membaca `getPembukaanAktif(db)` dan
+  menolak bila `idAsli` sama dengan penunjuk aktif, atau `peran` jurnal adalah
+  `OPENING`/`OPENING_REPLACEMENT`. Penolakan `jenis === 'SALDO_AWAL'` lama tetap
+  dipertahankan. `reverseJurnal()` dan `koreksiDanIsiUlang()` sama-sama memakai
+  `rencanaUntuk()`, sehingga keduanya berhenti sebelum menulis jurnal/audit.
+- `src/db/kemampuanKoreksi.ts`: pesan capability memakai konstanta yang sama;
+  penunjuk `saldo_awal_aktif_id` dibaca langsung dari `pengaturan` (tetap bebas
+  siklus impor `repository`) dan menolak walau `peran` data lama tidak terbaca.
+  `OPENING`/`OPENING_REPLACEMENT` dan `SALDO_AWAL` biasa tetap ditolak dengan
+  pesan masing-masing.
+- `koreksiSaldoAwal()` tidak diubah: wizard tetap menemukan pembukaan aktif dan
+  berhasil untuk koreksi kedua/ketiga; pointer `saldo_awal_aktif_id`,
+  `cutover_tanggal`, dan `akuntansi_tanggal_mulai` ikut berpindah.
+- Test regresi ditambahkan/diperbarui di `tests/reversal.test.ts`,
+  `tests/kemampuan-koreksi-jurnal.test.ts`, `tests/saldo-awal-koreksi.test.ts`,
+  serta penyesuaian pesan di `tests/regresi-p0.test.ts`. Mencakup: reversal &
+  koreksi generik pengganti ditolak tanpa jurnal/audit baru; capability
+  `bisaDibalik`/`bisaDikoreksi` false; pointer lama tanpa peran tetap ditolak;
+  koreksi berulang (3x) dengan laporan benar; `ADJUSTMENT`/`NORMAL` lain dalam
+  grup yang sama tetap bisa dibalik.
+- Verifikasi: test target 59 lulus; `npm test` 94 file / 1251 test lulus;
+  `npm run typecheck` lulus. Tidak ada perubahan skema.
 
 ---
 
