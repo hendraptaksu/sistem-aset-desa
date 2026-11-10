@@ -514,14 +514,14 @@ npm run typecheck
 
 ## P1 — Kontrol, audit, dan konsistensi laporan
 
-### [ ] T-A04 — Izinkan reversal jurnal historis yang akunnya sudah nonaktif
+### [x] T-A04 — Izinkan reversal jurnal historis yang akunnya sudah nonaktif
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | M |
 | **Depends** | — |
-| **Status** | Belum |
+| **Status** | Selesai — commit f8187f2 |
 
 **Masalah**
 
@@ -583,6 +583,36 @@ master akun.
 npm test -- tests/reversal.test.ts tests/posting.test.ts tests/akun.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit f8187f2):**
+
+- `src/core/posting.ts`: `PostingContext.akunNonaktifDiizinkan` baru. Baris
+  dengan akun nonaktif tetap ditolak kecuali kodenya ada di set; akun legacy
+  3001/3002 dan tipe/posisi normal salah tetap ditolak seperti biasa.
+- `src/db/repository.ts`: `insertJurnalTervalidasi()` menerima parameter ke-4
+  `{ akunNonaktifDiizinkan }`. Pengecualian hanya per kode akun; seluruh
+  validasi struktural lain dipertahankan.
+- `src/db/posting.ts`: `OpsiPosting.akunNonaktifDiizinkan` diteruskan oleh
+  `validasiJurnalDb()`/`postingJurnalInti()` ke validator dan insert. Jalur
+  input manual tidak mengisi field ini, sehingga akun nonaktif tetap ditolak.
+- `src/core/reversal.ts`: helper murni `barisCerminReversal()`,
+  `barisNonaktifPenggantiSah()`, dan `barisMultisetSama()`. Pengecualian hanya
+  diberikan bila rencana reversal benar-benar cermin (jumlah baris, akun,
+  nominal sama; debit/kredit tertukar). Pengganti hanya boleh memakai akun
+  nonaktif pada baris yang persis sama dengan asli; baris berubah/baru ditolak
+  dengan pesan “ganti ke akun aktif”.
+- `src/db/reversal.ts`: `reverseJurnal()` dan `koreksiDanIsiUlang()` memakai set
+  terpisah untuk jurnal balik dan pengganti, baik saat validasi maupun insert.
+  Penolakan pengganti terjadi sebelum transaksi sehingga tidak ada jurnal/audit
+  yang tertulis.
+- Test regresi di `tests/reversal.test.ts`, `tests/posting.test.ts`, dan
+  `tests/akun.test.ts`: jurnal historis 4001 dinonaktifkan lewat `setAkunAktif()`
+  tetap bisa direversal dengan baris cermin persis dan `auditIntegritas().ok`;
+  posting manual baru ke 4001 tetap ditolak; pengganti dengan baris nonaktif
+  yang persis sama diterima; perubahan nominal/sisi pada akun nonaktif ditolak
+  tanpa jejak; helper cermin diuji untuk nominal, sisi, jumlah baris, dan urutan.
+- Verifikasi: test target 104 lulus; `npm test` 94 file / 1257 test lulus;
+  `npm run typecheck` lulus. Tidak ada perubahan skema.
 
 ---
 
