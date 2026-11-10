@@ -921,14 +921,14 @@ npm run typecheck
 
 ---
 
-### [ ] T-A08 — Dashboard memakai satu definisi balance
+### [x] T-A08 — Dashboard memakai satu definisi balance
 
 | | |
 | --- | --- |
 | **Prioritas** | P1 |
 | **Perkiraan** | S |
 | **Depends** | T-A01 |
-| **Status** | Belum |
+| **Status** | Selesai — commit 61ee9cd |
 
 **Masalah**
 
@@ -974,6 +974,28 @@ Neraca tidak balance. Ini kegagalan trust yang paling terlihat.
 npm test -- tests/dashboard.test.ts tests/laporan.test.ts
 npm run typecheck
 ```
+
+**Catatan penyelesaian (commit 61ee9cd):**
+
+- `src/features/dashboard/dashboard.ts`: `neraca()` dihitung lebih dulu dengan
+  `tutup` dan cut-over eksplisit yang sudah ada. `selisih`, `balance`, dan
+  `badge` kini berasal dari Neraca (`n.selisih`, `n.balance`,
+  `SELISIH <n.selisih>`); trial balance tidak lagi dipakai untuk field itu.
+  `neracaSaldo` tetap dikirim lengkap (`totalDebit`, `totalKredit`, `selisih`,
+  `seimbang`) sebagai informasi terpisah.
+- `src/renderer/components/DashboardTab.tsx`: badge header mengikuti
+  `data.balance` (bukan `neracaSaldo.seimbang`), dan kartu Neraca Saldo
+  menampilkan peringatan merah `peringatan-neraca-tidak-balance` bila trial
+  balance seimbang tetapi Neraca selisih. Gaya lain tidak diubah.
+- `tests/dashboard.test.ts`: test komposisi memverifikasi
+  `d.balance === neraca(...).balance` dan `d.selisih === neraca(...).selisih`
+  pada fixture bersih; fixture baru memakai cut-over resmi `2026-03-01`
+  sehingga P&L Jan–Feb 2026 di luar Neraca, menghasilkan `balance:false`,
+  `selisih != 0`, badge bukan `BALANCE`, walau `neracaSaldo.seimbang === true`.
+  DB kosong/bersih tetap `balance:true` dan badge `BALANCE`.
+- Verifikasi: `npm test -- tests/dashboard.test.ts tests/laporan.test.ts`
+  61 test lulus; `npm test` 94 file / 1277 test lulus; `npm run typecheck`
+  lulus. Tidak ada perubahan skema; T-A09 dan seterusnya tidak disentuh.
 
 ---
 
