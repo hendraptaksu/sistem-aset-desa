@@ -202,6 +202,10 @@ Status resmi panjar adalah `OPEN`, `CLOSED`, atau `DIBATALKAN`.
 - Jurnal balik dibuat dari jurnal serah: `D kas sumber / K 1040`, berjenis
   `REVERSAL`, `grup_id` sama, `reversal_of` = jurnal serah, keterangan
   `KOREKSI: ...`. Jurnal serah asli tidak diubah/dihapus.
+- Semua jurnal balik panjar (batal OPEN maupun koreksi pertanggungjawaban
+  CLOSED) ditulis lewat satu pintu `postingReversalTertaut` yang selalu
+  mengirim `mode: 'REVERSAL'`, sehingga jurnal balik tersumber `REVERSAL` —
+  bukan `POSTING` (T-A14/T-B04).
 - **Tanggal batal/reversal panjar wajib ≥ tanggal jurnal yang dibalik.**
   Bila `tanggalBatal` diisi eksplisit, tanggal itu tidak boleh lebih awal dari
   tanggal jurnal yang dibalik: jurnal serah untuk batal panjar OPEN, dan
@@ -216,8 +220,8 @@ Status resmi panjar adalah `OPEN`, `CLOSED`, atau `DIBATALKAN`.
   ditutup/dibatalkan ulang, dan tidak boleh punya jurnal close/item. Audit
   integritas melaporkan link batal yatim, duplikat, atau status tidak konsisten.
 - Guard Jurnal Umum (`PESAN_REVERSAL_PANJAR`) tidak dilonggarkan: jalur
-  pembatalan internal memakai `rencanaReversal` + posting layer, bukan endpoint
-  reversal umum.
+  pembatalan internal memakai helper `postingReversalTertaut` + posting layer,
+  bukan endpoint reversal umum.
 
 ## 9. Aturan pinjaman LPD
 
@@ -238,7 +242,9 @@ Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
 - Satu angsuran dapat menerima beberapa pembayaran. Status
   `BELUM`/`SEBAGIAN`/`LUNAS` dihitung dari pokok dan bunga aktif; satu jurnal
   tetap hanya dimiliki satu pembayaran. Pembatalan melalui modul pinjaman
-  menjaga histori asli dan membuat jurnal balik pada tanggal asli.
+  menjaga histori asli dan membuat jurnal balik pada tanggal asli — lewat
+  satu pintu `postingReversalTertaut`, sehingga jurnal baliknya tersumber
+  `REVERSAL`, bukan `POSTING` (T-B04).
 - `jurnal_pencairan_id = NULL` berarti pinjaman sudah berjalan: sisa pokok
   harus sudah ada di Saldo Awal 2050 dan modul **tidak** membuat jurnal
   pencairan baru.

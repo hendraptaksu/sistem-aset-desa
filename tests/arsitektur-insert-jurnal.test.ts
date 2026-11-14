@@ -32,6 +32,19 @@ const SERVICE_INSERT = [
   'src/db/seed-dev.ts',
 ] as const;
 
+/**
+ * T-B04: penyusun rencana reversal (`rencanaReversal`) hanya boleh dipanggil:
+ * - `src/core/reversal.ts` — definisi murni;
+ * - `src/db/reversal.ts` — helper `postingReversalTertaut` + jalur generik;
+ * - `src/db/saldoAwal.ts` — wizard koreksi saldo awal menulis balik+pengganti
+ *   lewat `insertJurnalInternal` dengan `sumber` eksplisit (bukan postingJurnal).
+ */
+const PEMAKAI_RENCANA_REVERSAL = [
+  'src/core/reversal.ts',
+  'src/db/reversal.ts',
+  'src/db/saldoAwal.ts',
+] as const;
+
 const dirs: string[] = [];
 
 function freshDb(): ReturnType<typeof openDb> {
@@ -64,6 +77,35 @@ function berkasYangMenyebut(berkas: readonly string[], pola: RegExp): string[] {
 
 function jumlahJurnal(db: ReturnType<typeof openDb>): number {
   return Number((db.prepare('SELECT COUNT(*) AS c FROM jurnal').get() as { c: number }).c);
+}
+
+/**
+ * Ekstrak isi setiap pemanggilan `namaFungsi(...)` pada satu berkas sumber,
+ * kurung seimbang, untuk pemeriksaan statis opsi pemanggilan.
+ */
+function ekstrakPanggilan(
+  isiBerkas: string,
+  namaFungsi: string,
+): { baris: number; isi: string }[] {
+  const hasil: { baris: number; isi: string }[] = [];
+  const pola = new RegExp(`\\b${namaFungsi}\\s*\\(`, 'g');
+  let cocok: RegExpExecArray | null;
+  while ((cocok = pola.exec(isiBerkas)) !== null) {
+    const mulai = cocok.index + cocok[0].length;
+    let kedalaman = 1;
+    let akhir = mulai;
+    while (akhir < isiBerkas.length && kedalaman > 0) {
+      const karakter = isiBerkas[akhir];
+      if (karakter === '(') kedalaman += 1;
+      else if (karakter === ')') kedalaman -= 1;
+      akhir += 1;
+    }
+    if (kedalaman !== 0) continue; // kurung tidak seimbang — bukan panggilan utuh.
+    const isiPanggilan = isiBerkas.slice(mulai, akhir - 1);
+    const baris = isiBerkas.slice(0, cocok.index).split('\n').length;
+    hasil.push({ baris, isi: isiPanggilan });
+  }
+  return hasil;
 }
 
 function pasangan(
@@ -205,5 +247,42 @@ describe('T-A14 — arsitektur penulisan jurnal', () => {
     } finally {
       db.close();
     }
+  });
+
+  it('T-B04 — penyusun rencana reversal hanya boleh dipanggil helper reversal', () => {
+    const pemakai = berkasYangMenyebut(
+      daftarBerkasSrc(),
+      /\brencanaReversal\s*\(/,
+    ).filter((rel) => !(PEMAKAI_RENCANA_REVERSAL as readonly string[]).includes(rel));
+
+    expect(
+      pemakai,
+      `Modul produksi ini menyusun rencana reversal sendiri; wajib lewat helper ` +
+        `postingReversalTertaut di src/db/reversal.ts: ${pemakai.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('T-B04 — pemanggil postingJurnal untuk jurnal balik wajib mengirim mode REVERSAL', () => {
+    const pelanggaran: string[] = [];
+    for (const rel of daftarBerkasSrc()) {
+      const isiBerkas = readFileSync(join(SRC, rel.replace(/^src\//, '')), 'utf8');
+      for (const panggilan of ekstrakPanggilan(isiBerkas, 'postingJurnal')) {
+        // Jurnal balik dikenali dari:
+        // - header jenis REVERSAL eksplisit (aturan berlaku di semua berkas);
+        // - input rencana reversal — hanya mungkin di src/db/reversal.ts karena
+        //   test sebelumnya membatasi pemanggil `rencanaReversal` ke helper.
+        const membalikJurnal =
+          /jenis:\s*'REVERSAL'/.test(panggilan.isi) ||
+          (/rencana\s*\.\s*input/.test(panggilan.isi) && rel === 'src/db/reversal.ts');
+        if (membalikJurnal && !/mode:\s*'REVERSAL'/.test(panggilan.isi))
+          pelanggaran.push(`${rel}:${panggilan.baris}`);
+      }
+    }
+
+    expect(
+      pelanggaran,
+      `Pemanggilan postingJurnal jurnal balik tanpa mode REVERSAL menyimpan ` +
+        `sumber 'POSTING' dan menyamarkan asal koreksi: ${pelanggaran.join(', ')}`,
+    ).toEqual([]);
   });
 });

@@ -45,7 +45,7 @@ import { catatAudit, getAkun, getJurnalDetail, listAkun } from './repository.js'
 import { formatRp } from '../utils/format.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 import { ringkasanAngsuran } from '../core/pinjamanAngsuran.js';
-import { rencanaReversal } from '../core/reversal.js';
+import { postingReversalTertaut } from './reversal.js';
 import {
   hitungMutasiPinjaman,
   periodeMutasiPinjaman,
@@ -1681,19 +1681,14 @@ function batalkanCatatanPinjaman(
       if (jurnalPembatalan(db, jurnalId)) return gagal('Catatan ini sudah dibatalkan.');
       if (jenis === 'pencairan' && daftarPembayaran(db, pinjaman.id).some((p) => !p.dibatalkan))
         return gagal('Batalkan catatan pembayaran yang masih aktif sebelum membatalkan pencairan.');
-      const detail = getJurnalDetail(db, jurnalId);
-      const rencana = rencanaReversal({
-        jurnal: detail?.jurnal ?? null,
-        baris: detail?.baris ?? [],
+      // T-B04: satu pintu jurnal balik tertaut — helper menyusun rencana
+      // REVERSAL (grup & `reversal_of` dari jurnal asli, default tanggal
+      // jurnal asli), mengirim `mode: 'REVERSAL'` sehingga sumber insert
+      // `REVERSAL`, dan menulis audit otomatis posting layer di transaksi ini.
+      const posting = postingReversalTertaut(db, jurnalId, alasan, {
         id: uid('j-batal-pinjaman'),
-        tanggal: detail?.jurnal.tanggal ?? '',
-        alasan,
-      });
-      if (!rencana.boleh || !rencana.input) return gagal(rencana.errors);
-      const posting = postingJurnal(db, rencana.input, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan,
         alasanPeringatan: opsi.alasanPeringatan,
-        wajibAlasanPeringatan: true,
       });
       if (!posting.tersimpan || !posting.jurnal) return { ...posting };
       catatAudit(db, {

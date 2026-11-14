@@ -33,7 +33,6 @@ import {
   type HasilValidasiJurnal,
   type JurnalInput,
 } from '../core/posting.js';
-import { cekTanggalTidakMundur, rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, Panjar, PanjarItem } from '../core/types.js';
 import { formatRp } from '../utils/format.js';
 import { AKUN_PANJAR, isAkunKasData } from './coa.js';
@@ -46,6 +45,7 @@ import {
 } from './repository.js';
 import { getPembukaanAktif } from './pembukaan.js';
 import { postingJurnal } from './posting.js';
+import { postingReversalTertaut } from './reversal.js';
 import { rekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
 import type { HasilRekonsiliasiPanjar } from '../core/rekonsiliasiPanjar.js';
 import { rekonsiliasiPanjarTersimpan } from './panjarRekonsiliasi.js';
@@ -814,11 +814,13 @@ export function closePanjarV2(
  *
  * Alur atomik:
  * 1. validasi status OPEN, belum pernah dibatalkan, alasan >= 5 karakter;
- * 2. susun reversal jurnal serah (tukar debit/kredit sehingga D kas / K 1040)
- *    lewat `rencanaReversal` — bukan `reverseJurnal`, supaya guard Jurnal Umum
- *    `PESAN_REVERSAL_PANJAR` tidak dilonggarkan untuk pengguna umum;
- * 3. posting reversal berjenis REVERSAL dengan grup & `reversal_of` jurnal
- *    serah, lalu tautkan `jurnal_batal_id`/`tanggal_batal`/`alasan_batal`,
+ * 2. susun + posting reversal jurnal serah (tukar debit/kredit sehingga
+ *    D kas / K 1040) lewat `postingReversalTertaut` — bukan `reverseJurnal`,
+ *    supaya guard Jurnal Umum `PESAN_REVERSAL_PANJAR` tidak dilonggarkan untuk
+ *    pengguna umum; helper menegakkan guard tanggal T-B01 dan menandai jurnal
+ *    balik dengan `mode: 'REVERSAL'` (sumber `REVERSAL`, T-B04);
+ * 3. jurnal balik berjenis REVERSAL dengan grup & `reversal_of` jurnal serah,
+ *    lalu tautkan `jurnal_batal_id`/`tanggal_batal`/`alasan_batal`,
  *    ubah `status` menjadi DIBATALKAN, dan tulis audit `PANJAR-BATAL`.
  *    Jurnal asli tidak pernah diubah/dihapus.
  *
@@ -879,33 +881,6 @@ export function batalPanjarV2(
   const tanggalBatal = tanggalEksplisit || String(panjar.tanggal);
   const jurnalBatalId = String(input?.jurnalId ?? '').trim() || uid('jb');
 
-  // T-B01: tanggal batal eksplisit tidak boleh mundur dari tanggal jurnal
-  // serah yang dibalik — aturan sama dengan jalur generik (T-A10) lewat
-  // `cekTanggalTidakMundur`. Tanpa tanggal eksplisit, default tetap tanggal
-  // jurnal serah (perilaku lama tidak berubah).
-  if (tanggalEksplisit) {
-    const cekTanggal = cekTanggalTidakMundur(
-      tanggalEksplisit,
-      detail.jurnal.tanggal,
-      'jurnal balik',
-    );
-    if (!cekTanggal.boleh) return gagal(cekTanggal.pesan!);
-  }
-
-  const rencana = rencanaReversal({
-    jurnal: detail.jurnal,
-    baris: detail.baris,
-    reversalAda: listJurnal(db, { reversal_of: jurnalOpenId }),
-    id: jurnalBatalId,
-    tanggal: tanggalBatal,
-    alasan,
-  });
-  if (!rencana.boleh || !rencana.input)
-    return gagal(
-      rencana.errors.join(' ') ||
-        'Jurnal balik pembatalan panjar gagal disusun.',
-    );
-
   const dibatalkan: Panjar = {
     ...panjar,
     status: 'DIBATALKAN',
@@ -913,29 +888,37 @@ export function batalPanjarV2(
     tanggal_batal: tanggalBatal,
     alasan_batal: alasan,
   };
-  const audit = buatAuditLog(
-    `PANJAR-BATAL ${id}`,
-    alasan,
-    panjar,
-    {
-      panjar: dibatalkan,
-      jurnal: rencana.input.header,
-      baris: rencana.input.baris,
-      jurnal_batal_id: jurnalBatalId,
-      reversal_of: jurnalOpenId,
-    },
-    { ref_type: 'panjar', ref_id: id },
-  );
 
   try {
-    const simpan = db.transaction(() => {
-      const hasil = postingJurnal(db, rencana.input!, {
+    const simpan = db.transaction((): HasilPanjar => {
+      // T-B04: satu pintu jurnal balik tertaut — helper selalu menjalankan
+      // guard tanggal T-B01 (tanggal batal eksplisit tidak boleh mundur dari
+      // tanggal jurnal serah; tanpa eksplisit default tetap tanggal serah),
+      // menyusun rencana REVERSAL dengan grup & `reversal_of` jurnal serah,
+      // mengirim `mode: 'REVERSAL'`, dan menulis audit di transaksi ini.
+      const balik = postingReversalTertaut(db, jurnalOpenId, alasan, {
+        id: jurnalBatalId,
+        tanggal: tanggalBatal,
+        reversalAda: listJurnal(db, { reversal_of: jurnalOpenId }),
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
         alasanPeringatan: alasan,
-        wajibAlasanPeringatan: true,
-        audit: [audit],
+        buatAudit: (rencana) => [
+          buatAuditLog(
+            `PANJAR-BATAL ${id}`,
+            alasan,
+            panjar,
+            {
+              panjar: dibatalkan,
+              jurnal: rencana.header,
+              baris: rencana.baris,
+              jurnal_batal_id: jurnalBatalId,
+              reversal_of: jurnalOpenId,
+            },
+            { ref_type: 'panjar', ref_id: id },
+          ),
+        ],
       });
-      if (!hasil.tersimpan || !hasil.jurnal) return hasil;
+      if (!balik.tersimpan || !balik.jurnal) return balik;
 
       // Guard status + link batal di WHERE agar dua proses tidak bisa
       // membatalkan/menutup panjar yang sama secara bersamaan.
@@ -954,7 +937,7 @@ export function batalPanjarV2(
           'Panjar sudah dibatalkan atau ditutup oleh proses lain. Muat ulang daftar panjar.',
         );
 
-      return { ...hasil, panjar: dibatalkan };
+      return { ...balik, panjar: dibatalkan };
     });
     return simpan();
   } catch (e) {
@@ -1090,8 +1073,11 @@ function gagalBatalSaldoAwal(pesan: string): HasilBatalPanjarSaldoAwal {
  * diblokir dari Jurnal Umum. Alur ini membuka jalan koreksi tanpa mengubah
  * jurnal asli:
  * 1. validasi status CLOSED, `jurnal_close_id`, dan alasan >= 5 karakter;
- * 2. susun reversal jurnal close lewat `rencanaReversal` (default tanggal =
- *    tanggal_close) — bukan `reverseJurnal`, agar guard Jurnal Umum tetap utuh;
+ * 2. susun + posting reversal jurnal close lewat `postingReversalTertaut`
+ *    (default tanggal = tanggal_close) — bukan `reverseJurnal`, agar guard
+ *    Jurnal Umum tetap utuh; helper menegakkan guard tanggal T-B01 dan
+ *    menandai jurnal balik dengan `mode: 'REVERSAL'` (sumber `REVERSAL`,
+ *    T-B04);
  * 3. dalam satu transaksi: posting reversal, hapus `panjar_item` lama (seluruh
  *    data disimpan di audit), reset panjar menjadi OPEN, dan tulis audit
  *    `PANJAR-BATAL-CLOSE`. Jurnal close asli tetap tersimpan sebagai jejak.
@@ -1133,33 +1119,6 @@ export function batalkanPertanggungjawabanPanjar(
   const tanggalBatal = tanggalEksplisit || String(panjar.tanggal_close ?? '');
   const jurnalBatalId = uid('jk');
 
-  // T-B01: tanggal koreksi eksplisit tidak boleh mundur dari tanggal jurnal
-  // close yang dibalik — aturan sama dengan jalur generik (T-A10) lewat
-  // `cekTanggalTidakMundur`. Tanpa tanggal eksplisit, default tetap tanggal
-  // close panjar (perilaku lama tidak berubah).
-  if (tanggalEksplisit) {
-    const cekTanggal = cekTanggalTidakMundur(
-      tanggalEksplisit,
-      detail.jurnal.tanggal,
-      'jurnal balik',
-    );
-    if (!cekTanggal.boleh) return gagal(cekTanggal.pesan!);
-  }
-
-  const rencana = rencanaReversal({
-    jurnal: detail.jurnal,
-    baris: detail.baris,
-    reversalAda: listJurnal(db, { reversal_of: jurnalCloseId }),
-    id: jurnalBatalId,
-    tanggal: tanggalBatal,
-    alasan,
-  });
-  if (!rencana.boleh || !rencana.input)
-    return gagal(
-      rencana.errors.join(' ') ||
-        'Jurnal balik koreksi pertanggungjawaban panjar gagal disusun.',
-    );
-
   const itemsLama = listPanjarItemsV2(db, id);
   const dibuka: Panjar = {
     id: panjar.id,
@@ -1178,31 +1137,39 @@ export function batalkanPertanggungjawabanPanjar(
     created_at: panjar.created_at,
     total_realisasi: 0,
   };
-  const audit = buatAuditLog(
-    `PANJAR-BATAL-CLOSE ${id}`,
-    alasan,
-    { panjar, items: itemsLama },
-    {
-      panjar: dibuka,
-      items_dihapus: itemsLama,
-      jurnal: rencana.input.header,
-      baris: rencana.input.baris,
-      jurnal_close_id: jurnalCloseId,
-      reversal_of: jurnalCloseId,
-      tanggalBatal,
-    },
-    { ref_type: 'panjar', ref_id: id },
-  );
 
   try {
-    const simpan = db.transaction(() => {
-      const hasil = postingJurnal(db, rencana.input!, {
+    const simpan = db.transaction((): HasilPanjar => {
+      // T-B04: satu pintu jurnal balik tertaut — helper selalu menjalankan
+      // guard tanggal T-B01 (tanggal koreksi eksplisit tidak boleh mundur dari
+      // tanggal jurnal close; tanpa eksplisit default tetap tanggal close),
+      // menyusun rencana REVERSAL dengan grup & `reversal_of` jurnal close,
+      // mengirim `mode: 'REVERSAL'`, dan menulis audit di transaksi ini.
+      const balik = postingReversalTertaut(db, jurnalCloseId, alasan, {
+        id: jurnalBatalId,
+        tanggal: tanggalBatal,
+        reversalAda: listJurnal(db, { reversal_of: jurnalCloseId }),
         konfirmasiPeringatan: input.konfirmasiPeringatan === true,
         alasanPeringatan: String(input.alasanPeringatan ?? '').trim(),
-        wajibAlasanPeringatan: true,
-        audit: [audit],
+        buatAudit: (rencana) => [
+          buatAuditLog(
+            `PANJAR-BATAL-CLOSE ${id}`,
+            alasan,
+            { panjar, items: itemsLama },
+            {
+              panjar: dibuka,
+              items_dihapus: itemsLama,
+              jurnal: rencana.header,
+              baris: rencana.baris,
+              jurnal_close_id: jurnalCloseId,
+              reversal_of: jurnalCloseId,
+              tanggalBatal,
+            },
+            { ref_type: 'panjar', ref_id: id },
+          ),
+        ],
       });
-      if (!hasil.tersimpan || !hasil.jurnal) return hasil;
+      if (!balik.tersimpan || !balik.jurnal) return balik;
 
       const hapus = db
         .prepare('DELETE FROM panjar_item WHERE panjar_id = ?')
@@ -1228,7 +1195,7 @@ export function batalkanPertanggungjawabanPanjar(
           'Panjar sudah berubah oleh proses lain. Muat ulang daftar panjar.',
         );
 
-      return { ...hasil, panjar: dibuka };
+      return { ...balik, panjar: dibuka };
     });
     return simpan();
   } catch (e) {

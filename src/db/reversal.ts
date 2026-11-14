@@ -22,7 +22,7 @@ import {
   PESAN_REVERSAL_SALDO_AWAL,
   rencanaReversal,
 } from '../core/reversal.js';
-import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
+import type { AuditLog, Jurnal, JurnalHeaderInput } from '../core/types.js';
 import type { HasilValidasiJurnal, JurnalInput } from '../core/posting.js';
 import { validasiJurnal } from '../core/posting.js';
 import { tanggalLokal } from '../utils/tanggal.js';
@@ -239,6 +239,110 @@ export function reverseJurnal(
   });
   const hasil = simpan();
   return { ...hasil, reversal: hasil.jurnal };
+}
+
+/** T-B04: opsi jurnal balik tertaut dokumen (panjar/pinjaman). */
+export type OpsiReversalTertaut = {
+  /** ID jurnal balik; default dibuat otomatis. */
+  id?: string;
+  /**
+   * Tanggal jurnal balik; default tanggal jurnal asli agar periode tidak
+   * bergeser. Bila diisi, tidak boleh lebih awal dari tanggal jurnal asli
+   * (aturan T-B01/T-A10).
+   */
+  tanggal?: string;
+  /** Nomor bukti jurnal balik; opsional dan wajib unik bila diisi. */
+  no_bukti?: string;
+  /** Jurnal balik yang sudah ada untuk jurnal asli (menolak reversal ganda). */
+  reversalAda?: readonly Pick<Jurnal, 'id'>[];
+  /** Operator sudah melihat peringatan posting (mis. kas minus). */
+  konfirmasiPeringatan?: boolean;
+  /** AKT-06: alasan operator melanjutkan meski ada peringatan. */
+  alasanPeringatan?: string;
+  /**
+   * Susun baris audit jurnal balik dari rencana yang sudah disusun; baris ini
+   * ditulis ATOMIK bersama jurnal balik. Tanpa callback, posting layer menulis
+   * audit otomatis seperti jurnal biasa.
+   */
+  buatAudit?: (rencana: JurnalInput) => AuditLog[];
+};
+
+export type HasilReversalTertaut = HasilPosting & {
+  /** Rencana jurnal balik yang sudah disusun; terisi bila lolos guard. */
+  rencana?: JurnalInput;
+};
+
+/**
+ * T-B04 — satu pintu jurnal balik tertaut dokumen (panjar/pinjaman).
+ *
+ * Jalur pembatalan dokumen tidak boleh memakai `reverseJurnal` (guard Jurnal
+ * Umum `PESAN_REVERSAL_PANJAR`/`PESAN_REVERSAL_PINJAMAN` harus tetap utuh),
+ * tetapi juga tidak boleh menyusun rencana + posting sendiri-sendiri — di
+ * situ aturan tanggal T-B01 dan penanda `mode: 'REVERSAL'` (T-A14) pernah
+ * terlewat sehingga jurnal balik tersimpan bersumber 'POSTING'. Helper ini
+ * selalu:
+ * - menolak tanggal balik eksplisit yang mundur dari tanggal jurnal asli
+ *   (`cekTanggalTidakMundur`); tanpa tanggal eksplisit, default tetap tanggal
+ *   jurnal asli;
+ * - menyusun jurnal balik lewat `rencanaReversal`: jenis `REVERSAL`,
+ *   `reversal_of` ke jurnal asli, `grup_id` sama, keterangan `KOREKSI: ...`;
+ * - mengirim `mode: 'REVERSAL'` sehingga lapisan insert mencatat sumber
+ *   `REVERSAL`, bukan `POSTING`;
+ * - menulis audit dalam transaksi yang sama dengan jurnal balik.
+ *
+ * Pemanggil yang butuh operasi lain atomik (mis. UPDATE status dokumen) tetap
+ * membungkus panggilan ini di `db.transaction` miliknya; posting layer memakai
+ * savepoint sehingga semuanya tetap satu transaksi. Guard Jurnal Umum sengaja
+ * TIDAK dijalankan di sini — pembatalan dokumen adalah jalur resmi yang
+ * membalik jurnal tertaut dokumen.
+ */
+export function postingReversalTertaut(
+  db: Database.Database,
+  idAsli: string,
+  alasan: string,
+  opsi: OpsiReversalTertaut = {},
+): HasilReversalTertaut {
+  const id = String(idAsli ?? '').trim();
+  const detail = id ? getJurnalDetail(db, id) : null;
+
+  // T-B01/T-A10: tanggal balik eksplisit tidak boleh mundur dari tanggal
+  // jurnal asli. Tanpa tanggal eksplisit, default tetap tanggal jurnal asli.
+  const tanggalEksplisit = String(opsi.tanggal ?? '').trim();
+  if (tanggalEksplisit && detail?.jurnal) {
+    const cekTanggal = cekTanggalTidakMundur(
+      tanggalEksplisit,
+      detail.jurnal.tanggal,
+      'jurnal balik',
+    );
+    if (!cekTanggal.boleh) return hasilGagal([cekTanggal.pesan!]);
+  }
+
+  const rencana = rencanaReversal({
+    jurnal: detail?.jurnal ?? null,
+    baris: detail?.baris ?? [],
+    reversalAda: opsi.reversalAda ?? [],
+    id: String(opsi.id ?? '').trim() || idBaru('rev'),
+    // Tanggal eksplisit menang; tanpa itu pakai tanggal jurnal asli.
+    // `hariIni()` hanya cadangan bila jurnal tidak ditemukan — rencana akan
+    // tetap ditolak oleh validasi.
+    tanggal: tanggalEksplisit || detail?.jurnal.tanggal || hariIni(),
+    alasan,
+    no_bukti: opsi.no_bukti,
+  });
+  if (!rencana.boleh || !rencana.input) return hasilGagal(rencana.errors);
+
+  const audit = opsi.buatAudit?.(rencana.input);
+
+  // T-A14/T-B04: jurnal balik selalu tercatat sebagai REVERSAL di lapisan
+  // insert — penanda asal koreksi tidak boleh menyamar sebagai POSTING.
+  const hasil = postingJurnal(db, rencana.input, {
+    mode: 'REVERSAL',
+    konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+    alasanPeringatan: opsi.alasanPeringatan,
+    wajibAlasanPeringatan: true,
+    ...(audit ? { audit } : {}),
+  });
+  return { ...hasil, rencana: rencana.input };
 }
 
 /**
