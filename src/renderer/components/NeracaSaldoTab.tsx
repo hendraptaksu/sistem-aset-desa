@@ -12,9 +12,10 @@ import { neracaSaldoPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
-import { LABEL_TIPE_AKUN } from '../lib/tampilanLaporan.js';
+import { ALASAN_EKSPOR_KOSONG, LABEL_TIPE_AKUN } from '../lib/tampilanLaporan.js';
 import type { PeriodeBukuBesar } from './BukuBesarTab.js';
-import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { Badge, Button, Card, ErrorBox } from './ui.js';
+import { KontrolPeriode } from './KontrolPeriode.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -31,10 +32,13 @@ function barisSintetis(
 
 export function NeracaSaldoTab({
   onBukaBukuBesar,
+  sekarang,
 }: {
   // UI-A03: callback juga membawa periode sumber agar Buku Besar menghitung
   // saldo dengan cut-off/awal tahun buku yang sama dengan angka yang diklik.
   onBukaBukuBesar: (akunKode: string, periode: PeriodeBukuBesar) => void;
+  /** UI-A10: tanggal acuan preset "Hari ini"; hanya untuk test. */
+  sekarang?: Date | number;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [mode, setMode] = useState<ModeNeracaSaldo>('tahun');
@@ -127,28 +131,21 @@ export function NeracaSaldoTab({
       </Card>
 
       <Card>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Field label="Per tanggal">
-            <TextInput
-              type="date"
-              value={cutoff}
-              onChange={(e) => setCutoff(e.target.value)}
-            />
-          </Field>
-          <div className="flex items-end">
-            <Button variant="ghost" onClick={() => setCutoff(tanggalLokal())}>
-              Hari ini
-            </Button>
-          </div>
-          <div className="flex items-end">
-            {data && (
+        {/* UI-A10: kontrol periode bersama mode cutoff (preset "Hari ini"). */}
+        <KontrolPeriode
+          mode="cutoff"
+          cutoff={cutoff}
+          onCutoff={setCutoff}
+          sekarang={sekarang}
+          tambahan={
+            data ? (
               <div className="flex flex-wrap gap-2 text-sm">
                 <Badge tone="stone">Debit {formatRp(data.totalDebit)}</Badge>
                 <Badge tone="stone">Kredit {formatRp(data.totalKredit)}</Badge>
               </div>
-            )}
-          </div>
-        </div>
+            ) : undefined
+          }
+        />
         <div
           className="mt-3 flex flex-wrap items-center gap-2"
           role="group"
@@ -180,6 +177,7 @@ export function NeracaSaldoTab({
               namaDasar={namaDasar}
               judul={judulExport}
               disabled={memuat || data.rows.length === 0}
+              alasanNonaktif={data.rows.length === 0 ? ALASAN_EKSPOR_KOSONG : undefined}
               buatWorkbook={(kop) => neracaSaldoToWorkbook(data, kop)}
               buatDokumen={(kop) => neracaSaldoPrintDoc(data, { kop })}
             />
@@ -188,11 +186,6 @@ export function NeracaSaldoTab({
         <div className="mt-3">
           <ErrorBox msg={err} />
         </div>
-        {!cutoff && (
-          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-            Isi tanggal laporan terlebih dahulu.
-          </p>
-        )}
         {memuat && !data && <p className="mt-3 text-stone-500">Memuat Neraca Saldo…</p>}
       </Card>
 

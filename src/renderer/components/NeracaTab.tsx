@@ -7,7 +7,8 @@ import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, type NeracaHasil, type NeracaSaldoModeHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
 import type { PeriodeBukuBesar } from './BukuBesarTab.js';
-import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { Badge, Card, ErrorBox } from './ui.js';
+import { KontrolPeriode } from './KontrolPeriode.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -18,10 +19,13 @@ import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
  */
 export function NeracaTab({
   onBukaBukuBesar,
+  sekarang,
 }: {
   // UI-A03: callback juga membawa periode sumber (cut-off Neraca) agar Buku
   // Besar menghitung saldo dengan cut-off yang sama dengan angka yang diklik.
   onBukaBukuBesar?: (akunKode: string, periode: PeriodeBukuBesar) => void;
+  /** UI-A10: tanggal acuan preset "Hari ini"; hanya untuk test. */
+  sekarang?: Date | number;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<NeracaHasil | null>(null);
@@ -69,8 +73,10 @@ export function NeracaTab({
 
   // UI-A03: saldo Neraca kumulatif s/d cut-off, jadi Buku Besar dipotong di
   // cut-off tanpa batas awal agar saldo akhirnya sama dengan angka di sini.
+  // UI-A10: cut-off dipakai dari DATA HASIL agar drill-down membawa cut-off
+  // yang sama dengan angka yang sedang tampil, bukan nilai input terbaru.
   function periodeSumber(): PeriodeBukuBesar {
-    return { mulai: '', sampai: cutoff };
+    return { mulai: '', sampai: data?.cutoff ?? cutoff };
   }
 
   function barisAkun(a: { kode: string; nama: string; saldo: number }) {
@@ -109,7 +115,8 @@ export function NeracaTab({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
-              Neraca per {cutoff ? formatTanggal(cutoff) : '—'}{' '}
+              {/* UI-A10: cut-off header dari data hasil, bukan input. */}
+              Neraca per {data ? formatTanggal(data.cutoff) : '—'}{' '}
               {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
@@ -130,27 +137,22 @@ export function NeracaTab({
           </p>
         )}
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Per tanggal">
-            <TextInput
-              type="date"
-              value={cutoff}
-              onChange={(e) => setCutoff(e.target.value)}
-            />
-          </Field>
-          <div className="flex items-end">
-            <Button variant="ghost" onClick={() => setCutoff(tanggalLokal())}>
-              Hari ini
-            </Button>
-          </div>
-          <div className="flex items-end">
-            {neracaSaldo && (
-              <div className="flex flex-wrap gap-2 text-sm">
-                <Badge tone="stone">Debit {formatRp(neracaSaldo.totalDebit)}</Badge>
-                <Badge tone="stone">Kredit {formatRp(neracaSaldo.totalKredit)}</Badge>
-              </div>
-            )}
-          </div>
+        {/* UI-A10: kontrol periode bersama mode cutoff (preset "Hari ini"). */}
+        <div className="mt-3">
+          <KontrolPeriode
+            mode="cutoff"
+            cutoff={cutoff}
+            onCutoff={setCutoff}
+            sekarang={sekarang}
+            tambahan={
+              neracaSaldo ? (
+                <div className="flex flex-wrap gap-2 text-sm">
+                  <Badge tone="stone">Debit {formatRp(neracaSaldo.totalDebit)}</Badge>
+                  <Badge tone="stone">Kredit {formatRp(neracaSaldo.totalKredit)}</Badge>
+                </div>
+              ) : undefined
+            }
+          />
         </div>
         {data && (
           <div className="mt-3">
@@ -166,11 +168,6 @@ export function NeracaTab({
         <div className="mt-3">
           <ErrorBox msg={err} />
         </div>
-        {!cutoff && (
-          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-            Isi tanggal laporan terlebih dahulu.
-          </p>
-        )}
         {memuat && !data && <p className="mt-3 text-stone-500">Memuat Neraca…</p>}
       </Card>
 

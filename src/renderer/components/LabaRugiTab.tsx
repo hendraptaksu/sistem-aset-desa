@@ -9,8 +9,15 @@ import { labaRugiPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp } from '../../utils/format.js';
 import { periodeBerjalan } from '../../utils/tanggal.js';
 import { api, type LabaRugiHasil } from '../lib/api.js';
-import { badgeLabaRugi, labelPeriodeLaporan } from '../lib/tampilanLaporan.js';
-import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import {
+  ALASAN_EKSPOR_KOSONG,
+  badgeLabaRugi,
+  labelPeriodeHasil,
+  labelPeriodeLaporan,
+  rentangTerbalik,
+} from '../lib/tampilanLaporan.js';
+import { Badge, BadgeMemperbarui, Card, ErrorBox } from './ui.js';
+import { KontrolPeriode } from './KontrolPeriode.js';
 import { ExportActions } from './ExportActions.js';
 import { JurnalAkunModal } from './JurnalAkunModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -24,6 +31,9 @@ type AkunDipilih = { kode: string; nama: string };
  *
  * AKT-15: default filter = periode berjalan (1 Jan tahun ini s/d hari ini
  * WITA) agar konsisten dengan Dashboard/Neraca. `sekarang` hanya untuk test.
+ * UI-A10: karena AUD-20 mengunci awal tahun buku ke Januari, periode berjalan
+ * ini adalah rentang "tahun buku berjalan" yang sama dengan angka "Laba / Rugi
+ * Tahun Berjalan" Dashboard; header laporan memakai periode dari data hasil.
  */
 export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
   const [periodeAwal] = useState(() => periodeBerjalan(sekarang));
@@ -78,8 +88,19 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
     };
   }, [periodeAwal.mulai, periodeAwal.sampai]);
 
+  // UI-A10: rentang terbalik memblokir fetch (sama dengan Buku Besar) agar
+  // laporan tidak menampilkan "LABA Rp 0 + SURPLUS" untuk rentang yang salah.
+  const rentangTidakValid = rentangTerbalik(mulai, sampai);
+
   useEffect(() => {
     let aktif = true;
+    if (rentangTidakValid) {
+      // Hapus hasil lama agar tabel/export tidak menampilkan periode lain.
+      setData(null);
+      setErr(null);
+      setMemuat(false);
+      return;
+    }
     setMemuat(true);
     setErr(null);
     api
@@ -102,12 +123,20 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
     return () => {
       aktif = false;
     };
-  }, [mulai, sampai]);
+  }, [mulai, sampai, rentangTidakValid]);
 
   const pendapatan = data?.pendapatan.filter((b) => b.nominal !== 0) ?? [];
   const beban = data?.beban.filter((b) => b.nominal !== 0) ?? [];
   const badge = data ? badgeLabaRugi(data.defisit) : null;
-  const periode = labelPeriodeLaporan(mulai, sampai);
+  // UI-A10: teks bantu kontrol memakai input filter; header laporan di bawah
+  // memakai DATA HASIL agar selalu cocok dengan angka yang tampil.
+  const periodeFilter = labelPeriodeLaporan(mulai, sampai);
+  const periodeHasil = data ? labelPeriodeHasil(data) : '';
+  // UI-A10: refresh indicator — data lama masih tampil saat fetch baru berjalan.
+  const menyegarkan = memuat && data !== null;
+  // UI-A10: aturan ekspor kosong seragam (sama dengan Buku Besar/Arus Kas):
+  // tidak ada pendapatan maupun beban sama sekali.
+  const kosong = data !== null && data.totalPendapatan === 0 && data.totalBeban === 0;
 
   return (
     <div className="space-y-4">
@@ -135,37 +164,20 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
           </p>
         )}
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Dari tanggal">
-            <TextInput
-              type="date"
-              value={mulai}
-              onChange={(e) => setMulai(e.target.value)}
-            />
-          </Field>
-          <Field label="Sampai tanggal">
-            <TextInput
-              type="date"
-              value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
-            />
-          </Field>
-          <div className="flex items-end">
-            <Button
-              variant="ghost"
-              title="Tampilkan seluruh riwayat tanpa batas tanggal"
-              onClick={() => {
-                setMulai('');
-                setSampai('');
-              }}
-            >
-              Semua tanggal
-            </Button>
-          </div>
+        {/* UI-A10: kontrol periode bersama (auto) dengan guard rentang seragam. */}
+        <div className="mt-3">
+          <KontrolPeriode
+            mulai={mulai}
+            sampai={sampai}
+            onMulai={setMulai}
+            onSampai={setSampai}
+            namaLaporan="Laba Rugi"
+            sekarang={sekarang}
+          />
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Periode aktif: {periode}. Klik “Semua tanggal” untuk melihat seluruh
-          riwayat, atau kosongkan salah satu tanggal untuk membuka batas
+          Periode aktif: {periodeFilter}. Klik “Semua tanggal” untuk melihat
+          seluruh riwayat, atau kosongkan salah satu tanggal untuk membuka batas
           awal/akhir. Klik baris akun untuk melihat daftar jurnal pada periode
           ini, lalu klik jurnal untuk detail debit/kredit.
         </p>
@@ -175,7 +187,8 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
             <ExportActions
               namaDasar={`laba-rugi-${periodeFile(data.mulai, data.sampai)}`}
               judul="Laba Rugi"
-              disabled={memuat}
+              disabled={memuat || kosong}
+              alasanNonaktif={kosong ? ALASAN_EKSPOR_KOSONG : undefined}
               buatWorkbook={(kop) => labaRugiToWorkbook(data, kop)}
               buatDokumen={(kop) => labaRugiPrintDoc(data, { kop })}
             />
@@ -191,13 +204,22 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
       {data && (
         <Card>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-bold">Periode {periode}</h3>
+            {/* UI-A10: header dari data hasil, bukan input filter. */}
+            <h3 className="flex items-center gap-2 font-bold">
+              Periode {periodeHasil} <BadgeMemperbarui aktif={menyegarkan} />
+            </h3>
             <span className="text-sm text-stone-600">
               {pendapatan.length + beban.length} akun bernominal
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* UI-A10: data lama diredupkan + aria-busy saat hasil baru diambil. */}
+          <div
+            className={
+              menyegarkan ? 'overflow-x-auto opacity-60 transition-opacity' : 'overflow-x-auto'
+            }
+            aria-busy={menyegarkan || undefined}
+          >
             <table className="w-full text-left text-[15px]">
               <thead>
                 <tr className="border-b text-stone-500">

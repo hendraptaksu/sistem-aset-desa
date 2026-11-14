@@ -11,10 +11,14 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { periodeBerjalan } from '../../utils/tanggal.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
 import {
+  ALASAN_EKSPOR_KOSONG,
   labelKelompokArusKas,
+  labelPeriodeHasil,
   labelPeriodeLaporan,
+  rentangTerbalik,
 } from '../lib/tampilanLaporan.js';
-import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
+import { Badge, BadgeMemperbarui, Card, ErrorBox } from './ui.js';
+import { KontrolPeriode } from './KontrolPeriode.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -38,6 +42,9 @@ const KELOMPOK: {
  *
  * AKT-15: default filter = periode berjalan (1 Jan tahun ini s/d hari ini
  * WITA) agar konsisten dengan Dashboard/Neraca. `sekarang` hanya untuk test.
+ * UI-A10: karena AUD-20 mengunci awal tahun buku ke Januari, periode berjalan
+ * ini adalah rentang "tahun buku berjalan" yang sama dengan angka Dashboard;
+ * header laporan memakai periode dari data hasil.
  */
 export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
   const [periodeAwal] = useState(() => periodeBerjalan(sekarang));
@@ -65,8 +72,19 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
     };
   }, []);
 
+  // UI-A10: rentang terbalik memblokir fetch (sama dengan Buku Besar/Laba
+  // Rugi) agar laporan tidak menampilkan angka nol untuk rentang yang salah.
+  const rentangTidakValid = rentangTerbalik(mulai, sampai);
+
   useEffect(() => {
     let aktif = true;
+    if (rentangTidakValid) {
+      // Hapus hasil lama agar tabel/export tidak menampilkan periode lain.
+      setData(null);
+      setErr(null);
+      setMemuat(false);
+      return;
+    }
     setMemuat(true);
     setErr(null);
     api
@@ -89,7 +107,7 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
     return () => {
       aktif = false;
     };
-  }, [mulai, sampai]);
+  }, [mulai, sampai, rentangTidakValid]);
 
   async function bukaDetail(jurnalId: string): Promise<void> {
     if (!jurnalId || detailBusyRef.current) return;
@@ -111,7 +129,14 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
       .join(', ');
   }
 
-  const periode = labelPeriodeLaporan(mulai, sampai);
+  // UI-A10: teks bantu kontrol memakai input filter; header laporan memakai
+  // DATA HASIL agar selalu cocok dengan angka yang tampil.
+  const periodeFilter = labelPeriodeLaporan(mulai, sampai);
+  const periodeHasil = data ? labelPeriodeHasil(data) : '';
+  // UI-A10: refresh indicator — data lama masih tampil saat fetch baru berjalan.
+  const menyegarkan = memuat && data !== null;
+  // UI-A10: aturan ekspor kosong seragam (sama dengan Buku Besar).
+  const kosong = data !== null && data.rows.length === 0 && data.saldoAwal === 0;
 
   return (
     <div className="space-y-4">
@@ -128,45 +153,29 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
           <Badge tone="green">Dihitung dari jurnal</Badge>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Dari tanggal">
-            <TextInput
-              type="date"
-              value={mulai}
-              onChange={(e) => setMulai(e.target.value)}
-            />
-          </Field>
-          <Field label="Sampai tanggal">
-            <TextInput
-              type="date"
-              value={sampai}
-              onChange={(e) => setSampai(e.target.value)}
-            />
-          </Field>
-          <div className="flex items-end">
-            <Button
-              variant="ghost"
-              title="Tampilkan seluruh riwayat tanpa batas tanggal"
-              onClick={() => {
-                setMulai('');
-                setSampai('');
-              }}
-            >
-              Semua tanggal
-            </Button>
-          </div>
+        {/* UI-A10: kontrol periode bersama (auto) dengan guard rentang seragam. */}
+        <div className="mt-3">
+          <KontrolPeriode
+            mulai={mulai}
+            sampai={sampai}
+            onMulai={setMulai}
+            onSampai={setSampai}
+            namaLaporan="Arus Kas"
+            sekarang={sekarang}
+          />
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Periode aktif: {periode}. Klik “Semua tanggal” untuk melihat seluruh
-          riwayat. Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik
-          baris mutasi untuk melihat jurnal asal dan nomor buktinya.
+          Periode aktif: {periodeFilter}. Klik “Semua tanggal” untuk melihat
+          seluruh riwayat. Saldo awal dihitung dari jurnal sebelum tanggal “Dari”.
+          Klik baris mutasi untuk melihat jurnal asal dan nomor buktinya.
         </p>
         {data && (
           <div className="mt-3">
             <ExportActions
               namaDasar={`arus-kas-${periodeFile(data.mulai, data.sampai)}`}
               judul="Arus Kas"
-              disabled={memuat}
+              disabled={memuat || kosong}
+              alasanNonaktif={kosong ? ALASAN_EKSPOR_KOSONG : undefined}
               buatWorkbook={(kop) => arusKasToWorkbook(data, kop)}
               buatDokumen={(kop) => arusKasPrintDoc(data, { kop })}
             />
@@ -182,7 +191,10 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
         <>
           <Card>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-bold">Ringkasan periode {periode}</h3>
+              {/* UI-A10: header dari data hasil, bukan input filter. */}
+              <h3 className="flex items-center gap-2 font-bold">
+                Ringkasan periode {periodeHasil} <BadgeMemperbarui aktif={menyegarkan} />
+              </h3>
               <span className="text-sm text-stone-600">
                 {data.rows.length} baris mutasi kas
               </span>
@@ -265,7 +277,13 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                 klik baris untuk melihat jurnal asal
               </span>
             </div>
-            <div className="overflow-x-auto">
+            {/* UI-A10: data lama diredupkan + aria-busy saat hasil baru diambil. */}
+            <div
+              className={
+                menyegarkan ? 'overflow-x-auto opacity-60 transition-opacity' : 'overflow-x-auto'
+              }
+              aria-busy={menyegarkan || undefined}
+            >
               <table className="w-full text-left text-[15px]">
                 <thead>
                   <tr className="border-b text-stone-500">

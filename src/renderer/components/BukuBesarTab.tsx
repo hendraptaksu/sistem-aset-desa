@@ -13,9 +13,11 @@ import {
   sisiSaldo,
   toneSisiSaldo,
 } from '../lib/tampilanLaporan.js';
-import { Badge, Button, Card, ErrorBox, Field, Select, TextInput } from './ui.js';
+import { Badge, BadgeMemperbarui, Card, ErrorBox, Field, Select } from './ui.js';
+import { KontrolPeriode } from './KontrolPeriode.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
+import { ALASAN_EKSPOR_KOSONG, rentangTerbalik } from '../lib/tampilanLaporan.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 
@@ -124,9 +126,11 @@ export function BukuBesarTab({
     setSampai(sampaiAwal);
   }, [sampaiAwal]);
 
-  // UI-11: rentang "dari" > "sampai" tidak boleh dikirim ke API. Bandingkan
-  // string ISO (YYYY-MM-DD) agar urutannya sama dengan urutan tanggal.
-  const rentangTidakValid = Boolean(mulai && sampai && mulai > sampai);
+  // UI-11/UI-A10: rentang "dari" > "sampai" tidak boleh dikirim ke API. Guard
+  // seragam dari lib bersama (perbandingan string ISO YYYY-MM-DD).
+  const rentangTidakValid = rentangTerbalik(mulai, sampai);
+  // UI-A10: fetch baru sedang berjalan sementara data lama masih tampil.
+  const menyegarkan = memuat && data !== null;
 
   // Setiap perubahan akun/periode mengambil data baru dari main; tidak ada
   // saldo tersimpan di renderer.
@@ -220,55 +224,23 @@ export function BukuBesarTab({
               ))}
             </Select>
           </Field>
-          <Field label="Dari tanggal (opsional)">
-            <TextInput
-              type="date"
-              value={mulai}
-              aria-invalid={rentangTidakValid || undefined}
-              aria-describedby={
-                rentangTidakValid ? 'buku-besar-rentang-tanggal-error' : undefined
-              }
-              onChange={(e) => setMulai(e.target.value)}
-            />
-          </Field>
-          <Field label="Sampai tanggal (opsional)">
-            <TextInput
-              type="date"
-              value={sampai}
-              aria-invalid={rentangTidakValid || undefined}
-              aria-describedby={
-                rentangTidakValid ? 'buku-besar-rentang-tanggal-error' : undefined
-              }
-              onChange={(e) => setSampai(e.target.value)}
-            />
-          </Field>
-          <div className="flex items-end">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setMulai('');
-                setSampai('');
-              }}
-            >
-              Reset tanggal
-            </Button>
-          </div>
         </div>
-
-        {rentangTidakValid && (
-          <p
-            id="buku-besar-rentang-tanggal-error"
-            role="alert"
-            className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
-          >
-            Tanggal “Dari” tidak boleh setelah “Sampai”. Perbaiki rentang tanggal
-            untuk menampilkan Buku Besar.
-          </p>
-        )}
+        {/* UI-A10: kontrol periode bersama; preset "Semua tanggal" menggantikan
+            tombol "Reset tanggal" (efeknya sama: rentang kosong = seluruh
+            riwayat), termasuk nilai awal dari prop `periodeAwal` drill-down. */}
+        <KontrolPeriode
+          className="mt-3"
+          mulai={mulai}
+          sampai={sampai}
+          onMulai={setMulai}
+          onSampai={setSampai}
+          namaLaporan="Buku Besar"
+        />
 
         <p className="mt-2 text-helper text-stone-500">
-          Kosongkan tanggal untuk melihat seluruh riwayat. Saldo awal adalah saldo sebelum
-          tanggal “Dari”; saldo akhir adalah saldo sampai tanggal “Sampai”.
+          Kosongkan tanggal (preset “Semua tanggal”) untuk melihat seluruh riwayat. Saldo awal
+          adalah saldo sebelum tanggal “Dari”; saldo akhir adalah saldo sampai tanggal
+          “Sampai”.
         </p>
 
         {data && !rentangTidakValid && (
@@ -277,6 +249,11 @@ export function BukuBesarTab({
               namaDasar={`buku-besar-${data.kode}-${periodeFile(data.mulai, data.sampai)}`}
               judul={`Buku Besar ${data.kode} — ${data.nama}`}
               disabled={memuat || (data.rows.length === 0 && data.saldoAwal === 0)}
+              alasanNonaktif={
+                data.rows.length === 0 && data.saldoAwal === 0
+                  ? ALASAN_EKSPOR_KOSONG
+                  : undefined
+              }
               buatWorkbook={(kop) => bukuBesarToWorkbook(data, kop)}
               buatDokumen={(kop) => bukuBesarPrintDoc(data, { kop })}
             />
@@ -367,12 +344,20 @@ export function BukuBesarTab({
 
           <Card>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-bold">Mutasi akun</h3>
+              <h3 className="flex items-center gap-2 font-bold">
+                Mutasi akun <BadgeMemperbarui aktif={menyegarkan} />
+              </h3>
               <span className="text-sm text-stone-600">
                 {data.rows.length} baris · klik baris untuk melihat jurnal asal
               </span>
             </div>
-            <div className="overflow-x-auto">
+            {/* UI-A10: data lama diredupkan + aria-busy saat hasil baru diambil. */}
+            <div
+              className={
+                menyegarkan ? 'overflow-x-auto opacity-60 transition-opacity' : 'overflow-x-auto'
+              }
+              aria-busy={menyegarkan || undefined}
+            >
               <table className="w-full text-left text-[15px]">
                 <thead>
                   <tr className="border-b text-stone-500">

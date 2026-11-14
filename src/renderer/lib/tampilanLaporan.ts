@@ -67,6 +67,37 @@ export function labelPeriodeLaporan(mulai: string, sampai: string): string {
   }`;
 }
 
+/**
+ * UI-A10: satu-satunya definisi guard rentang terbalik; semua tab laporan
+ * (dan KontrolPeriode) memakai fungsi ini agar aturannya tidak berbeda antar
+ * layar. Rentang kosong (salah satu/dua tanggal kosong) dianggap sah karena
+ * berarti tanpa batas awal/akhir.
+ */
+export function rentangTerbalik(mulai: string, sampai: string): boolean {
+  return Boolean(mulai && sampai && mulai > sampai);
+}
+
+/**
+ * UI-A10: label periode header laporan dihitung dari DATA HASIL
+ * (`data.mulai`/`data.sampai`), bukan dari input filter, agar teks di layar
+ * selalu cocok dengan angka yang sedang tampil (termasuk saat fetch baru
+ * berjalan dan data lama masih ditampilkan).
+ */
+export function labelPeriodeHasil(hasil: {
+  mulai?: string;
+  sampai?: string;
+}): string {
+  return labelPeriodeLaporan(hasil.mulai ?? '', hasil.sampai ?? '');
+}
+
+/**
+ * UI-A10: alasan baku tombol ekspor dinonaktifkan karena laporan tidak
+ * memiliki data. Dipakai sama di Laba Rugi, Arus Kas, Buku Besar, dan
+ * Neraca Saldo.
+ */
+export const ALASAN_EKSPOR_KOSONG =
+  'Laporan ini belum punya data untuk diekspor. Ubah periode atau catat transaksi terlebih dahulu.';
+
 export type BadgeLaporan = {
   tone: 'green' | 'red';
   label: string;

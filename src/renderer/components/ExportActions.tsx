@@ -29,6 +29,7 @@ export function ExportActions({
   namaDasar,
   judul,
   disabled = false,
+  alasanNonaktif,
   buatWorkbook,
   buatDokumen,
   tampilkanPrint = true,
@@ -39,6 +40,8 @@ export function ExportActions({
   judul: string;
   /** Data kosong / belum siap → semua tombol nonaktif. */
   disabled?: boolean;
+  /** UI-A10: alasan yang tampil saat tombol nonaktif (mis. laporan kosong). */
+  alasanNonaktif?: string;
   /** Builder menerima kop dari pengaturan pembukuan (P1-13). */
   buatWorkbook: (kop: KopOrganisasi) => Promise<ExcelJS.Workbook>;
   /** Dokumen cetak P1-16 (model yang sama untuk pratinjau & PDF). */
@@ -156,14 +159,29 @@ export function ExportActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" disabled={nonaktif} onClick={() => void exportExcel()}>
+        <Button
+          variant="ghost"
+          disabled={nonaktif}
+          title={nonaktif ? alasanNonaktif : undefined}
+          onClick={() => void exportExcel()}
+        >
           {sibuk === 'excel' ? 'Menyiapkan Excel…' : 'Export Excel'}
         </Button>
-        <Button variant="ghost" disabled={nonaktif} onClick={() => void simpanPdf()}>
+        <Button
+          variant="ghost"
+          disabled={nonaktif}
+          title={nonaktif ? alasanNonaktif : undefined}
+          onClick={() => void simpanPdf()}
+        >
           {sibuk === 'pdf' ? 'Menyiapkan PDF…' : 'Simpan PDF'}
         </Button>
         {tampilkanPrint && (
-          <Button variant="ghost" disabled={nonaktif} onClick={() => void bukaPratinjau()}>
+          <Button
+            variant="ghost"
+            disabled={nonaktif}
+            title={nonaktif ? alasanNonaktif : undefined}
+            onClick={() => void bukaPratinjau()}
+          >
             {sibuk === 'print' ? 'Menyiapkan pratinjau…' : 'Pratinjau Cetak'}
           </Button>
         )}

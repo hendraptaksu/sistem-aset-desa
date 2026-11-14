@@ -5,16 +5,8 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
-import {
-  ALASAN_SIBUK,
-  Badge,
-  Button,
-  Card,
-  ErrorBox,
-  Field,
-  KonfirmasiModal,
-  TextInput,
-} from './ui.js';
+import { ALASAN_SIBUK, Badge, Button, Card, ErrorBox, KonfirmasiModal } from './ui.js';
+import { KontrolPeriode } from './KontrolPeriode.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 /** Tab yang bisa dibuka dari pintasan dashboard (P1-14). */
@@ -399,18 +391,15 @@ export function DashboardTab({
               saldo atau laba yang disimpan.
             </p>
           </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <Field label="Per tanggal">
-              <TextInput
-                type="date"
-                value={cutoff}
-                onChange={(e) => setCutoff(e.target.value)}
-              />
-            </Field>
-            <Button disabled={sibuk} title={sibuk ? ALASAN_SIBUK : undefined} onClick={() => void muat()}>
-              {jenisSibuk === 'muat' ? 'Menampilkan…' : 'Tampilkan'}
-            </Button>
-          </div>
+          {/* UI-A10: kontrol periode bersama, pola manual (klik Tampilkan). */}
+          <KontrolPeriode
+            mode="cutoff"
+            cutoff={cutoff}
+            onCutoff={setCutoff}
+            onTerapkan={() => void muat()}
+            labelTerapkan={jenisSibuk === 'muat' ? 'Menampilkan…' : 'Tampilkan'}
+            sibuk={sibuk}
+          />
         </div>
         <div className="mt-3">
           <ErrorBox msg={err} />

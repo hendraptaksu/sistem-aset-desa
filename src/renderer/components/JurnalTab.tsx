@@ -42,6 +42,7 @@ import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { JurnalUmumEditor } from './JurnalUmumEditor.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
+import { rentangTerbalik } from '../lib/tampilanLaporan.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 const PAGE = 25;
@@ -207,9 +208,9 @@ export function JurnalTab({
     };
   }, []);
 
-  // UI-11: rentang "dari" > "sampai" tidak boleh dikirim ke API. Bandingkan
-  // string ISO (YYYY-MM-DD) agar urutannya sama dengan urutan tanggal.
-  const rentangTidakValid = Boolean(fMulai && fSampai && fMulai > fSampai);
+  // UI-11/UI-A10: rentang "dari" > "sampai" tidak boleh dikirim ke API. Guard
+  // seragam dari lib bersama (perbandingan string ISO YYYY-MM-DD).
+  const rentangTidakValid = rentangTerbalik(fMulai, fSampai);
 
   // Debounce kata kunci; filter tanggal/jenis langsung memicu muat.
   useEffect(() => {

@@ -93,6 +93,16 @@ export function Badge({
 }
 
 /**
+ * UI-A10: penanda refresh laporan — data lama masih tampil tetapi hasil baru
+ * sedang diambil. Dipasangkan dengan `aria-busy` + opacity pada area tabel di
+ * tab laporan agar pembaca layar tahu isinya sedang diperbarui.
+ */
+export function BadgeMemperbarui({ aktif }: { aktif: boolean }) {
+  if (!aktif) return null;
+  return <Badge tone="amber">Memperbarui…</Badge>;
+}
+
+/**
  * T3.8: error harus diumumkan pembaca layar. `role="alert"` sudah implisit
  * assertive, tetapi `aria-live` ditulis eksplisit agar perilakunya tidak
  * bergantung pada dukungan AT terhadap role tersebut.
