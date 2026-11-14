@@ -144,6 +144,8 @@ export function JurnalUmumEditor({
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
+  /** UI-A12: template yang menunggu konfirmasi karena baris sudah berisi. */
+  const [templateTunda, setTemplateTunda] = useState<string | null>(null);
   const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
   const saldoAwalPendingRef = useRef<{
     konfirmasi?: boolean;
@@ -261,6 +263,23 @@ export function JurnalUmumEditor({
     if (rows.length <= 2) return;
     setRows((prev) => prev.filter((_, i) => i !== index));
     setTersentuh((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  /**
+   * UI-A12: memilih template tidak boleh diam-diam menimpa baris yang sudah
+   * diisi. Baris masih kosong → langsung diterapkan; baris berisi → minta
+   * konfirmasi dulu, pilihan select dibatalkan bila operator menolak.
+   */
+  function mintaTerapkanTemplate(id: string): void {
+    if (!TEMPLATE_JURNAL.some((t) => t.id === id)) {
+      setTemplateId(id);
+      return;
+    }
+    if (rows.some((r) => !barisEditorKosong(r))) {
+      setTemplateTunda(id);
+      return;
+    }
+    terapkanTemplate(id);
   }
 
   function terapkanTemplate(id: string): void {
@@ -458,7 +477,7 @@ export function JurnalUmumEditor({
               <Select
                 value={templateId}
                 disabled={busy}
-                onChange={(e) => terapkanTemplate(e.target.value)}
+                onChange={(e) => mintaTerapkanTemplate(e.target.value)}
               >
                 <option value="">— Pilih template —</option>
                 {TEMPLATE_JURNAL.map((t) => (
@@ -698,6 +717,21 @@ export function JurnalUmumEditor({
           onMulaiTanpa={mulaiTanpaSaldoAwal}
           onSaldoAwalTersimpan={saldoAwalTersimpan}
         />
+
+        {templateTunda !== null && (
+          <KonfirmasiModal
+            judul="Terapkan template?"
+            deskripsi="Baris yang sudah diisi akan ditimpa oleh baris template. Isian yang belum disimpan akan hilang."
+            labelYa="Ya, terapkan template"
+            sibuk={busy}
+            onBatal={() => setTemplateTunda(null)}
+            onKonfirmasi={() => {
+              const id = templateTunda;
+              setTemplateTunda(null);
+              terapkanTemplate(id);
+            }}
+          />
+        )}
 
         {konfirmasiTutup && (
           <KonfirmasiModal

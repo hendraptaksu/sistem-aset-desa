@@ -143,6 +143,14 @@ function pinjamanDibatalkan(p: Pinjaman): boolean {
   return p.status === 'DIBATALKAN';
 }
 
+/** UI-A12: identitas target pembatalan; dipakai untuk memutuskan apakah alasan
+ * yang sudah diketik boleh dipertahankan saat modal dibuka ulang. */
+function kunciTargetPembatalan(target: TargetPembatalan): string {
+  return target.jenis === 'pembayaran'
+    ? `pembayaran:${target.pinjaman.id}:${target.pembayaran.id}`
+    : `pencairan:${target.pinjaman.id}`;
+}
+
 const NAMA_BULAN_PENDEK = [
   'Jan',
   'Feb',
@@ -224,12 +232,31 @@ export function PinjamanTab() {
   const [bayarErr, setBayarErr] = useState<string | null>(null);
   const [bayarBusy, setBayarBusy] = useState(false);
   const bayarBusyRef = useRef(false);
+  /**
+   * UI-A12: form bayar dianggap "berisi" begitu operator mengubah salah satu
+   * isian dari prefill (pokok/bunga sisa, tanggal hari ini, akun kas bawaan).
+   * Prefill murni tidak dihitung isian sehingga pindah target tanpa mengedit
+   * tetap langsung. `bayarTunda` menampung target baru yang menunggu
+   * konfirmasi penggantian.
+   */
+  const [bayarTersentuh, setBayarTersentuh] = useState(false);
+  const [bayarTunda, setBayarTunda] = useState<{
+    pinjaman: Pinjaman;
+    angsuran: PinjamanAngsuran;
+  } | null>(null);
   const [targetPembatalan, setTargetPembatalan] = useState<TargetPembatalan | null>(null);
   const [alasanPembatalan, setAlasanPembatalan] = useState('');
   const [batalPerluKonfirmasi, setBatalPerluKonfirmasi] = useState(false);
   const [batalErr, setBatalErr] = useState<string | null>(null);
   const [batalBusy, setBatalBusy] = useState(false);
   const batalBusyRef = useRef(false);
+  /**
+   * UI-A12: alasan pembatalan tinggal di state tab dan tidak dibuang saat
+   * modal ditutup lewat latar/Escape/Tutup. Ref ini mengingat target terakhir
+   * yang dibuka, sehingga membuka ulang modal untuk target yang sama
+   * mempertahankan alasan, sementara target berbeda tetap mulai kosong.
+   */
+  const kunciTargetBatalRef = useRef<string | null>(null);
   // DB-16e — kartu hutang / mutasi bulanan.
   const [mutasiPinjamanId, setMutasiPinjamanId] = useState('');
   const [mutasiTahun, setMutasiTahun] = useState(String(tahunLokal()));
@@ -604,6 +631,20 @@ export function PinjamanTab() {
 
   function mulaiBayar(p: Pinjaman, a: PinjamanAngsuran): void {
     if (pinjamanDibatalkan(p) || sisaAngsuran(a).status === 'LUNAS') return;
+    // UI-A12: form bayar yang sudah diedit tidak boleh ditimpa diam-diam saat
+    // operator klik "Bayar Angsuran" baris lain; minta konfirmasi dulu.
+    if (
+      bayar &&
+      bayarTersentuh &&
+      (bayar.pinjaman.id !== p.id || bayar.angsuran.id !== a.id)
+    ) {
+      setBayarTunda({ pinjaman: p, angsuran: a });
+      return;
+    }
+    isiFormBayar(p, a);
+  }
+
+  function isiFormBayar(p: Pinjaman, a: PinjamanAngsuran): void {
     const sisa = sisaAngsuran(a);
     const akun =
       kasList.some((k) => k.kode === p.akun_kas)
@@ -623,6 +664,7 @@ export function PinjamanTab() {
     setBayarAlasan('');
     setBayarPerluKonfirmasi(false);
     setBayarErr(null);
+    setBayarTersentuh(false);
     setInfoBayar(null);
     setInfoBatal(null);
     setDirty(true);
@@ -633,11 +675,13 @@ export function PinjamanTab() {
     setBayarAlasan('');
     setBayarPerluKonfirmasi(false);
     setBayarErr(null);
+    setBayarTersentuh(false);
     setDirty(false);
   }
 
   function ubahBayar(patch: Partial<FormBayar>): void {
     setBayar((b) => (b ? { ...b, ...patch } : b));
+    setBayarTersentuh(true);
     setBayarPerluKonfirmasi(false);
     setBayarErr(null);
     setDirty(true);
@@ -738,6 +782,7 @@ export function PinjamanTab() {
       setBayar(null);
       setBayarAlasan('');
       setBayarPerluKonfirmasi(false);
+      setBayarTersentuh(false);
       setDirty(false);
       await refresh();
       try {
@@ -759,8 +804,13 @@ export function PinjamanTab() {
   }
 
   function bukaPembatalan(target: TargetPembatalan): void {
+    const kunci = kunciTargetPembatalan(target);
+    const samaTarget = kunciTargetBatalRef.current === kunci;
+    kunciTargetBatalRef.current = kunci;
     setTargetPembatalan(target);
-    setAlasanPembatalan('');
+    // Target sama: pertahankan alasan yang sudah diketik. Target lain:
+    // alasan milik target lama tidak boleh terbawa.
+    if (!samaTarget) setAlasanPembatalan('');
     setBatalPerluKonfirmasi(false);
     setBatalErr(null);
     setInfoBayar(null);
@@ -816,6 +866,9 @@ export function PinjamanTab() {
       }
       setTargetPembatalan(null);
       setAlasanPembatalan('');
+      // Target sudah berhasil dibatalkan; alasan tidak boleh terbawa ke
+      // pembukaan modal berikutnya untuk catatan lain.
+      kunciTargetBatalRef.current = null;
       setBatalPerluKonfirmasi(false);
       await refresh();
       try {
@@ -1606,7 +1659,10 @@ export function PinjamanTab() {
                                       value={bayarAlasan}
                                       disabled={bayarBusy}
                                       placeholder="cth: pembulatan sesuai kesepakatan LPD"
-                                      onChange={(e) => setBayarAlasan(e.target.value)}
+                                      onChange={(e) => {
+                                        setBayarAlasan(e.target.value);
+                                        setBayarTersentuh(true);
+                                      }}
                                     />
                                   </Field>
                                 </div>
@@ -2110,6 +2166,20 @@ export function PinjamanTab() {
           )}
         </Card>
       </div>
+      {bayarTunda && (
+        <KonfirmasiModal
+          judul="Ganti target bayar angsuran?"
+          deskripsi={`Form bayar angsuran yang sedang diisi akan ditimpa dengan target baru: angsuran ke-${bayarTunda.angsuran.ke} ${bayarTunda.pinjaman.kreditur}. Isian yang belum disimpan akan hilang.`}
+          labelYa="Ya, ganti target"
+          sibuk={bayarBusy}
+          onBatal={() => setBayarTunda(null)}
+          onKonfirmasi={() => {
+            const tunda = bayarTunda;
+            setBayarTunda(null);
+            isiFormBayar(tunda.pinjaman, tunda.angsuran);
+          }}
+        />
+      )}
       {targetPembatalan && (
         <Modal
           judul={

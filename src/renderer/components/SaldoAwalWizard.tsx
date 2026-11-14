@@ -231,6 +231,8 @@ export function SaldoAwalWizard({
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [konfirmasiSimpan, setKonfirmasiSimpan] = useState(false);
+  /** UI-A12: konfirmasi buang isian saat menutup wizard yang sudah diisi. */
+  const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
   /** AKT-07: alasan kunci periode dan alasan peringatan dipisah. */
   const alasanPeriodeRef = useRef('');
   const alasanPeringatanRef = useRef('');
@@ -322,6 +324,51 @@ export function SaldoAwalWizard({
     const a = coa.find((x) => x.kode === kode);
     return a ? `${a.kode} — ${a.nama}` : kode;
   };
+
+  /**
+   * UI-A12: definisi "wizard berisi isian yang akan hilang". Nilai bawaan
+   * (baris kas pertama bernominal 0, tanggal jangkar, prefill koreksi yang
+   * berasal dari saldo tersimpan) tidak dihitung sebagai isian; hanya
+   * perubahan operator yang menghitung, sehingga menutup wizard yang baru
+   * dibuka tanpa disentuh tidak menimbulkan konfirmasi palsu.
+   */
+  const adaIsianSaldoAwal = useMemo(() => {
+    if (alasanKoreksi.trim() !== '') return true;
+    if (noBukti.trim() !== '') return true;
+    if (keterangan.trim() !== (saldoAwal?.keterangan ?? '').trim()) return true;
+    // Bandingkan dengan nilai bawaan yang dihitung ulang (bukan snapshot saat
+    // mount) agar penjepitan tanggal yang terlambat tiba tidak dianggap isian.
+    if (
+      tanggal !==
+      tanggalAwalWizard(
+        tanggalMaksimal,
+        modeKoreksi ? saldoAwal?.tanggal : undefined,
+      )
+    )
+      return true;
+    const isi = rows.map((r) => ({ akun: r.akun, nominal: r.nominal }));
+    const dasar = barisAwal.map((r) => ({ akun: r.akun, nominal: r.nominal }));
+    return JSON.stringify(isi) !== JSON.stringify(dasar);
+  }, [
+    alasanKoreksi,
+    noBukti,
+    keterangan,
+    saldoAwal,
+    tanggal,
+    tanggalMaksimal,
+    modeKoreksi,
+    rows,
+    barisAwal,
+  ]);
+
+  function mintaTutup(): void {
+    if (busyRef.current) return;
+    if (adaIsianSaldoAwal) {
+      setKonfirmasiTutup(true);
+      return;
+    }
+    onClose();
+  }
 
   function tambahBaris(): void {
     const dipakai = new Set(rows.map((r) => r.akun));
@@ -458,7 +505,7 @@ export function SaldoAwalWizard({
           ? 'Perbaiki saldo awal yang sudah tersimpan. Sistem membalik jurnal pembukaan lama lalu membuat jurnal penyesuaian baru; jurnal lama tidak dihapus dan tetap tersimpan di audit.'
           : 'Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit.'
       }
-      onTutup={onClose}
+      onTutup={mintaTutup}
       sibuk={busy}
       lebar="3xl"
     >
@@ -727,7 +774,7 @@ export function SaldoAwalWizard({
                 ? 'Simpan Koreksi'
                 : 'Simpan Saldo Awal'}
           </Button>
-          <Button variant="ghost" disabled={busy} onClick={onClose}>
+          <Button variant="ghost" disabled={busy} onClick={mintaTutup}>
             Batal
           </Button>
           {alasanSimpanTidakAktif ? (
@@ -763,6 +810,22 @@ export function SaldoAwalWizard({
             onSubmit={(alasan) => {
               setLockOpen(false);
               void simpan({ ...konfirmasiPendingRef.current, alasan });
+            }}
+          />
+        )}
+
+        {konfirmasiTutup && (
+          <KonfirmasiModal
+            judul="Buang isian saldo awal?"
+            deskripsi="Isian saldo awal yang belum disimpan akan hilang. Data yang sudah tersimpan sebelumnya tidak terpengaruh."
+            labelYa="Ya, buang isian"
+            sibuk={busy}
+            onBatal={() => setKonfirmasiTutup(false)}
+            onKonfirmasi={() => {
+              setKonfirmasiTutup(false);
+              // Tutup konfirmasi lebih dulu agar tumpukan modal mengembalikan
+              // fokus ke wizard, lalu wizard mengembalikannya ke pemicu.
+              window.setTimeout(onClose, 0);
             }}
           />
         )}
