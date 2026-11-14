@@ -8,7 +8,7 @@ import {
 import { KOP_ORG_NAMA, workbookToBuffer } from '../../features/export/workbooks.js';
 import { kopDariPengaturan, type KopOrganisasi } from '../../core/pengaturan.js';
 import { api, strToB64, u8ToB64 } from '../lib/api.js';
-import { Button, ErrorBox } from './ui.js';
+import { Button, ErrorBox, InfoBox } from './ui.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 import { pesanError } from '../../utils/pesanError.js';
 
@@ -187,9 +187,7 @@ export function ExportActions({
         )}
       </div>
       {info && (
-        <div className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-          {info}
-        </div>
+        <InfoBox className="text-sm">{info}</InfoBox>
       )}
       <ErrorBox msg={err} />
 

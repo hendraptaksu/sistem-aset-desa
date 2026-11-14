@@ -36,6 +36,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  InfoBox,
   LockModal,
   PeringatanModal,
   Select,
@@ -751,9 +752,13 @@ export function FormTransaksiTerpandu({
       setInfo(
         `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${nomorTersimpan ? ` (${nomorTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
       );
+      // UI-A11: toast menyebut nomor bukti agar operator bisa mencocokkan
+      // dengan dokumen fisik tanpa membuka detail jurnal.
       tampilkanToast({
         tone: 'success',
-        pesan: pindah ? 'Pindah Dana tersimpan.' : 'Transaksi tersimpan.',
+        pesan:
+          `${pindah ? 'Pindah Dana' : 'Transaksi'} tersimpan` +
+          `${nomorTersimpan ? ` — ${nomorTersimpan}` : ''}.`,
       });
       // Tanggal & akun tetap; hanya isian yang mudah berulang yang dikosongkan.
       setNominal(0);
@@ -834,12 +839,7 @@ export function FormTransaksiTerpandu({
         <ErrorBox msg={err} />
       </div>
       {info && (
-        <div
-          role="status"
-          className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
-        >
-          {info}
-        </div>
+        <InfoBox className="mt-2 text-[15px]">{info}</InfoBox>
       )}
 
       {bayarUtang && (

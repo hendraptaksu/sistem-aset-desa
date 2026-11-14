@@ -42,6 +42,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  InfoBox,
   KonfirmasiModal,
   LockModal,
   Modal,
@@ -560,6 +561,9 @@ export function PanjarTab() {
   const [detailItems, setDetailItems] = useState<Record<string, PanjarItem[]>>({});
   const [detailBusy, setDetailBusy] = useState('');
   const detailBusyRef = useRef(false);
+  // UI-A11: gagal muat rincian ditampilkan di baris rinciannya, bukan di kartu
+  // lain yang jauh dari tombol "Lihat rincian".
+  const [errDetail, setErrDetail] = useState<string | null>(null);
 
   // UI-08: serah dan pertanggungjawaban adalah dua form di tab yang sama.
   // Status kotor disimpan terpisah agar simpan sukses pada satu form tidak
@@ -908,6 +912,9 @@ export function PanjarTab() {
       setDetailItems({});
       setCloseDirty(false);
       await refresh();
+      // UI-A11: info koreksi lama tidak boleh menempel di seksi PJ saat form
+      // ini dipakai untuk pertanggungjawaban normal.
+      setInfoKoreksi(null);
       setInfoClose(
         `Pertanggungjawaban tersimpan. Belanja ${formatRp(r.totalRealisasi)}` +
           (r.sisa > 0 ? `, sisa ${formatRp(r.sisa)} kembali ke kas.` : '') +
@@ -1196,9 +1203,11 @@ export function PanjarTab() {
     if (detailBusyRef.current) return;
     if (detailId === id) {
       setDetailId('');
+      setErrDetail(null);
       return;
     }
     setDetailId(id);
+    setErrDetail(null);
     if (detailItems[id]) return;
     detailBusyRef.current = true;
     setDetailBusy(id);
@@ -1206,7 +1215,7 @@ export function PanjarTab() {
       const its = await api.panjarItems(id);
       setDetailItems((prev) => ({ ...prev, [id]: its }));
     } catch (e) {
-      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      setErrDetail(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
       detailBusyRef.current = false;
       setDetailBusy('');
@@ -1287,9 +1296,7 @@ export function PanjarTab() {
         </p>
         <ErrorBox msg={err} />
         {info && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {info}
-          </div>
+          <InfoBox className="mb-2">{info}</InfoBox>
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Field label="Tanggal panjar">
@@ -1426,9 +1433,7 @@ export function PanjarTab() {
         </div>
         <ErrorBox msg={errSaldoAwal} />
         {infoSaldoAwal && (
-          <div className="mb-2 mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {infoSaldoAwal}
-          </div>
+          <InfoBox className="mb-2 mt-2">{infoSaldoAwal}</InfoBox>
         )}
         {!pembukaan ? (
           <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px] text-stone-600">
@@ -1519,9 +1524,12 @@ export function PanjarTab() {
         </div>
         <ErrorBox msg={errClose} />
         {infoClose && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {infoClose}
-          </div>
+          <InfoBox className="mb-2">{infoClose}</InfoBox>
+        )}
+        {/* UI-A11: hasil koreksi ditampilkan di seksi form PJ — layar sudah
+            digulir ke sini setelah koreksi, jadi info muncul dekat aksinya. */}
+        {infoKoreksi && (
+          <InfoBox className="mb-2">{infoKoreksi}</InfoBox>
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Panjar yang dipertanggungjawabkan">
@@ -1789,16 +1797,9 @@ export function PanjarTab() {
         </div>
         <ErrorBox msg={errBatal} />
         {infoBatal && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {infoBatal}
-          </div>
+          <InfoBox className="mb-2">{infoBatal}</InfoBox>
         )}
         <ErrorBox msg={errKoreksi} />
-        {infoKoreksi && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {infoKoreksi}
-          </div>
-        )}
         <p className="mb-2 text-sm text-stone-600">
           Panjar yang masih <b>OPEN</b> bisa dibatalkan lewat tombol{' '}
           <b>Batalkan</b>. Pembatalan membuat jurnal balik (kas kembali, 1040
@@ -1940,9 +1941,12 @@ export function PanjarTab() {
                     {detailId === p.id && (
                       <tr className="border-b bg-stone-50 last:border-0">
                         <td colSpan={7} className="px-3 py-3">
+                          {/* UI-A11: gagal muat rincian tampil di baris ini,
+                              dekat tombol "Lihat rincian" yang dipakai. */}
+                          <ErrorBox msg={errDetail} />
                           {detailBusy === p.id ? (
                             <p className="text-stone-500">Memuat rincian…</p>
-                          ) : (detailItems[p.id]?.length ?? 0) > 0 ? (
+                          ) : errDetail ? null : (detailItems[p.id]?.length ?? 0) > 0 ? (
                             <>
                               <table className="w-full text-left text-sm">
                                 <thead>

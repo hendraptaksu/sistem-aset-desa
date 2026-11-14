@@ -26,6 +26,7 @@ import {
   Card,
   ErrorBox,
   Field,
+  InfoBox,
   Modal,
   RING_FOKUS,
   TextInput,
@@ -254,12 +255,7 @@ export function TransaksiTerakhirCard({
       </div>
 
       {info && (
-        <div
-          role="status"
-          className="mt-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
-        >
-          {info}
-        </div>
+        <InfoBox className="mt-3 text-[15px]">{info}</InfoBox>
       )}
       {err && (
         <div className="mt-3">
@@ -569,9 +565,7 @@ export function TransaksiTab({
               <p className="mt-2 text-sm text-stone-500">Memeriksa status saldo awal…</p>
             )}
             {pesanSaldo && (
-              <div className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-                {pesanSaldo}
-              </div>
+              <InfoBox className="mt-2 text-sm">{pesanSaldo}</InfoBox>
             )}
           </div>
           <div className="flex flex-col items-end gap-2">

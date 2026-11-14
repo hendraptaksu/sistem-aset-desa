@@ -17,6 +17,7 @@ import {
   Card,
   ErrorBox,
   Field,
+  InfoBox,
   KonfirmasiModal,
   Select,
   TextInput,
@@ -310,13 +311,7 @@ export function AkunTab() {
           </p>
           <ErrorBox msg={err} />
           {info && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
-            >
-              {info}
-            </div>
+            <InfoBox className="mb-2 text-[15px]">{info}</InfoBox>
           )}
           <div className="grid max-w-4xl gap-3 md:grid-cols-3">
             <Field label="Kode akun (4 digit)">

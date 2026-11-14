@@ -121,6 +121,40 @@ export function ErrorBox({ msg }: { msg: string | null }) {
   );
 }
 
+/**
+ * UI-A11: kotak info sukses yang diumumkan pembaca layar. `role="status"`
+ * + `aria-live="polite"` membuat pesan yang muncul/berubah terumumkan tanpa
+ * menginterupsi; `aria-atomic` menjaga seluruh isi terbaca ulang saat teks
+ * berganti. Gaya mengikuti kotak sukses hijau yang sudah ada; ukuran teks dan
+ * spasi diatur lewat `className` agar tampilan tiap lokasi tidak berubah.
+ */
+export function InfoBox({
+  children,
+  className,
+  testId,
+}: {
+  children: ReactNode;
+  /** Ekstra kelas penempatan/ukuran, mis. 'mb-2 text-sm'. */
+  className?: string;
+  /** Penanda untuk test/e2e, mis. 'info-backup'. */
+  testId?: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      {...(testId ? { 'data-testid': testId } : {})}
+      className={clsx(
+        'rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** T3.8: satu alasan baku saat aksi dinonaktifkan karena proses lain. */
 export const ALASAN_SIBUK = 'Tunggu proses yang sedang berjalan selesai.';
 

@@ -24,6 +24,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  InfoBox,
   KonfirmasiModal,
   Modal,
   PeringatanModal,
@@ -909,9 +910,7 @@ export function PinjamanTab() {
 
         <ErrorBox msg={err} />
         {info && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {info}
-          </div>
+          <InfoBox className="mb-2">{info}</InfoBox>
         )}
 
         {mode === 'BERJALAN' && (
@@ -1295,14 +1294,10 @@ export function PinjamanTab() {
                           <div id={`pinjaman-detail-${p.id}`}>
                             <ErrorBox msg={errDetail} />
                             {infoBayar && (
-                              <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-                                {infoBayar}
-                              </div>
+                              <InfoBox className="mb-2">{infoBayar}</InfoBox>
                             )}
                             {infoBatal && (
-                              <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-                                {infoBatal}
-                              </div>
+                              <InfoBox className="mb-2">{infoBatal}</InfoBox>
                             )}
                           </div>
                           {detailBusy === p.id ? (

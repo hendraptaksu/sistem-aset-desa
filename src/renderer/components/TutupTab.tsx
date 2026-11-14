@@ -13,6 +13,7 @@ import {
   Card,
   ErrorBox,
   Field,
+  InfoBox,
   KonfirmasiModal,
   TextInput,
 } from './ui.js';
@@ -183,7 +184,7 @@ export function TutupTab() {
             )}
           </div>
         )}
-        {info && <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{info}</div>}
+        {info && <InfoBox className="mb-2">{info}</InfoBox>}
         <p className="mb-3 text-sm text-stone-600">
           Langkah {step}/3: {step === 1 ? 'Preview laba' : step === 2 ? 'Auto-backup .db' : 'Konfirmasi'}.
           Saat periode dikunci, snapshot laba + Neraca + hash jurnal disahkan dan disimpan permanen.

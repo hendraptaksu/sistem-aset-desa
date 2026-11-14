@@ -5,7 +5,15 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
-import { ALASAN_SIBUK, Badge, Button, Card, ErrorBox, KonfirmasiModal } from './ui.js';
+import {
+  ALASAN_SIBUK,
+  Badge,
+  Button,
+  Card,
+  ErrorBox,
+  InfoBox,
+  KonfirmasiModal,
+} from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -295,6 +303,10 @@ export function DashboardTab({
           setInfo(
             `Backup tersimpan: ${r.path}. Data aktif tidak berubah; simpan cadangan ini di media yang aman.`,
           );
+        } else {
+          // UI-A11: dialog file dibatalkan — jangan diam saja, operator perlu
+          // tahu tidak ada file yang dibuat.
+          setInfo('Backup dibatalkan. Tidak ada file yang dibuat.');
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -315,6 +327,9 @@ export function DashboardTab({
           setInfo(
             `Backup lengkap tersimpan: ${r.path}. Data aktif tidak berubah; simpan folder ini di media yang aman.`,
           );
+        } else {
+          // UI-A11: dialog folder dibatalkan — tidak ada backup baru.
+          setInfo('Backup lengkap dibatalkan. Tidak ada file yang dibuat.');
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -341,6 +356,9 @@ export function DashboardTab({
           const pesan = pesanRestoreSukses('db', r.preRestorePath);
           setInfo(pesan);
           onRestoreSelesai?.(pesan);
+        } else {
+          // UI-A11: dialog file dibatalkan — data aktif tidak disentuh.
+          setInfo('Restore dibatalkan. Data aktif tidak berubah.');
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -364,6 +382,9 @@ export function DashboardTab({
           const pesan = pesanRestoreSukses('lengkap', r.preRestorePath);
           setInfo(pesan);
           onRestoreSelesai?.(pesan);
+        } else {
+          // UI-A11: dialog folder dibatalkan — data aktif tidak disentuh.
+          setInfo('Restore lengkap dibatalkan. Data aktif tidak berubah.');
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -405,13 +426,7 @@ export function DashboardTab({
           <ErrorBox msg={err} />
         </div>
         {info && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800"
-          >
-            {info}
-          </div>
+          <InfoBox className="mt-2">{info}</InfoBox>
         )}
       </Card>
 
@@ -810,6 +825,14 @@ export function DashboardTab({
             </p>
           </section>
         </div>
+        {/* UI-A11: hasil backup/restore (sukses maupun dibatalkan) juga tampil
+            di kartu ini, dekat tombolnya — operator tidak harus menggulir ke
+            kartu atas untuk melihat hasilnya. */}
+        {info && (
+          <InfoBox className="mt-3" testId="info-backup-restore">
+            {info}
+          </InfoBox>
+        )}
         {jenisSibuk && (
           <p
             className={`mt-3 text-sm font-semibold ${

@@ -28,6 +28,7 @@ import {
   DetailModal,
   ErrorBox,
   Field,
+  InfoBox,
   KonfirmasiModal,
   Select,
   TextArea,
@@ -134,10 +135,10 @@ export function AuditIntegritasCard() {
           </p>
         )}
         {hasil && temuan.length === 0 && (
-          <div className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          <InfoBox className="text-sm">
             <p className="font-semibold">Lolos audit integritas.</p>
             <p>{hasil.ringkasan}</p>
-          </div>
+          </InfoBox>
         )}
         {hasil && temuan.length > 0 && (
           <div
@@ -575,7 +576,7 @@ export function PengaturanTab({
         </p>
         <ErrorBox msg={errPin} />
         {okPin && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okPin}</div>
+          <InfoBox className="mb-2">{okPin}</InfoBox>
         )}
         <div className="grid max-w-lg gap-3">
           <Field label="PIN lama">
@@ -607,9 +608,7 @@ export function PengaturanTab({
         </p>
         <ErrorBox msg={errKode} />
         {okKode && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
-            {okKode}
-          </div>
+          <InfoBox className="mb-2">{okKode}</InfoBox>
         )}
         <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px]">
           Status:{' '}
@@ -639,7 +638,7 @@ export function PengaturanTab({
         </p>
         <ErrorBox msg={errIdle} />
         {okIdle && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okIdle}</div>
+          <InfoBox className="mb-2">{okIdle}</InfoBox>
         )}
         <div className="flex max-w-lg items-end gap-2">
           <div className="flex-1">
@@ -662,7 +661,7 @@ export function PengaturanTab({
         </p>
         <ErrorBox msg={errPembukuan} />
         {okPembukuan && (
-          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okPembukuan}</div>
+          <InfoBox className="mb-2">{okPembukuan}</InfoBox>
         )}
         {errPembukuan !== null && (
           <div className="mb-2">

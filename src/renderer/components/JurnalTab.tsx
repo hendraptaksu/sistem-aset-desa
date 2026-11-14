@@ -32,6 +32,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  InfoBox,
   KonfirmasiModal,
   Modal,
   Select,
@@ -63,6 +64,15 @@ const namaAkun = (coa: Coa[], kode: string): string => {
   const a = coa.find((x) => x.kode === kode);
   return a ? `${a.kode} — ${a.nama}` : kode;
 };
+
+/**
+ * UI-A11: label jurnal untuk pesan operator — nomor bukti bila ada, kalau
+ * kosong jatuh ke keterangan jurnal. UUID internal tidak berarti apa-apa bagi
+ * operator awam dan tidak bisa dicocokkan dengan bukti fisik.
+ */
+function labelJurnal(j: { no_bukti: string; keterangan: string }): string {
+  return j.no_bukti || j.keterangan || '(tanpa nomor bukti)';
+}
 
 /**
  * T2.2: capability dari backend dipakai lebih dulu. Fallback lama hanya untuk
@@ -340,13 +350,7 @@ export function JurnalTab({
       <Card>
         <ErrorBox msg={err} />
         {info && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800"
-          >
-            {info}
-          </div>
+          <InfoBox className="mb-2">{info}</InfoBox>
         )}
         {/* UI-11: 2×2 di layar sempit, 5 kolom di >=1280 dengan search 2 kolom. */}
         <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -801,7 +805,8 @@ function KoreksiModal({
       );
       setDirty(false);
       onSelesai(
-        `Koreksi tersimpan: jurnal balik ${hasil.reversal.id} + jurnal pengganti ${hasil.jurnalBaru.id}. Jurnal asli tetap ada.`,
+        `Koreksi tersimpan: jurnal balik ${labelJurnal(hasil.reversal)} + ` +
+          `jurnal pengganti ${labelJurnal(hasil.jurnalBaru)}. Jurnal asli tetap ada.`,
       );
     } catch (e) {
       if (isPerluKonfirmasi(e) && !konfirmasi) {
