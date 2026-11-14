@@ -254,15 +254,17 @@ export function TransaksiTerakhirCard({
 
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-[15px]">
+          {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+          <caption className="sr-only">Sepuluh transaksi terakhir yang dicatat</caption>
           <thead>
             <tr className="border-b text-stone-500">
-              <th className="py-2 pr-3">Tanggal</th>
-              <th className="py-2 pr-3">No. Bukti</th>
-              <th className="py-2 pr-3">Jenis</th>
-              <th className="py-2 pr-3">Keterangan</th>
-              <th className="py-2 pr-3 text-right">Nominal</th>
-              <th className="py-2 pr-3">Status</th>
-              <th className="py-2 text-right">Aksi</th>
+              <th scope="col" className="py-2 pr-3">Tanggal</th>
+              <th scope="col" className="py-2 pr-3">No. Bukti</th>
+              <th scope="col" className="py-2 pr-3">Jenis</th>
+              <th scope="col" className="py-2 pr-3">Keterangan</th>
+              <th scope="col" className="py-2 pr-3 text-right">Nominal</th>
+              <th scope="col" className="py-2 pr-3">Status</th>
+              <th scope="col" className="py-2 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody>

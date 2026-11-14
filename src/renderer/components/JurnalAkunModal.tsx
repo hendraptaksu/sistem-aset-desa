@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
-import { Badge, Button, Modal } from './ui.js';
+import { Badge, Button, ErrorBox, Modal } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -67,6 +67,20 @@ export function JurnalAkunModal({
     return { debit, kredit };
   }
 
+  // UI-A21: total mutasi akun pada daftar jurnal yang tampil, untuk tfoot.
+  function totalDaftar(): { debit: number; kredit: number } {
+    let debit = 0;
+    let kredit = 0;
+    for (const j of daftar ?? []) {
+      const n = nominalAkun(j);
+      debit += n.debit;
+      kredit += n.kredit;
+    }
+    return { debit, kredit };
+  }
+
+  const totalTampil = totalDaftar();
+
   return (
     <>
       <Modal
@@ -88,12 +102,17 @@ export function JurnalAkunModal({
         </div>
 
         {err && (
-          <div className="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800">
-            {err}
+          <div className="mt-3">
+            {/* UI-A21: ErrorBox ber-role="alert" sehingga kegagalan muat
+                diumumkan pembaca layar tanpa berpindah fokus. */}
+            <ErrorBox msg={err} />
           </div>
         )}
+        {/* UI-A21: status memuat diumumkan sebagai live region polite. */}
         {!daftar && !err && (
-          <p className="mt-3 text-stone-500">Memuat daftar jurnal…</p>
+          <p role="status" aria-live="polite" className="mt-3 text-stone-500">
+            Memuat daftar jurnal…
+          </p>
         )}
         {daftar && daftar.length === 0 && !err && (
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
@@ -104,13 +123,17 @@ export function JurnalAkunModal({
         {daftar && daftar.length > 0 && (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-[15px]">
+              {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+              <caption className="sr-only">
+                Daftar jurnal akun {akunKode} — {akunNama}
+              </caption>
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-3">Tanggal</th>
-                  <th className="py-2 pr-3">No. Bukti</th>
-                  <th className="py-2 pr-3">Keterangan</th>
-                  <th className="py-2 pr-3 text-right">Debit</th>
-                  <th className="py-2 text-right">Kredit</th>
+                  <th scope="col" className="py-2 pr-3">Tanggal</th>
+                  <th scope="col" className="py-2 pr-3">No. Bukti</th>
+                  <th scope="col" className="py-2 pr-3">Keterangan</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+                  <th scope="col" className="py-2 text-right">Kredit</th>
                 </tr>
               </thead>
               <tbody>
@@ -122,6 +145,12 @@ export function JurnalAkunModal({
                       className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
                       tabIndex={0}
                       title="Klik untuk melihat detail jurnal"
+                      // UI-A21: baris diumumkan sebagai tombol dengan label
+                      // yang menyebut jurnal mana yang akan dibuka.
+                      role="button"
+                      aria-label={`Buka detail jurnal ${formatTanggal(j.tanggal)}${
+                        j.no_bukti ? ` · ${j.no_bukti}` : ''
+                      } — ${j.keterangan || 'tanpa keterangan'}`}
                       onClick={(e) => {
                         // Simpan fokus di baris pemicu agar Modal mengembalikannya
                         // ke sini saat Detail Jurnal ditutup.
@@ -152,6 +181,20 @@ export function JurnalAkunModal({
                   );
                 })}
               </tbody>
+              {/* UI-A21: total mutasi akun pada daftar jurnal yang tampil. */}
+              <tfoot>
+                <tr className="border-t font-bold">
+                  <td colSpan={3} className="py-2 pr-3 text-right">
+                    Total {akunKode}:
+                  </td>
+                  <td className="whitespace-nowrap py-2 pr-3 text-right">
+                    {totalTampil.debit ? formatRp(totalTampil.debit) : ''}
+                  </td>
+                  <td className="whitespace-nowrap py-2 text-right">
+                    {totalTampil.kredit ? formatRp(totalTampil.kredit) : ''}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}

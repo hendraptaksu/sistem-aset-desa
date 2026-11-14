@@ -111,11 +111,13 @@ function TabelPratinjau({
   return (
     <div className="mt-2 overflow-x-auto">
       <table className="w-full text-left text-[15px]">
+        {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+        <caption className="sr-only">Pratinjau jurnal sebelum disimpan</caption>
         <thead>
           <tr className="border-b text-stone-500">
-            <th className="py-2 pr-3">Keterangan</th>
-            <th className="py-2 pr-3 text-right">Debit</th>
-            <th className="py-2 text-right">Kredit</th>
+            <th scope="col" className="py-2 pr-3">Keterangan</th>
+            <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+            <th scope="col" className="py-2 text-right">Kredit</th>
           </tr>
         </thead>
         <tbody>
@@ -1860,15 +1862,17 @@ export function PanjarTab() {
         </ul>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">
+            {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+            <caption className="sr-only">Daftar uang panjar dan statusnya</caption>
             <thead>
               <tr className="border-b text-stone-500">
-                <th className="py-2 pr-3">Tanggal</th>
-                <th className="py-2 pr-3">Penerima</th>
-                <th className="py-2 pr-3">Sumber</th>
-                <th className="py-2 pr-3 text-right">Jumlah</th>
-                <th className="py-2 pr-3">Status</th>
-                <th className="py-2 pr-3 text-right">Realisasi / sisa</th>
-                <th className="py-2">Tindakan</th>
+                <th scope="col" className="py-2 pr-3">Tanggal</th>
+                <th scope="col" className="py-2 pr-3">Penerima</th>
+                <th scope="col" className="py-2 pr-3">Sumber</th>
+                <th scope="col" className="py-2 pr-3 text-right">Jumlah</th>
+                <th scope="col" className="py-2 pr-3">Status</th>
+                <th scope="col" className="py-2 pr-3 text-right">Realisasi / sisa</th>
+                <th scope="col" className="py-2">Tindakan</th>
               </tr>
             </thead>
             <tbody>
@@ -1993,7 +1997,15 @@ export function PanjarTab() {
                               Koreksi Pertanggungjawaban
                             </Button>
                           )}
-                          <Button variant="ghost" onClick={() => void toggleDetail(p.id)}>
+                          {/* UI-A21: ekspander diumumkan pembaca layar dengan
+                              aria-expanded dan mengaitkan konten via
+                              aria-controls. */}
+                          <Button
+                            variant="ghost"
+                            aria-expanded={detailId === p.id}
+                            aria-controls={`panjar-rincian-${p.id}`}
+                            onClick={() => void toggleDetail(p.id)}
+                          >
                             {detailId === p.id ? 'Tutup rincian' : 'Lihat rincian'}
                           </Button>
                         </div>
@@ -2001,7 +2013,8 @@ export function PanjarTab() {
                     </tr>
                     {detailId === p.id && (
                       <tr className="border-b bg-stone-50 last:border-0">
-                        <td colSpan={7} className="px-3 py-3">
+                        {/* UI-A21: id konten yang dirujuk aria-controls. */}
+                        <td colSpan={7} id={`panjar-rincian-${p.id}`} className="px-3 py-3">
                           {/* UI-A11: gagal muat rincian tampil di baris ini,
                               dekat tombol "Lihat rincian" yang dipakai. */}
                           <ErrorBox msg={errDetail} />
@@ -2010,15 +2023,18 @@ export function PanjarTab() {
                           ) : errDetail ? null : (detailItems[p.id]?.length ?? 0) > 0 ? (
                             <>
                               <table className="w-full text-left text-sm">
+                                <caption className="sr-only">
+                                  Rincian pertanggungjawaban {p.penerima}
+                                </caption>
                                 <thead>
                                   <tr className="text-stone-500">
-                                    <th className="py-1 pr-3">No. nota</th>
-                                    <th className="py-1 pr-3">Tgl nota</th>
-                                    <th className="py-1 pr-3">Toko / penerima</th>
-                                    <th className="py-1 pr-3">Jenis belanja</th>
-                                    <th className="py-1 pr-3 text-right">Nominal</th>
-                                    <th className="py-1 pr-3">Keterangan</th>
-                                    <th className="py-1">Jurnal</th>
+                                    <th scope="col" className="py-1 pr-3">No. nota</th>
+                                    <th scope="col" className="py-1 pr-3">Tgl nota</th>
+                                    <th scope="col" className="py-1 pr-3">Toko / penerima</th>
+                                    <th scope="col" className="py-1 pr-3">Jenis belanja</th>
+                                    <th scope="col" className="py-1 pr-3 text-right">Nominal</th>
+                                    <th scope="col" className="py-1 pr-3">Keterangan</th>
+                                    <th scope="col" className="py-1">Jurnal</th>
                                   </tr>
                                 </thead>
                                 <tbody>

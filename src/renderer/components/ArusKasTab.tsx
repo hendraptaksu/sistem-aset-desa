@@ -285,17 +285,21 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
               aria-busy={menyegarkan || undefined}
             >
               <table className="w-full text-left text-[15px]">
+                {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                <caption className="sr-only">
+                  Arus Kas — mutasi kas per dompet periode {periodeHasil}
+                </caption>
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-3">Tanggal</th>
-                    <th className="py-2 pr-3">No. Bukti</th>
-                    <th className="py-2 pr-3">Keterangan</th>
-                    <th className="py-2 pr-3">Dompet</th>
-                    <th className="py-2 pr-3">Akun terkait</th>
-                    <th className="py-2 pr-3">Kelompok</th>
-                    <th className="py-2 pr-3 text-right">Masuk</th>
-                    <th className="py-2 pr-3 text-right">Keluar</th>
-                    <th className="py-2" />
+                    <th scope="col" className="py-2 pr-3">Tanggal</th>
+                    <th scope="col" className="py-2 pr-3">No. Bukti</th>
+                    <th scope="col" className="py-2 pr-3">Keterangan</th>
+                    <th scope="col" className="py-2 pr-3">Dompet</th>
+                    <th scope="col" className="py-2 pr-3">Akun terkait</th>
+                    <th scope="col" className="py-2 pr-3">Kelompok</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Masuk</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Keluar</th>
+                    <th scope="col" className="py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -309,6 +313,17 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                       }
                       tabIndex={r.jurnal_id ? 0 : undefined}
                       title={r.jurnal_id ? 'Klik untuk melihat jurnal asal' : undefined}
+                      // UI-A21: baris dengan jurnal diumumkan sebagai tombol
+                      // dengan label yang menyebut mutasi mana yang dibuka;
+                      // baris tanpa jurnal non-interaktif.
+                      role={r.jurnal_id ? 'button' : undefined}
+                      aria-label={
+                        r.jurnal_id
+                          ? `Buka detail jurnal ${formatTanggal(r.tanggal)}${
+                              r.no_bukti ? ` · ${r.no_bukti}` : ''
+                            } — ${r.keterangan || 'tanpa keterangan'}`
+                          : undefined
+                      }
                       onClick={() => void bukaDetail(r.jurnal_id)}
                       onKeyDown={(e) => {
                         if (!r.jurnal_id) return;
@@ -341,7 +356,11 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                         {r.keluar ? formatRp(r.keluar) : ''}
                       </td>
                       <td className="py-2 text-right text-stone-400">
-                        {r.jurnal_id && <ChevronRight size={16} className="ml-auto" />}
+                        {/* UI-A21: ikon hanya penunjuk arah; makna ada di
+                            aria-label baris. */}
+                        {r.jurnal_id && (
+                          <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+                        )}
                       </td>
                     </tr>
                   ))}

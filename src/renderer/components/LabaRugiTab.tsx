@@ -221,17 +221,21 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
             aria-busy={menyegarkan || undefined}
           >
             <table className="w-full text-left text-[15px]">
+              {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+              <caption className="sr-only">
+                Laba Rugi — pendapatan dan beban periode {periodeHasil}
+              </caption>
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-3">Kode</th>
-                  <th className="py-2 pr-3">Uraian</th>
-                  <th className="py-2 pr-3 text-right">Nominal</th>
-                  <th className="py-2" />
+                  <th scope="col" className="py-2 pr-3">Kode</th>
+                  <th scope="col" className="py-2 pr-3">Uraian</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Nominal</th>
+                  <th scope="col" className="py-2" />
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <th colSpan={4} className="pt-3 pb-1 text-left text-stone-700">
+                  <th colSpan={4} scope="colgroup" className="pt-3 pb-1 text-left text-stone-700">
                     PENDAPATAN
                   </th>
                 </tr>
@@ -241,6 +245,10 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                     className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
                     tabIndex={0}
                     title={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
+                    // UI-A21: baris diumumkan sebagai tombol dengan label
+                    // yang menyebut akun mana yang akan ditelusuri.
+                    role="button"
+                    aria-label={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
                     onClick={() => setAkunDipilih({ kode: b.kode, nama: b.nama })}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -255,7 +263,9 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                       {formatRp(b.nominal)}
                     </td>
                     <td className="py-2 text-right text-stone-400">
-                      <ChevronRight size={16} className="ml-auto" />
+                      {/* UI-A21: ikon hanya penunjuk arah; makna ada di
+                          aria-label baris. */}
+                      <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
                     </td>
                   </tr>
                 ))}
@@ -277,7 +287,7 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                 </tr>
 
                 <tr>
-                  <th colSpan={4} className="pt-3 pb-1 text-left text-stone-700">
+                  <th colSpan={4} scope="colgroup" className="pt-3 pb-1 text-left text-stone-700">
                     BEBAN
                   </th>
                 </tr>
@@ -287,6 +297,10 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                     className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
                     tabIndex={0}
                     title={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
+                    // UI-A21: baris diumumkan sebagai tombol dengan label
+                    // yang menyebut akun mana yang akan ditelusuri.
+                    role="button"
+                    aria-label={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
                     onClick={() => setAkunDipilih({ kode: b.kode, nama: b.nama })}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -301,7 +315,9 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                       {formatRp(b.nominal)}
                     </td>
                     <td className="py-2 text-right text-stone-400">
-                      <ChevronRight size={16} className="ml-auto" />
+                      {/* UI-A21: ikon hanya penunjuk arah; makna ada di
+                          aria-label baris. */}
+                      <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
                     </td>
                   </tr>
                 ))}

@@ -90,6 +90,12 @@ export function NeracaTab({
         }
         tabIndex={onBukaBukuBesar ? 0 : undefined}
         title={onBukaBukuBesar ? `Buka Buku Besar ${a.kode} — ${a.nama}` : undefined}
+        // UI-A21: baris akun diumumkan sebagai tombol dengan label yang
+        // menyebut akun tujuan; tanpa drill-down baris ini non-interaktif.
+        role={onBukaBukuBesar ? 'button' : undefined}
+        aria-label={
+          onBukaBukuBesar ? `Buka Buku Besar akun ${a.kode} — ${a.nama}` : undefined
+        }
         onClick={() => onBukaBukuBesar?.(a.kode, periodeSumber())}
         onKeyDown={(e) => {
           if (!onBukaBukuBesar) return;
@@ -103,7 +109,10 @@ export function NeracaTab({
         <td className="py-2 pr-3">{a.nama}</td>
         <td className="whitespace-nowrap py-2 pr-3 text-right">{formatRp(a.saldo)}</td>
         <td className="py-2 text-right text-stone-400">
-          {onBukaBukuBesar && <ChevronRight size={16} className="ml-auto" />}
+          {/* UI-A21: ikon hanya penunjuk arah; makna ada di aria-label baris. */}
+          {onBukaBukuBesar && (
+            <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+          )}
         </td>
       </tr>
     );
@@ -177,12 +186,16 @@ export function NeracaTab({
             <h3 className="mb-2 font-bold">ASET — {formatRp(data.totalAset)}</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[15px]">
+                {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                <caption className="sr-only">
+                  Neraca — Aset per {formatTanggal(data.cutoff)}
+                </caption>
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-3">Kode</th>
-                    <th className="py-2 pr-3">Akun</th>
-                    <th className="py-2 pr-3 text-right">Saldo</th>
-                    <th className="py-2" />
+                    <th scope="col" className="py-2 pr-3">Kode</th>
+                    <th scope="col" className="py-2 pr-3">Akun</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Saldo</th>
+                    <th scope="col" className="py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -214,12 +227,16 @@ export function NeracaTab({
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[15px]">
+                {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                <caption className="sr-only">
+                  Neraca — Kewajiban per {formatTanggal(data.cutoff)}
+                </caption>
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-3">Kode</th>
-                    <th className="py-2 pr-3">Akun</th>
-                    <th className="py-2 pr-3 text-right">Saldo</th>
-                    <th className="py-2" />
+                    <th scope="col" className="py-2 pr-3">Kode</th>
+                    <th scope="col" className="py-2 pr-3">Akun</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Saldo</th>
+                    <th scope="col" className="py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -249,12 +266,16 @@ export function NeracaTab({
             <h3 className="mb-2 font-bold">EKUITAS — {formatRp(data.totalEkuitas)}</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[15px]">
+                {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                <caption className="sr-only">
+                  Neraca — Ekuitas per {formatTanggal(data.cutoff)}
+                </caption>
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-3">Kode</th>
-                    <th className="py-2 pr-3">Akun</th>
-                    <th className="py-2 pr-3 text-right">Saldo</th>
-                    <th className="py-2" />
+                    <th scope="col" className="py-2 pr-3">Kode</th>
+                    <th scope="col" className="py-2 pr-3">Akun</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Saldo</th>
+                    <th scope="col" className="py-2" />
                   </tr>
                 </thead>
                 <tbody>

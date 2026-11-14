@@ -209,15 +209,19 @@ export function NeracaSaldoTab({
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[15px]">
+              {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+              <caption className="sr-only">
+                Neraca Saldo — daftar saldo semua akun · {judulPeriode}
+              </caption>
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-3">Kode</th>
-                  <th className="py-2 pr-3">Nama Akun</th>
-                  <th className="py-2 pr-3">Tipe</th>
-                  <th className="py-2 pr-3 text-right">Debit</th>
-                  <th className="py-2 pr-3 text-right">Kredit</th>
-                  <th className="py-2 pr-3 text-right">Saldo</th>
-                  <th className="py-2" />
+                  <th scope="col" className="py-2 pr-3">Kode</th>
+                  <th scope="col" className="py-2 pr-3">Nama Akun</th>
+                  <th scope="col" className="py-2 pr-3">Tipe</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Kredit</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Saldo</th>
+                  <th scope="col" className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -236,6 +240,15 @@ export function NeracaSaldoTab({
                         sintetis
                           ? 'Laba bersih sebelum periode; bukan akun COA'
                           : `Buka Buku Besar ${r.kode} — ${r.nama}`
+                      }
+                      // UI-A21: baris akun diumumkan sebagai tombol dengan
+                      // label yang menyebut akun tujuan; baris sintetis
+                      // tidak interaktif sehingga tanpa role.
+                      role={sintetis ? undefined : 'button'}
+                      aria-label={
+                        sintetis
+                          ? undefined
+                          : `Buka Buku Besar akun ${r.kode} — ${r.nama}`
                       }
                       onClick={
                         sintetis ? undefined : () => onBukaBukuBesar(r.kode, periodeSumber)
@@ -275,7 +288,11 @@ export function NeracaSaldoTab({
                         {formatRp(r.saldo)}
                       </td>
                       <td className="py-2 text-right text-stone-400">
-                        {!sintetis && <ChevronRight size={16} className="ml-auto" />}
+                        {!sintetis && (
+                          // UI-A21: ikon hanya penunjuk arah; makna ada di
+                          // aria-label baris.
+                          <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+                        )}
                       </td>
                     </tr>
                   );

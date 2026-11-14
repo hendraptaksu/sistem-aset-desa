@@ -56,11 +56,11 @@ export function KepalaMutasi({
       : '+ / Bertambah';
   return (
     <>
-      <th className="py-2 pr-3 text-right">
+      <th scope="col" className="py-2 pr-3 text-right">
         <span className="block">Debit</span>
         <span className="block text-helper font-normal text-stone-500">({debit})</span>
       </th>
-      <th className="py-2 pr-3 text-right">
+      <th scope="col" className="py-2 pr-3 text-right">
         <span className="block">Kredit</span>
         <span className="block text-helper font-normal text-stone-500">({kredit})</span>
       </th>
@@ -374,17 +374,21 @@ export function BukuBesarTab({
               aria-busy={menyegarkan || undefined}
             >
               <table className="w-full text-left text-[15px]">
+                {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                <caption className="sr-only">
+                  Rincian mutasi Buku Besar akun {data.kode} — {data.nama}
+                </caption>
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-3">Tanggal</th>
-                    <th className="py-2 pr-3">No. Bukti</th>
-                    <th className="py-2 pr-3">Keterangan</th>
+                    <th scope="col" className="py-2 pr-3">Tanggal</th>
+                    <th scope="col" className="py-2 pr-3">No. Bukti</th>
+                    <th scope="col" className="py-2 pr-3">Keterangan</th>
                     <KepalaMutasi
                       posisiNormal={data.posisi_normal}
                       kasBank={isAkunKasData(akunTerpilih ?? { kode: data.kode })}
                     />
-                    <th className="py-2 pr-3 text-right">Saldo</th>
-                    <th className="py-2">Sisi</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Saldo</th>
+                    <th scope="col" className="py-2">Sisi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -394,6 +398,12 @@ export function BukuBesarTab({
                       className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
                       tabIndex={0}
                       title="Klik untuk melihat jurnal asal"
+                      // UI-A21: baris diumumkan sebagai tombol dengan label
+                      // yang menyebut jurnal mana yang akan dibuka.
+                      role="button"
+                      aria-label={`Buka detail jurnal ${formatTanggal(r.tanggal)}${
+                        r.no_bukti ? ` · ${r.no_bukti}` : ''
+                      } — ${r.keterangan || 'tanpa keterangan'}`}
                       onClick={() => void bukaDetail(r.jurnal_id)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {

@@ -1299,16 +1299,18 @@ export function PinjamanTab() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">
+            {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+            <caption className="sr-only">Daftar pinjaman dan sisa pokok</caption>
             <thead>
               <tr className="border-b text-stone-500">
-                <th className="py-2 pr-3">Tanggal mulai</th>
-                <th className="py-2 pr-3">Kreditur / LPD</th>
-                <th className="py-2 pr-3">Kas</th>
-                <th className="py-2 pr-3 text-right">Pokok awal</th>
-                <th className="py-2 pr-3 text-right">Sisa awal</th>
-                <th className="py-2 pr-3 text-right">Sisa pokok (outstanding)</th>
-                <th className="py-2 pr-3">Sumber jurnal</th>
-                <th className="py-2">Tindakan</th>
+                <th scope="col" className="py-2 pr-3">Tanggal mulai</th>
+                <th scope="col" className="py-2 pr-3">Kreditur / LPD</th>
+                <th scope="col" className="py-2 pr-3">Kas</th>
+                <th scope="col" className="py-2 pr-3 text-right">Pokok awal</th>
+                <th scope="col" className="py-2 pr-3 text-right">Sisa awal</th>
+                <th scope="col" className="py-2 pr-3 text-right">Sisa pokok (outstanding)</th>
+                <th scope="col" className="py-2 pr-3">Sumber jurnal</th>
+                <th scope="col" className="py-2">Tindakan</th>
               </tr>
             </thead>
             <tbody>
@@ -1380,7 +1382,15 @@ export function PinjamanTab() {
                       </td>
                       <td className="py-2">
                         <div className="flex flex-wrap gap-1">
-                          <Button variant="ghost" onClick={() => void toggleDetail(p.id)}>
+                          {/* UI-A21: ekspander diumumkan pembaca layar dengan
+                              aria-expanded dan mengaitkan konten via
+                              aria-controls. */}
+                          <Button
+                            variant="ghost"
+                            aria-expanded={detailId === p.id}
+                            aria-controls={`pinjaman-jadwal-${p.id}`}
+                            onClick={() => void toggleDetail(p.id)}
+                          >
                             {detailId === p.id ? 'Tutup jadwal' : 'Lihat jadwal'}
                           </Button>
                           {/* UI-A07: tombol pinjaman yang kartunya sedang
@@ -1397,7 +1407,9 @@ export function PinjamanTab() {
                     </tr>
                     {detailId === p.id && (
                       <tr className="border-b bg-stone-50 last:border-0">
-                        <td colSpan={8} className="px-3 py-3">
+                        {/* UI-A21: id konten yang dirujuk aria-controls
+                            tombol "Lihat jadwal". */}
+                        <td colSpan={8} id={`pinjaman-jadwal-${p.id}`} className="px-3 py-3">
                           {/* UI-A06: jangkar gulir + banner hasil aksi seksi
                               detail (gagal muat, bayar angsuran, pembatalan). */}
                           <div id={`pinjaman-detail-${p.id}`}>
@@ -1413,15 +1425,18 @@ export function PinjamanTab() {
                             <p className="text-stone-500">Memuat jadwal…</p>
                           ) : jadwalTampil.length > 0 ? (
                             <table className="w-full text-left text-sm">
+                              <caption className="sr-only">
+                                Jadwal angsuran {p.kreditur}
+                              </caption>
                               <thead>
                                 <tr className="text-stone-500">
-                                  <th className="py-1 pr-3">Ke</th>
-                                  <th className="py-1 pr-3">Jatuh tempo</th>
-                                  <th className="py-1 pr-3 text-right">Pokok</th>
-                                  <th className="py-1 pr-3 text-right">Bunga</th>
-                                  <th className="py-1 pr-3">Status</th>
-                                  <th className="py-1 pr-3">Catatan</th>
-                                  <th className="py-1">Tindakan</th>
+                                  <th scope="col" className="py-1 pr-3">Ke</th>
+                                  <th scope="col" className="py-1 pr-3">Jatuh tempo</th>
+                                  <th scope="col" className="py-1 pr-3 text-right">Pokok</th>
+                                  <th scope="col" className="py-1 pr-3 text-right">Bunga</th>
+                                  <th scope="col" className="py-1 pr-3">Status</th>
+                                  <th scope="col" className="py-1 pr-3">Catatan</th>
+                                  <th scope="col" className="py-1">Tindakan</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1528,15 +1543,18 @@ export function PinjamanTab() {
                             ) : daftarBayar.length > 0 ? (
                               <div className="mt-3 overflow-x-auto">
                                 <table className="w-full text-left text-sm">
+                                  <caption className="sr-only">
+                                    Riwayat pembayaran {p.kreditur}
+                                  </caption>
                                   <thead>
                                     <tr className="text-stone-500">
-                                      <th className="py-1 pr-3">Tanggal</th>
-                                      <th className="py-1 pr-3">Angsuran</th>
-                                      <th className="py-1 pr-3 text-right">Pokok</th>
-                                      <th className="py-1 pr-3 text-right">Bunga</th>
-                                      <th className="py-1 pr-3 text-right">Kas keluar</th>
-                                      <th className="py-1 pr-3">Status / jurnal</th>
-                                      <th className="py-1">Tindakan</th>
+                                      <th scope="col" className="py-1 pr-3">Tanggal</th>
+                                      <th scope="col" className="py-1 pr-3">Angsuran</th>
+                                      <th scope="col" className="py-1 pr-3 text-right">Pokok</th>
+                                      <th scope="col" className="py-1 pr-3 text-right">Bunga</th>
+                                      <th scope="col" className="py-1 pr-3 text-right">Kas keluar</th>
+                                      <th scope="col" className="py-1 pr-3">Status / jurnal</th>
+                                      <th scope="col" className="py-1">Tindakan</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1868,14 +1886,18 @@ export function PinjamanTab() {
         {!rekonsiliasiBusy && rekonsiliasi.length > 0 && (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-[15px]">
+              {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+              <caption className="sr-only">
+                Rekonsiliasi saldo jurnal 2050 vs jadwal pinjaman
+              </caption>
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-3">Kreditur / ID</th>
-                  <th className="py-2 pr-3 text-right">Saldo jurnal 2050</th>
-                  <th className="py-2 pr-3 text-right">Jadwal</th>
-                  <th className="py-2 pr-3 text-right">Selisih</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2">Keterangan</th>
+                  <th scope="col" className="py-2 pr-3">Kreditur / ID</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Saldo jurnal 2050</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Jadwal</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Selisih</th>
+                  <th scope="col" className="py-2 pr-3">Status</th>
+                  <th scope="col" className="py-2">Keterangan</th>
                 </tr>
               </thead>
               <tbody>
@@ -2043,17 +2065,21 @@ export function PinjamanTab() {
   
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-left text-[15px]">
+                  {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                  <caption className="sr-only">
+                    Kartu hutang bulanan {mutasi.pinjaman.kreditur}
+                  </caption>
                   <thead>
                     <tr className="border-b text-stone-500">
-                      <th className="py-2 pr-3">Bulan</th>
-                      <th className="py-2 pr-3 text-right">Saldo awal</th>
-                      <th className="py-2 pr-3 text-right">Pokok</th>
-                      <th className="py-2 pr-3 text-right">Bunga</th>
-                      <th className="py-2 pr-3 text-right">Denda</th>
-                      <th className="py-2 pr-3 text-right">Kas keluar</th>
-                      <th className="py-2 pr-3 text-right">Saldo akhir</th>
-                      <th className="py-2 pr-3">Jurnal</th>
-                      <th className="py-2">Detail</th>
+                      <th scope="col" className="py-2 pr-3">Bulan</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Saldo awal</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Pokok</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Bunga</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Denda</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Kas keluar</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Saldo akhir</th>
+                      <th scope="col" className="py-2 pr-3">Jurnal</th>
+                      <th scope="col" className="py-2">Detail</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2085,6 +2111,9 @@ export function PinjamanTab() {
                             {b.jurnal_ids.length} jurnal
                           </td>
                           <td className="py-2">
+                            {/* UI-A21: ekspander diumumkan pembaca layar dengan
+                                aria-expanded dan mengaitkan konten via
+                                aria-controls. */}
                             <Button
                               variant="ghost"
                               disabled={b.pembayaran.length === 0}
@@ -2094,6 +2123,8 @@ export function PinjamanTab() {
                                     ? 'Belum ada pembayaran tercatat pada bulan ini.'
                                     : null,
                               })}
+                              aria-expanded={Boolean(mutasiBuka[b.bulan])}
+                              aria-controls={`pinjaman-mutasi-${b.bulan}`}
                               onClick={() => toggleMutasiBulan(b.bulan)}
                             >
                               {mutasiBuka[b.bulan] ? 'Tutup' : 'Lihat jurnal'}
@@ -2107,18 +2138,27 @@ export function PinjamanTab() {
                         </tr>
                         {mutasiBuka[b.bulan] && (
                           <tr className="border-b bg-stone-50 last:border-0">
-                            <td colSpan={9} className="px-3 py-3">
+                            {/* UI-A21: id konten yang dirujuk aria-controls. */}
+                            <td
+                              colSpan={9}
+                              id={`pinjaman-mutasi-${b.bulan}`}
+                              className="px-3 py-3"
+                            >
                               <table className="w-full text-left text-sm">
+                                <caption className="sr-only">
+                                  Rincian jurnal pembayaran bulan{' '}
+                                  {labelBulanMutasi(b.bulan)}
+                                </caption>
                                 <thead>
                                   <tr className="text-stone-500">
-                                    <th className="py-1 pr-3">No. bukti</th>
-                                    <th className="py-1 pr-3">Tanggal jurnal</th>
-                                    <th className="py-1 pr-3">Tanggal catat</th>
-                                    <th className="py-1 pr-3">Jurnal ID</th>
-                                    <th className="py-1 pr-3 text-right">Pokok</th>
-                                    <th className="py-1 pr-3 text-right">Bunga</th>
-                                    <th className="py-1 pr-3 text-right">Denda</th>
-                                    <th className="py-1 text-right">Kas keluar</th>
+                                    <th scope="col" className="py-1 pr-3">No. bukti</th>
+                                    <th scope="col" className="py-1 pr-3">Tanggal jurnal</th>
+                                    <th scope="col" className="py-1 pr-3">Tanggal catat</th>
+                                    <th scope="col" className="py-1 pr-3">Jurnal ID</th>
+                                    <th scope="col" className="py-1 pr-3 text-right">Pokok</th>
+                                    <th scope="col" className="py-1 pr-3 text-right">Bunga</th>
+                                    <th scope="col" className="py-1 pr-3 text-right">Denda</th>
+                                    <th scope="col" className="py-1 text-right">Kas keluar</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2186,18 +2226,22 @@ export function PinjamanTab() {
   
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-left text-[15px]">
+                  {/* UI-A21: caption sr-only tanpa mengubah tampilan. */}
+                  <caption className="sr-only">
+                    Jadwal vs realisasi angsuran {mutasi.pinjaman.kreditur}
+                  </caption>
                   <thead>
                     <tr className="border-b text-stone-500">
-                      <th className="py-2 pr-3">Ke</th>
-                      <th className="py-2 pr-3">Jatuh tempo</th>
-                      <th className="py-2 pr-3">Status</th>
-                      <th className="py-2 pr-3 text-right">Pokok jadwal</th>
-                      <th className="py-2 pr-3 text-right">Bunga jadwal</th>
-                      <th className="py-2 pr-3 text-right">Pokok realisasi</th>
-                      <th className="py-2 pr-3 text-right">Bunga realisasi</th>
-                      <th className="py-2 pr-3 text-right">Selisih pokok</th>
-                      <th className="py-2 pr-3 text-right">Selisih bunga</th>
-                      <th className="py-2">Jurnal bayar</th>
+                      <th scope="col" className="py-2 pr-3">Ke</th>
+                      <th scope="col" className="py-2 pr-3">Jatuh tempo</th>
+                      <th scope="col" className="py-2 pr-3">Status</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Pokok jadwal</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Bunga jadwal</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Pokok realisasi</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Bunga realisasi</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Selisih pokok</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Selisih bunga</th>
+                      <th scope="col" className="py-2">Jurnal bayar</th>
                     </tr>
                   </thead>
                   <tbody>
