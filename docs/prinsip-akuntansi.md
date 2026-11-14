@@ -260,10 +260,15 @@ jurnal pembukaan yang digantikan.
 
 Seluruh langkah berjalan dalam **satu transaksi DB yang atomik**:
 
-1. Baca jurnal pembukaan yang **aktif**: jurnal di grup saldo awal yang belum
-   punya reversal dan berperan `OPENING` atau `OPENING_REPLACEMENT`. Koreksi
-   pertama membalik jurnal `SALDO_AWAL`; koreksi berikutnya membalik jurnal
-   `UMUM` pengganti terakhir, bukan mengulang reversal jurnal yang sama.
+1. Baca jurnal pembukaan yang **aktif**. Seleksi memprioritaskan penunjuk
+   resmi `pengaturan.saldo_awal_aktif_id`; kandidatnya divalidasi: berperan
+   `OPENING` atau `OPENING_REPLACEMENT`, belum punya reversal, dan berada di
+   grup saldo awal. Bila penunjuk kosong atau tidak sah (data lama), wizard
+   memindai grup dari jurnal terakhir dengan saringan peran yang sama —
+   jurnal `UMUM` biasa yang menyusup ke grup lewat SQL langsung tidak pernah
+   terpilih. Koreksi pertama membalik jurnal `SALDO_AWAL`; koreksi berikutnya
+   membalik jurnal `UMUM` pengganti terakhir, bukan mengulang reversal jurnal
+   yang sama.
 2. Buat jurnal balik `REVERSAL` yang membalik persis jurnal pembukaan aktif
    (`reversal_of` = jurnal aktif, `grup_id` sama, keterangan `KOREKSI: ...`),
    dengan tanggal default **tanggal jurnal pembukaan aktif**.

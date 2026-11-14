@@ -428,6 +428,101 @@ describe('T1.7 — atomik dan penolakan koreksi saldo awal', () => {
   });
 });
 
+// T-B03 — jurnal UMUM biasa yang menyusup ke grup pembukaan lewat SQL langsung
+// tidak boleh terpilih sebagai pembukaan aktif. Seleksi memprioritaskan
+// penunjuk resmi `saldo_awal_aktif_id` dan wajib menyaring peran
+// OPENING/OPENING_REPLACEMENT (juga pada fallback scan data lama).
+describe('T-B03 — seleksi pembukaan aktif memakai peran', () => {
+  /** Jurnal UMUM biasa (peran default NORMAL) disisipkan mentah ke grup pembukaan. */
+  function sisipkanJurnalUmumBiasa(db: ReturnType<typeof openDb>, grup: string): void {
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES ('j-intruder', '2026-01-02', 'JU-2026-0099', 'Jurnal biasa menyusup',
+               'UMUM', ?, NULL, ?)`,
+    ).run(grup, '2026-01-02T00:00:00.000Z');
+    db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES ('j-intruder', '5063', 100000, 0, '')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+       VALUES ('j-intruder', '4005', 0, 100000, '')`,
+    ).run();
+  }
+
+  it('koreksi tetap membalik SALDO_AWAL resmi, bukan jurnal UMUM biasa yang lebih baru', () => {
+    const db = openDb(':memory:');
+    try {
+      siapkanAwal(db);
+      sisipkanJurnalUmumBiasa(db, 'j-awal');
+      expect(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID)).toBe('j-awal');
+
+      const hasil = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal(
+          form('2026-01-01', [
+            { akun_kode: '1001', nominal: RP(8_000_000) },
+            { akun_kode: '2050', nominal: RP(2_000_000) },
+          ]),
+        ).input,
+        { alasan: 'Koreksi saat ada jurnal menyusup', sekarang: SEKARANG },
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      // Target koreksi adalah jurnal pembukaan resmi, bukan intruder.
+      expect(hasil.jurnalLama?.id).toBe('j-awal');
+      expect(hasil.jurnalLama?.jenis).toBe('SALDO_AWAL');
+      expect(hasil.jurnalLama?.peran).toBe('OPENING');
+      expect(hasil.reversal?.reversal_of).toBe('j-awal');
+      expect(hasil.jurnal).toMatchObject({
+        jenis: 'UMUM',
+        peran: 'OPENING_REPLACEMENT',
+        replaces_id: 'j-awal',
+        grup_id: 'j-awal',
+      });
+
+      // Intruder tidak ikut dibalik wizard dan penunjuk resmi pindah ke pengganti.
+      expect(listJurnal(db).some((j) => j.reversal_of === 'j-intruder')).toBe(false);
+      expect(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID)).toBe(hasil.jurnal?.id);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('fallback tanpa penunjuk resmi tetap menyaring peran pembukaan', () => {
+    const db = openDb(':memory:');
+    try {
+      siapkanAwal(db);
+      sisipkanJurnalUmumBiasa(db, 'j-awal');
+      // Penunjuk resmi hilang (data lama/rusak): fallback scan grup wajib
+      // menyaring peran sehingga intruder tidak pernah terpilih.
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, '');
+
+      const hasil = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal(
+          form('2026-01-01', [
+            { akun_kode: '1001', nominal: RP(6_000_000) },
+          ]),
+        ).input,
+        { alasan: 'Koreksi fallback tanpa penunjuk', sekarang: SEKARANG },
+      );
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnalLama?.id).toBe('j-awal');
+      expect(hasil.reversal?.reversal_of).toBe('j-awal');
+      expect(hasil.jurnal).toMatchObject({
+        peran: 'OPENING_REPLACEMENT',
+        replaces_id: 'j-awal',
+      });
+      expect(listJurnal(db).some((j) => j.reversal_of === 'j-intruder')).toBe(false);
+      expect(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID)).toBe(hasil.jurnal?.id);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 // T-A03 — jurnal pengganti pembukaan aktif dilindungi dari reversal generik,
 // tetapi wizard koreksi saldo awal tetap bisa dipakai berulang.
 describe('T-A03 — pembukaan aktif hanya bisa dikoreksi lewat wizard', () => {

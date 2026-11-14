@@ -24,6 +24,7 @@ import { rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, JurnalHeaderInput } from '../core/types.js';
 import { AKUN_MODAL, kodeKasDariDaftarAkun } from './coa.js';
 import { listBarisJurnal } from './laporan.js';
+import { getPembukaanAktif } from './pembukaan.js';
 import {
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
   KUNCI_CUTOVER_TANGGAL,
@@ -140,12 +141,50 @@ export type SaldoAwalSaatIni = {
 };
 
 /**
+ * T-B03: pilih jurnal pembukaan aktif di grup saldo awal untuk koreksi/prefill.
+ *
+ * Prioritas: penunjuk resmi `pengaturan.saldo_awal_aktif_id` lewat
+ * `getPembukaanAktif()`. Kandidat penunjuk divalidasi: berperan
+ * `OPENING`/`OPENING_REPLACEMENT`, bukan jurnal balik, belum dibalik, dan
+ * memang berada di grup pembukaan. Bila penunjuk kosong/tidak sah (data lama),
+ * fallback ke pemindaian grup dari belakang dengan saringan peran yang sama,
+ * sehingga jurnal UMUM biasa yang menyusup ke grup lewat SQL langsung tidak
+ * pernah terpilih dan dibalik wizard.
+ */
+function pilihPembukaanAktif(
+  db: Database.Database,
+  dalamGrup: Jurnal[],
+  sudahDibalik: ReadonlySet<string>,
+): Jurnal | undefined {
+  const berperanPembukaan = (j: Jurnal): boolean =>
+    j.peran === 'OPENING' || j.peran === 'OPENING_REPLACEMENT';
+  const masihAktif = (j: Jurnal): boolean =>
+    j.reversal_of == null && !sudahDibalik.has(j.id);
+
+  const tunjuk = getPembukaanAktif(db);
+  if (tunjuk) {
+    const kandidat = dalamGrup.find((j) => j.id === tunjuk.id);
+    if (kandidat && berperanPembukaan(kandidat) && masihAktif(kandidat)) {
+      return kandidat;
+    }
+  }
+  // Cari dari belakang: setelah koreksi, jurnal pengganti terakhir adalah
+  // pembukaan aktif. Jurnal REVERSAL berperan NORMAL sehingga tak pernah
+  // menjadi kandidat.
+  return [...dalamGrup]
+    .reverse()
+    .find((j) => berperanPembukaan(j) && masihAktif(j));
+}
+
+/**
  * T1.8: data prefill Wizard mode koreksi.
  *
  * Sumbernya jurnal grup pembukaan yang sama (SALDO_AWAL asli + REVERSAL +
  * UMUM pengganti). Dengan menjumlahkan SELURUH baris grup, hasilnya tetap
  * benar setelah koreksi berulang: jurnal asli + balik saling meniadakan dan
- * hanya penyesuaian aktif yang tersisa.
+ * hanya penyesuaian aktif yang tersisa. Jurnal pembukaan aktif (sumber
+ * tanggal/keterangan) dipilih dari penunjuk resmi `saldo_awal_aktif_id`
+ * dengan saringan peran (T-B03).
  *
  * Mengembalikan `null` bila belum ada `SALDO_AWAL` (tidak ada yang bisa
  * dikoreksi); IPC mengubahnya menjadi pesan Indonesia yang jelas.
@@ -167,14 +206,7 @@ export function saldoAwalSaatIni(
       .map((j) => j.reversal_of)
       .filter((id): id is string => Boolean(id)),
   );
-  const aktif = [...dalamGrup]
-    .reverse()
-    .find(
-      (j) =>
-        j.reversal_of == null &&
-        (j.jenis === 'SALDO_AWAL' || j.jenis === 'UMUM') &&
-        !sudahDibalik.has(j.id),
-    );
+  const aktif = pilihPembukaanAktif(db, dalamGrup, sudahDibalik);
   if (!aktif) return null;
 
   const tipeAkun = new Map(listAkun(db).map((a) => [a.kode, a.tipe]));
@@ -328,10 +360,15 @@ function hasilGagalKoreksi(errors: string | string[]): HasilKoreksiSaldoAwal {
 /**
  * T1.7 (Opsi A): koreksi saldo awal = reverse and re-post dalam SATU transaksi.
  *
- * Jurnal pembukaan aktif adalah jurnal `SALDO_AWAL`/`UMUM` di grup saldo awal
- * yang belum punya reversal. Koreksi pertama membalik `SALDO_AWAL`; koreksi
- * berikutnya membalik jurnal `UMUM` pengganti terakhir, sehingga
- * `ux_jurnal_reversal` tidak dilanggar dan jurnal lama tetap utuh.
+ * Jurnal pembukaan aktif dipilih lewat penunjuk resmi
+ * `pengaturan.saldo_awal_aktif_id`; kandidatnya wajib berperan
+ * `OPENING`/`OPENING_REPLACEMENT`, belum punya reversal, dan berada di grup
+ * saldo awal. Bila penunjuk kosong/tidak sah (data lama), seleksi fallback
+ * memindai grup dengan saringan peran yang sama sehingga jurnal UMUM biasa
+ * yang menyusup ke grup tidak pernah dibalik wizard (T-B03). Koreksi pertama
+ * membalik `SALDO_AWAL`; koreksi berikutnya membalik jurnal `UMUM` pengganti
+ * terakhir, sehingga `ux_jurnal_reversal` tidak dilanggar dan jurnal lama
+ * tetap utuh.
  *
  * Jurnal pengganti selalu berjenis `UMUM` dengan `grup_id` yang sama dan
  * baris saldo koreksi PENUH (bukan delta). Unique index `ux_jurnal_saldo_awal`
@@ -366,16 +403,8 @@ export function koreksiSaldoAwal(
           .map((j) => j.reversal_of)
           .filter((id): id is string => Boolean(id)),
       );
-      // Cari dari belakang: setelah koreksi, jurnal UMUM pengganti terakhir
-      // adalah pembukaan aktif. Jurnal REVERSAL tidak pernah menjadi kandidat.
-      const aktif = [...dalamGrup]
-        .reverse()
-        .find(
-          (j) =>
-            j.reversal_of == null &&
-            (j.jenis === 'SALDO_AWAL' || j.jenis === 'UMUM') &&
-            !sudahDibalik.has(j.id),
-        );
+      // T-B03: seleksi memakai penunjuk resmi + saringan peran pembukaan.
+      const aktif = pilihPembukaanAktif(db, dalamGrup, sudahDibalik);
       if (!aktif)
         return hasilGagalKoreksi('Jurnal pembukaan aktif tidak ditemukan.');
 

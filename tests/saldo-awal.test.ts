@@ -32,8 +32,10 @@ import {
   getPengaturanPembukuan,
   insertJurnalTervalidasi,
   KUNCI_AKUNTANSI_TANGGAL_MULAI,
+  KUNCI_SALDO_AWAL_AKTIF_ID,
   listAuditLog,
   listJurnal,
+  setPengaturan,
   simpanPengaturanPembukuan,
 } from '../src/db/repository.js';
 import { DEFAULT_PENGATURAN } from '../src/core/pengaturan.js';
@@ -869,6 +871,85 @@ describe('T1.8 — saldo awal saat ini untuk prefill koreksi', () => {
         saldo: [{ akun_kode: '1001', nominal: RP(2_000_000) }],
         keterangan: 'Saldo awal pembukuan',
         tanggalMaksimal: '2026-03-01',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  // T-B03: jurnal UMUM biasa yang menyusup ke grup pembukaan lewat SQL langsung
+  // tidak boleh menjadi sumber prefill; seleksi memakai peran pembukaan.
+  it('T-B03: jurnal UMUM biasa dalam grup pembukaan tidak terpilih sebagai prefill', () => {
+    const db = openDb(':memory:');
+    try {
+      const awal = simpanSaldoAwal(db, buatJurnalSaldoAwal(formLengkap()).input);
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+      // Jurnal UMUM biasa (peran default NORMAL) lebih baru dari pembukaan.
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+         VALUES ('j-intruder', '2026-01-02', 'JU-2026-0099', 'Jurnal biasa menyusup',
+                 'UMUM', 'j-saldo-awal', NULL, ?)`,
+      ).run('2026-01-02T00:00:00.000Z');
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-intruder', '5063', 100000, 0, '')`,
+      ).run();
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-intruder', '4005', 0, 100000, '')`,
+      ).run();
+
+      // Tanggal/keterangan tetap dari jurnal pembukaan resmi, bukan intruder.
+      expect(saldoAwalSaatIni(db)).toEqual({
+        tanggal: '2026-01-01',
+        saldo: [
+          { akun_kode: '1001', nominal: RP(5_000_000) },
+          { akun_kode: '1029', nominal: RP(10_000_000) },
+          { akun_kode: '1040', nominal: RP(500_000) },
+          { akun_kode: '1050', nominal: RP(2_000_000) },
+          { akun_kode: '2050', nominal: RP(1_000_000) },
+        ],
+        keterangan: 'Saldo awal pembukuan 2026',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-B03: prefill fallback tanpa penunjuk resmi tetap menyaring peran', () => {
+    const db = openDb(':memory:');
+    try {
+      const awal = simpanSaldoAwal(db, buatJurnalSaldoAwal(formLengkap()).input);
+      expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+         VALUES ('j-intruder', '2026-01-02', 'JU-2026-0099', 'Jurnal biasa menyusup',
+                 'UMUM', 'j-saldo-awal', NULL, ?)`,
+      ).run('2026-01-02T00:00:00.000Z');
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-intruder', '5063', 100000, 0, '')`,
+      ).run();
+      db.prepare(
+        `INSERT INTO jurnal_baris (jurnal_id, akun_kode, debit, kredit, keterangan)
+         VALUES ('j-intruder', '4005', 0, 100000, '')`,
+      ).run();
+
+      // Penunjuk resmi hilang: fallback scan grup wajib menyaring peran.
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, '');
+      expect(saldoAwalSaatIni(db)).toEqual({
+        tanggal: '2026-01-01',
+        saldo: [
+          { akun_kode: '1001', nominal: RP(5_000_000) },
+          { akun_kode: '1029', nominal: RP(10_000_000) },
+          { akun_kode: '1040', nominal: RP(500_000) },
+          { akun_kode: '1050', nominal: RP(2_000_000) },
+          { akun_kode: '2050', nominal: RP(1_000_000) },
+        ],
+        keterangan: 'Saldo awal pembukuan 2026',
       });
     } finally {
       db.close();
