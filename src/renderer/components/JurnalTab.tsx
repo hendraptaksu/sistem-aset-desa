@@ -6,7 +6,10 @@ import {
   type FormJurnalUmum,
 } from '../../core/jurnalForm.js';
 import { JENIS_JURNAL, tanggalKalenderValid } from '../../core/posting.js';
-import { ALASAN_REVERSAL_MIN } from '../../core/reversal.js';
+import {
+  ALASAN_REVERSAL_MIN,
+  cekTanggalTidakMundur,
+} from '../../core/reversal.js';
 import {
   jurnalToWorkbook,
   periodeFile,
@@ -116,6 +119,34 @@ export function alasanKoreksiTidakSiap(opsi: {
     return 'Lengkapi tanggal, keterangan, dan baris; total debit harus sama dengan kredit.';
   }
   return undefined;
+}
+
+/**
+ * UI-A19: catatan bagian koreksi yang bertahun berbeda dari tahun jurnal asli.
+ * Pembandingnya adalah tahun jurnal asli — bukan hanya antara tanggal balik dan
+ * tanggal pengganti — karena skenario tersering (default tanggal balik kembali
+ * ke jurnal lama yang beda tahun) justru lolos dari pembanding lama padahal
+ * Laba Rugi lintas tahun terdistorsi. Tanggal kosong/invalid diabaikan agar
+ * peringatan tidak muncul sebelum operator mengisi tanggal.
+ */
+export function catatanBedaTahunKoreksi(
+  tanggalAsli: string,
+  tanggalBalik: string,
+  tanggalPengganti: string,
+): string[] {
+  const tahunAsli = String(tanggalAsli ?? '').slice(0, 4);
+  const catatan: string[] = [];
+  if (
+    tanggalKalenderValid(tanggalBalik) &&
+    tanggalBalik.slice(0, 4) !== tahunAsli
+  )
+    catatan.push(`jurnal balik dicatat di tahun ${tanggalBalik.slice(0, 4)}`);
+  if (
+    tanggalKalenderValid(tanggalPengganti) &&
+    tanggalPengganti.slice(0, 4) !== tahunAsli
+  )
+    catatan.push(`jurnal pengganti dicatat di tahun ${tanggalPengganti.slice(0, 4)}`);
+  return catatan;
 }
 
 type BarisForm = {
@@ -662,13 +693,31 @@ function KoreksiModal({
   const alasanSah = alasan.trim().length >= ALASAN_REVERSAL_MIN;
   const dataBarisSah =
     baris.length >= 2 && baris.every((b) => Boolean(b.akun_kode) && b.nominal > 0);
+  // UI-A19: jurnal balik dan jurnal pengganti tidak boleh bertanggal sebelum
+  // jurnal asli. Pakai aturan core yang sama (T-A10, `cekTanggalTidakMundur`)
+  // agar UI dan backend tidak berbeda; tanggal invalid dianggap "boleh" di
+  // sini karena sudah ditolak terpisah oleh `tanggalKalenderValid`. Input date
+  // dengan `min` masih bisa diketik manual di sebagian browser, jadi dicek
+  // juga di validasi submit di bawah.
+  const tanggalBalikSebelumAsli = !cekTanggalTidakMundur(
+    tanggalBalik,
+    jurnal.tanggal,
+    'jurnal balik',
+  ).boleh;
+  const tanggalPenggantiSebelumAsli = !cekTanggalTidakMundur(
+    tanggal,
+    jurnal.tanggal,
+    'jurnal pengganti',
+  ).boleh;
   const formSah =
     alasanSah &&
     tanggalKalenderValid(tanggal) &&
+    !tanggalPenggantiSebelumAsli &&
     Boolean(keterangan.trim()) &&
     dataBarisSah &&
     seimbang;
-  const tanggalBalikValid = tanggalKalenderValid(tanggalBalik);
+  const tanggalBalikValid =
+    tanggalKalenderValid(tanggalBalik) && !tanggalBalikSebelumAsli;
   const alasanAksiTidakSiap = alasanKoreksiTidakSiap({
     busy,
     alasanSah,
@@ -676,10 +725,12 @@ function KoreksiModal({
     langkah,
     formSah,
   });
-  const bedaTahun =
-    tanggalKalenderValid(tanggalBalik) &&
-    tanggalKalenderValid(tanggal) &&
-    tanggalBalik.slice(0, 4) !== tanggal.slice(0, 4);
+  const catatanBedaTahun = catatanBedaTahunKoreksi(
+    jurnal.tanggal,
+    tanggalBalik,
+    tanggal,
+  );
+  const bedaTahun = catatanBedaTahun.length > 0;
   // Ada perubahan dibanding snapshot awal modal dibuka?
   const adaPerubahan =
     alasan !== snapshotAwal.alasan ||
@@ -859,12 +910,15 @@ function KoreksiModal({
 
         {bedaTahun && (
           <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="font-semibold">Tanggal jurnal balik dan pengganti berbeda tahun.</p>
+            <p className="font-semibold">
+              Tanggal koreksi berbeda tahun dengan jurnal asli (
+              {jurnal.tanggal.slice(0, 4)}).
+            </p>
             <p className="mt-1 text-[15px]">
-              Laba Rugi tahunan akan terdistorsi: pembalikan dicatat di tahun{' '}
-              {tanggalBalik.slice(0, 4)}, sedangkan jurnal pengganti dicatat di tahun{' '}
-              {tanggal.slice(0, 4)}. Total ekuitas tetap benar, tetapi laba tiap tahun tidak
-              mencerminkan koreksi. Sebaiknya samakan tahunnya dengan jurnal asli.
+              Koreksi ini menggeser efek Laba Rugi antar tahun:{' '}
+              {catatanBedaTahun.join(' dan ')}. Total ekuitas tetap benar, tetapi
+              laba tiap tahun tidak mencerminkan koreksi. Sebaiknya samakan
+              tahunnya dengan jurnal asli ({formatTanggal(jurnal.tanggal)}).
             </p>
           </div>
         )}
@@ -886,12 +940,19 @@ function KoreksiModal({
               <Field label="Tanggal jurnal balik">
                 <TextInput
                   type="date"
+                  min={jurnal.tanggal}
                   value={tanggalBalik}
                   onChange={(e) => {
                     setTanggalBalik(e.target.value);
                     setDirty(true);
                   }}
                 />
+                {tanggalBalikSebelumAsli && (
+                  <span role="alert" className="mt-1 block text-sm text-red-700">
+                    Tanggal jurnal balik tidak boleh sebelum tanggal jurnal asli (
+                    {formatTanggal(jurnal.tanggal)}).
+                  </span>
+                )}
               </Field>
             </div>
 
@@ -966,12 +1027,19 @@ function KoreksiModal({
               <Field label="Tanggal jurnal pengganti">
                 <TextInput
                   type="date"
+                  min={jurnal.tanggal}
                   value={tanggal}
                   onChange={(e) => {
                     setTanggal(e.target.value);
                     setDirty(true);
                   }}
                 />
+                {tanggalPenggantiSebelumAsli && (
+                  <span role="alert" className="mt-1 block text-sm text-red-700">
+                    Tanggal jurnal pengganti tidak boleh sebelum tanggal jurnal
+                    asli ({formatTanggal(jurnal.tanggal)}).
+                  </span>
+                )}
               </Field>
               <Field label="Keterangan">
                 <TextInput

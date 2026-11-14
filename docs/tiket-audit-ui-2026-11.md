@@ -27,7 +27,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 | UI-A16 | P2 | Bersihkan jargon teknis dari UI | S | ✅ |
 | UI-A17 | P2 | Satukan istilah antar layar (utang, Pulihkan, Mode lanjutan, dst.) | S | ✅ |
 | UI-A18 | P2 | Ringkas wall-of-text di titik keputusan | S | ✅ |
-| UI-A19 | P2 | Perbaiki kebenaran peringatan tanggal koreksi | S | ⬜ |
+| UI-A19 | P2 | Perbaiki kebenaran peringatan tanggal koreksi | S | ✅ |
 | UI-A20 | P2 | Blokir Duplikat untuk jurnal SALDO_AWAL/REVERSAL | S | ⬜ |
 | UI-A21 | P3 | A11y tabel: aria-label baris klikabel, caption/scope, ekspander, ikon | M | ⬜ |
 | UI-A22 | P3 | A11y form & tampilan: label nominal, teks <13px, kontras, LockScreen | M | ⬜ |

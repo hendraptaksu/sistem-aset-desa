@@ -57,7 +57,10 @@ import {
   KonfirmasiRestoreDb,
   KonfirmasiRestoreLengkap,
 } from '../src/renderer/components/DashboardTab.js';
-import { alasanKoreksiTidakSiap } from '../src/renderer/components/JurnalTab.js';
+import {
+  alasanKoreksiTidakSiap,
+  catatanBedaTahunKoreksi,
+} from '../src/renderer/components/JurnalTab.js';
 import { akunBolehDinonaktifkan } from '../src/renderer/components/AkunTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
@@ -1201,6 +1204,45 @@ describe('T3.8 — poles UX aksi berisiko', () => {
         formSah: false,
       }),
     ).toMatch(/total debit/);
+  });
+});
+
+describe('UI-A19 — peringatan lintas tahun koreksi terhadap jurnal asli', () => {
+  it('tidak menandai default: tanggal balik dan pengganti sama dengan jurnal asli', () => {
+    expect(catatanBedaTahunKoreksi('2024-11-20', '2024-11-20', '2024-11-20')).toEqual(
+      [],
+    );
+  });
+
+  it('menandai tanggal balik yang beda tahun dengan jurnal asli walau sama dengan pengganti', () => {
+    // Skenario tersering: default tanggal balik kembali ke jurnal lama yang
+    // beda tahun dengan tanggal pengganti → pembanding lama (balik vs
+    // pengganti) justru meloloskannya tanpa peringatan.
+    expect(catatanBedaTahunKoreksi('2024-11-20', '2025-01-10', '2024-12-01')).toEqual([
+      'jurnal balik dicatat di tahun 2025',
+    ]);
+    // Kedua tanggal koreksi sama-sama beda tahun dengan jurnal asli.
+    expect(catatanBedaTahunKoreksi('2024-11-20', '2025-01-10', '2025-01-10')).toEqual([
+      'jurnal balik dicatat di tahun 2025',
+      'jurnal pengganti dicatat di tahun 2025',
+    ]);
+  });
+
+  it('menandai jurnal pengganti yang beda tahun dengan jurnal asli', () => {
+    expect(catatanBedaTahunKoreksi('2024-11-20', '2024-11-20', '2025-01-10')).toEqual([
+      'jurnal pengganti dicatat di tahun 2025',
+    ]);
+    expect(catatanBedaTahunKoreksi('2024-11-20', '2023-01-10', '2025-01-10')).toEqual([
+      'jurnal balik dicatat di tahun 2023',
+      'jurnal pengganti dicatat di tahun 2025',
+    ]);
+  });
+
+  it('mengabaikan tanggal kosong atau invalid agar peringatan tidak muncul prematur', () => {
+    expect(catatanBedaTahunKoreksi('2024-11-20', '', '')).toEqual([]);
+    expect(catatanBedaTahunKoreksi('2024-11-20', 'bukan-tanggal', '2025-01-10')).toEqual(
+      ['jurnal pengganti dicatat di tahun 2025'],
+    );
   });
 });
 
