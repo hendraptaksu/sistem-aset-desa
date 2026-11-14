@@ -48,13 +48,30 @@ describe('parseRupiahToSen gaya Indonesia', () => {
     expect(parseRupiahToSen('1.500')).toBe(150_000);
     expect(parseRupiahToSen('')).toBe(0);
   });
+  it('ribuan berkelompok 3 digit tetap sah', () => {
+    expect(parseRupiahToSen('1500000')).toBe(150_000_000);
+    expect(parseRupiahToSen('1.500.000')).toBe(150_000_000);
+    expect(parseRupiahToSen('20.000')).toBe(2_000_000);
+    expect(parseRupiahToSen('12.345.678')).toBe(1_234_567_800);
+  });
   it('koma desimal', () => {
     expect(parseRupiahToSen('1500,50')).toBe(150_050);
     expect(parseRupiahToSen('1.500,50')).toBe(150_050);
+    expect(parseRupiahToSen('1500,5')).toBe(150_050);
+    expect(parseRupiahToSen('1.500,5')).toBe(150_050);
+    expect(parseRupiahToSen('0,5')).toBe(50);
+    expect(parseRupiahToSen('1.500.000,50')).toBe(1_500_000_50);
+  });
+  it('menolak susunan titik ribuan tak lazim (T-B11)', () => {
+    // Titik hanya sah sebagai pemisah ribuan berkelompok tepat 3 digit;
+    // '1.50.0', '1.500.5', '1500.5' dulu diterima (dihitung 1500/15005).
+    for (const bad of ['1.50.0', '1.500.5', '1500.5', '12.34.567', '1.5.00,10', '1.5000', '1500.', '.500']) {
+      expect(() => parseRupiahToSen(bad)).toThrowError();
+    }
+    // Pesan ditolak tetap Indonesia dan bisa ditindaklanjuti.
+    expect(() => parseRupiahToSen('1.50.0')).toThrowError(/Nominal tidak valid/);
   });
   it('invalid throw pesan Indonesia', () => {
-    // Catatan: posisi titik ribuan TIDAK divalidasi ketat (per spec §3),
-    // jadi '1.5.00,10' diterima sebagai 150010 sen — bukan invalid.
     for (const bad of ['abc', '1,234', '-5', ',50', '.', '..']) {
       expect(() => parseRupiahToSen(bad)).toThrowError();
     }

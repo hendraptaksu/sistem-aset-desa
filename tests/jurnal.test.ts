@@ -752,6 +752,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(ids('Rp 150.000')).toEqual(['j-parkir']);
       expect(ids('150.000,00')).toEqual(['j-parkir']);
       expect(ids('150,000')).toEqual(['j-parkir']);
+      expect(ids('150,000.00')).toEqual(['j-parkir']);
       expect(ids('20.000')).toEqual(['j-panjar']);
       // Wildcard LIKE diperlakukan sebagai teks biasa.
       expect(ids('%')).toEqual([]);
@@ -775,16 +776,33 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
         },
         [D('1001', 150_050), K('4005', 150_050)],
       );
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-pecahan-juta',
+          tanggal: '2026-08-02',
+          no_bukti: 'JU-2026-0008',
+          keterangan: 'Jurnal pecahan jutaan',
+          jenis: 'TERIMA',
+        },
+        [D('1001', 1_500_000_50), K('4005', 1_500_000_50)],
+      );
       const ids = (cari: string) =>
         listJurnalLengkapPage(db, { cari }).rows.map((j) => j.id);
 
       expect(ids('1.500,50')).toEqual(['j-pecahan']);
       expect(ids('Rp 1.500,50')).toEqual(['j-pecahan']);
       expect(ids('1,500.50')).toEqual(['j-pecahan']);
+      // Paste gaya AS berskala juta tetap dinormalisasi sebelum parser (T-B11).
+      expect(ids('1,500,000.50')).toEqual(['j-pecahan-juta']);
+      expect(ids('1.500.000,50')).toEqual(['j-pecahan-juta']);
       // '150050' berarti Rp 150.050, bukan 150050 sen.
       expect(ids('150050')).toEqual([]);
       expect(ids('1.500,51')).toEqual([]);
       expect(ids('1.500,505')).toEqual([]);
+      // Susunan titik ribuan tak lazim ditolak parser → bukan pencarian nominal.
+      expect(ids('1.50.0')).toEqual([]);
+      expect(ids('1.500.5')).toEqual([]);
     } finally {
       db.close();
     }

@@ -51,17 +51,24 @@ export function formatTanggal(iso: string): string {
   return `${hari} ${namaBulan} ${tahun}`;
 }
 
+// Titik hanya sah sebagai pemisah ribuan berkelompok tepat 3 digit
+// ('1.500.000'); tanpa titik juga sah. Koma hanya desimal akhir 1–2 digit.
+// Menolak susunan titik tak lazim: '1.50.0', '1.500.5', '1500.5', '1500.', '.500'.
+const NOMINAL_RP = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/;
+
 /**
  * Parse nominal final gaya Indonesia ke SEN (parser ketat).
- * '1500' → 150000, '1.500' → 150000, '1500,50' → 150050, '' → 0.
- * Throw Error (pesan Indonesia) untuk huruf, >2 digit desimal, negatif.
+ * '1500' → 150000, '1.500' → 150000, '1.500.000' → 150000000,
+ * '1500,50' → 150050, '' → 0.
+ * Throw Error (pesan Indonesia) untuk huruf, susunan titik ribuan tak lazim
+ * (mis. '1.50.0'), >2 digit desimal, negatif.
  * Dipakai pencarian jurnal; input live memakai `parseCurrencyInput` yang
  * menerima ketikan parsial (mis. koma di akhir).
  */
 export function parseRupiahToSen(s: string): number {
   const t = s.trim();
   if (t === '') return 0;
-  if (!/^[0-9.]+(,[0-9]{1,2})?$/.test(t)) throw new Error('Nominal tidak valid (cth: 1.500 atau 1.500,50).');
+  if (!NOMINAL_RP.test(t)) throw new Error('Nominal tidak valid (cth: 1.500 atau 1.500,50).');
   const [bulat, koma = ''] = t.split(',');
   const digit = bulat!.replace(/\./g, '');
   if (digit === '') throw new Error('Nominal tidak valid (cth: 1.500 atau 1.500,50).');
