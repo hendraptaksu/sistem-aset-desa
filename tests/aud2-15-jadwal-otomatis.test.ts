@@ -298,3 +298,39 @@ describe('AUD2-15 — kontrol UI generator jadwal', () => {
     expect(ui).toContain('Ganti jadwal angsuran yang sudah ada?');
   });
 });
+
+// UI-A25 — batas keras dan konfirmasi generator jadwal: typo tenor seperti
+// "12000" tidak boleh merender ribuan baris sehingga UI tampak hang.
+describe('UI-A25 — batas dan konfirmasi generator jadwal', () => {
+  it('menerima tenor 1..360 dan menolak yang melampaui batas keras', () => {
+    expect(bolehIsiJadwalOtomatis(TARGET, '60')).toBe(true);
+    expect(bolehIsiJadwalOtomatis(TARGET, '360')).toBe(true);
+    expect(bolehIsiJadwalOtomatis(TARGET, '361')).toBe(false);
+    expect(bolehIsiJadwalOtomatis(TARGET, '12000')).toBe(false);
+  });
+
+  it('menonaktifkan tombol dengan alasan jelas saat tenor melampaui batas', () => {
+    const lebih = renderKontrol({ targetPokok: TARGET, tenor: '12000' });
+    expect(lebih).toContain('disabled=""');
+    expect(lebih).toContain('Tenor maksimal 360 bulan untuk generator jadwal.');
+    expect(lebih).not.toContain('Membuat 12000 baris');
+
+    const batas = renderKontrol({ targetPokok: TARGET, tenor: '360' });
+    expect(batas).toContain('Membuat 360 baris');
+    expect(batas).not.toContain('disabled=""');
+  });
+
+  it('menyambungkan konfirmasi tenor besar dan info sukses ke form', () => {
+    const ui = readFileSync(
+      new URL('../src/renderer/components/PinjamanTab.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(ui).toContain(
+      'Akan membuat ${Number(tenor)} baris jadwal — lanjutkan?',
+    );
+    expect(ui).toContain('lanjutSetelahKonfirmasiJadwalBesar');
+    expect(ui).toContain(
+      'Jadwal ${n} baris berhasil diisi. Periksa tanggal dan bunga sebelum menyimpan.',
+    );
+  });
+});

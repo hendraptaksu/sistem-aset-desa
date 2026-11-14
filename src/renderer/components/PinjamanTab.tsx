@@ -55,6 +55,23 @@ function jadwalBerisiData(rows: BarisJadwal[]): boolean {
 /** Tenor bawaan form; nilai selain ini dihitung sebagai isian operator. */
 const TENOR_AWAL = '12';
 
+/** UI-A25: batas keras baris generator; di atas ini tombol dinonaktifkan
+ * supaya typo tenor tidak merender ribuan baris dan membuat UI tampak hang. */
+const TENOR_MAKS_GENERATOR = 360;
+
+/** UI-A25: di atas ambang ini generator meminta konfirmasi sebelum membuat baris. */
+const TENOR_AMBATANG_KONFIRMASI = 60;
+
+/** Alasan generator dinonaktifkan/ditolak karena tenor melampaui batas keras. */
+const PESAN_TENOR_MELAMPAUI_BATAS =
+  `Tenor maksimal ${TENOR_MAKS_GENERATOR} bulan untuk generator jadwal.`;
+
+/** UI-A25: benar bila isian tenor adalah bilangan bulat di atas batas keras. */
+function tenorMelampauiBatas(tenor: string): boolean {
+  const n = Number(tenor.trim());
+  return Number.isSafeInteger(n) && n > TENOR_MAKS_GENERATOR;
+}
+
 /**
  * UI-A24: form pinjaman utama dianggap berisi data bila ada field yang
  * bernilai selain bawaan (kreditur, pokok/sisa pokok, tenor, catatan,
@@ -88,7 +105,8 @@ function formBerisiData(f: {
   );
 }
 
-/** Tombol generator aktif hanya saat target pokok > 0 dan tenor bulat ≥ 1. */
+/** Tombol generator aktif hanya saat target pokok > 0 dan tenor bulat 1..360
+ * (UI-A25: lebih dari 360 baris membuat form berat, jadi generator ditolak). */
 export function bolehIsiJadwalOtomatis(
   targetPokok: number,
   tenor: string,
@@ -100,7 +118,8 @@ export function bolehIsiJadwalOtomatis(
     Number.isSafeInteger(targetPokok) &&
     targetPokok > 0 &&
     Number.isSafeInteger(n) &&
-    n >= 1
+    n >= 1 &&
+    n <= TENOR_MAKS_GENERATOR
   );
 }
 
@@ -121,6 +140,9 @@ export function KontrolJadwalOtomatis({
   onIsi: () => void;
 }) {
   const aktif = bolehIsiJadwalOtomatis(targetPokok, tenor);
+  // UI-A25: tenor di atas batas keras menonaktifkan tombol dengan alasan yang
+  // tampak (title) dan dijelaskan di petunjuk di bawah tombol.
+  const kelebihanTenor = tenorMelampauiBatas(tenor);
   return (
     <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
       <div className="flex flex-wrap items-end gap-3">
@@ -133,7 +155,11 @@ export function KontrolJadwalOtomatis({
             />
           </Field>
         </div>
-        <Button disabled={busy || !aktif} onClick={onIsi}>
+        <Button
+          disabled={busy || !aktif}
+          title={kelebihanTenor ? PESAN_TENOR_MELAMPAUI_BATAS : undefined}
+          onClick={onIsi}
+        >
           Isi Jadwal Otomatis dari Tenor
         </Button>
       </div>
@@ -141,7 +167,9 @@ export function KontrolJadwalOtomatis({
         {aktif
           ? `Membuat ${Number(tenor)} baris: pokok dibagi rata ke Rupiah penuh, ` +
             'baris terakhir menerima sisa, dan jatuh tempo maju satu bulan per baris.'
-          : 'Isi pokok pinjaman (atau sisa pokok) dan tenor minimal 1 bulan untuk mengaktifkan pengisian otomatis.'}
+          : kelebihanTenor
+            ? PESAN_TENOR_MELAMPAUI_BATAS
+            : 'Isi pokok pinjaman (atau sisa pokok) dan tenor minimal 1 bulan untuk mengaktifkan pengisian otomatis.'}
         {bungaRencana > 0
           ? ' Bunga rencana diisi ke setiap baris.'
           : ' Bunga rencana boleh dikosongkan (0).'}
@@ -270,6 +298,12 @@ export function PinjamanTab() {
   const [jadwal, setJadwal] = useState<BarisJadwal[]>([barisBaru(1)]);
   const [bungaRencana, setBungaRencana] = useState(0);
   const [konfirmasiJadwalOtomatis, setKonfirmasiJadwalOtomatis] = useState(false);
+  // UI-A25: konfirmasi terpisah untuk tenor besar (61..360 baris) sebelum
+  // generator benar-benar merender baris jadwalnya.
+  const [konfirmasiJadwalBesar, setKonfirmasiJadwalBesar] = useState(false);
+  // UI-A25: hasil sukses generator diumumkan inline di dekat seksi jadwal,
+  // bukan lewat info simpan di kepala form.
+  const [infoJadwal, setInfoJadwal] = useState<string | null>(null);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [detailId, setDetailId] = useState('');
@@ -518,6 +552,8 @@ export function PinjamanTab() {
     setJadwal([barisBaru(1)]);
     setBungaRencana(0);
     setKonfirmasiJadwalOtomatis(false);
+    setKonfirmasiJadwalBesar(false);
+    setInfoJadwal(null);
     setPesanKonfirmasi(null);
     setErrorKonfirmasi(null);
     // UI-A24: dirty tidak direset manual; setelah state kosong, derivasi
@@ -635,6 +671,7 @@ export function PinjamanTab() {
     setMode(berikut);
     setErr(null);
     setInfo(null);
+    setInfoJadwal(null);
     setPesanKonfirmasi(null);
     setErrorKonfirmasi(null);
     // UI-A24: ganti mode tidak lagi memalsukan dirty; flag mengikuti isi form
@@ -658,16 +695,23 @@ export function PinjamanTab() {
 
   function terapkanJadwalOtomatis(): void {
     const n = Number(tenor);
+    setInfoJadwal(null);
     if (!bolehIsiJadwalOtomatis(targetPokok, tenor)) {
+      // UI-A25: jalur modal bisa tercapai meski tombol nonaktif (tenor berubah
+      // selagi modal terbuka), jadi batas keras dicek ulang dengan pesan pas.
       setErr(
-        'Isi pokok pinjaman (atau sisa pokok) dan tenor minimal 1 bulan sebelum mengisi jadwal otomatis.',
+        tenorMelampauiBatas(tenor)
+          ? PESAN_TENOR_MELAMPAUI_BATAS
+          : 'Isi pokok pinjaman (atau sisa pokok) dan tenor minimal 1 bulan sebelum mengisi jadwal otomatis.',
       );
       setKonfirmasiJadwalOtomatis(false);
+      setKonfirmasiJadwalBesar(false);
       return;
     }
     if (!tanggal) {
       setErr('Tanggal mulai jadwal wajib diisi sebelum mengisi jadwal otomatis.');
       setKonfirmasiJadwalOtomatis(false);
+      setKonfirmasiJadwalBesar(false);
       return;
     }
     try {
@@ -680,14 +724,36 @@ export function PinjamanTab() {
         }),
       );
       setErr(null);
+      setInfoJadwal(
+        `Jadwal ${n} baris berhasil diisi. Periksa tanggal dan bunga sebelum menyimpan.`,
+      );
     } catch (e) {
       setErr(pesanError(e));
     } finally {
       setKonfirmasiJadwalOtomatis(false);
+      setKonfirmasiJadwalBesar(false);
     }
   }
 
   function mintaIsiJadwalOtomatis(): void {
+    const n = Number(tenor);
+    // UI-A25: tenor besar (61..360) dikonfirmasi dulu agar UI tidak seketika
+    // merender ratusan baris tanpa persetujuan operator.
+    if (n > TENOR_AMBATANG_KONFIRMASI && n <= TENOR_MAKS_GENERATOR) {
+      setKonfirmasiJadwalBesar(true);
+      return;
+    }
+    if (jadwalBerisiData(jadwal)) {
+      setKonfirmasiJadwalOtomatis(true);
+      return;
+    }
+    terapkanJadwalOtomatis();
+  }
+
+  /** UI-A25: lanjut setelah konfirmasi tenor besar; peringatan ganti jadwal
+   * yang sudah berisi tetap ditanyakan sebelum generator menimpanya. */
+  function lanjutSetelahKonfirmasiJadwalBesar(): void {
+    setKonfirmasiJadwalBesar(false);
     if (jadwalBerisiData(jadwal)) {
       setKonfirmasiJadwalOtomatis(true);
       return;
@@ -1189,6 +1255,8 @@ export function PinjamanTab() {
             onIsi={mintaIsiJadwalOtomatis}
           />
 
+          {infoJadwal && <InfoBox className="mt-3">{infoJadwal}</InfoBox>}
+
           <div className="mt-3 space-y-2">
             {jadwal.map((row, i) => (
               <div
@@ -1301,6 +1369,19 @@ export function PinjamanTab() {
             sibuk={busy}
             onBatal={() => setKonfirmasiJadwalOtomatis(false)}
             onKonfirmasi={terapkanJadwalOtomatis}
+          />
+        )}
+
+        {konfirmasiJadwalBesar && (
+          <KonfirmasiModal
+            judul="Buat jadwal dari tenor besar?"
+            deskripsi={`Akan membuat ${Number(tenor)} baris jadwal — lanjutkan?`}
+            labelYa="Ya, buat jadwal"
+            labelBatal="Batal"
+            variant="primary"
+            sibuk={busy}
+            onBatal={() => setKonfirmasiJadwalBesar(false)}
+            onKonfirmasi={lanjutSetelahKonfirmasiJadwalBesar}
           />
         )}
 
