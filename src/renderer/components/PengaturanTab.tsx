@@ -18,6 +18,7 @@ import { AuditDetail } from './AuditDetail.js';
 import { KodeDaruratModal } from './KodeDaruratModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
+  alasanTombolNonaktif,
   Badge,
   Button,
   Card,
@@ -275,22 +276,35 @@ export function PengaturanTab({
     setPadding(String(p.paddingNomorBukti));
   }
 
-  // Tampilkan nilai tersimpan saat mount (bukan default form).
+  // UI-A05: muat pengaturan pembukuan; dipakai saat mount dan tombol "Coba
+  // muat ulang". Sukses → errPembukuan dibersihkan dan form kembali normal
+  // dengan data asli. Penanda batal mencegah respons lambat mengisi state
+  // setelah komponen dilepas.
+  const batalMuatPembukuan = useRef(false);
+
+  async function muatPembukuan(): Promise<void> {
+    batalMuatPembukuan.current = false;
+    setErrPembukuan(null);
+    setMemuatPembukuan(true);
+    try {
+      const p = await api.pengaturanGet();
+      if (batalMuatPembukuan.current) return;
+      terapkanPembukuan(p);
+    } catch (e) {
+      if (batalMuatPembukuan.current) return;
+      setErrPembukuan(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      if (!batalMuatPembukuan.current) setMemuatPembukuan(false);
+    }
+  }
+
+  // Tampilkan nilai tersimpan saat mount (bukan default form). Muat hanya
+  // sekali saat mount; muat ulang dipicu tombol "Coba muat ulang".
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    let batal = false;
-    void (async () => {
-      setMemuatPembukuan(true);
-      try {
-        const p = await api.pengaturanGet();
-        if (!batal) terapkanPembukuan(p);
-      } catch (e) {
-        if (!batal) setErrPembukuan(pesanError(e, PESAN_MUAT_GAGAL));
-      } finally {
-        if (!batal) setMemuatPembukuan(false);
-      }
-    })();
+    void muatPembukuan();
     return () => {
-      batal = true;
+      batalMuatPembukuan.current = true;
     };
   }, []);
 
@@ -428,6 +442,10 @@ export function PengaturanTab({
     pratinjauNomor = '—';
   }
 
+  // UI-A05: bila pengaturan gagal dimuat, semua input pembukuan mati dan
+  // Simpan nonaktif agar setting tersimpan tidak tertimpa nilai default form.
+  const pembukuanTerkunci = errPembukuan !== null;
+
   const halaman = Math.floor(offset / limit) + 1;
   const totalHalaman = Math.max(1, Math.ceil(auditTotal / limit));
 
@@ -534,6 +552,13 @@ export function PengaturanTab({
         {okPembukuan && (
           <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okPembukuan}</div>
         )}
+        {errPembukuan !== null && (
+          <div className="mb-2">
+            <Button variant="ghost" disabled={memuatPembukuan} onClick={() => void muatPembukuan()}>
+              Coba muat ulang
+            </Button>
+          </div>
+        )}
         {memuatPembukuan ? (
           <p className="text-sm text-stone-500">Memuat pengaturan…</p>
         ) : (
@@ -543,6 +568,7 @@ export function PengaturanTab({
                 <TextInput
                   value={entitas}
                   maxLength={MAKS_NAMA_ENTITAS}
+                  disabled={pembukuanTerkunci}
                   onChange={(e) => setEntitas(e.target.value)}
                   placeholder="PURA DALEM PURI PELIATAN"
                 />
@@ -554,6 +580,7 @@ export function PengaturanTab({
                   value={kopTambahan}
                   maxLength={MAKS_KOP_TAMBAHAN}
                   rows={2}
+                  disabled={pembukuanTerkunci}
                   onChange={(e) => setKopTambahan(e.target.value)}
                   placeholder={'cth: Jl. Raya Peliatan\nDesa Peliatan, Ubud'}
                 />
@@ -563,6 +590,7 @@ export function PengaturanTab({
               <TextInput
                 type="date"
                 value={tanggalMulai}
+                disabled={pembukuanTerkunci}
                 onChange={(e) => setTanggalMulai(e.target.value)}
               />
             </Field>
@@ -570,6 +598,7 @@ export function PengaturanTab({
               <TextInput
                 value={prefix}
                 maxLength={8}
+                disabled={pembukuanTerkunci}
                 onChange={(e) =>
                   setPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
                 }
@@ -577,7 +606,7 @@ export function PengaturanTab({
               />
             </Field>
             <Field label="Jumlah digit urutan (3–6)">
-              <Select value={padding} onChange={(e) => setPadding(e.target.value)}>
+              <Select value={padding} disabled={pembukuanTerkunci} onChange={(e) => setPadding(e.target.value)}>
                 {[3, 4, 5, 6].map((n) => (
                   <option key={n} value={String(n)}>{n} digit</option>
                 ))}
@@ -589,7 +618,16 @@ export function PengaturanTab({
               </p>
             </div>
             <div className="md:col-span-2">
-              <Button disabled={busyPembukuan} onClick={() => void simpanPembukuan()}>
+              <Button
+                disabled={busyPembukuan || pembukuanTerkunci}
+                title={alasanTombolNonaktif({
+                  sibuk: busyPembukuan,
+                  alasan: pembukuanTerkunci
+                    ? 'Pengaturan gagal dimuat — coba muat ulang dulu.'
+                    : null,
+                })}
+                onClick={() => void simpanPembukuan()}
+              >
                 {busyPembukuan ? 'Menyimpan…' : 'Simpan Pengaturan Pembukuan'}
               </Button>
             </div>
