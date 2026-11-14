@@ -10,6 +10,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { COA } from '../src/db/coa.js';
 import {
   TEMPLATE_JURNAL,
+  alasanTidakBisaDuplikat,
+  bisaDuplikatJurnal,
   buatJurnalUmumForm,
   cariAkunDariTeks,
   duplikatJurnalKeForm,
@@ -380,6 +382,52 @@ describe('P1-7 — template & duplikat jurnal', () => {
     const input = buatJurnalUmumForm(form);
     expect(input.header.jenis).toBe('UMUM');
     expect(input.header.no_bukti).toBeUndefined();
+  });
+
+  it('UI-A20: menolak duplikat jurnal SALDO_AWAL dan REVERSAL dengan alasan jelas', () => {
+    const barisSah = [
+      { akun_kode: '1001', debit: RP(150_000), kredit: 0, keterangan: 'Kas' },
+      {
+        akun_kode: '4005',
+        debit: 0,
+        kredit: RP(150_000),
+        keterangan: 'Pendapatan',
+      },
+    ];
+
+    expect(() =>
+      duplikatJurnalKeForm({
+        id: 'j-saldo',
+        keterangan: 'Saldo awal kas',
+        jenis: 'SALDO_AWAL',
+        baris: barisSah,
+      }),
+    ).toThrow(/saldo awal/i);
+    expect(() =>
+      duplikatJurnalKeForm({
+        id: 'j-balik',
+        keterangan: 'Jurnal balik',
+        jenis: 'REVERSAL',
+        baris: barisSah,
+      }),
+    ).toThrow(/jurnal balik/i);
+
+    // Guard UI: jenis yang boleh tetap lolos, SALDO_AWAL/REVERSAL ditolak.
+    expect(bisaDuplikatJurnal({ jenis: 'UMUM' })).toBe(true);
+    expect(bisaDuplikatJurnal({ jenis: 'HUTANG' })).toBe(true);
+    expect(bisaDuplikatJurnal({ jenis: 'SALDO_AWAL' })).toBe(false);
+    expect(bisaDuplikatJurnal({ jenis: 'REVERSAL' })).toBe(false);
+    expect(alasanTidakBisaDuplikat({ jenis: 'UMUM' })).toBeUndefined();
+    expect(alasanTidakBisaDuplikat({ jenis: 'SALDO_AWAL' })).toContain('wizard saldo awal');
+    expect(alasanTidakBisaDuplikat({ jenis: 'REVERSAL' })).toContain('koreksi');
+
+    // Tombol Duplikat di modal detail dinonaktifkan dengan alasan terlihat.
+    const modalSrc = readFileSync(
+      fileURLToPath(new URL('../src/renderer/components/DetailJurnalModal.tsx', import.meta.url)),
+      'utf-8',
+    );
+    expect(modalSrc).toContain('alasanTidakBisaDuplikat');
+    expect(modalSrc).toContain('disabled={alasanDuplikat !== undefined}');
   });
 });
 

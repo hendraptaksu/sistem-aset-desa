@@ -290,13 +290,36 @@ export const TEMPLATE_JURNAL: readonly TemplateJurnal[] = [
 const hariIni = (): string => tanggalLokal();
 
 /**
+ * UI-A20: alasan tombol Duplikat nonaktif untuk jenis jurnal yang tidak boleh
+ * dicatat ulang sebagai jurnal UMUM baru ber-tanggal hari ini. Saldo awal hanya
+ * boleh diatur lewat wizard saldo awal; jurnal balik adalah produk alur koreksi
+ * — menduplikatnya mencatat balikan ganda. undefined bila aksi boleh.
+ */
+export function alasanTidakBisaDuplikat(jurnal: { jenis?: string }): string | undefined {
+  if (jurnal?.jenis === 'SALDO_AWAL')
+    return 'Saldo awal tidak bisa diduplikat: saldo awal hanya boleh diatur lewat wizard saldo awal.';
+  if (jurnal?.jenis === 'REVERSAL')
+    return 'Jurnal balik tidak bisa diduplikat: buat penyesuaian baru lewat alur koreksi jurnal.';
+  return undefined;
+}
+
+/** true bila tombol Duplikat boleh aktif untuk jurnal ini. */
+export function bisaDuplikatJurnal(jurnal: { jenis?: string }): boolean {
+  return alasanTidakBisaDuplikat(jurnal) === undefined;
+}
+
+/**
  * Isi form duplikat dari jurnal lama: baris & keterangan disalin, tanggal
  * menjadi hari ini, ID baru, dan nomor bukti dikosongkan. `reversal_of`
  * sengaja tidak pernah disalin — duplikat adalah jurnal UMUM baru.
+ *
+ * UI-A20: jurnal SALDO_AWAL/REVERSAL ditolak agar jalur programatik tetap aman
+ * walau UI lupa menyembunyikan tombolnya.
  */
 export function duplikatJurnalKeForm(jurnal: {
   id?: string;
   keterangan?: string;
+  jenis?: string;
   baris: ReadonlyArray<{
     akun_kode: string;
     debit: number;
@@ -306,6 +329,9 @@ export function duplikatJurnalKeForm(jurnal: {
 }): FormJurnalUmum {
   if (!jurnal || typeof jurnal !== 'object' || !Array.isArray(jurnal.baris))
     throw new Error('Jurnal yang akan diduplikat tidak lengkap.');
+
+  const alasanJenis = alasanTidakBisaDuplikat(jurnal);
+  if (alasanJenis) throw new Error(alasanJenis);
 
   const baris: BarisJurnalForm[] = jurnal.baris.map((b) => ({
     akun_kode: String(b?.akun_kode ?? '').trim(),

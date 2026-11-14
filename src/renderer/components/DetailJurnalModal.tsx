@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Coa } from '../../db/coa.js';
 import type { JurnalLengkap } from '../lib/api.js';
+import { alasanTidakBisaDuplikat } from '../../core/jurnalForm.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { Badge, Button, Modal } from './ui.js';
 import { LABEL_JENIS } from '../lib/tampilanLaporan.js';
@@ -31,6 +32,11 @@ export function DetailJurnalModal({
   onPrint?: (jurnal: JurnalLengkap) => void;
   children?: ReactNode;
 }) {
+  // UI-A20: saldo awal & jurnal balik tidak boleh diduplikat jadi jurnal UMUM
+  // baru — tombolnya nonaktif dengan alasan terlihat, konsisten pola tombol
+  // Koreksi (`alasanTidakBisaKoreksi`). Guard `duplikatJurnalKeForm` tetap
+  // memblokir jalur programatik.
+  const alasanDuplikat = alasanTidakBisaDuplikat(jurnal);
   return (
     <Modal judul="Detail Jurnal" onTutup={onClose} lebar="2xl">
       <div className="flex flex-wrap gap-2">
@@ -113,7 +119,12 @@ export function DetailJurnalModal({
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         {children}
         {onDuplikat && (
-          <Button variant="ghost" onClick={() => onDuplikat(jurnal)}>
+          <Button
+            variant="ghost"
+            disabled={alasanDuplikat !== undefined}
+            title={alasanDuplikat}
+            onClick={() => onDuplikat(jurnal)}
+          >
             Duplikat
           </Button>
         )}
