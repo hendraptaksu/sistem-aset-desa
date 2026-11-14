@@ -388,12 +388,17 @@ function jurnalSeimbang(detail: { jurnal: Jurnal; baris: JurnalBaris[] } | null)
 }
 
 /**
- * Rincian pembayaran dari baris jurnal:
- * - pokok = debit 2050;
- * - bunga = debit akun bunga pinjaman;
- * - denda = debit BEBAN lain (mis. 5050);
- * - kas keluar = kredit akun kas/bank.
+ * Rincian pembayaran dari baris jurnal (NETO, sama dengan rumus mutasi):
+ * - pokok = debit - kredit 2050;
+ * - bunga = debit - kredit akun bunga pinjaman;
+ * - denda = debit - kredit BEBAN lain (mis. 5050);
+ * - kas keluar = kredit - debit akun kas/bank.
  * Tidak membaca nominal dari `pinjaman_bayar`.
+ *
+ * T-B05: neto adalah jaring pengaman agar outstanding header tetap sama
+ * dengan mutasi/rekonsiliasi bila ada data lama yang memuat dua sisi 2050.
+ * Jurnal baru dengan 2050 debit dan kredit sekaligus ditolak di
+ * `validasiJurnalPembayaran`.
  */
 export function rincianPembayaranDariJurnal(
   db: Database.Database,
@@ -415,10 +420,10 @@ export function rincianPembayaranDariJurnal(
     const kode = String(b.akun_kode);
     const debit = angka(b.debit);
     const kredit = angka(b.kredit);
-    if (kode === AKUN_HUTANG) hasil.pokok += debit;
-    if (kode === akunBunga) hasil.bunga += debit;
-    else if (akun.get(kode)?.tipe === 'BEBAN') hasil.denda += debit;
-    if (akun.get(kode)?.is_kas) hasil.kas_keluar += kredit;
+    if (kode === AKUN_HUTANG) hasil.pokok += debit - kredit;
+    if (kode === akunBunga) hasil.bunga += debit - kredit;
+    else if (akun.get(kode)?.tipe === 'BEBAN') hasil.denda += debit - kredit;
+    if (akun.get(kode)?.is_kas) hasil.kas_keluar += kredit - debit;
   }
   return hasil;
 }
@@ -437,6 +442,26 @@ function validasiJurnalPembayaran(
   if (!jurnalSeimbang(detail))
     return {
       error: `Jurnal pembayaran ${jurnalId} tidak seimbang (total debit harus sama dengan kredit).`,
+      rincian: { pokok: 0, bunga: 0, denda: 0, kas_keluar: 0 },
+    };
+
+  // T-B05: baris 2050 wajib satu sisi saja (debit pokok), konsisten dengan
+  // builder pembayaran. Jurnal yang menaruh debit DAN kredit 2050 sekaligus
+  // membuat rincian pembayaran tidak bisa dibaca konsisten; tolak di pintu.
+  let debit2050 = 0;
+  let kredit2050 = 0;
+  for (const b of detail.baris) {
+    if (String(b.akun_kode) !== AKUN_HUTANG) continue;
+    debit2050 += angka(b.debit);
+    kredit2050 += angka(b.kredit);
+  }
+  if (debit2050 > 0 && kredit2050 > 0)
+    return {
+      error:
+        `Jurnal pembayaran ${jurnalId} memuat debit dan kredit ${AKUN_HUTANG} sekaligus. ` +
+        `Baris ${AKUN_HUTANG} pada jurnal pembayaran pinjaman hanya boleh satu sisi ` +
+        `(debit untuk pokok). Perbaiki jurnalnya agar hanya memuat debit ${AKUN_HUTANG}, ` +
+        `lalu tautkan kembali sebagai pembayaran.`,
       rincian: { pokok: 0, bunga: 0, denda: 0, kas_keluar: 0 },
     };
 
@@ -1153,7 +1178,8 @@ export function statusAngsuranPinjaman(
  * nominal pokok/bunga/denda dibaca dari jurnal saat laporan dibuka.
  *
  * Jurnal wajib sudah ada, seimbang, memuat debit 2050 (pokok) dan kredit kas.
- * Satu jurnal hanya boleh ditautkan sekali; satu angsuran boleh dicicil.
+ * Baris 2050 hanya boleh satu sisi (debit pokok); jurnal dua sisi ditolak
+ * (T-B05). Satu jurnal hanya boleh ditautkan sekali; satu angsuran boleh dicicil.
  */
 export function tautkanPembayaran(
   db: Database.Database,

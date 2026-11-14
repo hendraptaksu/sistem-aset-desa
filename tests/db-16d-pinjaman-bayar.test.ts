@@ -24,10 +24,13 @@ import {
   bayarAngsuranPinjaman,
   getPembayaranPinjaman,
   getPinjaman,
+  laporanMutasiPinjaman,
   listPinjamanBayar,
   simpanPinjamanLpd,
+  tautkanPembayaran,
   type BayarAngsuranPinjamanInput,
 } from '../src/db/pinjaman.js';
+import { rekonsiliasiPinjaman } from '../src/db/pinjamanRekonsiliasi.js';
 import { getJurnalDetail } from '../src/db/repository.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { validasiBentukPinjamanBayar } from '../src/main/validation.js';
@@ -493,6 +496,86 @@ describe('DB-16d — selisih jadwal dan penolakan', () => {
     expect(getPinjaman(db, pinjamanId)!.angsuran?.[0]).toMatchObject({
       status: 'BELUM',
       dibayar: false,
+    });
+  });
+});
+
+describe('DB-16d — T-B05: jurnal dua-sisi 2050 ditolak dan angka neto diseragamkan', () => {
+  /**
+   * Jurnal pembayaran yang memuat debit DAN kredit 2050 sekaligus (dua baris).
+   * Seimbang secara debit-kredit, tetapi tidak pernah dihasilkan builder
+   * pinjaman (satu sisi saja); hanya muncul dari edit manual/data lama.
+   */
+  function buatJurnalDuaSisi2050(db: Database.Database): void {
+    const hasil = postingJurnal(db, {
+      header: {
+        id: 'j-dua-sisi-2050',
+        tanggal: '2026-03-01',
+        no_bukti: 'BAYAR-DUA-SISI',
+        keterangan: 'Pembayaran angsuran dengan baris 2050 dua sisi (uji T-B05)',
+        jenis: 'HUTANG',
+      },
+      baris: [
+        D('2050', RP(4_000_000)),
+        K('2050', RP(1_000_000)),
+        D(AKUN_BUNGA_PINJAMAN_DEFAULT, RP(100_000)),
+        D(AKUN_DENDA_PINJAMAN_DEFAULT, RP(50_000)),
+        K('1014', RP(3_150_000)),
+      ],
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+  }
+
+  it('menolak menautkan jurnal pembayaran yang memuat debit DAN kredit 2050 sekaligus', () => {
+    const db = dbKas();
+    const { pinjamanId } = pinjamanUji(db);
+    buatJurnalDuaSisi2050(db);
+
+    const hasil = tautkanPembayaran(db, {
+      pinjaman_id: pinjamanId,
+      jurnal_id: 'j-dua-sisi-2050',
+      tanggal: '2026-03-01',
+      catatan: 'Percobaan taut dua sisi 2050',
+    });
+
+    expect(hasil.tersimpan).toBe(false);
+    // Pesan operator: 2050 pada jurnal pembayaran hanya boleh satu sisi.
+    expect(hasil.errors.join(' ')).toContain('2050');
+    expect(hasil.errors.join(' ')).toMatch(/satu sisi/i);
+    expect(jumlahBayar(db)).toBe(0);
+    expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(12_000_000));
+  });
+
+  it('jaring pengaman neto: header, mutasi, dan rekonsiliasi sama untuk link lama dua-sisi 2050', () => {
+    const db = dbKas();
+    const { pinjamanId } = pinjamanUji(db);
+    buatJurnalDuaSisi2050(db);
+
+    // Simulasikan data lama: link dibuat sebelum validasi satu-sisi ada,
+    // sehingga perhitungan neto tetap menjaga laporan konsisten.
+    db.prepare(
+      `INSERT INTO pinjaman_bayar (id, pinjaman_id, angsuran_id, jurnal_id, tanggal, catatan, created_at)
+       VALUES ('pby-dua-sisi', ?, NULL, 'j-dua-sisi-2050', '2026-03-01', 'link lama dua sisi', '2026-03-01T00:00:00.000Z')`,
+    ).run(pinjamanId);
+
+    const header = getPinjaman(db, pinjamanId)!;
+    const laporan = laporanMutasiPinjaman(db, pinjamanId, {
+      periode: '2026-03',
+    });
+    const rekonsiliasi = rekonsiliasiPinjaman(db, pinjamanId)!;
+
+    // Neto pokok = debit 4 juta - kredit 1 juta = 3 juta; kas keluar = 3,15 juta.
+    expect(header.total_pokok_dibayar).toBe(RP(3_000_000));
+    expect(header.outstanding).toBe(RP(9_000_000));
+    // Mutasi memakai neto sejak awal; wajib sama dengan outstanding header.
+    expect(laporan.outstanding).toBe(header.outstanding);
+    expect(laporan.outstanding).toBe(RP(9_000_000));
+    // Rekonsiliasi GL-vs-jadwal juga neto dan tetap cocok.
+    expect(rekonsiliasi).toMatchObject({
+      gl: RP(9_000_000),
+      jadwal: RP(9_000_000),
+      selisih: 0,
+      cocok: true,
     });
   });
 });
