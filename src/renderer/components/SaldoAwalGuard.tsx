@@ -3,7 +3,7 @@ import type { Coa } from '../../db/coa.js';
 import { api } from '../lib/api.js';
 import { lupakanMulaiTanpaSaldoAwal } from '../lib/saldoAwal.js';
 import { pesanError } from '../../utils/pesanError.js';
-import { Button, ErrorBox, Modal } from './ui.js';
+import { alasanTombolNonaktif, Button, ErrorBox, Modal } from './ui.js';
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 
 /**
@@ -100,6 +100,15 @@ export function SaldoAwalGuard({
       <p className="text-[15px] text-stone-700">
         Belum ada saldo awal. Isi saldo awal dulu, atau mulai tanpa saldo awal.
       </p>
+      {/* UI-A13: operator perlu tahu konsekuensi sebelum memilih mulai tanpa
+          saldo awal; tanpa saldo awal semua saldo dianggap nol sejak jurnal
+          pertama sehingga laporan bisa tidak cocok dengan kenyataan. */}
+      <p className="mt-2 text-[15px] text-stone-700">
+        Bila mulai tanpa saldo awal, saldo kas/bank, panjar, hutang, dan modal
+        dianggap nol sejak jurnal pertama — laporan bisa tidak cocok dengan uang
+        dan hutang yang sebenarnya sampai saldo awal dilengkapi lewat koreksi
+        saldo awal.
+      </p>
       {err && (
         <div className="mt-3">
           <ErrorBox msg={err} />
@@ -109,7 +118,12 @@ export function SaldoAwalGuard({
         <Button disabled={sibuk || memuatCoa} onClick={() => void bukaWizard()}>
           {memuatCoa ? 'Memuat…' : 'Isi Saldo Awal'}
         </Button>
-        <Button variant="ghost" disabled={sibuk} onClick={onMulaiTanpa}>
+        <Button
+          variant="ghost"
+          disabled={sibuk}
+          title={alasanTombolNonaktif({ sibuk })}
+          onClick={onMulaiTanpa}
+        >
           Mulai tanpa saldo awal
         </Button>
         <Button variant="ghost" disabled={sibuk} onClick={onBatal}>

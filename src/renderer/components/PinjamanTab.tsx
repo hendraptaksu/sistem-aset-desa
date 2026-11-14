@@ -18,6 +18,7 @@ import {
 } from '../lib/peringatan.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
+  alasanTombolNonaktif,
   Badge,
   Button,
   Card,
@@ -1703,10 +1704,30 @@ export function PinjamanTab() {
                                     bayar.pokok + bayar.bunga + bayar.denda <= 0 ||
                                     bayar.pokok > sisaAngsuran(bayar.angsuran).sisaPokok
                                   }
+                                  title={alasanTombolNonaktif({
+                                    sibuk: bayarBusy,
+                                    alasan: !bayar.akunKas
+                                      ? 'Pilih akun kas/bank dulu.'
+                                      : bayar.pokok + bayar.bunga + bayar.denda <= 0
+                                        ? 'Isi pokok, bunga, atau denda yang dibayar (di atas nol).'
+                                        : bayar.pokok >
+                                            sisaAngsuran(bayar.angsuran).sisaPokok
+                                          ? `Pokok melebihi sisa pinjaman (${formatRp(sisaAngsuran(bayar.angsuran).sisaPokok)}); kurangi jumlah pokok.`
+                                          : null,
+                                  })}
                                   onClick={() => void simpanBayar()}
                                 >
                                   {bayarBusy ? 'Menyimpan…' : 'Bayar Angsuran'}
                                 </Button>
+                                {/* UI-A13: kasus pokok > sisa paling sering
+                                    mengejutkan operator; tunjukkan alasannya. */}
+                                {bayar.pokok >
+                                  sisaAngsuran(bayar.angsuran).sisaPokok && (
+                                  <span className="text-sm font-semibold text-amber-800">
+                                    Pokok dibayar melebihi sisa pinjaman — kurangi
+                                    jumlah pokok.
+                                  </span>
+                                )}
                                 <Button
                                   variant="ghost"
                                   disabled={bayarBusy}
@@ -1986,10 +2007,21 @@ export function PinjamanTab() {
                             <Button
                               variant="ghost"
                               disabled={b.pembayaran.length === 0}
+                              title={alasanTombolNonaktif({
+                                alasan:
+                                  b.pembayaran.length === 0
+                                    ? 'Belum ada pembayaran tercatat pada bulan ini.'
+                                    : null,
+                              })}
                               onClick={() => toggleMutasiBulan(b.bulan)}
                             >
                               {mutasiBuka[b.bulan] ? 'Tutup' : 'Lihat jurnal'}
                             </Button>
+                            {b.pembayaran.length === 0 && (
+                              <span className="mt-1 block text-helper text-stone-500">
+                                Belum ada pembayaran tercatat.
+                              </span>
+                            )}
                           </td>
                         </tr>
                         {mutasiBuka[b.bulan] && (

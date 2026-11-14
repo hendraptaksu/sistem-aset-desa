@@ -36,6 +36,7 @@ import {
 } from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
+  alasanTombolNonaktif,
   Badge,
   Button,
   Card,
@@ -644,6 +645,17 @@ export function PanjarTab() {
     saJumlah > 0 &&
     saJumlah <= saldo1040Pembukaan &&
     Boolean(saSumber);
+  // UI-A13: tombol panjar saldo awal tidak boleh mati tanpa alasan; cabang
+  // pembukaan/dokumen sudah dijelaskan blok teks di atas tombol.
+  const alasanSaldoAwalNonaktif = !formSaldoAwalSah
+    ? !saSumber
+      ? 'Pilih kas sumber di jurnal pembukaan.'
+      : !(Number.isInteger(saJumlah) && saJumlah > 0)
+        ? 'Isi jumlah panjar beredar (di atas nol).'
+        : saJumlah > saldo1040Pembukaan
+          ? `Jumlah melebihi maksimal 1040 yang bisa direpresentasikan (${formatRp(saldo1040Pembukaan)}).`
+          : null
+    : null;
   const totalRealisasi = items.reduce((s, i) => s + i.nominal, 0);
   const selisih = closeTarget ? closeTarget.jumlah - totalRealisasi : 0;
   const sisa = Math.max(0, selisih);
@@ -1502,6 +1514,10 @@ export function PanjarTab() {
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <Button
                 disabled={busySaldoAwal || !formSaldoAwalSah}
+                title={alasanTombolNonaktif({
+                  sibuk: busySaldoAwal,
+                  alasan: alasanSaldoAwalNonaktif,
+                })}
                 onClick={() => void submitSaldoAwal()}
               >
                 {busySaldoAwal ? 'Menyimpan…' : 'Catat Panjar Saldo Awal'}

@@ -21,7 +21,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 | UI-A10 | P2 | Komponen KontrolPeriode bersama untuk semua laporan | L | ✅ |
 | UI-A11 | P2 | InfoBox `role="status"` + feedback tampil dekat aksinya | M | ✅ |
 | UI-A12 | P2 | Konfirmasi seragam sebelum isian user ditimpa | M | ✅ |
-| UI-A13 | P2 | Semua tombol nonaktif punya alasan; "Keterangan (wajib)" | S | ⬜ |
+| UI-A13 | P2 | Semua tombol nonaktif punya alasan; "Keterangan (wajib)" | S | ✅ |
 | UI-A14 | P2 | Loading/empty state yang jujur di semua daftar | M | ⬜ |
 | UI-A15 | P2 | CurrencyInput ikut `disabled` saat proses berjalan | S | ⬜ |
 | UI-A16 | P2 | Bersihkan jargon teknis dari UI | S | ⬜ |

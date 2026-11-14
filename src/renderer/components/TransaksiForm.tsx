@@ -30,6 +30,7 @@ import {
 } from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
+  alasanTombolNonaktif,
   Badge,
   Button,
   Card,
@@ -613,6 +614,17 @@ export function FormTransaksiTerpandu({
     nominal > 0 &&
     Boolean(keterangan.trim());
 
+  // UI-A13: tombol Simpan tidak boleh mati tanpa penjelasan. Susun alasan sesuai
+  // kondisi; Pindah Dana dengan kurang dari dua kas/bank aktif punya alasan
+  // sendiri karena operator tidak bisa memilih akun tujuan yang berbeda.
+  const alasanSimpanNonaktif = memuat
+    ? 'Memuat daftar akun…'
+    : !formSah
+      ? pindah && kasList.length < 2
+        ? 'Pindah dana butuh dua akun kas/bank aktif yang berbeda; tambah akunnya dulu di Daftar Akun.'
+        : 'Isi dulu: tanggal, akun, nominal, dan keterangan.'
+      : null;
+
   const labelBaris = (i: number): string => {
     if (konfigurasi.mode === 'PINDAH') {
       const tujuan = `Tujuan (masuk) — ${labelAkun(akunKe)}`;
@@ -1016,7 +1028,7 @@ export function FormTransaksiTerpandu({
           </>
         )}
 
-        <Field label="Nominal">
+        <Field label="Nominal (Rp)">
           <div ref={nominalRef}>
             <CurrencyInput
               value={nominal}
@@ -1028,7 +1040,7 @@ export function FormTransaksiTerpandu({
           </div>
         </Field>
 
-        <Field label="Keterangan">
+        <Field label="Keterangan (wajib)">
           <TextInput
             value={keterangan}
             disabled={busy}
@@ -1142,9 +1154,23 @@ export function FormTransaksiTerpandu({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button disabled={busy || memuat || !formSah} onClick={() => void simpan()}>
+        <Button
+          disabled={busy || memuat || !formSah}
+          title={alasanTombolNonaktif({
+            sibuk: busy,
+            alasan: alasanSimpanNonaktif,
+          })}
+          onClick={() => void simpan()}
+        >
           {busy ? 'Menyimpan…' : konfigurasi.labelTombol}
         </Button>
+        {/* UI-A13: alasan nonaktif yang paling sering dibutuhkan harus terlihat
+            langsung, bukan hanya di title saat hover. */}
+        {!busy && alasanSimpanNonaktif && (
+          <span className="text-sm font-semibold text-amber-800" role="status">
+            {alasanSimpanNonaktif}
+          </span>
+        )}
         <span className="text-sm text-stone-500">
           Setelah tersimpan, transaksi langsung masuk ke laporan dari jurnal.
         </span>
