@@ -30,6 +30,10 @@
 // ringkasan agregat: kredit neto 2050 Buku Besar tidak boleh kurang dari
 // outstanding seluruh pinjaman aktif. Kelebihan GL tetap bukan temuan karena
 // dapat berasal dari utang non-LPD.
+// T-B09 menambahkan temuan `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS`:
+// outstanding pinjaman 0 tetapi masih ada angsuran BELUM/SEBAGIAN (hanya
+// mungkin lewat pembayaran pelunasan tanpa `angsuran_id` dari pustaka/SQL).
+// Kondisi aneh tetapi tidak merusak GL, jadi temuannya non-blok.
 // T-A07 memeriksa konsistensi LAPORAN dan penunjuk pembukaan, bukan hanya
 // per-jurnal:
 // - Neraca dan Neraca Saldo (mode kumulatif & tahun) dihitung dengan mesin
@@ -52,6 +56,11 @@ import {
   getCutoverTanggal,
   getPembukaanAktif,
 } from './pembukaan.js';
+// T-B09: kondisi pelunasan tanpa link angsuran dibaca lewat jalur yang sama
+// dengan UI (`listPinjaman`) agar temuan memakai outstanding dan status
+// angsuran yang persis sama dengan yang dilihat operator. Tidak ada pintu
+// tulis di sini; `listPinjaman` murni SELECT.
+import { listPinjaman } from './pinjaman.js';
 import {
   rekonsiliasiGl2050,
   rekonsiliasiSaldoAwal2050,
@@ -101,6 +110,7 @@ export type KodeTemuan =
   | 'PANJAR_OPENING_TIDAK_LENGKAP'
   | 'REKONSILIASI_PANJAR_GL_SELISIH'
   | 'REKONSILIASI_PINJAMAN_SELISIH'
+  | 'PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS'
   | 'SNAPSHOT_TUTUP_BERUBAH'
   | 'NERACA_TIDAK_SEIMBANG'
   | 'NERACA_SALDO_SELISIH'
@@ -1993,6 +2003,56 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           kekurangan_gl: agregatGl.kekurangan,
         },
       });
+    }
+
+    // T-B09: skema mengizinkan `pinjaman_bayar.angsuran_id` NULL (pelunasan)
+    // dan `tautkanPembayaran` mendukungnya, tetapi alur itu tidak diekspos
+    // IPC/UI. Bila ada (hanya mungkin lewat akses pustaka/SQL), outstanding
+    // bisa 0 sementara angsuran masih BELUM/SEBAGIAN — kondisi tampak
+    // kontradiktif bagi pemeriksa dan tidak tertangkap rekonsiliasi GL vs
+    // jadwal di atas. Periksaan baca-saja memakai `listPinjaman` (jalur yang
+    // sama dengan UI) sehingga outstanding dan status angsuran yang dilaporkan
+    // persis sama dengan yang dilihat operator; perhitungan outstanding tidak
+    // diubah. Kondisi ini aneh tetapi tidak merusak GL, jadi temuannya
+    // non-blok (lihat kebijakan temuan kontrol di db/tutup.ts).
+    if (tabelAda(db, 'pinjaman_angsuran')) {
+      for (const pinjaman of listPinjaman(db)) {
+        if (pinjaman.status !== 'AKTIF' || pinjaman.outstanding !== 0) continue;
+        const belumLunas = (pinjaman.angsuran ?? []).filter(
+          (a) => a.status !== 'LUNAS',
+        );
+        if (belumLunas.length === 0) continue;
+        const rincianAngsuran = belumLunas
+          .map(
+            (a) =>
+              `ke-${a.ke} ${a.status} (sisa pokok ${formatRp(a.sisa_pokok ?? 0)}, ` +
+              `sisa bunga ${formatRp(a.sisa_bunga ?? 0)})`,
+          )
+          .join('; ');
+        temuan.push({
+          kode: 'PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS',
+          pesan:
+            `Pinjaman ${pinjaman.id} (${pinjaman.kreditur}) sudah lunas ` +
+            `menurut outstanding (sisa pokok 0), tetapi masih ada ` +
+            `${belumLunas.length} angsuran berstatus bukan LUNAS: ` +
+            `${rincianAngsuran}. Penyebab umum: pembayaran pelunasan tanpa ` +
+            '`angsuran_id` (tidak diekspos di UI/IPC) atau cicilan yang tidak ' +
+            'pernah dilengkapi. Periksa daftar pembayaran pinjaman ini dan ' +
+            'tautkan/perbaiki lewat modul pinjaman; audit tidak mengoreksi ' +
+            'otomatis.',
+          detail: {
+            pinjaman_id: pinjaman.id,
+            outstanding: pinjaman.outstanding,
+            angsuran_belum_lunas: belumLunas.map((a) => ({
+              id: a.id,
+              ke: a.ke,
+              status: a.status,
+              sisa_pokok: a.sisa_pokok ?? 0,
+              sisa_bunga: a.sisa_bunga ?? 0,
+            })),
+          },
+        });
+      }
     }
   }
 

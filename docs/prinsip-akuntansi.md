@@ -248,6 +248,14 @@ Modul pinjaman LPD memisahkan **jadwal** dari **jurnal**:
 - `jurnal_pencairan_id = NULL` berarti pinjaman sudah berjalan: sisa pokok
   harus sudah ada di Saldo Awal 2050 dan modul **tidak** membuat jurnal
   pencairan baru.
+- **Pelunasan tanpa `angsuran_id` (T-B09): skema mengizinkan
+  `pinjaman_bayar.angsuran_id` NULL dan `tautkanPembayaran` mendukungnya,
+  tetapi UI/IPC sengaja tidak mengekspos alur pelunasan.** Bila data seperti itu
+  ada (hanya mungkin lewat akses pustaka/SQL), outstanding bisa 0 sementara
+  angsuran masih BELUM/SEBAGIAN. Kondisi ini tidak merusak GL, tetapi selalu
+  dilaporkan audit integritas sebagai temuan
+  `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS` — temuan kontrol **non-blok**
+  yang tidak memblokir kunci periode, agar tidak pernah lolos diam-diam.
 
 Rekonsiliasi 2050 vs jadwal bersifat baca-saja: membandingkan outstanding GL
 dari jurnal tertaut dengan sisa jadwal, tanpa koreksi otomatis dan tanpa

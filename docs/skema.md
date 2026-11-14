@@ -727,3 +727,10 @@ Batas penting:
   pinjaman dengan `selisih != 0`; pinjaman bersih tidak menghasilkan temuan.
   Pesan meminta operator memeriksa jurnal/Saldo Awal, bukan menulis angka
   koreksi otomatis.
+- T-B09: `angsuran_id` NULL pada `pinjaman_bayar` (pelunasan) sah di skema dan
+  didukung `tautkanPembayaran`, tetapi tidak diekspos IPC/UI. Bila kondisi
+  "outstanding 0 tetapi masih ada angsuran BELUM/SEBAGIAN" ada (hanya mungkin
+  lewat akses pustaka/SQL), audit integritas menambahkan temuan
+  `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS` (kontrol non-blok) yang
+  membaca outstanding dan status angsuran lewat jalur yang sama dengan UI;
+  perhitungan outstanding tidak berubah dan tidak ada koreksi otomatis.

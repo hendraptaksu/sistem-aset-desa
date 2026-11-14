@@ -294,7 +294,9 @@ boleh dengan alasan.
 Sebelum mengunci periode, aplikasi menjalankan audit integritas. **Semua
 temuan integritas memblokir kunci periode, kecuali `SNAPSHOT_TUTUP_BERUBAH`**
 yang hanya peringatan kontrol (non-blok) agar kunci ulang yang dikonfirmasi
-tetap bisa mencatat versi snapshot baru. Daftar kode dan tindakannya ada di §14.
+tetap bisa mencatat versi snapshot baru, dan `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS`
+yang juga kontrol non-blok (kondisi aneh tetapi tidak merusak GL). Daftar kode
+dan tindakannya ada di §14.
 
 Kunci periode **tidak membuat jurnal penutup** dan tidak memindahkan saldo
 PENDAPATAN/BEBAN ke akun ekuitas. Jangan membuat jurnal penutup manual: sistem
@@ -406,8 +408,9 @@ dan README bagian **Runbook singkat**.
 
 Audit integritas membaca DB tanpa mengubah apa pun. Temuannya muncul di pratinjau
 kunci periode dan dapat diperiksa sebelum laporan ditandatangani. **Semua kode
-di bawah memblokir kunci periode, kecuali `SNAPSHOT_TUTUP_BERUBAH`** yang
-merupakan kontrol non-blok.
+di bawah memblokir kunci periode, kecuali `SNAPSHOT_TUTUP_BERUBAH` dan
+`PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS`** yang merupakan kontrol
+non-blok.
 
 | Kode | Arti | Tindakan | Blokir? |
 |---|---|---|---|
@@ -418,13 +421,16 @@ merupakan kontrol non-blok.
 | `LABA_RUGI_SEBELUM_CUTOVER` | Ada baris PENDAPATAN/BEBAN bertanggal sebelum cut-over resmi di luar grup pembukaan. P&L itu tidak boleh dilaporkan sebagai laba tahun pertama. | Pindahkan/benahi baris lewat **Wizard Koreksi Saldo Awal** atau koreksi jurnal yang benar; jangan mengubah tanggal cut-over manual. | Ya |
 | `SALDO_AWAL_MEMUAT_LABA_RUGI` | Jurnal pembukaan (atau pengganti) memuat akun PENDAPATAN/BEBAN. Saldo awal hanya boleh AKTIVA, KEWAJIBAN, dan EKUITAS. | Perbaiki lewat **Wizard Koreksi Saldo Awal**; akun P&L sebelum cut-over harus tercermin di ekuitas/modal awal, bukan di jurnal pembukaan. | Ya |
 | `SNAPSHOT_TUTUP_BERUBAH` | Snapshot kunci periode versi terbaru berbeda dari angka/hash jurnal live. Penyebab sah: koreksi setelah kunci periode. Bisa juga data rusak. Snapshot tidak diubah otomatis. | Periksa rincian perbedaan dan audit koreksi setelah kunci periode. Bila memang ada koreksi sah, lakukan **KUNCI ULANG** yang dikonfirmasi agar versi snapshot baru tercatat; jangan mengedit snapshot. | **Tidak** (kontrol) |
+| `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS` | Outstanding pinjaman sudah 0 tetapi masih ada angsuran berstatus BELUM/SEBAGIAN. Hanya mungkin lewat pembayaran pelunasan tanpa `angsuran_id` (skema mengizinkan, tetapi tidak diekspos UI/IPC) atau cicilan yang tidak pernah dilengkapi; akses pustaka/SQL langsung. Rekonsiliasi GL 2050 vs jadwal tetap cocok, jadi kondisi ini tidak merusak GL tetapi tampak kontradiktif di layar. | Periksa daftar pembayaran pinjaman yang disebut temuan: bila pelunasan memang sah, catat penjelasannya; bila salah taut/cicilan menggantung, perbaiki lewat modul pinjaman (tautkan pembayaran ke angsuran atau buat jurnal balik lewat pintu resmi). Aplikasi tidak mengoreksi otomatis. | **Tidak** (kontrol) |
 | `PANJAR_OPENING_TIDAK_LENGKAP` | Panjar `sumber = 'SALDO_AWAL'` tidak lengkap: `jurnal_open_id` kosong/tidak ditemukan, menunjuk jurnal yang bukan `OPENING`/`OPENING_REPLACEMENT`, total panjar OPEN melebihi debit neto `1040` jurnal pembukaan, penunjuk pembukaan aktif tidak sah, atau panjar OPEN menunjuk jurnal yang bukan pembukaan aktif saat ini (pembukaan lama sudah dibalik/digantikan koreksi saldo awal — bisa terjadi meski saldo GL `1040` masih cocok). | Periksa dokumen panjar dan jurnal pembukaan. Bila jurnal pembukaan sudah dikoreksi, perbarui penunjuk dokumen representasi agar menunjuk pembukaan aktif lewat **Wizard Koreksi Saldo Awal**; bila belum ada realisasi, pembatalan khusus panjar saldo awal menghapus dokumen tanpa jurnal balik. Close panjar dengan pointer basi juga ditolak sampai penunjuk diperbarui. Jangan membuat jurnal serah kedua untuk 1040 yang sudah ada. | Ya |
 
 Catatan:
 
-- Temuan `SNAPSHOT_TUTUP_BERUBAH` **tidak memblokir** **KUNCI ULANG** yang sudah
-  dikonfirmasi, tetapi tetap harus ditampilkan dan diperiksa. Temuan lain
-  memblokir kunci periode **dan** kunci ulang sampai data diperbaiki.
+- Temuan kontrol (`SNAPSHOT_TUTUP_BERUBAH`,
+  `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS`) **tidak memblokir**
+  **KUNCI ULANG** yang sudah dikonfirmasi, tetapi tetap harus ditampilkan dan
+  diperiksa. Temuan lain memblokir kunci periode **dan** kunci ulang sampai
+  data diperbaiki.
 - Jangan memperbaiki temuan dengan mengedit/menghapus jurnal, snapshot, atau
   audit langsung lewat SQLite. Gunakan wizard/koreksi resmi, atau pulihkan dari
   backup sehat bila data memang rusak.

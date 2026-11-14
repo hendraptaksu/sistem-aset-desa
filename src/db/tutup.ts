@@ -128,11 +128,23 @@ function bacaPanjarOpenAktif(
 }
 
 /**
- * Gabungkan validasi tahun dengan audit integritas. Temuan integritas selain
- * `SNAPSHOT_TUTUP_BERUBAH` memblokir tutup buku, termasuk tutup ulang.
- * `SNAPSHOT_TUTUP_BERUBAH` adalah temuan kontrol: tetap dilaporkan (UI wajib
- * menampilkan peringatan), tetapi tidak boleh memblokir TUTUP-ULANG yang sudah
- * dikonfirmasi. Penutupan pertama tidak terpengaruh karena snapshot belum ada.
+ * Temuan kontrol (non-blok): tetap dilaporkan (UI wajib menampilkan
+ * peringatan), tetapi tidak boleh memblokir TUTUP-ULANG yang sudah
+ * dikonfirmasi.
+ * - `SNAPSHOT_TUTUP_BERUBAH`: koreksi setelah tutup buku bisa sah.
+ * - `PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS` (T-B09): kondisi aneh
+ *   tetapi tidak merusak GL; outstanding 0 dengan angsuran belum LUNAS hanya
+ *   mungkin lewat pembayaran pelunasan tanpa `angsuran_id` dari pustaka/SQL.
+ */
+const TEMUAN_KONTROL_NON_BLOK: ReadonlySet<string> = new Set([
+  'SNAPSHOT_TUTUP_BERUBAH',
+  'PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS',
+]);
+
+/**
+ * Gabungkan validasi tahun dengan audit integritas. Temuan integritas di luar
+ * `TEMUAN_KONTROL_NON_BLOK` memblokir tutup buku, termasuk tutup ulang.
+ * Penutupan pertama tidak terpengaruh karena snapshot belum ada.
  */
 function validasiDenganIntegritas(
   validasi: HasilValidasiTutup,
@@ -140,11 +152,11 @@ function validasiDenganIntegritas(
 ): HasilValidasiTutup & { temuanIntegritas: Temuan[] } {
   if (audit.ok) return { ...validasi, temuanIntegritas: [] };
 
-  const temuanKontrol = audit.temuan.filter(
-    (t) => t.kode === 'SNAPSHOT_TUTUP_BERUBAH',
+  const temuanKontrol = audit.temuan.filter((t) =>
+    TEMUAN_KONTROL_NON_BLOK.has(t.kode),
   );
   const temuanMemblokir = audit.temuan.filter(
-    (t) => t.kode !== 'SNAPSHOT_TUTUP_BERUBAH',
+    (t) => !TEMUAN_KONTROL_NON_BLOK.has(t.kode),
   );
   if (temuanMemblokir.length === 0) {
     return { ...validasi, temuanIntegritas: temuanKontrol };

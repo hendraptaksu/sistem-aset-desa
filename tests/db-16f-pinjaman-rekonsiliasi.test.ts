@@ -21,6 +21,7 @@ import {
   buatPinjaman,
   getPinjaman,
   simpanPinjamanLpd,
+  tautkanPembayaran,
 } from '../src/db/pinjaman.js';
 import {
   rekonsiliasiPinjaman,
@@ -756,5 +757,143 @@ describe('DB-16f — validasi, IPC, API, UI, dan dokumentasi', () => {
     expect(SUMBER).toContain('REKONSILIASI_PINJAMAN_SELISIH');
     expect(SUMBER).toContain('2050 non-LPD');
     expect(SUMBER).toContain('pokok aktual');
+  });
+});
+
+describe('T-B09 — pelunasan tanpa angsuran_id tetap terlihat di audit', () => {
+  const KODE = 'PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS';
+
+  /**
+   * Posting jurnal pelunasan (D 2050 pokok + D 5063 bunga + K 1014 kas) lalu
+   * tautkan lewat `tautkanPembayaran` TANPA `angsuran_id`. Jalur ini hanya
+   * mungkin lewat pustaka/library: IPC `bayarAngsuranPinjaman` wajib
+   * `angsuran_id`, sedangkan skema dan `tautkanPembayaran` mengizinkan NULL.
+   */
+  function bayarPelunasanTanpaAngsuran(
+    db: Database.Database,
+    pokok: number,
+    bunga: number,
+    idJurnal = 'j-pelunasan-tb09',
+    idPembayaran = 'pby-pelunasan-tb09',
+  ): void {
+    const jurnal = postingJurnal(db, {
+      header: {
+        id: idJurnal,
+        tanggal: '2026-05-10',
+        keterangan: 'Pelunasan sisa pokok dan bunga pinjaman',
+        jenis: 'HUTANG',
+      },
+      baris: [
+        D('2050', pokok),
+        ...(bunga > 0 ? [D('5063', bunga)] : []),
+        K('1014', pokok + bunga),
+      ],
+    }, {
+      // Fixture uji tidak mendaftarkan Saldo Awal sebagai pointer aktif, jadi
+      // baseline kas posting hanya jurnal pencairan; konfirmasi peringatan
+      // saldo kas agar skenario pelunasan bisa diposting penuh.
+      konfirmasiPeringatan: true,
+      alasanPeringatan: 'Uji T-B09: saldo kas produksi cukup.',
+    });
+    expect(jurnal.tersimpan, jurnal.errors.join(' ')).toBe(true);
+
+    const taut = tautkanPembayaran(db, {
+      id: idPembayaran,
+      pinjaman_id: 'pjr-16f',
+      jurnal_id: idJurnal,
+      catatan: 'Pelunasan tanpa link angsuran',
+    });
+    expect(taut.tersimpan, taut.errors.join(' ')).toBe(true);
+  }
+
+  it('outstanding 0 tetapi ada angsuran BELUM dilaporkan sebagai temuan integritas', () => {
+    const { db, pinjamanId, angsuran } = siapkanFixture();
+    bayarNormal(db, pinjamanId, angsuran[0].id);
+    // Sisa pokok 9 juta + sisa bunga 3 x 100 ribu dilunaskan tanpa link angsuran.
+    bayarPelunasanTanpaAngsuran(db, RP(9_000_000), RP(300_000));
+
+    const pinjaman = getPinjaman(db, pinjamanId)!;
+    expect(pinjaman.outstanding).toBe(0);
+    expect((pinjaman.angsuran ?? []).map((a) => a.status)).toEqual([
+      'LUNAS',
+      'BELUM',
+      'BELUM',
+      'BELUM',
+    ]);
+
+    // Rekonsiliasi GL vs jadwal tetap cocok (GL 2050 = jadwal = 0), jadi tanpa
+    // pemeriksaan T-B09 kondisi kontradiktif ini lolos diam-diam.
+    expect(kodeTemuan(db)).not.toContain('REKONSILIASI_PINJAMAN_SELISIH');
+
+    const temuan = auditIntegritas(db).temuan.filter((t) => t.kode === KODE);
+    expect(temuan).toHaveLength(1);
+    expect(temuan[0]!.detail).toMatchObject({
+      pinjaman_id: pinjamanId,
+      outstanding: 0,
+      angsuran_belum_lunas: [
+        { ke: 2, status: 'BELUM', sisa_pokok: RP(3_000_000), sisa_bunga: RP(100_000) },
+        { ke: 3, status: 'BELUM', sisa_pokok: RP(3_000_000), sisa_bunga: RP(100_000) },
+        { ke: 4, status: 'BELUM', sisa_pokok: RP(3_000_000), sisa_bunga: RP(100_000) },
+      ],
+    });
+    // Pesan bisa ditindaklanjuti operator: menyebut pinjaman dan penyebab umum.
+    expect(temuan[0]!.pesan).toContain(pinjamanId);
+    expect(temuan[0]!.pesan).toMatch(/angsuran_id/);
+    expect(temuan[0]!.pesan).toMatch(/tidak mengoreksi otomatis/);
+
+    // Pemeriksaan baca-saja: hasil audit stabil dan tidak mengubah data.
+    expect(auditIntegritas(db)).toEqual(auditIntegritas(db));
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman_bayar').get() as { n: number }).n,
+    ).toBe(2);
+  });
+
+  it('alur normal: semua angsuran LUNAS dengan outstanding 0 tidak menghasilkan temuan', () => {
+    const { db, pinjamanId, angsuran } = siapkanFixture();
+    for (let i = 0; i < angsuran.length; i++) {
+      const hasil = bayarAngsuranPinjaman(db, {
+        id: `pby-normal-tb09-${i + 1}`,
+        jurnal_id: `j-bayar-normal-tb09-${i + 1}`,
+        pinjaman_id: pinjamanId,
+        angsuran_id: angsuran[i]!.id,
+        tanggal: `2026-0${i + 2}-05`,
+        akun_kas: '1014',
+        pokok: RP(3_000_000),
+        bunga: RP(100_000),
+        noBukti: `B-TB09-${i + 1}`,
+      }, {
+        konfirmasiPeringatan: true,
+        alasanPeringatan: 'Uji T-B09: saldo kas produksi cukup.',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+    }
+
+    const pinjaman = getPinjaman(db, pinjamanId)!;
+    expect(pinjaman.outstanding).toBe(0);
+    expect((pinjaman.angsuran ?? []).map((a) => a.status)).toEqual([
+      'LUNAS',
+      'LUNAS',
+      'LUNAS',
+      'LUNAS',
+    ]);
+    expect(kodeTemuan(db)).not.toContain(KODE);
+  });
+
+  it('outstanding masih tersisa dengan angsuran BELUM tidak menghasilkan temuan', () => {
+    const { db, pinjamanId, angsuran } = siapkanFixture();
+    bayarNormal(db, pinjamanId, angsuran[0].id);
+
+    expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(9_000_000));
+    expect(kodeTemuan(db)).not.toContain(KODE);
+  });
+
+  it('temuan bersifat kontrol non-blok di tutup buku dan terdokumentasi', () => {
+    const TUTUP = baca('src/db/tutup.ts');
+    expect(TUTUP).toContain('PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS');
+
+    const PEMERIKSAAN = baca('docs/panduan-pemeriksaan.md');
+    expect(PEMERIKSAAN).toContain('PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS');
+    const PRINSIP = baca('docs/prinsip-akuntansi.md');
+    expect(PRINSIP).toContain('PINJAMAN_OUTSTANDING_NOL_ANGSURAN_BELUM_LUNAS');
   });
 });
