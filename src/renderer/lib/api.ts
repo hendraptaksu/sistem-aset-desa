@@ -181,6 +181,9 @@ export type OpsiBayarPinjamanApi = {
   alasanSelisih?: string;
   konfirmasiPeringatan?: boolean;
   alasanPeringatan?: string;
+  /** T-B06: konfirmasi debit beban non-bunga (dihitung sebagai denda). */
+  konfirmasiDendaLain?: boolean;
+  alasanDendaLain?: string;
   konfirmasiTanpaSaldoAwal?: boolean;
 };
 

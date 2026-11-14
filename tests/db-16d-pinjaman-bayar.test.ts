@@ -580,6 +580,169 @@ describe('DB-16d — T-B05: jurnal dua-sisi 2050 ditolak dan angka neto diseraga
   });
 });
 
+describe('DB-16d — T-B06: debit beban non-bunga wajib konfirmasi (peringatan, bukan error)', () => {
+  const IPC = baca('src/main/ipc.ts');
+  const API = baca('src/renderer/lib/api.ts');
+  const UI = baca('src/renderer/components/PinjamanTab.tsx');
+  const SERVICE = baca('src/db/pinjaman.ts');
+
+  /**
+   * Jurnal pembayaran manual yang menaruh nominal bunga ke akun BEBAN lain
+   * (5040 BIAYA ADMINISTRASI DAN PAJAK BANK) — bukan akun bunga pinjaman
+   * (5063) dan bukan 5050 denda modul. Klasifikasi lama menghitung debit ini
+   * sebagai denda sehingga sisa bunga tidak pernah nol; T-B06 menuntut
+   * peringatan + konfirmasi operator TANPA mengubah klasifikasi tersebut.
+   */
+  function buatJurnalBebanLain(db: Database.Database): void {
+    const hasil = postingJurnal(db, {
+      header: {
+        id: 'j-beban-lain',
+        tanggal: '2026-03-01',
+        no_bukti: 'BAYAR-BEBAN-LAIN',
+        keterangan: 'Pembayaran angsuran dengan debit beban non-bunga (uji T-B06)',
+        jenis: 'HUTANG',
+      },
+      baris: [
+        D('2050', RP(4_000_000)),
+        D('5040', RP(150_000)),
+        K('1014', RP(4_150_000)),
+      ],
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+  }
+
+  function auditLink(
+    db: Database.Database,
+  ): { aksi: string; alasan: string; data_baru_json: string }[] {
+    return db
+      .prepare(
+        `SELECT aksi, alasan, data_baru_json
+           FROM audit_log
+          WHERE aksi LIKE 'PINJAMAN-BAYAR-LINK%'
+          ORDER BY id`,
+      )
+      .all() as { aksi: string; alasan: string; data_baru_json: string }[];
+  }
+
+  it('menautkan jurnal dengan debit beban non-bunga menunggu konfirmasi dan tidak menulis apa pun', () => {
+    const db = dbKas();
+    const { pinjamanId } = pinjamanUji(db);
+    buatJurnalBebanLain(db);
+    const jurnalAwal = jumlahJurnal(db);
+
+    const tanpaKonfirmasi = tautkanPembayaran(db, {
+      pinjaman_id: pinjamanId,
+      jurnal_id: 'j-beban-lain',
+      tanggal: '2026-03-01',
+      catatan: 'Bunga dibayar lewat akun lain',
+    });
+
+    expect(tanpaKonfirmasi.tersimpan).toBe(false);
+    expect(tanpaKonfirmasi.perluKonfirmasi).toBe(true);
+    const pesan = tanpaKonfirmasi.errors.join(' ');
+    expect(pesan).toMatch(/bukan akun bunga pinjaman/i);
+    expect(pesan).toMatch(/dihitung sebagai denda/i);
+    expect(pesan).toContain('BIAYA ADMINISTRASI DAN PAJAK BANK');
+    expect(pesan).toContain('Rp 150.000');
+    // Tidak ada tulisan: jurnal, link, outstanding, dan audit tetap.
+    expect(jumlahJurnal(db)).toBe(jurnalAwal);
+    expect(jumlahBayar(db)).toBe(0);
+    expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(12_000_000));
+    expect(auditLink(db)).toHaveLength(0);
+  });
+
+  it('konfirmasi tanpa alasan cukup tetap ditolak tanpa menulis', () => {
+    const db = dbKas();
+    const { pinjamanId } = pinjamanUji(db);
+    buatJurnalBebanLain(db);
+    const opsiTanpaAlasan = {
+      pinjaman_id: pinjamanId,
+      jurnal_id: 'j-beban-lain',
+      tanggal: '2026-03-01',
+    } as const;
+
+    const tanpaAlasan = tautkanPembayaran(db, opsiTanpaAlasan, {
+      konfirmasiDendaLain: true,
+    });
+    expect(tanpaAlasan.tersimpan).toBe(false);
+    expect(tanpaAlasan.perluKonfirmasi).toBe(true);
+    expect(tanpaAlasan.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+
+    const alasanPendek = tautkanPembayaran(db, opsiTanpaAlasan, {
+      konfirmasiDendaLain: true,
+      alasanDendaLain: 'ok',
+    });
+    expect(alasanPendek.tersimpan).toBe(false);
+    expect(alasanPendek.perluKonfirmasi).toBe(true);
+    expect(alasanPendek.errors.join(' ')).toMatch(/alasan minimal 5 karakter/i);
+    expect(jumlahBayar(db)).toBe(0);
+    expect(auditLink(db)).toHaveLength(0);
+  });
+
+  it('setelah dikonfirmasi dengan alasan, pembayaran berjalan, klasifikasi denda tetap, dan audit mencatat', () => {
+    const db = dbKas();
+    const { pinjamanId } = pinjamanUji(db);
+    buatJurnalBebanLain(db);
+
+    const dikonfirmasi = tautkanPembayaran(
+      db,
+      {
+        pinjaman_id: pinjamanId,
+        jurnal_id: 'j-beban-lain',
+        tanggal: '2026-03-01',
+        catatan: 'Bunga sengaja dibayar lewat akun biaya bank',
+      },
+      {
+        konfirmasiDendaLain: true,
+        alasanDendaLain: 'bunga dibayar ke akun biaya bank sesuai instruksi pengurus',
+      },
+    );
+    expect(dikonfirmasi.tersimpan, dikonfirmasi.errors.join(' ')).toBe(true);
+
+    // Klasifikasi TIDAK berubah (keputusan pemilik): debit 5040 tetap denda.
+    expect(getPembayaranPinjaman(db, dikonfirmasi.pembayaran!.id)).toMatchObject({
+      pokok: RP(4_000_000),
+      bunga: 0,
+      denda: RP(150_000),
+      kas_keluar: RP(4_150_000),
+    });
+    expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(8_000_000));
+
+    const audit = auditLink(db);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].data_baru_json).toContain('dendaLainDikonfirmasi');
+    expect(audit[0].data_baru_json).toContain('5040');
+    expect(audit[0].alasan).toMatch(/debit beban non-bunga dikonfirmasi/i);
+    expect(audit[0].alasan).toContain('sesuai instruksi pengurus');
+  });
+
+  it('pembayaran normal (akun bunga + 5050) tetap berjalan tanpa dialog meski flag dikirim', () => {
+    const db = dbKas();
+    const { pinjamanId, angsuran } = pinjamanUji(db);
+
+    const hasil = bayarAngsuranPinjaman(
+      db,
+      inputBayar(pinjamanId, angsuran[0].id),
+      { konfirmasiDendaLain: true, alasanDendaLain: 'tanpa debit beban lain' },
+    );
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+    expect(hasil.perluKonfirmasi).toBe(false);
+    expect(hasil.rincian).toMatchObject({
+      bunga: RP(100_000),
+      denda: RP(50_000),
+    });
+  });
+
+  it('IPC, API, UI, dan service meneruskan flag konfirmasi denda lain', () => {
+    expect(SERVICE).toContain('konfirmasiDendaLain');
+    expect(SERVICE).toContain('alasanDendaLain');
+    expect(IPC).toContain('konfirmasiDendaLain');
+    expect(IPC).toContain('alasanDendaLain');
+    expect(API).toContain('konfirmasiDendaLain');
+    expect(UI).toContain('konfirmasiDendaLain');
+  });
+});
+
 describe('DB-16d — validasi bentuk, IPC, API, UI, dan dokumentasi', () => {
   const IPC = baca('src/main/ipc.ts');
   const VALIDATION = baca('src/main/validation.ts');

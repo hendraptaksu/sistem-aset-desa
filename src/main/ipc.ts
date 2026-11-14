@@ -1371,12 +1371,20 @@ export function registerIpc(deps: IpcDeps): void {
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+      // T-B06: konfirmasi debit beban non-bunga (dihitung denda) diteruskan.
+      const konfirmasiDendaLain =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiDendaLain?: unknown }).konfirmasiDendaLain === true;
 
       const hasil = bayarAngsuranPinjaman(deps.db(), bentuk.input, {
         konfirmasiSelisih,
         alasanSelisih: bacaTeksOpsi(opsi, 'alasanSelisih'),
         konfirmasiPeringatan,
         alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        konfirmasiDendaLain,
+        alasanDendaLain: bacaTeksOpsi(opsi, 'alasanDendaLain'),
         wajibSaldoAwal: true,
         konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
       });

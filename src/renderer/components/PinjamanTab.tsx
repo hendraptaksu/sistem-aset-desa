@@ -699,6 +699,12 @@ export function PinjamanTab() {
               ...(bayarPerluKonfirmasi
                 ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
                 : {}),
+              // T-B06: debit beban non-bunga dihitung denda; konfirmasi
+              // operator diteruskan (server hanya menghormati flag bila
+              // debitnya benar-benar ada pada jurnal pembayaran).
+              ...(bayarPerluKonfirmasi
+                ? { konfirmasiDendaLain: true, alasanDendaLain: alasan }
+                : {}),
             }
           : {},
       );

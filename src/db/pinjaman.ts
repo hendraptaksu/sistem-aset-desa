@@ -190,6 +190,18 @@ export type TautkanPembayaranInput = {
   created_at?: string;
 };
 
+/**
+ * Opsi taut jurnal pembayaran (link-only). T-B06: pembayaran yang memuat
+ * debit BEBAN selain akun bunga pinjaman (dan bukan 5050) wajib konfirmasi
+ * operator + alasan sebelum ditulis.
+ */
+export type OpsiTautkanPembayaran = {
+  /** Operator sudah mengonfirmasi debit beban non-bunga (dihitung denda). */
+  konfirmasiDendaLain?: boolean;
+  /** Wajib ≥5 karakter saat jurnal memuat debit beban non-bunga. */
+  alasanDendaLain?: string;
+};
+
 export type HasilPembayaranPinjaman = {
   boleh: boolean;
   errors: string[];
@@ -226,6 +238,9 @@ export type BayarAngsuranPinjamanInput = {
   /** Alias konfirmasi di dalam input (selain opsi argumen). */
   konfirmasiSelisih?: boolean;
   alasanSelisih?: string;
+  /** T-B06: alias konfirmasi debit beban non-bunga di dalam input. */
+  konfirmasiDendaLain?: boolean;
+  alasanDendaLain?: string;
 };
 
 export type OpsiBayarAngsuranPinjaman = {
@@ -236,6 +251,10 @@ export type OpsiBayarAngsuranPinjaman = {
   /** Konfirmasi peringatan posting (mis. saldo kas minus). */
   konfirmasiPeringatan?: boolean;
   alasanPeringatan?: string;
+  /** T-B06: operator sudah mengonfirmasi debit beban non-bunga (dihitung denda). */
+  konfirmasiDendaLain?: boolean;
+  /** Wajib ≥5 karakter saat pembayaran memuat debit beban non-bunga. */
+  alasanDendaLain?: string;
   wajibSaldoAwal?: boolean;
   konfirmasiTanpaSaldoAwal?: boolean;
   /** Tanggal acuan validasi posting (test deterministik). */
@@ -479,6 +498,47 @@ function validasiJurnalPembayaran(
       rincian,
     };
   return { error: null, rincian };
+}
+
+/** Satu akun BEBAN lain (bukan akun bunga pinjaman) beserta debit neto-nya. */
+type BebanLain = { kode: string; nama: string; neto: number };
+
+/**
+ * T-B06: kumpulkan akun BEBAN selain akun bunga pinjaman dan 5050 (denda dari
+ * modul sendiri) dari baris jurnal, beserta debit neto per akun. Klasifikasi
+ * denda TIDAK diubah — daftar ini hanya bahan peringatan konfirmasi operator.
+ */
+function daftarBebanLain(
+  db: Database.Database,
+  baris: readonly { akun_kode: unknown; debit: unknown; kredit: unknown }[],
+  akunBunga: string,
+): BebanLain[] {
+  const netoPerAkun = new Map<string, number>();
+  for (const b of baris) {
+    const kode = String(b.akun_kode);
+    if (kode === akunBunga || kode === AKUN_DENDA_PINJAMAN_DEFAULT) continue;
+    if (getAkun(db, kode)?.tipe !== 'BEBAN') continue;
+    const neto = angka(b.debit) - angka(b.kredit);
+    if (neto > 0) netoPerAkun.set(kode, (netoPerAkun.get(kode) ?? 0) + neto);
+  }
+  return [...netoPerAkun.entries()].map(([kode, neto]) => ({
+    kode,
+    nama: getAkun(db, kode)?.nama ?? kode,
+    neto,
+  }));
+}
+
+/** Peringatan konfirmasi untuk debit BEBAN non-bunga (T-B06), gaya repo. */
+function pesanBebanLain(daftar: BebanLain[]): string {
+  const rincianAkun = daftar
+    .map((d) => `${d.nama} (${d.kode}) ${formatRp(d.neto)}`)
+    .join(', ');
+  return (
+    `Ada debit beban ${rincianAkun} yang bukan akun bunga pinjaman ini; ` +
+    'akan dihitung sebagai denda dan status angsuran mungkin tidak terpenuhi. ' +
+    'Periksa jurnalnya (bunga seharusnya memakai akun bunga pinjaman), ' +
+    'lalu konfirmasi bila pembayaran memang sengaja diberikan.'
+  );
 }
 
 function barisPembayaran(db: Database.Database, r: Row, akunBunga: string): PinjamanBayar {
@@ -1184,6 +1244,7 @@ export function statusAngsuranPinjaman(
 export function tautkanPembayaran(
   db: Database.Database,
   input: TautkanPembayaranInput,
+  opsi: OpsiTautkanPembayaran = {},
 ): HasilPembayaranPinjaman {
   const data = (input ?? {}) as TautkanPembayaranInput;
   const pinjamanId = teks(data.pinjaman_id ?? data.pinjamanId);
@@ -1226,6 +1287,25 @@ export function tautkanPembayaran(
     );
 
   const detail = getJurnalDetail(db, jurnalId);
+  // T-B06: debit BEBAN selain akun bunga pinjaman (dan bukan 5050 denda modul)
+  // dihitung sebagai denda sehingga sisa bunga bisa tidak pernah nol dan
+  // status angsuran tidak terpenuhi. Peringatan + konfirmasi operator wajib
+  // sebelum ada tulisan; klasifikasi denda sendiri tidak diubah agar angka
+  // laporan tetap.
+  const bebanLain = daftarBebanLain(db, detail?.baris ?? [], pinjaman.akun_bunga);
+  const konfirmasiDendaLain = opsi.konfirmasiDendaLain === true;
+  const alasanDendaLain = teks(opsi.alasanDendaLain);
+  if (bebanLain.length > 0) {
+    if (!konfirmasiDendaLain)
+      return { ...gagalBayar(pesanBebanLain(bebanLain)), perluKonfirmasi: true };
+    if (alasanDendaLain.length < 5)
+      return {
+        ...gagalBayar(
+          'Konfirmasi debit beban non-bunga wajib disertai alasan minimal 5 karakter.',
+        ),
+        perluKonfirmasi: true,
+      };
+  }
   // Tanggal pembayaran selalu mengikuti jurnal yang ditautkan. Pemanggil yang
   // mengirim tanggal berbeda ditolak agar laporan pinjaman tidak menyimpang
   // diam-diam dari jurnalnya.
@@ -1286,7 +1366,11 @@ export function tautkanPembayaran(
       // audit gagal, tautan pembayaran ikut dibatalkan.
       catatAudit(db, {
         aksi: `PINJAMAN-BAYAR-LINK ${pinjamanId}`,
-        alasan: `Menautkan jurnal pembayaran ${jurnalId} ke pinjaman ${pinjamanId}.`,
+        alasan:
+          `Menautkan jurnal pembayaran ${jurnalId} ke pinjaman ${pinjamanId}.` +
+          (bebanLain.length > 0
+            ? ` Debit beban non-bunga dikonfirmasi${alasanDendaLain ? `: ${alasanDendaLain}` : ''}.`
+            : ''),
         baru: {
           pinjaman_id: pembayaran.pinjaman_id,
           angsuran_id: pembayaran.angsuran_id,
@@ -1295,6 +1379,14 @@ export function tautkanPembayaran(
           pokok: cekJurnal.rincian.pokok,
           bunga: cekJurnal.rincian.bunga,
           denda: cekJurnal.rincian.denda,
+          // T-B06: pembayaran memuat debit beban non-bunga yang dikonfirmasi.
+          ...(bebanLain.length > 0
+            ? {
+                dendaLainDikonfirmasi: true,
+                akunDendaLain: bebanLain,
+                ...(alasanDendaLain ? { alasanDendaLain } : {}),
+              }
+            : {}),
         },
         ref_type: 'pinjaman_bayar',
         ref_id: pembayaran.id,
@@ -1485,6 +1577,9 @@ export function bayarAngsuranPinjaman(
   const konfirmasiSelisih =
     opsi.konfirmasiSelisih === true || data.konfirmasiSelisih === true;
   const alasanSelisih = teks(opsi.alasanSelisih ?? data.alasanSelisih);
+  const konfirmasiDendaLain =
+    opsi.konfirmasiDendaLain === true || data.konfirmasiDendaLain === true;
+  const alasanDendaLain = teks(opsi.alasanDendaLain ?? data.alasanDendaLain);
   const selisih = {
     pokok: (pokok ?? 0) - sisaPokok,
     bunga: (bunga ?? 0) - sisaBunga,
@@ -1525,19 +1620,6 @@ export function bayarAngsuranPinjaman(
   const nilaiDenda = denda as number;
   const totalBayar = nilaiPokok + nilaiBunga + nilaiDenda;
 
-  const id = teks(data.id) || uid('pby');
-  const jurnalId = teks(data.jurnal_id ?? data.jurnalId) || uid('j-bayar-pinjaman');
-  const catatan = teks(data.catatan);
-  const noBukti = teks(data.noBukti);
-
-  const bagianKeterangan = [
-    catatan,
-    alasanSelisih ? `alasan selisih: ${alasanSelisih}` : '',
-  ].filter(Boolean);
-  const keterangan =
-    `Pembayaran angsuran ke-${a.ke} pinjaman LPD ${p.kreditur}` +
-    (bagianKeterangan.length > 0 ? ` — ${bagianKeterangan.join('; ')}` : '');
-
   const baris: JurnalBarisInput[] = [];
   if (nilaiPokok > 0)
     baris.push({ akun_kode: AKUN_HUTANG, debit: nilaiPokok, kredit: 0 });
@@ -1550,6 +1632,44 @@ export function bayarAngsuranPinjaman(
     debit: 0,
     kredit: totalBayar,
   });
+
+  // T-B06: baris yang dibangun sendiri selalu memakai akun bunga pinjaman dan
+  // 5050, sehingga peringatan ini tidak pernah muncul pada alur normal; tetap
+  // dipasang sebagai jaring pengaman bila komposisi baris berubah. Konfirmasi
+  // diperiksa sebelum transaksi sehingga tidak ada tulisan saat menunggu.
+  const bebanLain = daftarBebanLain(db, baris, akunBungaKode);
+  if (bebanLain.length > 0) {
+    if (!konfirmasiDendaLain)
+      return {
+        ...gagalBayar(pesanBebanLain(bebanLain)),
+        perluKonfirmasi: true,
+        selisih,
+      };
+    if (alasanDendaLain.length < 5)
+      return {
+        ...gagalBayar(
+          'Konfirmasi debit beban non-bunga wajib disertai alasan minimal 5 karakter.',
+        ),
+        perluKonfirmasi: true,
+        selisih,
+      };
+  }
+
+  const id = teks(data.id) || uid('pby');
+  const jurnalId = teks(data.jurnal_id ?? data.jurnalId) || uid('j-bayar-pinjaman');
+  const catatan = teks(data.catatan);
+  const noBukti = teks(data.noBukti);
+
+  const bagianKeterangan = [
+    catatan,
+    alasanSelisih ? `alasan selisih: ${alasanSelisih}` : '',
+    bebanLain.length > 0 && alasanDendaLain
+      ? `debit beban non-bunga dikonfirmasi: ${alasanDendaLain}`
+      : '',
+  ].filter(Boolean);
+  const keterangan =
+    `Pembayaran angsuran ke-${a.ke} pinjaman LPD ${p.kreditur}` +
+    (bagianKeterangan.length > 0 ? ` — ${bagianKeterangan.join('; ')}` : '');
 
   const inputJurnal: JurnalInput = {
     header: {
@@ -1618,7 +1738,10 @@ export function bayarAngsuranPinjaman(
         aksi: `PINJAMAN-BAYAR ${p.id}`,
         alasan:
           `Pembayaran angsuran ke-${a.ke} pinjaman LPD ${p.kreditur}` +
-          (alasanSelisih ? `; alasan selisih: ${alasanSelisih}` : ''),
+          (alasanSelisih ? `; alasan selisih: ${alasanSelisih}` : '') +
+          (bebanLain.length > 0
+            ? `; debit beban non-bunga dikonfirmasi${alasanDendaLain ? `: ${alasanDendaLain}` : ''}`
+            : ''),
         baru: {
           pinjaman_id: p.id,
           angsuran_id: a.id,
@@ -1629,6 +1752,14 @@ export function bayarAngsuranPinjaman(
           denda: nilaiDenda,
           total: totalBayar,
           ...(alasanSelisih ? { alasanSelisih } : {}),
+          // T-B06: pembayaran memuat debit beban non-bunga yang dikonfirmasi.
+          ...(bebanLain.length > 0
+            ? {
+                dendaLainDikonfirmasi: true,
+                akunDendaLain: bebanLain,
+                ...(alasanDendaLain ? { alasanDendaLain } : {}),
+              }
+            : {}),
         },
         ref_type: 'pinjaman',
         ref_id: p.id,
