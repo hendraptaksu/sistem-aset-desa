@@ -25,7 +25,10 @@ import {
   type BuatPinjamanInput,
   type PinjamanAngsuranInput,
 } from '../src/db/pinjaman.js';
-import { ringkasanAngsuran } from '../src/core/pinjamanAngsuran.js';
+import {
+  ringkasanAngsuran,
+  tambahBulanUtc,
+} from '../src/core/pinjamanAngsuran.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { getJurnalDetail, listAuditLog } from '../src/db/repository.js';
 import {
@@ -414,6 +417,45 @@ describe('T-A12 — validasi jadwal & realisasi angsuran', () => {
     expect(hasil.errors.join(' ')).toMatch(
       /Jadwal angsuran baris 1.*pokok dan bunga tidak boleh sama-sama 0.*bukan angsuran/,
     );
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM pinjaman_angsuran').get() as {
+        n: number;
+      }).n,
+    ).toBe(0);
+  });
+
+  // T-B07: bentuk jadwal lama dari generator saat pokok < tenor × Rp 1 —
+  // baris 1..N−1 ber-pokok 0 (dengan bunga 0) dan sisa pokok di baris akhir.
+  it('pesan baris nol hasil generator menyebut batas minimal pokok per bulan', () => {
+    const db = dbKas();
+    jurnalPencairan(db, 'j-cair', RP(50));
+    const total = RP(50);
+    const rows: PinjamanAngsuranInput[] = Array.from(
+      { length: 120 },
+      (_, i) => ({
+        ke: i + 1,
+        jatuh_tempo: tambahBulanUtc('2026-02-01', i + 1),
+        pokok: i === 119 ? total : 0,
+        bunga: 0,
+        catatan: '',
+      }),
+    );
+
+    const hasil = buatPinjaman(
+      db,
+      inputPinjaman({
+        pokok_awal: total,
+        sisa_pokok_awal: total,
+        tenor_bulan: 120,
+        angsuran: rows,
+      }),
+    );
+
+    expect(hasil.tersimpan).toBe(false);
+    const gabung = hasil.errors.join(' ');
+    expect(gabung).toMatch(/pokok dan bunga tidak boleh sama-sama 0/);
+    expect(gabung).toMatch(/minimal pokok per bulan Rp 1/);
+    expect(gabung).toMatch(/kecilkan tenor atau besarkan pokok/);
     expect(
       (db.prepare('SELECT COUNT(*) AS n FROM pinjaman_angsuran').get() as {
         n: number;

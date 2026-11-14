@@ -69,6 +69,10 @@ export function tambahBulanUtc(tanggal: string, bulan: number): string {
  * (targetPokok dalam sen). Baris terakhir menerima sisa agar total pokok
  * selalu tepat sama dengan target. Jatuh tempo baris `ke` = tanggal + `ke`
  * bulan. Bunga rencana (sen) diisi sama ke semua baris bila lebih dari 0.
+ *
+ * Menolak input bila pembulatan membuat pokok per baris jatuh ke 0
+ * (`targetPokok < tenor × 100 sen`) agar jadwal tidak menghasilkan baris
+ * tanpa pokok; tolak dengan batas minimal Rp 1 per bulan.
  */
 export function buatJadwalAngsuranOtomatis({
   targetPokok,
@@ -91,6 +95,14 @@ export function buatJadwalAngsuranOtomatis({
     throw new RangeError('Bunga rencana harus bilangan bulat ≥ 0.');
   }
   const pokokBaris = Math.floor(targetPokok / tenor / 100) * 100;
+  if (pokokBaris === 0) {
+    // T-B07: pembulatan Rupiah jatuh ke 0 bila pokok < tenor × Rp 1; baris
+    // 1..N−1 akan ber-pokok 0 dan seluruh pokok terbyur ke cicilan terakhir.
+    // Tolak sebelum jadwal dibuat dengan batas yang bisa ditindaklanjuti.
+    throw new RangeError(
+      `Pokok terlalu kecil untuk tenor ${tenor} bulan; minimal pokok per bulan Rp 1 (sen 100), total minimal ${tenor * 100} sen. Kecilkan tenor atau besarkan pokok.`,
+    );
+  }
   return Array.from({ length: tenor }, (_, i) => {
     const ke = i + 1;
     return {

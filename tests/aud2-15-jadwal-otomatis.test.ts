@@ -130,6 +130,47 @@ describe('AUD2-15 — generator jadwal angsuran', () => {
   });
 });
 
+// T-B07 — `floor(target/tenor/100)*100` jatuh ke 0 bila pokok < tenor × Rp 1:
+// baris 1..N−1 ber-pokok 0 dan seluruh pokok terbyur ke cicilan terakhir.
+describe('T-B07 — generator menolak baris pokok 0', () => {
+  it('menolak pokok Rp 50 tenor 120 bulan dengan pesan batas yang jelas', () => {
+    expect(() =>
+      buatJadwalAngsuranOtomatis({
+        targetPokok: RP(50),
+        tenor: 120,
+        tanggal: '2025-01-31',
+      }),
+    ).toThrow(
+      /pokok terlalu kecil untuk tenor 120 bulan.*minimal pokok per bulan Rp 1.*kecilkan tenor atau besarkan pokok/i,
+    );
+  });
+
+  it('menolak semua kombinasi pokok per bulan di bawah Rp 1', () => {
+    for (const kasus of [
+      { targetPokok: RP(1), tenor: 2 }, // 100 sen < 2 × 100 sen
+      { targetPokok: RP(5), tenor: 6 }, // 500 sen < 6 × 100 sen
+      { targetPokok: 99, tenor: 1 }, // di bawah Rp 1 sekalipun tenor 1
+    ]) {
+      expect(() =>
+        buatJadwalAngsuranOtomatis({ ...kasus, tanggal: '2025-01-31' }),
+        `pokok ${kasus.targetPokok} tenor ${kasus.tenor}`,
+      ).toThrow(RangeError);
+    }
+  });
+
+  it('menerima batas tepat Rp 1 per bulan tanpa mengubah bentuk jadwal', () => {
+    const rows = buatJadwalAngsuranOtomatis({
+      targetPokok: RP(120),
+      tenor: 120,
+      tanggal: '2025-01-31',
+    });
+    expect(rows).toHaveLength(120);
+    expect(rows.every((r) => r.pokok === 100)).toBe(true); // Rp 1 = 100 sen
+    expect(rows.reduce((s, r) => s + r.pokok, 0)).toBe(RP(120));
+    expect(rows.every((r) => r.jatuh_tempo >= '2025-01-31')).toBe(true);
+  });
+});
+
 describe('AUD2-15 — jadwal otomatis lolos validasi pinjaman', () => {
   it('menerima jadwal otomatis normal tanpa baris nol atau tanggal mundur', () => {
     const db = openDb(':memory:');

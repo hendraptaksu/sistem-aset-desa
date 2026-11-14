@@ -746,7 +746,7 @@ export function buatPinjaman(
         errors.push(`${label}: bunga harus bilangan bulat ≥ 0 (satuan sen).`);
       if (isInt(it.pokok) && isInt(it.bunga) && it.pokok === 0 && it.bunga === 0)
         errors.push(
-          `${label}: pokok dan bunga tidak boleh sama-sama 0; baris tanpa kewajiban bukan angsuran.`,
+          `${label}: pokok dan bunga tidak boleh sama-sama 0; baris tanpa kewajiban bukan angsuran. Bila baris ini hasil jadwal otomatis: minimal pokok per bulan Rp 1 (sen 100); kecilkan tenor atau besarkan pokok.`,
         );
 
       jadwal.push({
