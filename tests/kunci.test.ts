@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import {
   getIdleMenit,
+  KUNCI_KEAMANAN_BLOKIR_SAMPAI,
+  KUNCI_KEAMANAN_GAGAL,
   KUNCI_RESET_HASH,
   KUNCI_RESET_SALT,
   setPengaturan,
@@ -10,7 +12,13 @@ import {
   kodeDaruratDiatur,
   sudahSetupPin,
 } from '../src/db/repository.js';
-import { IDLE_DEFAULT_MENIT, validasiIdleMenit, validasiPin } from '../src/core/pin.js';
+import {
+  IDLE_DEFAULT_MENIT,
+  MAKS_GAGAL,
+  TUNDA_BLOKIR_MS,
+  validasiIdleMenit,
+  validasiPin,
+} from '../src/core/pin.js';
 import {
   ambilKodeDaruratSekali,
   aturIdle,
@@ -22,6 +30,7 @@ import {
   hashPin,
   INTERVAL_AUTO_KUNCI_MS,
   kunciLagi,
+  muatStateBlokir,
   normalkanKodeDarurat,
   operasiPanjangAktif,
   perluKunciOtomatis,
@@ -29,6 +38,7 @@ import {
   sentuhAktivitas,
   sesi,
   setupPin,
+  simpanStateBlokir,
   statusKunci,
   tahanAutoKunci,
   ubahPin,
@@ -138,6 +148,117 @@ describe('alur kunci end-to-end', () => {
     expect(statusKunci(db).terbuka).toBe(true);
     kunciLagi();
     expect(bukaKunci(db, '777777')).toBeNull();
+    db.close();
+  });
+});
+
+describe('T2.8 — lockout PIN bertahan setelah restart', () => {
+  const buatDbDenganPin = () => {
+    const db = dbBaru();
+    expect(setupPin(db, '123456')).toBeNull();
+    kunciLagi();
+    return db;
+  };
+
+  const salahLimaKali = (db: ReturnType<typeof dbBaru>) => {
+    for (let i = 0; i < MAKS_GAGAL - 1; i++) {
+      expect(bukaKunci(db, '000000')).toMatch(/sisa coba/i);
+    }
+    expect(bukaKunci(db, '000000')).toMatch(/terkunci/i);
+  };
+
+  it('(a) 5x salah menyimpan state dan blokirDetik > 0', () => {
+    const db = buatDbDenganPin();
+    salahLimaKali(db);
+    expect(statusKunci(db).blokirDetik).toBeGreaterThan(0);
+    expect(getPengaturan(db, KUNCI_KEAMANAN_GAGAL)).toBe('0');
+    expect(Number(getPengaturan(db, KUNCI_KEAMANAN_BLOKIR_SAMPAI))).toBeGreaterThan(Date.now());
+    db.close();
+  });
+
+  it('(b) simulasi restart: state dimuat ulang dan PIN benar tetap ditolak', () => {
+    const db = buatDbDenganPin();
+    salahLimaKali(db);
+    const sisaSebelum = statusKunci(db).blokirDetik;
+    expect(sisaSebelum).toBeGreaterThan(0);
+
+    // Simulasi proses baru: state memori kosong, lalu dimuat dari DB.
+    sesi.gagal = 0;
+    sesi.blokirSampai = 0;
+    muatStateBlokir(db);
+
+    expect(statusKunci(db).blokirDetik).toBeGreaterThan(0);
+    expect(bukaKunci(db, '123456')).toMatch(/coba lagi dalam/i);
+    expect(statusKunci(db).terbuka).toBe(false);
+    db.close();
+  });
+
+  it('(c) setelah blokir habis PIN benar berhasil dan state persisted kembali 0', () => {
+    const T0 = 1_800_000_000_000;
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(T0);
+      const db = buatDbDenganPin();
+      salahLimaKali(db);
+      expect(bukaKunci(db, '123456')).toMatch(/coba lagi dalam/i);
+
+      vi.setSystemTime(T0 + TUNDA_BLOKIR_MS + 1_000);
+      expect(statusKunci(db).blokirDetik).toBe(0);
+      // statusKunci ikut membersihkan nilai persisted yang kedaluwarsa.
+      expect(getPengaturan(db, KUNCI_KEAMANAN_BLOKIR_SAMPAI)).toBe('0');
+
+      expect(bukaKunci(db, '123456')).toBeNull();
+      expect(statusKunci(db).terbuka).toBe(true);
+      expect(statusKunci(db).gagal).toBe(0);
+      expect(statusKunci(db).blokirDetik).toBe(0);
+      expect(getPengaturan(db, KUNCI_KEAMANAN_GAGAL)).toBe('0');
+      expect(getPengaturan(db, KUNCI_KEAMANAN_BLOKIR_SAMPAI)).toBe('0');
+      db.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('(d) restart setelah unlock sukses tidak memblokir', () => {
+    const db = buatDbDenganPin();
+    for (let i = 0; i < 3; i++) expect(bukaKunci(db, '000000')).toMatch(/sisa coba/i);
+    expect(getPengaturan(db, KUNCI_KEAMANAN_GAGAL)).toBe('3');
+    expect(bukaKunci(db, '123456')).toBeNull();
+
+    sesi.gagal = 0;
+    sesi.blokirSampai = 0;
+    muatStateBlokir(db);
+    expect(statusKunci(db).gagal).toBe(0);
+    expect(statusKunci(db).blokirDetik).toBe(0);
+
+    kunciLagi();
+    expect(bukaKunci(db, '123456')).toBeNull();
+    expect(getPengaturan(db, KUNCI_KEAMANAN_GAGAL)).toBe('0');
+    expect(getPengaturan(db, KUNCI_KEAMANAN_BLOKIR_SAMPAI)).toBe('0');
+    db.close();
+  });
+
+  it('(e) setup PIN baru mereset lockout di memori dan DB', () => {
+    const db = dbBaru();
+    simpanStateBlokir(db, 3, Date.now() + TUNDA_BLOKIR_MS);
+    sesi.gagal = 3;
+    sesi.blokirSampai = Date.now() + TUNDA_BLOKIR_MS;
+
+    expect(setupPin(db, '123456')).toBeNull();
+    expect(statusKunci(db).gagal).toBe(0);
+    expect(statusKunci(db).blokirDetik).toBe(0);
+    expect(getPengaturan(db, KUNCI_KEAMANAN_GAGAL)).toBe('0');
+    expect(getPengaturan(db, KUNCI_KEAMANAN_BLOKIR_SAMPAI)).toBe('0');
+    db.close();
+  });
+
+  it('muatStateBlokir menimpa penuh: DB baru tanpa key tidak mewarisi state proses', () => {
+    sesi.gagal = 4;
+    sesi.blokirSampai = Date.now() + TUNDA_BLOKIR_MS;
+    const db = dbBaru();
+    muatStateBlokir(db);
+    expect(statusKunci(db).gagal).toBe(0);
+    expect(statusKunci(db).blokirDetik).toBe(0);
     db.close();
   });
 });

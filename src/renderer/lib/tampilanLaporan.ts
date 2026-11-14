@@ -4,7 +4,7 @@
 
 import type { CoaTipe, PosisiNormal } from '../../db/coa.js';
 import type { KelompokArusKas } from '../../core/reports.js';
-import { formatRp } from '../../utils/format.js';
+import { formatRp, formatTanggal } from '../../utils/format.js';
 
 export const LABEL_TIPE_AKUN: Record<CoaTipe, string> = {
   AKTIVA: 'Aktiva',
@@ -54,6 +54,17 @@ export const LABEL_KELOMPOK_ARUS_KAS: Record<KelompokArusKas, string> = {
 
 export function labelKelompokArusKas(kelompok: KelompokArusKas): string {
   return LABEL_KELOMPOK_ARUS_KAS[kelompok];
+}
+
+/**
+ * Label periode filter Laba Rugi/Arus Kas. Tanggal kosong berarti batas
+ * awal/akhir; dua-duanya kosong berarti seluruh riwayat (tombol "Semua tanggal").
+ */
+export function labelPeriodeLaporan(mulai: string, sampai: string): string {
+  if (!mulai && !sampai) return 'seluruh riwayat';
+  return `${mulai ? formatTanggal(mulai) : 'awal'} s/d ${
+    sampai ? formatTanggal(sampai) : 'akhir'
+  }`;
 }
 
 export type BadgeLaporan = {

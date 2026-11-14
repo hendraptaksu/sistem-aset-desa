@@ -3,9 +3,11 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   powerMonitor,
   screen,
   shell,
+  type MenuItemConstructorOptions,
 } from 'electron';
 import { config as loadEnv } from 'dotenv';
 import { basename, isAbsolute, join } from 'path';
@@ -13,10 +15,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import type Database from 'better-sqlite3';
 import { IDLE_DEFAULT_MENIT } from '../core/pin.js';
 import { openDb } from '../db/database.js';
+import type { HasilAuditIntegritas } from '../db/integritas.js';
 import { getIdleMenit } from '../db/repository.js';
 import { seedDev } from '../db/seed-dev.js';
-import { autoBackupHarian, backupPraUpgrade } from '../features/export/export.js';
+import { autoBackupHarian } from '../features/export/export.js';
 import { registerIpc, type IpcDeps } from './ipc.js';
+import { auditIntegritasSaatMulai } from './auditAwal.js';
 import { mulaiBackupPeriodik } from './backupPeriodik.js';
 import { buatLoggerApp, type LoggerApp } from './logApp.js';
 import {
@@ -38,9 +42,20 @@ import {
   type AksiPemulihanDb,
 } from './pemulihanDb.js';
 import { opsiUkuranJendela } from './ukuranJendela.js';
-import { urlDiizinkan } from './windowSecurity.js';
+import {
+  opsiDevTools,
+  shortcutDevTools,
+  templateMenuProduksi,
+  urlDiizinkan,
+} from './windowSecurity.js';
 
 let db: Database.Database;
+/**
+ * T-A16: hasil audit integritas saat startup disimpan di memori agar bisa
+ * dibaca renderer lewat IPC `audit:awal`. Nilainya `null` sebelum audit atau
+ * bila audit gagal dibaca; tidak pernah ditulis ke DB.
+ */
+let hasilAuditAwal: HasilAuditIntegritas | null = null;
 let win: BrowserWindow | null = null;
 let lokasi: LokasiData | null = null;
 let hentikanBackupPeriodik: (() => void) | null = null;
@@ -163,6 +178,7 @@ async function printPdfKeFile(
   landscape = false,
 ): Promise<void> {
   let pdfWin: BrowserWindow | null = null;
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
   try {
     pdfWin = new BrowserWindow({
       show: false,
@@ -171,7 +187,12 @@ async function printPdfKeFile(
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // T2.9: hidden window pencetak PDF juga tidak membuka DevTools di produksi.
+        ...opsiDevTools(devUrl),
       },
+    });
+    pdfWin.webContents.on('before-input-event', (event, input) => {
+      if (!devUrl && shortcutDevTools(input)) event.preventDefault();
     });
     await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     const pdf = await pdfWin.webContents.printToPDF({
@@ -230,6 +251,9 @@ function buatIpcDeps(): IpcDeps {
     db: () => db,
     setDb: (d) => {
       db = d;
+      // T-A16: restore mengganti database aktif. Audit ulang agar banner
+      // renderer tidak menampilkan temuan dari DB yang sudah tidak dipakai.
+      hasilAuditAwal = auditIntegritasSaatMulai(db, loggerMain());
     },
     dbPath,
     dialog: {
@@ -246,8 +270,8 @@ function buatIpcDeps(): IpcDeps {
     writeFile: (path, data) => writeFileSync(path, data),
     printPdf: printPdfKeFile,
     openPath: (path) => shell.openPath(path),
-    lampiranDir: () => lokasiData().attachmentsDir,
     lokasiData,
+    auditAwal: () => hasilAuditAwal,
     log: loggerMain() ?? undefined,
     // AUD-17: frame pengirim yang sah = renderer build atau dev origin.
     pengirim: {
@@ -291,9 +315,15 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // T2.9: DevTools hanya aktif saat dev; build produksi tidak bisa inspeksi.
+      ...opsiDevTools(devUrl),
     },
   });
 
+  // T2.9: blokir shortcut DevTools di produksi (menu default sudah diganti).
+  win.webContents.on('before-input-event', (event, input) => {
+    if (!devUrl && shortcutDevTools(input)) event.preventDefault();
+  });
   // Cegah window baru (target=_blank/window.open) dari renderer.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // Hanya izinkan navigasi ke dev server aplikasi atau file renderer sendiri.
@@ -326,29 +356,23 @@ function mulaiAplikasi(): void {
   });
 
   void app.whenReady().then(async () => {
+    // T2.9: menu produksi tanpa View/Toggle DevTools. Di dev, menu default
+    // dipertahankan agar DevTools tetap bisa dibuka saat pengembangan.
+    if (!process.env['ELECTRON_RENDERER_URL']) {
+      Menu.setApplicationMenu(
+        Menu.buildFromTemplate(
+          templateMenuProduksi() as unknown as MenuItemConstructorOptions[],
+        ),
+      );
+    }
     const lokasiAktif = lokasiData();
     const pathDb = lokasiAktif.dbPath;
     const log = loggerMain();
     log?.info(
       `Aplikasi mulai v${app.getVersion()} (mode ${lokasiAktif.mode}); log: ${log.file}`,
     );
-    // Backup pra-upgrade cukup sekali; retry hanya membuka ulang database.
-    let backupPraUpgradeDilakukan = false;
     const dbDibuka = await bukaDbDenganPemulihan({
-      buka: () => {
-        // Sebelum migrasi/reset skema: simpan DB lama (best-effort) agar tidak
-        // hilang. Kegagalan backup tidak boleh menghalangi percobaan buka DB.
-        if (!backupPraUpgradeDilakukan) {
-          backupPraUpgradeDilakukan = true;
-          try {
-            const p = backupPraUpgrade(pathDb, lokasiAktif.backupsDir);
-            if (p) loggerMain()?.info(`[backup-upgrade] ${p}`);
-          } catch (e) {
-            loggerMain()?.warn('[backup-upgrade] gagal', e);
-          }
-        }
-        return openDb(pathDb);
-      },
+      buka: () => openDb(pathDb),
       tanya: (e) => {
         // Detail teknis hanya untuk log; layar pemulihan memakai pesan ramah.
         loggerMain()?.error('[db] gagal membuka database', e);
@@ -367,6 +391,11 @@ function mulaiAplikasi(): void {
     });
     if (!dbDibuka) return;
     db = dbDibuka;
+    // DB-12/T-A16: audit integritas saat startup, SEBELUM backup otomatis.
+    // Hasilnya disimpan untuk banner renderer; temuan hanya dicatat ke log dan
+    // tidak memblokir aplikasi. Backup yang gagal audit tetap dibatalkan oleh
+    // auditSebelumBackup (fail-safe seperti restore).
+    hasilAuditAwal = auditIntegritasSaatMulai(db, loggerMain());
     // Auto-backup harian 1x sehari (best-effort, jangan blokir app bila gagal).
     try {
       const p = autoBackupHarian(db, lokasiAktif.backupsDir, 7);

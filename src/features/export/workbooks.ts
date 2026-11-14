@@ -14,12 +14,7 @@ import type {
   NeracaHasil,
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
-import type {
-  RealisasiAnggaranBaris,
-  RealisasiAnggaranHasil,
-  TotalRealisasiAnggaran,
-} from '../../core/anggaran.js';
-import type { Aset, Panjar, PanjarItem } from '../../core/types.js';
+import type { Panjar, PanjarItem } from '../../core/types.js';
 import type { PembantuHasil } from '../reports/types.js';
 
 // ---- Kop organisasi (wajib di SEMUA hasil export) ----
@@ -178,35 +173,6 @@ export async function workbookToBuffer(wb: ExcelJS.Workbook): Promise<Uint8Array
   return new Uint8Array(out);
 }
 
-/** Inventaris Aset → workbook. Nilai null tampil "— (belum dinilai)". */
-export async function asetToWorkbook(
-  rows: Aset[],
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Inventaris Aset');
-  tulisKopXlsx(ws, 'DAFTAR INVENTARIS ASET', `${rows.length} aset tercatat (non-keuangan, tidak masuk Neraca)`, 7, kop);
-  const header = ws.addRow(['Kode', 'Nama', 'Jenis', 'Luas (m²)', 'Lokasi', 'Status/Kondisi', 'Nilai']);
-  styleHeader(header);
-  for (const a of rows) {
-    ws.addRow([
-      a.kode,
-      a.nama,
-      a.jenis,
-      a.luas_m2 === null ? '' : a.luas_m2,
-      a.lokasi || '—',
-      `${a.status_hukum || '—'} / ${a.kondisi}`,
-      a.nilai_sen === null ? '— (belum dinilai)' : formatRp(a.nilai_sen),
-    ]);
-  }
-  const dinilai = rows.filter((a) => a.nilai_sen !== null).reduce((s, a) => s + (a.nilai_sen ?? 0), 0);
-  const tr = ws.addRow(['JUMLAH', `${rows.length} aset`, '', '', '', 'Total yang sudah dinilai', formatRp(dinilai)]);
-  styleHeader(tr);
-  ws.columns.forEach((c) => { c.width = 20; });
-  ws.getColumn(2).width = 34;
-  ws.getColumn(5).width = 28;
-  return wb;
-}
-
 // ---------------------------------------------------------------------------
 // Builder laporan double-entry (P1-10)
 // ---------------------------------------------------------------------------
@@ -214,7 +180,10 @@ export async function asetToWorkbook(
 // (sen / 100) + numFmt — bukan string hasil formatRp. formatRp hanya untuk
 // HTML/print. Nominal negatif tetap angka negatif; numFmt menampilkan kurung.
 
-/** Format sel nominal Rupiah: positif Rp 1.500,00; negatif (Rp 1.500,00). */
+/** Format sel nominal Rupiah: positif Rp 1.500,00; negatif (Rp 1.500,00).
+ * Sengaja 2 desimal (bukan `formatRp`) agar presisi sen tidak hilang dan kolom
+ * bisa di-SUM. Pemisah tampilan mengikuti locale Excel pengguna, bukan locale
+ * aplikasi. */
 export const NUMFMT_RP = '"Rp"#,##0.00;(Rp"#,##0.00)';
 /** Format sel persen: nilai fraksi 0..1 (0,5 = 50,00%). */
 export const NUMFMT_PERSEN = '0.00%';
@@ -544,19 +513,18 @@ export async function neracaSaldoToWorkbook(
   const total = ws.addRow(['TOTAL', '', '', null, null, null]);
   selRp(total, 4, ns.totalDebit);
   selRp(total, 5, ns.totalKredit);
-  selRp(total, 6, 0);
+  // Kolom Saldo sengaja dikosongkan: isinya saldo normal per akun, bukan
+  // selisih. Angka selisih hanya ditulis di baris SELISIH di bawah.
   styleHeader(total);
 
   const status = ws.addRow([
-    'STATUS',
-    ns.seimbang ? 'Seimbang' : 'Selisih',
+    'SELISIH',
+    ns.seimbang ? 'Seimbang' : 'Tidak seimbang',
     '',
     null,
     null,
     null,
   ]);
-  selRp(status, 4, 0);
-  selRp(status, 5, 0);
   selRp(status, 6, ns.selisih);
   styleHeader(status);
 
@@ -586,6 +554,12 @@ export async function labaRugiToWorkbook(
 
   const header = ws.addRow(['Kode', 'Uraian', 'Nominal', '%']);
   styleHeader(header);
+  if (lr.catatanTahunPertama) {
+    const catatan = ws.addRow([lr.catatanTahunPertama]);
+    catatan.font = { italic: true };
+    catatan.alignment = { wrapText: true };
+    ws.mergeCells(catatan.number, 1, catatan.number, 4);
+  }
 
   const pendapatan = lr.pendapatan.filter((b) => b.nominal !== 0);
   const beban = lr.beban.filter((b) => b.nominal !== 0);
@@ -624,96 +598,6 @@ export async function labaRugiToWorkbook(
   return wb;
 }
 
-const statusAnggaran = (lebih: boolean): string => (lebih ? 'Lebih' : 'Sesuai');
-
-/**
- * Anggaran & realisasi per akun → workbook (P2-1).
- * Kolom: Kode | Uraian | Pagu | Realisasi | Sisa | % | Status.
- * Semua nominal = NUMBER Rupiah (SEN/100) + numFmt Rp; persen = NUMBER fraksi
- * 0..1 + numFmt persen. Baris total memakai angka dari core/anggaran.ts.
- */
-export async function anggaranToWorkbook(
-  hasil: RealisasiAnggaranHasil,
-  kop?: KopOrganisasi,
-): Promise<ExcelJS.Workbook> {
-  const { wb, ws } = baseWorkbook('Anggaran');
-  const barisKopXlsx = tulisKopXlsx(
-    ws,
-    'ANGGARAN & REALISASI',
-    kopPeriodeEfektif(hasil.mulai, hasil.sampai),
-    7,
-    kop,
-  );
-  ws.views = [{ state: 'frozen', ySplit: barisKopXlsx + 1 }];
-
-  const header = ws.addRow([
-    'Kode',
-    'Uraian',
-    'Pagu',
-    'Realisasi',
-    'Sisa',
-    '%',
-    'Status',
-  ]);
-  styleHeader(header);
-
-  const tulisBagian = (
-    judul: string,
-    rows: readonly RealisasiAnggaranBaris[],
-    total: TotalRealisasiAnggaran,
-  ): void => {
-    ws.addRow(['', judul, null, null, null, null, '']);
-    for (const b of rows.filter((r) => r.anggaran !== 0 || r.realisasi !== 0)) {
-      const row = ws.addRow([b.kode, b.nama, null, null, null, null, statusAnggaran(b.lebih)]);
-      selRp(row, 3, b.anggaran);
-      selRp(row, 4, b.realisasi);
-      selRp(row, 5, b.sisa);
-      selPersen(row, 6, b.persen / 100);
-    }
-    const totalRow = ws.addRow([
-      '',
-      `Total ${judul === 'PENDAPATAN' ? 'Pendapatan' : judul === 'BEBAN' ? 'Beban' : judul}`,
-      null,
-      null,
-      null,
-      null,
-      statusAnggaran(total.lebih),
-    ]);
-    selRp(totalRow, 3, total.anggaran);
-    selRp(totalRow, 4, total.realisasi);
-    selRp(totalRow, 5, total.sisa);
-    selPersen(totalRow, 6, total.persen / 100);
-    styleHeader(totalRow);
-  };
-
-  tulisBagian('PENDAPATAN', hasil.pendapatan, hasil.totalPendapatan);
-  tulisBagian('BEBAN', hasil.beban, hasil.totalBeban);
-
-  const total = ws.addRow([
-    '',
-    'TOTAL ANGGARAN & REALISASI',
-    null,
-    null,
-    null,
-    null,
-    statusAnggaran(hasil.total.lebih),
-  ]);
-  selRp(total, 3, hasil.total.anggaran);
-  selRp(total, 4, hasil.total.realisasi);
-  selRp(total, 5, hasil.total.sisa);
-  selPersen(total, 6, hasil.total.persen / 100);
-  styleHeader(total);
-
-  ws.getColumn(1).width = 12;
-  ws.getColumn(2).width = 44;
-  ws.getColumn(3).width = 18;
-  ws.getColumn(4).width = 18;
-  ws.getColumn(5).width = 18;
-  ws.getColumn(6).width = 12;
-  ws.getColumn(7).width = 12;
-  return wb;
-}
-
 /** Neraca per cut-off → workbook (aset, kewajiban, ekuitas + laba turunan,
  * total aset/pasiva, status selisih). */
 export async function neracaHasilToWorkbook(
@@ -733,6 +617,12 @@ export async function neracaHasilToWorkbook(
 
   const header = ws.addRow(['Kode', 'Uraian', 'Nominal']);
   styleHeader(header);
+  if (n.catatanTahunPertama) {
+    const catatan = ws.addRow([n.catatanTahunPertama]);
+    catatan.font = { italic: true };
+    catatan.alignment = { wrapText: true };
+    ws.mergeCells(catatan.number, 1, catatan.number, 3);
+  }
 
   const tulisBagian = (judul: string, rows: { kode: string; nama: string; saldo: number }[]): void => {
     ws.addRow(['', judul, null]);
@@ -810,6 +700,12 @@ export async function arusKasToWorkbook(
   selRp(saldoAwal, 2, 0);
   selRp(saldoAwal, 3, 0);
   selRp(saldoAwal, 4, ak.saldoAwal);
+  if (ak.penyesuaianSaldoAwal !== 0) {
+    const penyesuaianSaldoAwal = ws.addRow(['Saldo pembukaan / penyesuaian', null, null, null, '', '', '', '']);
+    selRp(penyesuaianSaldoAwal, 2, 0);
+    selRp(penyesuaianSaldoAwal, 3, 0);
+    selRp(penyesuaianSaldoAwal, 4, ak.penyesuaianSaldoAwal);
+  }
   const totalMasuk = ws.addRow(['Total masuk', null, null, null, '', '', '', '']);
   selRp(totalMasuk, 2, ak.totalMasuk);
   selRp(totalMasuk, 3, 0);
@@ -922,11 +818,19 @@ export async function panjarToWorkbook(
       p.penerima,
       namaPanjar(coa, p.akun_kas_sumber),
       null,
-      p.status === 'OPEN' ? 'Belum' : 'Sudah',
+      p.status === 'OPEN'
+        ? 'Belum'
+        : p.status === 'CLOSED'
+          ? 'Sudah'
+          : 'DIBATALKAN',
       null,
       null,
       null,
-      p.status === 'CLOSED' ? `Ditutup ${p.tanggal_close ? formatTanggal(p.tanggal_close) : ''}`.trim() : 'Masih terbuka',
+      p.status === 'CLOSED'
+        ? `Ditutup ${p.tanggal_close ? formatTanggal(p.tanggal_close) : ''}`.trim()
+        : p.status === 'DIBATALKAN'
+          ? `Dibatalkan ${p.tanggal_batal ? formatTanggal(p.tanggal_batal) : ''}`.trim()
+          : 'Masih terbuka',
     ]);
     selRp(row, 4, p.jumlah);
     selRp(row, 6, realisasi);
@@ -1206,8 +1110,8 @@ export function neracaSaldoToHtml(
 <thead><tr><th>Kode</th><th>Nama Akun</th><th>Tipe</th><th>Debit</th><th>Kredit</th><th>Saldo</th></tr></thead>
 <tbody>${rows}</tbody>
 <tfoot>
-<tr><th colspan="3">TOTAL</th><th style="text-align:right">${formatRp(ns.totalDebit)}</th><th style="text-align:right">${formatRp(ns.totalKredit)}</th><th style="text-align:right">${formatRp(0)}</th></tr>
-<tr><th colspan="3">STATUS</th><th colspan="2">${ns.seimbang ? 'Seimbang' : 'Selisih'}</th><th style="text-align:right">${formatRp(ns.selisih)}</th></tr>
+<tr><th colspan="3">TOTAL</th><th style="text-align:right">${formatRp(ns.totalDebit)}</th><th style="text-align:right">${formatRp(ns.totalKredit)}</th><th></th></tr>
+<tr><th colspan="3">SELISIH</th><th colspan="2">${ns.seimbang ? 'Seimbang' : 'Tidak seimbang'}</th><th style="text-align:right">${formatRp(ns.selisih)}</th></tr>
 </tfoot></table>`;
 }
 
@@ -1225,6 +1129,7 @@ export function labaRugiToHtml(lr: LabaRugiHasil, kop?: KopOrganisasi): string {
   const pendapatan = lr.pendapatan.filter((b) => b.nominal !== 0);
   const beban = lr.beban.filter((b) => b.nominal !== 0);
   return `${kopHtml('LABA RUGI', kopPeriodeEfektif(lr.mulai, lr.sampai), kop)}
+${lr.catatanTahunPertama ? `<p><i>${esc(lr.catatanTahunPertama)}</i></p>` : ''}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th><th>%</th></tr></thead>
 <tbody>
@@ -1251,6 +1156,7 @@ export function neracaHasilToHtml(n: NeracaHasil, kop?: KopOrganisasi): string {
   const kewajiban = n.kewajiban.filter((a) => a.saldo !== 0);
   const ekuitas = n.ekuitas.filter((a) => a.saldo !== 0);
   return `${kopHtml('NERACA', `${kopPeriodeCutoff(n.cutoff)} — ${statusText}`, kop)}
+${n.catatanTahunPertama ? `<p><i>${esc(n.catatanTahunPertama)}</i></p>` : ''}
 <table border="1" cellpadding="6" cellspacing="0" width="100%">
 <thead><tr><th>Kode</th><th>Uraian</th><th>Nominal</th></tr></thead>
 <tbody>
@@ -1279,6 +1185,9 @@ export function arusKasToHtml(ak: ArusKasHasil, kop?: KopOrganisasi): string {
     ['Pendanaan', ak.pendanaan],
     ['Transfer', ak.transfer],
   ] as const;
+  const penyesuaianSaldoAwal = ak.penyesuaianSaldoAwal !== 0
+    ? `<tr><th>Saldo pembukaan / penyesuaian</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.penyesuaianSaldoAwal)}</th></tr>`
+    : '';
   const rows = ak.rows
     .map(
       (r) =>
@@ -1303,6 +1212,7 @@ ${ringkasan
   )
   .join('')}
 <tr><th>Saldo awal</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.saldoAwal)}</th></tr>
+${penyesuaianSaldoAwal}
 <tr><th>Total masuk</th><th style="text-align:right">${formatRp(ak.totalMasuk)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.totalMasuk)}</th></tr>
 <tr><th>Total keluar</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.totalKeluar)}</th><th style="text-align:right">${formatRp(-ak.totalKeluar)}</th></tr>
 <tr><th>Kenaikan / (penurunan)</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(0)}</th><th style="text-align:right">${formatRp(ak.kenaikan)}</th></tr>
@@ -1328,7 +1238,9 @@ export function panjarToHtml(
         p.total_realisasi ?? (p.items ?? []).reduce((s, it) => s + it.nominal, 0);
       const sisa = p.sisa ?? Math.max(0, p.jumlah - realisasi);
       const kurang = p.kurang ?? Math.max(0, realisasi - p.jumlah);
-      return `<tr><td>${formatTanggal(p.tanggal)}</td><td>${esc(p.penerima)}</td><td>${esc(namaPanjar(coa, p.akun_kas_sumber))}</td><td style="text-align:right">${formatRp(p.jumlah)}</td><td>${p.status === 'OPEN' ? 'Belum' : 'Sudah'}</td><td style="text-align:right">${formatRp(realisasi)}</td><td style="text-align:right">${formatRp(sisa)}</td><td style="text-align:right">${formatRp(kurang)}</td></tr>`;
+      const status =
+        p.status === 'OPEN' ? 'Belum' : p.status === 'CLOSED' ? 'Sudah' : 'DIBATALKAN';
+      return `<tr><td>${formatTanggal(p.tanggal)}</td><td>${esc(p.penerima)}</td><td>${esc(namaPanjar(coa, p.akun_kas_sumber))}</td><td style="text-align:right">${formatRp(p.jumlah)}</td><td>${status}</td><td style="text-align:right">${formatRp(realisasi)}</td><td style="text-align:right">${formatRp(sisa)}</td><td style="text-align:right">${formatRp(kurang)}</td></tr>`;
     })
     .join('');
   const totalJumlah = daftar.reduce((s, p) => s + p.jumlah, 0);
@@ -1375,25 +1287,6 @@ export function wrapPrintDocument(title: string, body: string, opts: { autoPrint
 <style>@page{size:A4;margin:14mm 12mm}@media print{button{display:none}}body{font-family:system-ui,sans-serif;margin:24px;font-size:12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:5px 7px}thead{display:table-header-group}tfoot{display:table-footer-group}tr{page-break-inside:avoid}</style>
 </head><body>${autoPrint ? '<button onclick="window.print()">Print / Save PDF</button>' : ''}${body}
 ${autoPrint ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`;
-}
-
-/** Inventaris Aset → HTML tabel untuk print/PDF. */
-export function asetToHtml(rows: Aset[], kop?: KopOrganisasi): string {
-  const body = rows
-    .map(
-      (a) =>
-        `<tr><td>${esc(a.kode)}</td><td>${esc(a.nama)}</td><td>${esc(a.jenis)}</td>` +
-        `<td>${a.luas_m2 === null ? '—' : String(a.luas_m2)}</td><td>${esc(a.lokasi || '—')}</td>` +
-        `<td>${esc(a.status_hukum || '—')} / ${esc(a.kondisi)}</td>` +
-        `<td style="text-align:right">${a.nilai_sen === null ? '— (belum dinilai)' : formatRp(a.nilai_sen)}</td></tr>`,
-    )
-    .join('');
-  const dinilai = rows.filter((a) => a.nilai_sen !== null).reduce((s, a) => s + (a.nilai_sen ?? 0), 0);
-  return `${kopHtml('DAFTAR INVENTARIS ASET', `${rows.length} aset tercatat (non-keuangan, tidak masuk Neraca)`, kop)}
-<table border="1" cellpadding="6" cellspacing="0" width="100%">
-<thead><tr><th>Kode</th><th>Nama</th><th>Jenis</th><th>Luas (m²)</th><th>Lokasi</th><th>Status/Kondisi</th><th>Nilai</th></tr></thead>
-<tbody>${body}</tbody>
-<tfoot><tr><th colspan="6">Total yang sudah dinilai (${rows.filter((a) => a.nilai_sen !== null).length} aset)</th><th style="text-align:right">${formatRp(dinilai)}</th></tr></tfoot></table>`;
 }
 
 /** Buka dokumen print bersih (hanya data) di window baru lalu auto-print.

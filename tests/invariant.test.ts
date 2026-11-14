@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb, SCHEMA_VERSION } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
 import { tutupBuku } from '../src/db/tutup.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
@@ -40,7 +41,7 @@ import {
 } from '../src/core/forms.js';
 import type { JurnalInput } from '../src/core/posting.js';
 import type { Jurnal, JurnalBarisInput, JurnalJenis } from '../src/core/types.js';
-import { COA } from '../src/db/coa.js';
+import { COA, KAS_KODES } from '../src/db/coa.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -105,7 +106,8 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
     try {
       // Saldo awal cukup untuk sebagian besar operasi; kas minus tetap diuji
       // lewat cabang khusus di bawah (konfirmasi sadar).
-      const awal = postingJurnal(db, {
+      // T-A07: jalur resmi saldo awal menulis penunjuk pembukaan + cut-over.
+      const awal = simpanSaldoAwal(db, {
         header: {
           id: 'inv-awal',
           tanggal: '2025-01-01',
@@ -125,6 +127,7 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
 
       let seq = 0;
       let panjarSisa = 0;
+      let panjarTerbukaId: string | null = null;
       let sudahTutup = false;
       const bisaDireversal: Jurnal[] = [];
       const jenisTerpakai = new Set<JurnalJenis>();
@@ -150,8 +153,10 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
 
       for (let i = 0; i < 200; i++) {
         // Tutup buku 2025 (tahun selesai, K2) di tengah rangkaian; sesudahnya
-        // semua jurnal 2025 wajib beralasan (kunci periode longgar).
-        if (i === 170) {
+        // semua jurnal 2025 wajib beralasan (kunci periode longgar). Tunggu
+        // operasi panjar #171 menutup panjar OPEN agar guard AUD2-06 tidak
+        // memblokir kunci periode.
+        if (i === 172) {
           const tutup = tutupBuku(db, 2025, {
             sekarang: '2026-10-22',
             catatan: 'Tutup buku uji invariant',
@@ -233,8 +238,8 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
           input = buatJurnalBayar({
             ...dasar,
             akunKas: pick(rnd, ['1001', '1029']),
-            // Form Bayar terpandu hanya menerima akun BEBAN; 2050 lewat menu
-            // Piutang & Hutang dan diuji di tests/pihak.test.ts.
+            // Form Bayar terpandu hanya menerima akun BEBAN; utang usaha
+            // memakai form Catat/Bayar Utang (tests/utang-usaha.test.ts).
             akunLawan: pick(rnd, beban),
           });
         } else if (operasi === 2) {
@@ -243,14 +248,19 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
           input = buatJurnalPindahDana({ ...dasar, dari, ke });
         } else {
           // Panjar: serah bila belum ada, pertanggungjawaban bila ada sisa.
-          if (panjarSisa <= 0 || rnd() < 0.5) {
+          // Hanya satu panjar OPEN pada satu waktu agar subledger uji konsisten.
+          if (panjarSisa <= 0) {
             input = buatJurnalPanjarSerah({
               ...dasar,
               akunKas: pick(rnd, ['1001', '1029']),
             });
             panjarSisa += nominal;
           } else {
-            const realisasi = Math.floor((panjarSisa * Math.floor(rnd() * 10)) / 10);
+            // Realisasi 10–90% agar selalu ada minimal satu item BEBAN dan
+            // panjar CLOSED tetap lengkap untuk audit.
+            const realisasi = Math.floor(
+              (panjarSisa * (1 + Math.floor(rnd() * 9))) / 10,
+            );
             const sisa = panjarSisa - realisasi;
             const baris: JurnalBarisInput[] = [];
             if (realisasi > 0) baris.push(D(pick(rnd, beban), realisasi));
@@ -273,6 +283,53 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
 
         const jurnal = simpan(input, `operasi #${i + 1}`);
         jenisTerpakai.add(input.header.jenis!);
+
+        // AUD2-04: jurnal PANJAR di test ini dibuat manual, jadi subledgernya
+        // ikut disinkronkan agar audit GL 1040 vs panjar OPEN tetap konsisten.
+        if (input.header.jenis === 'PANJAR') {
+          const debit1040 = input.baris
+            .filter((b) => b.akun_kode === '1040')
+            .reduce((s, b) => s + b.debit, 0);
+          const kredit1040 = input.baris
+            .filter((b) => b.akun_kode === '1040')
+            .reduce((s, b) => s + b.kredit, 0);
+          const createdAt = '2025-01-01T00:00:00.000Z';
+          if (debit1040 > 0) {
+            const kas =
+              input.baris.find((b) => b.kredit > 0 && b.akun_kode !== '1040')
+                ?.akun_kode ?? '1001';
+            panjarTerbukaId = `p-${jurnal.id}`;
+            db.prepare(
+              `INSERT INTO panjar
+                 (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+                  tanggal_close, jurnal_open_id, jurnal_close_id, created_at)
+               VALUES (?, ?, 'Penerima uji invariant', ?, ?, 'OPEN', NULL, ?, NULL, ?)`,
+            ).run(
+              panjarTerbukaId,
+              input.header.tanggal,
+              debit1040,
+              kas,
+              jurnal.id,
+              createdAt,
+            );
+          } else if (kredit1040 > 0 && panjarTerbukaId) {
+            db.prepare(
+              `UPDATE panjar
+                  SET status = 'CLOSED', tanggal_close = ?, jurnal_close_id = ?
+                WHERE id = ?`,
+            ).run(input.header.tanggal, jurnal.id, panjarTerbukaId);
+            const insertItem = db.prepare(
+              `INSERT INTO panjar_item (panjar_id, kategori_baga, nominal, jurnal_id)
+               VALUES (?, ?, ?, ?)`,
+            );
+            for (const b of input.baris) {
+              if (b.debit > 0 && beban.some((kode) => kode === b.akun_kode))
+                insertItem.run(panjarTerbukaId, b.akun_kode, b.debit, jurnal.id);
+            }
+            panjarTerbukaId = null;
+          }
+        }
+
         if (['TERIMA', 'BAYAR', 'TRANSFER'].includes(input.header.jenis!))
           bisaDireversal.push(jurnal);
         pastikanSeimbang(db, `operasi #${i + 1}`);
@@ -280,9 +337,16 @@ describe('P0-10 — 200 operasi acak-deterministik tetap seimbang', () => {
         // Reversal sesekali: jurnal asli tetap ada, saldo kembali, tetap nol.
         if (operasi === 3 && bisaDireversal.length > 0 && rnd() < 0.5) {
           const target = bisaDireversal.shift()!;
+          // T-A10: tanggal balik tidak boleh mundur dari jurnal asli. Untuk
+          // periode terkunci tetap pakai 31 Des 2025 (selalu >= tanggal asli).
+          const tanggalBalik = sudahTutup
+            ? '2025-12-31'
+            : tanggal >= target.tanggal
+              ? tanggal
+              : target.tanggal;
           const balik = reverseJurnal(db, target.id, 'Koreksi uji invariant', {
             id: `rev-${target.id}`,
-            tanggal: sudahTutup ? '2025-12-31' : tanggal,
+            tanggal: tanggalBalik,
             konfirmasiPeringatan: true,
           });
           expect(balik.tersimpan, balik.errors.join(' ')).toBe(true);
@@ -337,15 +401,24 @@ describe('P0-10 — DB v2 fresh + seed dev', () => {
         'akun',
         'audit_log',
         'tutup_buku',
+        'pengaturan',
         'panjar',
         'panjar_item',
-        'pihak',
-        'jurnal_pihak',
       ]) {
         expect(tabel, `tabel ${wajib} wajib ada`).toContain(wajib);
       }
       for (const lama of ['transaksi', 'coa']) {
         expect(tabel, `tabel single-entry ${lama} tidak boleh ada`).not.toContain(lama);
+      }
+      for (const lama of [
+        'rekonsiliasi_bank',
+        'anggaran',
+        'aset',
+        'lampiran_jurnal',
+        'jurnal_pihak',
+        'pihak',
+      ]) {
+        expect(tabel, `tabel legacy ${lama} tidak boleh ada`).not.toContain(lama);
       }
       expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
@@ -379,8 +452,17 @@ describe('P0-10 — DB v2 fresh + seed dev', () => {
       expect(n.totalAset).toBe(n.totalPasiva);
 
       const ak = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
-      expect(ak.saldoAwal).toBe(0);
+      const kodeKas = new Set(KAS_KODES);
+      const saldoPembukaanSeed = baris
+        .filter((b) => b.jenis === 'SALDO_AWAL' && b.tanggal === '2026-01-01' && kodeKas.has(b.akun_kode))
+        .reduce((jumlah, b) => jumlah + b.debit - b.kredit, 0);
+      expect(saldoPembukaanSeed).toBe(RP(350_000_000));
+      expect(ak.saldoAwal).toBe(saldoPembukaanSeed);
+      expect(ak.penyesuaianSaldoAwal).toBe(0);
       expect(ak.saldoAkhir).toBeGreaterThan(0);
+      expect(ak.saldoAkhir).toBe(
+        ak.saldoAwal + ak.penyesuaianSaldoAwal + ak.kenaikan,
+      );
       expect(ak.saldoAkhir).toBe(n.totalAset - saldoAkun(baris, '1040', '2026-12-31') - saldoAkun(baris, '1050', '2026-12-31'));
     } finally {
       db.close();
@@ -392,7 +474,8 @@ describe('P0-10 — koreksi setelah tutup buku tidak pernah selisih', () => {
   it('reversal + jurnal pengganti di periode terkunci tetap seimbang', () => {
     const db = openDb(':memory:');
     try {
-      const modal = postingJurnal(db, {
+      // T-A07: jalur resmi saldo awal menulis penunjuk pembukaan + cut-over.
+      const modal = simpanSaldoAwal(db, {
         header: {
           id: 'k-modal',
           tanggal: '2025-01-01',

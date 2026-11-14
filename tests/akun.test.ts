@@ -10,16 +10,31 @@ import { openDb } from '../src/db/database.js';
 import {
   getAkun,
   hapusAkun,
-  insertJurnal,
+  insertJurnalTervalidasi,
+  kodeKasAktifDb,
+  kodeKasDariDb,
   listAkun,
   listAuditLog,
+  listJurnalLengkap,
   setAkunAktif,
   tambahAkun,
   ubahNamaAkun,
 } from '../src/db/repository.js';
 import { postingJurnal, validasiJurnalDb } from '../src/db/posting.js';
-import { laporanLabaRugi, laporanNeraca, laporanNeracaSaldo } from '../src/db/laporan.js';
-import { akunBolehDiposting, COA } from '../src/db/coa.js';
+import {
+  laporanArusKas,
+  laporanBukuBesar,
+  laporanLabaRugi,
+  laporanNeraca,
+  laporanNeracaSaldo,
+  listBarisJurnal,
+} from '../src/db/laporan.js';
+import {
+  AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
+  akunBolehDiposting,
+  COA,
+} from '../src/db/coa.js';
+import { totalKas } from '../src/core/reports.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 
@@ -90,8 +105,24 @@ describe('Tambah akun COA', () => {
         tambahAkun(db, { kode: '4043', nama: 'SALAH PREFIX', tipe: 'BEBAN' }),
       ).toThrow(/5xxx/i);
       expect(() =>
-        tambahAkun(db, { kode: '5012', nama: 'BUKAN TIPE', tipe: 'AKTIVA' as never }),
-      ).toThrow(/BEBAN atau PENDAPATAN/i);
+        tambahAkun(db, { kode: '5012', nama: 'BUKAN TIPE', tipe: 'EKUITAS' as never }),
+      ).toThrow(/BEBAN, PENDAPATAN, atau AKTIVA/i);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak ubah nama yang bentrok tanpa membedakan huruf besar/kecil', () => {
+    const db = freshDb();
+    try {
+      tambahAkun(db, { kode: '5011', nama: 'PENGELUARAN ARTOS', tipe: 'BEBAN' });
+      tambahAkun(db, { kode: '5012', nama: 'AKUN KEDUA', tipe: 'BEBAN' });
+
+      expect(() => ubahNamaAkun(db, '5012', 'pengeluaran artos')).toThrow(/sudah dipakai/i);
+      expect(getAkun(db, '5012')?.nama).toBe('AKUN KEDUA');
+
+      // Rename valid tetap berjalan; constraint DB tidak mengganggu akun sah.
+      expect(ubahNamaAkun(db, '5012', 'AKUN KEDUA BARU').nama).toBe('AKUN KEDUA BARU');
     } finally {
       db.close();
     }
@@ -140,7 +171,7 @@ describe('Tambah akun COA', () => {
       expect(getAkun(db, '5012')).toBeNull();
 
       tambahAkun(db, { kode: '5013', nama: 'AKUN SUDAH DIPAKAI', tipe: 'BEBAN' });
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'awal', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
         [
@@ -174,12 +205,16 @@ describe('Tambah akun COA', () => {
     }
   });
 
-  it('menolak ubah/nonaktif/hapus akun bawaan', () => {
+  it('menolak ubah nama/hapus akun bawaan, tetapi status aktifnya boleh diubah', () => {
     const db = freshDb();
     try {
       expect(() => ubahNamaAkun(db, '5010', 'UBAH BAWAAN')).toThrow(/bawaan/i);
-      expect(() => setAkunAktif(db, '5010', false)).toThrow(/bawaan/i);
       expect(() => hapusAkun(db, '5010')).toThrow(/bawaan/i);
+      // DB-15: nonaktif akun bawaan non-sistem diizinkan (soft delete).
+      expect(setAkunAktif(db, '5010', false).aktif).toBe(false);
+      expect(getAkun(db, '5010')?.nama).toBe(
+        'BAGA SUAR (TELPON, LISTRIK, PDAM)',
+      );
     } finally {
       db.close();
     }
@@ -191,7 +226,7 @@ describe('Tambah akun COA', () => {
       tambahAkun(db, { kode: '5011', nama: 'PENGELUARAN ARTOS', tipe: 'BEBAN' });
       tambahAkun(db, { kode: '4043', nama: 'PENDAPATAN WEWEDALAN', tipe: 'PENDAPATAN' });
 
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'awal', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
         [
@@ -244,6 +279,554 @@ describe('Tambah akun COA', () => {
       expect(n.selisih).toBe(0);
     } finally {
       db.close();
+    }
+  });
+});
+
+describe('DB-15 — nonaktifkan akun bawaan tanpa menghapus histori', () => {
+  it('5010 bisa dinonaktifkan, hilang dari daftar aktif, tetapi histori/laporan tetap', () => {
+    const db = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-15', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
+        [
+          { akun_kode: '1001', debit: RP(10_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(10_000_000) },
+        ],
+      );
+      const posting = postingJurnal(db, {
+        header: {
+          id: 'j-5010',
+          tanggal: '2026-02-01',
+          keterangan: 'Bayar listrik sebelum akun dinonaktifkan',
+          jenis: 'BAYAR',
+        },
+        baris: [
+          { akun_kode: '5010', debit: RP(250_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(250_000) },
+        ],
+      });
+      expect(posting.errors).toEqual([]);
+      expect(posting.tersimpan).toBe(true);
+
+      const off = setAkunAktif(db, '5010', false, 'Digantikan akun 5060');
+      expect(off).toMatchObject({
+        kode: '5010',
+        nama: 'BAGA SUAR (TELPON, LISTRIK, PDAM)',
+        aktif: false,
+        sumber: 'BAWAAN',
+      });
+
+      // Soft delete: baris akun tetap ada, hanya tidak masuk dropdown aktif.
+      expect(getAkun(db, '5010')).not.toBeNull();
+      expect(listAkun(db, { aktif: true }).some((a) => a.kode === '5010')).toBe(false);
+      expect(listAkun(db, { aktif: false }).some((a) => a.kode === '5010')).toBe(true);
+
+      // Posting baru ke akun nonaktif ditolak; histori tidak berubah.
+      const validasi = validasiJurnalDb(db, {
+        header: {
+          id: 'j-5010-baru',
+          tanggal: '2026-03-01',
+          keterangan: 'Coba posting akun nonaktif',
+          jenis: 'BAYAR',
+        },
+        baris: [
+          { akun_kode: '5010', debit: RP(10_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(10_000) },
+        ],
+      });
+      expect(validasi.errors.join(' ')).toMatch(/tidak aktif/i);
+
+      // Audit menyimpan aksi, alasan, dan kondisi lama/baru; append-only.
+      const audit = listAuditLog(db).find((a) => a.aksi === 'AKUN-NONAKTIF 5010');
+      expect(audit).toBeDefined();
+      expect(audit?.alasan).toBe('Digantikan akun 5060');
+      expect(audit?.data_lama_json).toContain('"aktif":true');
+      expect(audit?.data_baru_json).toContain('"aktif":false');
+      expect(() =>
+        db
+          .prepare('UPDATE audit_log SET alasan = ? WHERE id = ?')
+          .run('ubah audit', audit!.id),
+      ).toThrow(/tidak boleh diubah/i);
+      expect(() =>
+        db.prepare('DELETE FROM audit_log WHERE id = ?').run(audit!.id),
+      ).toThrow(/tidak boleh dihapus/i);
+
+      // Laporan historis tetap memakai akun nonaktif dan saldonya.
+      const lr = laporanLabaRugi(db, { mulai: '2026-01-01', sampai: '2026-12-31' });
+      expect(lr.beban.find((r) => r.kode === '5010')?.nominal).toBe(RP(250_000));
+
+      const ns = laporanNeracaSaldo(db, '2026-12-31', 'kumulatif');
+      expect(ns.rows.some((r) => r.kode === '5010')).toBe(true);
+
+      const bb = laporanBukuBesar(db, '5010', { sampai: '2026-12-31' });
+      expect(bb).toMatchObject({
+        kode: '5010',
+        nama: 'BAGA SUAR (TELPON, LISTRIK, PDAM)',
+        totalDebit: RP(250_000),
+      });
+
+      expect(
+        listJurnalLengkap(db, { akun_kode: '5010' }).some((j) => j.id === 'j-5010'),
+      ).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T-A04: 4001 nonaktif lewat API tetap menyimpan histori dan memblokir input baru', () => {
+    const db = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-4001',
+          tanggal: '2026-01-05',
+          no_bukti: 'JU-2026-0400',
+          keterangan: 'Pendapatan historis sebelum nonaktif',
+          jenis: 'UMUM',
+        },
+        [
+          { akun_kode: '1001', debit: RP(75_000), kredit: 0 },
+          { akun_kode: '4001', debit: 0, kredit: RP(75_000) },
+        ],
+      );
+
+      const off = setAkunAktif(db, '4001', false, 'Digantikan akun pendapatan baru');
+      expect(off.aktif).toBe(false);
+      expect(listAkun(db, { aktif: true }).some((a) => a.kode === '4001')).toBe(false);
+      expect(listAkun(db, { aktif: false }).some((a) => a.kode === '4001')).toBe(true);
+
+      // Histori tetap dapat dibaca dan masuk laporan.
+      expect(listJurnalLengkap(db, { akun_kode: '4001' }).some((j) => j.id === 'j-4001')).toBe(
+        true,
+      );
+      const lr = laporanLabaRugi(db, { mulai: '2026-01-01', sampai: '2026-12-31' });
+      expect(lr.pendapatan.find((r) => r.kode === '4001')?.nominal).toBe(RP(75_000));
+
+      // Input manual baru ke akun nonaktif tetap ditolak.
+      const input = {
+        header: {
+          id: 'j-4001-baru',
+          tanggal: '2026-02-01',
+          keterangan: 'Coba input baru ke akun nonaktif',
+          jenis: 'UMUM' as const,
+        },
+        baris: [
+          { akun_kode: '1001', debit: RP(10_000), kredit: 0 },
+          { akun_kode: '4001', debit: 0, kredit: RP(10_000) },
+        ],
+      };
+      expect(validasiJurnalDb(db, input).errors.join(' ')).toMatch(/tidak aktif/i);
+      expect(postingJurnal(db, input).tersimpan).toBe(false);
+      expect(listJurnalLengkap(db).some((j) => j.id === 'j-4001-baru')).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak nonaktif akun sistem 3000/1040/1050/2050/2060/5063/5050 dengan pesan Indonesia', () => {
+    const db = freshDb();
+    try {
+      expect([...AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF].sort()).toEqual([
+        '1040',
+        '1050',
+        '2050',
+        '2060',
+        '3000',
+        '5050',
+        '5063',
+      ]);
+
+      for (const kode of ['3000', '1040', '1050', '2050', '2060', '5063', '5050']) {
+        expect(() => setAkunAktif(db, kode, false)).toThrow(/akun sistem/i);
+        expect(getAkun(db, kode)?.aktif, `akun ${kode} tetap aktif`).toBe(true);
+      }
+
+      // DB lama yang terlanjur membawa akun sistem nonaktif tetap bisa dipulihkan.
+      db.prepare("UPDATE akun SET aktif = 0 WHERE kode = '3000'").run();
+      expect(setAkunAktif(db, '3000', true).aktif).toBe(true);
+      expect(listAuditLog(db).some((a) => a.aksi === 'AKUN-AKTIF 3000')).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('T2.4 — 2060/5063/5050 ditolak dengan kode+nama, tetap aktif, dan bisa dipakai alur', () => {
+    const db = freshDb();
+    try {
+      const sistem = [
+        ['2060', 'HUTANG USAHA'],
+        ['5063', 'BEBAN BUNGA PINJAMAN'],
+        ['5050', 'BIAYA LAIN-LAIN'],
+      ] as const;
+
+      for (const [kode, nama] of sistem) {
+        let pesan = '';
+        try {
+          setAkunAktif(db, kode, false);
+        } catch (e) {
+          pesan = (e as Error).message;
+        }
+        expect(pesan, `akun ${kode} harus ditolak`).toMatch(/akun sistem/i);
+        expect(pesan).toContain(kode);
+        expect(pesan).toContain(nama);
+        expect(pesan).toMatch(/tidak bisa dinonaktifkan/i);
+        expect(pesan).toMatch(/Aktifkan/i);
+        expect(getAkun(db, kode)?.aktif).toBe(true);
+      }
+
+      // Penolakan tidak menulis audit nonaktif untuk akun sistem.
+      for (const [kode] of sistem) {
+        expect(
+          listAuditLog(db).some((a) => a.aksi === `AKUN-NONAKTIF ${kode}`),
+        ).toBe(false);
+      }
+
+      // Akun non-sistem tetap boleh dinonaktifkan.
+      expect(setAkunAktif(db, '5010', false).aktif).toBe(false);
+
+      // Alur utang usaha (2060) dan pinjaman (5063/5050) tetap bisa memakai akun.
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-t24', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
+        [
+          { akun_kode: '1001', debit: RP(10_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(10_000_000) },
+        ],
+      );
+      const catatUtang = postingJurnal(db, {
+        header: {
+          id: 'j-utang-t24',
+          tanggal: '2026-02-01',
+          keterangan: 'Catat utang usaha',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '5003', debit: RP(300_000), kredit: 0 },
+          { akun_kode: '2060', debit: 0, kredit: RP(300_000) },
+        ],
+      });
+      expect(catatUtang.errors, catatUtang.errors.join(' ')).toEqual([]);
+      expect(catatUtang.tersimpan).toBe(true);
+
+      const bayarUtang = postingJurnal(db, {
+        header: {
+          id: 'j-bayar-utang-t24',
+          tanggal: '2026-02-02',
+          keterangan: 'Bayar utang usaha',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '2060', debit: RP(300_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(300_000) },
+        ],
+      });
+      expect(bayarUtang.errors, bayarUtang.errors.join(' ')).toEqual([]);
+      expect(bayarUtang.tersimpan).toBe(true);
+
+      const bayarPinjaman = postingJurnal(db, {
+        header: {
+          id: 'j-bunga-t24',
+          tanggal: '2026-02-03',
+          keterangan: 'Bayar bunga dan denda pinjaman',
+          jenis: 'BAYAR',
+        },
+        baris: [
+          { akun_kode: '5063', debit: RP(100_000), kredit: 0 },
+          { akun_kode: '5050', debit: RP(10_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: RP(110_000) },
+        ],
+      });
+      expect(bayarPinjaman.errors, bayarPinjaman.errors.join(' ')).toEqual([]);
+      expect(bayarPinjaman.tersimpan).toBe(true);
+
+      // Reaktivasi tetap boleh bila DB lama membawa akun ini nonaktif.
+      for (const [kode] of sistem) {
+        db.prepare('UPDATE akun SET aktif = 0 WHERE kode = ?').run(kode);
+        expect(getAkun(db, kode)?.aktif).toBe(false);
+        expect(setAkunAktif(db, kode, true).aktif).toBe(true);
+        expect(listAuditLog(db).some((a) => a.aksi === `AKUN-AKTIF ${kode}`)).toBe(true);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('status nonaktif akun bawaan bertahan setelah reopen dan bisa diaktifkan lagi', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-akun-bawaan-'));
+    try {
+      const path = join(dir, 'pura.db');
+      let db = openDb(path);
+      setAkunAktif(db, '5010', false, 'Digantikan akun 5060');
+      db.close();
+
+      db = openDb(path);
+      try {
+        expect(getAkun(db, '5010')).toMatchObject({
+          kode: '5010',
+          nama: 'BAGA SUAR (TELPON, LISTRIK, PDAM)',
+          aktif: false,
+          sumber: 'BAWAAN',
+        });
+        expect(listAkun(db, { aktif: true }).some((a) => a.kode === '5010')).toBe(false);
+
+        const on = setAkunAktif(db, '5010', true, 'Dipakai lagi');
+        expect(on.aktif).toBe(true);
+        expect(listAkun(db, { aktif: true }).some((a) => a.kode === '5010')).toBe(true);
+
+        const audit = listAuditLog(db).find((a) => a.aksi === 'AKUN-AKTIF 5010');
+        expect(audit?.alasan).toBe('Dipakai lagi');
+        expect(audit?.data_lama_json).toContain('"aktif":false');
+        expect(audit?.data_baru_json).toContain('"aktif":true');
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('menolak nonaktif akun tambahan yang kode-nya tidak ada', () => {
+    const db = freshDb();
+    try {
+      expect(() => setAkunAktif(db, '9999', false)).toThrow(/tidak ditemukan/i);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('DB-14 — akun kas/bank baru dan metadata sumber', () => {
+  it('menambah bank 1100–1199, muncul di daftar kas, dan masuk total kas', () => {
+    const db = freshDb();
+    try {
+      const jumlahAwal = listAkun(db).length;
+      const bank = tambahAkun(db, {
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        is_kas: true,
+        kelompok: 'BANK',
+      });
+      expect(bank).toMatchObject({
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        posisi_normal: 'DEBIT',
+        aktif: true,
+        is_kas: true,
+        kelompok: 'BANK',
+        sumber: 'TAMBAHAN',
+      });
+      expect(listAkun(db)).toHaveLength(jumlahAwal + 1);
+      expect(kodeKasAktifDb(db)).toContain('1101');
+      expect(kodeKasDariDb(db)).toContain('1101');
+      expect(listAuditLog(db).some((a) => a.aksi === 'AKUN-TAMBAH 1101')).toBe(true);
+
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-bank', tanggal: '2026-01-01', keterangan: 'Saldo awal bank baru' },
+        [
+          { akun_kode: '1101', debit: RP(5_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(5_000_000) },
+        ],
+      );
+
+      const baris = listBarisJurnal(db);
+      expect(totalKas(baris, kodeKasDariDb(db), undefined, listAkun(db))).toBe(
+        RP(5_000_000),
+      );
+      expect(laporanArusKas(db).saldoAkhir).toBe(RP(5_000_000));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak kode di luar 1100–1199 dan metadata is_kas/kelompok yang tidak konsisten', () => {
+    const db = freshDb();
+    try {
+      const dasar = {
+        nama: 'BANK BARU',
+        tipe: 'AKTIVA' as const,
+        is_kas: true,
+        kelompok: 'BANK',
+      };
+      expect(() => tambahAkun(db, { ...dasar, kode: '1099' })).toThrow(/1100–1199/);
+      expect(() => tambahAkun(db, { ...dasar, kode: '1200' })).toThrow(/1100–1199/);
+      expect(() =>
+        tambahAkun(db, { ...dasar, kode: '1102', is_kas: false }),
+      ).toThrow(/is_kas = 1/i);
+      expect(() =>
+        tambahAkun(db, { ...dasar, kode: '1103', kelompok: 'PANJAR' }),
+      ).toThrow(/KAS, BANK, atau LPD/i);
+      expect(() =>
+        tambahAkun(db, {
+          kode: '5012',
+          nama: 'BEBAN TIDAK BOLEH KAS',
+          tipe: 'BEBAN',
+          is_kas: true,
+        }),
+      ).toThrow(/tidak boleh ditandai is_kas/i);
+      expect(() =>
+        tambahAkun(db, {
+          kode: '5013',
+          nama: 'KELOMPOK SALAH',
+          tipe: 'BEBAN',
+          kelompok: 'PENDAPATAN',
+        }),
+      ).toThrow(/Kelompok akun BEBAN/i);
+
+      // Tidak ada baris yang setengah jadi saat validasi gagal.
+      expect(getAkun(db, '1102')).toBeNull();
+      expect(getAkun(db, '1103')).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AUD2-01: laporanBukuBesar memakai master akun DB untuk akun tambahan', () => {
+    const db = freshDb();
+    try {
+      tambahAkun(db, { kode: '5011', nama: 'PENGELUARAN ARTOS', tipe: 'BEBAN' });
+      tambahAkun(db, {
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        is_kas: true,
+        kelompok: 'BANK',
+      });
+
+      insertJurnalTervalidasi(
+        db,
+        { id: 'awal-aud2-01', tanggal: '2026-01-01', keterangan: 'Saldo awal bank baru' },
+        [
+          { akun_kode: '1101', debit: RP(10_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(10_000_000) },
+        ],
+      );
+      const posting = postingJurnal(db, {
+        header: {
+          id: 'j-aud2-01',
+          tanggal: '2026-02-01',
+          keterangan: 'Uji akun beban tambahan',
+          jenis: 'UMUM',
+        },
+        baris: [
+          { akun_kode: '5011', debit: RP(250_000), kredit: 0 },
+          { akun_kode: '1101', debit: 0, kredit: RP(250_000) },
+        ],
+      });
+      expect(posting.tersimpan, posting.errors.join(' ')).toBe(true);
+
+      const beban = laporanBukuBesar(db, '5011', { sampai: '2026-12-31' });
+      expect(beban).toMatchObject({
+        kode: '5011',
+        nama: 'PENGELUARAN ARTOS',
+        totalDebit: RP(250_000),
+        saldoAkhir: RP(250_000),
+      });
+
+      const bank = laporanBukuBesar(db, '1101', { sampai: '2026-12-31' });
+      expect(bank).toMatchObject({
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        totalDebit: RP(10_000_000),
+        totalKredit: RP(250_000),
+        saldoAkhir: RP(9_750_000),
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AUD2-01: hapusAkun menolak referensi panjar dan pinjaman dengan pesan Indonesia', () => {
+    const db = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        { id: 'j-awal-hapus', tanggal: '2026-01-01', keterangan: 'Saldo awal' },
+        [
+          { akun_kode: '1001', debit: RP(1_000_000), kredit: 0 },
+          { akun_kode: '3000', debit: 0, kredit: RP(1_000_000) },
+        ],
+      );
+      for (const kode of ['1102', '1103']) {
+        tambahAkun(db, {
+          kode,
+          nama: `BANK UJI ${kode}`,
+          tipe: 'AKTIVA',
+          is_kas: true,
+          kelompok: 'BANK',
+        });
+      }
+      tambahAkun(db, { kode: '5012', nama: 'BUNGA PINJAMAN UJI', tipe: 'BEBAN' });
+
+      // Referensi panjar langsung (tanpa baris jurnal akun kas) tetap dicek.
+      db.prepare(
+        `INSERT INTO panjar
+           (id, tanggal, penerima, jumlah, akun_kas_sumber, status,
+            jurnal_open_id, created_at)
+         VALUES ('panjar-aud2-01', '2026-01-02', 'Uji', 100000, '1102', 'OPEN',
+                 'j-awal-hapus', '2026-01-02T00:00:00.000Z')`,
+      ).run();
+      expect(() => hapusAkun(db, '1102')).toThrow(/panjar.*akun kas sumber/i);
+      expect(getAkun(db, '1102')).not.toBeNull();
+
+      // Pinjaman BERJALAN belum punya jurnal, tetapi akun kas/bunganya dicek.
+      db.prepare(
+        `INSERT INTO pinjaman
+           (id, kreditur, akun_kas, akun_bunga, pokok_awal, sisa_pokok_awal,
+            tanggal_mulai, tenor_bulan, jurnal_pencairan_id, catatan, created_at)
+         VALUES ('pinjaman-aud2-01', 'LPD Uji', '1103', '5012', 500000, 500000,
+                 '2026-01-02', NULL, NULL, '', '2026-01-02T00:00:00.000Z')`,
+      ).run();
+      expect(() => hapusAkun(db, '1103')).toThrow(/pinjaman.*akun kas/i);
+      expect(() => hapusAkun(db, '5012')).toThrow(/pinjaman.*akun bunga/i);
+      expect(getAkun(db, '1103')).not.toBeNull();
+      expect(getAkun(db, '5012')).not.toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('akun bank tambahan tetap utuh setelah reopen (nama, tipe, aktif, metadata)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-akun-bank-'));
+    try {
+      const path = join(dir, 'pura.db');
+      let db = openDb(path);
+      tambahAkun(db, {
+        kode: '1101',
+        nama: 'BANK BPD REKENING BARU',
+        tipe: 'AKTIVA',
+        is_kas: true,
+        kelompok: 'LPD',
+      });
+      ubahNamaAkun(db, '1101', 'BANK BPD REKENING BARU (UBAH)');
+      setAkunAktif(db, '1101', false);
+      db.close();
+
+      db = openDb(path);
+      try {
+        expect(getAkun(db, '1101')).toMatchObject({
+          kode: '1101',
+          nama: 'BANK BPD REKENING BARU (UBAH)',
+          tipe: 'AKTIVA',
+          posisi_normal: 'DEBIT',
+          aktif: false,
+          is_kas: true,
+          kelompok: 'LPD',
+          sumber: 'TAMBAHAN',
+        });
+        expect(kodeKasAktifDb(db)).not.toContain('1101');
+        // Laporan historis tetap memakai akun nonaktif agar saldo lama utuh.
+        expect(kodeKasDariDb(db)).toContain('1101');
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

@@ -20,13 +20,15 @@ npm run smoke
 Perintah ini:
 
 1. build produksi (`npm run build`),
-2. menjalankan aplikasi dengan profil Electron dan database sementara,
-3. mengisi database kosong dengan 240 jurnal dummy (`PURA_SEED_DEV`),
-4. membuat PIN awal lewat UI, lalu memastikan dashboard tampil dan neraca
-   saldo **Seimbang**,
-5. menyimpan screenshot ke `e2e/artifacts/<waktu>/` (di-gitignore).
+2. menjalankan dua skenario E2E berurutan dengan profil Electron dan database
+   sementara: smoke UI (`e2e/smoke.test.mjs`) dan alur pinjaman
+   (`e2e/pinjaman.test.mjs`),
+3. pada smoke test, mengisi database kosong dengan 240 jurnal dummy
+   (`PURA_SEED_DEV`), membuat PIN awal lewat UI, lalu memastikan dashboard
+   tampil dan neraca saldo **Seimbang**,
+4. menyimpan screenshot ke `e2e/artifacts/<waktu>/` (di-gitignore).
 
-Saat gagal, folder data sementara (database, backup, lampiran) otomatis
+Saat gagal, folder data sementara (database, backup) otomatis
 disimpan dan path-nya dicetak di output. Untuk mempertahankan folder data meski
 test lulus:
 
@@ -78,8 +80,7 @@ Catatan:
 
 - `PURA_DB` menang atas lokasi data normal, tetapi **hanya dibaca saat app
   belum dipaketkan** (lihat `src/main/index.ts`).
-- Lampiran tetap berada di `<user-data-dir>/attachments`, backup di samping
-  file database.
+- Backup tetap berada di samping file database.
 - Selalu gunakan folder/profile baru saat menguji skenario merusak data,
   restore, atau pemulihan database. Jangan arahkan ke data produksi.
 - Untuk data dummy, tambahkan `PURA_SEED_DEV=true`. Seeder hanya mengisi
@@ -96,7 +97,7 @@ sqlite3 /tmp/pura-debug/pura.db "SELECT COUNT(*) FROM jurnal;"
 ```
 
 Backup otomatis/manual ada di folder `backups/` di samping database. Backup
-lengkap berisi `pura.db`, folder lampiran, dan `manifest.json`.
+lengkap berisi `pura.db` dan `manifest.json`.
 
 ## 5. Debug UI kustom dengan Playwright
 

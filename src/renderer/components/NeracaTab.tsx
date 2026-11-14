@@ -112,6 +112,15 @@ export function NeracaTab({
           <Badge tone="green">Dihitung dari jurnal</Badge>
         </div>
 
+        {data?.catatanTahunPertama && (
+          <p
+            className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900"
+            data-testid="catatan-tahun-pertama"
+          >
+            {data.catatanTahunPertama}
+          </p>
+        )}
+
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
           <Field label="Per tanggal">
             <TextInput

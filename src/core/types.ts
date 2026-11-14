@@ -7,13 +7,29 @@ export type Panjar = {
   penerima: string;
   jumlah: number; // sen
   akun_kas_sumber: string;
-  status: 'OPEN' | 'CLOSED';
+  /**
+   * Status publik. `DIBATALKAN` disimpan resmi di `panjar.status`; baris
+   * legacy dengan `jurnal_batal_id` tetap dibaca sebagai DIBATALKAN.
+   */
+  status: 'OPEN' | 'CLOSED' | 'DIBATALKAN';
   /** Tanggal pertanggungjawaban; null selama masih OPEN. */
   tanggal_close?: string | null;
   /** Jurnal serah (D 1040 / K kas sumber). */
   jurnal_open_id?: string | null;
   /** Jurnal pertanggungjawaban; null selama masih OPEN. */
   jurnal_close_id?: string | null;
+  /** DB-21: jurnal balik saat panjar OPEN dibatalkan; null bila tidak. */
+  jurnal_batal_id?: string | null;
+  /** DB-21: tanggal jurnal balik pembatalan. */
+  tanggal_batal?: string | null;
+  /** DB-21: alasan pembatalan yang juga tercatat di audit. */
+  alasan_batal?: string;
+  /**
+   * T-A00: asal dokumen panjar. `SALDO_AWAL` menandai panjar yang sudah ada
+   * pada pembukaan/cut-over; `jurnal_open_id` tetap wajib menunjuk jurnal
+   * pembukaan. Default `NORMAL` untuk seluruh panjar baru.
+   */
+  sumber?: 'NORMAL' | 'SALDO_AWAL';
   created_at?: string; // ISO
   /**
    * Ringkasan TURUNAN untuk daftar UI (dihitung dari `panjar_item`), bukan
@@ -30,6 +46,14 @@ export type PanjarItem = {
   panjar_id: string;
   kategori_baga: string; // kode BEBAN (lihat BEBAN_KODES di db/coa.ts)
   nominal: number; // sen
+  /**
+   * DB-18: detail nota per baris pertanggungjawaban. Baris lama/legacy boleh
+   * berisi string kosong; jurnal close tetap agregat per akun.
+   */
+  nota_nomor: string;
+  nota_tanggal: string; // YYYY-MM-DD atau '' untuk data legacy
+  toko: string;
+  keterangan: string;
   /** Jurnal pertanggungjawaban yang memuat realisasi item ini. */
   jurnal_id?: string | null;
 };
@@ -48,14 +72,31 @@ export type JurnalJenis =
   | 'SALDO_AWAL'
   | 'REVERSAL';
 
+/**
+ * T-A00 — peran jurnal dalam siklus hidup pembukuan, terpisah dari `jenis`
+ * dokumen. `OPENING` adalah jurnal saldo awal resmi; `OPENING_REPLACEMENT`
+ * menggantikan jurnal pembukaan lama setelah koreksi; `ADJUSTMENT` menandai
+ * penyesuaian eksplisit yang menggantikan jurnal lain; `NORMAL` untuk jurnal
+ * harian/reversal.
+ */
+export type JurnalPeran =
+  | 'NORMAL'
+  | 'OPENING'
+  | 'OPENING_REPLACEMENT'
+  | 'ADJUSTMENT';
+
 export type Jurnal = {
   id: string;
   tanggal: string; // YYYY-MM-DD
   no_bukti: string; // cth JU-2026-0001 (boleh kosong saat masih draft)
   keterangan: string;
   jenis: JurnalJenis;
+  /** T-A00: peran eksplisit dalam siklus pembukaan/koreksi. */
+  peran: JurnalPeran;
   grup_id: string; // default = id jurnal; reversal berbagi grup dengan aslinya
   reversal_of: string | null; // id jurnal yang dikoreksi (null = jurnal biasa)
+  /** T-A00: id jurnal yang digantikan jurnal ini (null = bukan pengganti). */
+  replaces_id: string | null;
   created_at: string; // ISO datetime
 };
 
@@ -80,67 +121,122 @@ export type JurnalHeaderInput = {
   keterangan: string;
   no_bukti?: string;
   jenis?: JurnalJenis;
+  /** T-A00: default `NORMAL` bila tidak diisi. */
+  peran?: JurnalPeran;
   grup_id?: string;
   reversal_of?: string | null;
+  /** T-A00: hanya sah untuk peran `OPENING_REPLACEMENT`/`ADJUSTMENT`. */
+  replaces_id?: string | null;
   created_at?: string;
 };
 
-// ---- Lampiran bukti jurnal (P2-4) ----
-// HANYA metadata. Isi file disimpan di `<userData>/attachments`, bukan di DB,
-// dan TIDAK ikut backup `.db`. `nama_simpan` relatif terhadap folder tersebut.
-export type LampiranJurnal = {
-  id: string;
-  jurnal_id: string;
-  nama_asli: string;
-  nama_simpan: string;
-  mime: string;
-  ukuran: number; // byte
-  created_at: string; // ISO datetime
+/**
+ * T-A00 — snapshot angka tutup buku, append-only. Snapshot bukan sumber angka
+ * laporan: laba/saldo tetap dihitung ulang dari jurnal. Tabel ini menyimpan
+ * hasil pembacaan saat tutup buku agar riwayat dapat diaudit/dibandingkan.
+ */
+export type TutupBukuSnapshot = {
+  id: number;
+  tahun: number;
+  versi: number;
+  laba: number;
+  total_aset: number;
+  total_kewajiban: number;
+  total_ekuitas: number;
+  total_pasiva: number;
+  selisih: number;
+  hash_jurnal: string;
+  created_at: string;
 };
 
-// ---- Pihak & piutang/hutang (P1-5) ----
-// `pihak` hanya master nama; `jurnal_pihak` hanya metadata penghubung.
-// Saldo TIDAK disimpan — selalu dihitung dari baris jurnal 1050/2050.
+// ---- Pinjaman LPD (DB-16b) ----
+// `pinjaman` hanya menyimpan parameter perjanjian. Jadwal adalah RENCANA;
+// realisasi pokok/bunga/denda selalu dibaca dari jurnal pembayaran yang
+// ditautkan lewat `pinjaman_bayar`. Tidak ada saldo berjalan yang disimpan.
 
-export type Pihak = {
-  id: string;
-  nama: string;
+/** Status angsuran diturunkan dari nominal pembayaran aktif terhadap jadwal. */
+export type PinjamanAngsuranStatus = 'BELUM' | 'SEBAGIAN' | 'LUNAS';
+
+export type PinjamanAngsuran = {
+  id: number;
+  pinjaman_id: string;
+  ke: number;
+  jatuh_tempo: string; // YYYY-MM-DD
+  pokok: number; // sen, rencana
+  bunga: number; // sen, rencana
   catatan: string;
-  created_at: string; // ISO
+  /** Turunan: LUNAS bila ada `pinjaman_bayar.angsuran_id` yang menunjuk baris ini. */
+  status: PinjamanAngsuranStatus;
+  dibayar: boolean;
+  pinjaman_bayar_id: string | null;
+  tanggal_bayar: string | null;
+  jurnal_id: string | null;
+  /** Turunan pembayaran aktif; nominal tetap bersumber dari jurnal. */
+  pokok_dibayar?: number;
+  bunga_dibayar?: number;
+  sisa_pokok?: number;
+  sisa_bunga?: number;
+  jumlah_pembayaran?: number;
 };
 
-export type JurnalPihak = {
+export type Pinjaman = {
+  id: string;
+  kreditur: string;
+  akun_kas: string;
+  akun_bunga: string;
+  pokok_awal: number; // sen
+  /** Sisa pokok saat pinjaman mulai; sama dengan pokok_awal untuk pencairan baru. */
+  sisa_pokok_awal: number; // sen
+  tanggal_mulai: string; // YYYY-MM-DD
+  tenor_bulan: number | null;
+  /** Null = pinjaman sudah berjalan/saldo awal; tidak ada jurnal pencairan baru. */
+  jurnal_pencairan_id: string | null;
+  catatan: string;
+  created_at: string;
+  /**
+   * TURUNAN, tidak pernah disimpan:
+   * `sisa_pokok_awal - SUM(debit 2050 pada jurnal pembayaran tertaut)`.
+   */
+  outstanding?: number;
+  total_pokok_dibayar?: number;
+  total_bunga_dibayar?: number;
+  total_denda_dibayar?: number;
+  /** Jadwal rencana + status turunan, terurut `ke`. */
+  angsuran?: PinjamanAngsuran[];
+  /** Pembatalan diturunkan dari jurnal balik pencairan, bukan saldo tersimpan. */
+  status?: 'AKTIF' | 'DIBATALKAN';
+  jurnal_batal_id?: string | null;
+};
+
+/** Nominal pembayaran yang DIBACA dari baris jurnal, bukan kolom tersimpan. */
+export type RincianPembayaranPinjaman = {
+  pokok: number;
+  bunga: number;
+  denda: number;
+  kas_keluar: number;
+};
+
+export type PinjamanBayar = {
+  id: string;
+  pinjaman_id: string;
+  angsuran_id: number | null;
   jurnal_id: string;
-  pihak_id: string;
-  /** 1050 PIUTANG LAIN LAIN atau 2050 HUTANG LAIN-LAIN. */
-  akun_kode: string;
-};
-
-/** Saldo per pihak, turunan jurnal (bukan kolom tersimpan). */
-export type PihakSaldo = Pihak & {
-  /** 1050: debit − kredit (positif = masih menjadi piutang). */
-  piutang: number;
-  /** 2050: kredit − debit (positif = masih menjadi hutang). */
-  hutang: number;
-  /** piutang − hutang; negatif berarti kewajiban pihak lebih besar. */
-  neto: number;
-};
-
-/** Riwayat jurnal satu pihak untuk layar drill-down. */
-export type JurnalPihakTampil = Jurnal & {
-  pihak_id: string;
-  /** Akun pihak pada jurnal ini (1050/2050). */
-  akun_pihak: string;
-  /** Mutasi pada akun pihak tersebut. */
-  debit: number;
-  kredit: number;
-  baris: JurnalBaris[];
+  tanggal: string;
+  catatan: string;
+  created_at: string;
+  /** Semua nominal di bawah ini turunan dari jurnal, bukan kolom tabel. */
+  pokok: number;
+  bunga: number;
+  denda: number;
+  kas_keluar: number;
+  /** Histori asli dipertahankan ketika catatan pembayaran dibatalkan. */
+  dibatalkan?: boolean;
+  jurnal_batal_id?: string | null;
 };
 
 export type TutupBuku = {
   tahun: number;
   created_at: string; // ISO
-  backup_path: string;
   catatan: string;
   /**
    * @deprecated Model v2 TIDAK menyimpan laba. Field ini hanya disisakan agar
@@ -159,28 +255,11 @@ export type AuditLog = {
   data_lama_json: string;
   /** JSON kondisi sesudah operasi ('' = tidak ada data baru). */
   data_baru_json: string;
-};
-
-// ---- Inventaris Aset (non-keuangan, terpisah dari BKU/Neraca) ----
-// Tanah/bangunan druwe/hibah yang nilai nominalnya belum pasti dicatat di sini,
-// BUKAN di BKU. `nilai_sen` opsional (null = belum dinilai) dan TIDAK ikut
-// persamaan Neraca Aktiva=Pasiva (yang hanya hitung Kas+Piutang+Panjar).
-export type AsetJenis = 'TANAH' | 'BANGUNAN' | 'LAINNYA';
-export type AsetKondisi = 'BAIK' | 'RUSAK_RINGAN' | 'RUSAK_BERAT' | 'TIDAK_DIKETAHUI';
-
-export type Aset = {
-  id: string;
-  kode: string; // kode inventaris unik, cth AST-001
-  nama: string;
-  jenis: AsetJenis;
-  luas_m2: number | null;
-  lokasi: string;
-  status_hukum: string; // druwe / SHM / hibah / sewa / ...
-  tahun_perolehan: number | null;
-  asal_usul: string;
-  kondisi: AsetKondisi;
-  keterangan: string;
-  nilai_sen: number | null; // null = belum dinilai (wajar untuk tanah/bangunan desa)
-  created_at: string; // ISO
-  updated_at: string; // ISO
+  /**
+   * DB-27: jenis objek yang dirujuk audit (mis. 'jurnal', 'panjar',
+   * 'pinjaman', 'tutup_buku', 'akun'). '' = baris legacy tanpa referensi.
+   */
+  ref_type?: string;
+  /** ID objek yang dirujuk; '' bila tidak ada. */
+  ref_id?: string;
 };

@@ -5,8 +5,16 @@
 
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AKUN_MODAL, COA, KAS_KODES } from '../src/db/coa.js';
+import {
+  AKUN_MODAL,
+  AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
+  COA,
+  KAS_KODES,
+  type Coa,
+} from '../src/db/coa.js';
 import {
   buatJurnalBayar,
   buatJurnalPindahDana,
@@ -21,14 +29,36 @@ import {
   type JurnalInput,
   type PostingContext,
 } from '../src/core/posting.js';
-import { validasiBentukJurnalInput } from '../src/main/validation.js';
+import { validasiBentukJurnalInput, validasiBentukTransaksiInput } from '../src/main/validation.js';
 import { openDb } from '../src/db/database.js';
 import { postingJurnal } from '../src/db/posting.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import { neracaSaldo, saldoAkun, totalKas } from '../src/core/reports.js';
-import { TransaksiTab } from '../src/renderer/components/TransaksiTab.js';
+import {
+  labelTombolSaldoAwal,
+  modeTombolSaldoAwal,
+  TransaksiTab,
+} from '../src/renderer/components/TransaksiTab.js';
 import { FormTransaksiTerpandu } from '../src/renderer/components/TransaksiForm.js';
-import { KonfirmasiModal } from '../src/renderer/components/ui.js';
+import {
+  ALASAN_SIBUK,
+  ErrorBox,
+  KonfirmasiModal,
+  alasanTombolNonaktif,
+  pilihFokusAwal,
+} from '../src/renderer/components/ui.js';
+import {
+  KonfirmasiSimpanSaldoAwal,
+  SaldoAwalWizard,
+  alasanSimpanSaldoAwal,
+} from '../src/renderer/components/SaldoAwalWizard.js';
+import {
+  KonfirmasiBackup,
+  KonfirmasiRestoreDb,
+  KonfirmasiRestoreLengkap,
+} from '../src/renderer/components/DashboardTab.js';
+import { alasanKoreksiTidakSiap } from '../src/renderer/components/JurnalTab.js';
+import { akunBolehDinonaktifkan } from '../src/renderer/components/AkunTab.js';
 
 const RP = (rupiah: number): number => rupiah * 100;
 const AKUN: AkunPosting[] = COA.map((a) => ({ ...a, aktif: true }));
@@ -144,7 +174,7 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
       tanggal: '2026-10-22',
       keterangan: 'Pendapatan parkir',
       no_bukti: 'JU-2026-0001',
-      jenis: 'TERIMA',
+      jenis: 'UMUM',
     },
     baris: [
       { akun_kode: '1001', debit: RP(150_000), kredit: 0 },
@@ -167,7 +197,7 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
       tanggal: '2026-10-22',
       keterangan: 'Pendapatan parkir',
       no_bukti: 'JU-2026-0001',
-      jenis: 'TERIMA',
+      jenis: 'UMUM',
     });
     expect(hasil.input.alasan).toBe('alasan uji');
     expect(hasil.input.header).not.toHaveProperty('grup_id');
@@ -219,6 +249,42 @@ describe('P1-1 — validasi bentuk input jurnal dari renderer', () => {
     expect(jenisReversal.ok).toBe(false);
     if (!jenisReversal.ok) expect(jenisReversal.error).toMatch(/menu Koreksi/);
   });
+
+  it('DB-03: manual hanya menerima UMUM; transaksi terpandu memakai validator sendiri', () => {
+    for (const jenis of [
+      'PANJAR',
+      'PIUTANG',
+      'HUTANG',
+      'TERIMA',
+      'BAYAR',
+      'TRANSFER',
+      'SALDO_AWAL',
+    ] as const) {
+      const manual = validasiBentukJurnalInput({
+        ...valid,
+        header: { ...valid.header, jenis },
+      });
+      expect(manual.ok, jenis).toBe(false);
+      if (!manual.ok) expect(manual.error).toMatch(/hanya menerima jenis UMUM/i);
+    }
+
+    for (const jenis of ['TERIMA', 'BAYAR', 'TRANSFER', 'HUTANG'] as const) {
+      const terpandu = validasiBentukTransaksiInput({
+        ...valid,
+        header: { ...valid.header, jenis },
+      });
+      expect(terpandu.ok, jenis).toBe(true);
+      if (terpandu.ok) expect(terpandu.input.header.jenis).toBe(jenis);
+    }
+
+    for (const jenis of ['UMUM', 'PANJAR', 'PIUTANG', 'REVERSAL', 'SALDO_AWAL'] as const) {
+      const terpandu = validasiBentukTransaksiInput({
+        ...valid,
+        header: { ...valid.header, jenis },
+      });
+      expect(terpandu.ok, jenis).toBe(false);
+    }
+  });
 });
 
 describe('P1-1 — layar Transaksi', () => {
@@ -235,10 +301,18 @@ describe('P1-1 — layar Transaksi', () => {
     expect(html).not.toContain('Segera hadir');
     expect(html).not.toContain('Jenis lain menyusul');
     expect(html).toContain('Buka Buku Panjar');
-    expect(html).toContain('Buka Piutang &amp; Hutang');
-    for (const label of ['Bayar', 'Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
+    for (const label of [
+      'Bayar',
+      'Pindah Dana',
+      'Catat Utang',
+      'Bayar Utang',
+      'Panjar',
+    ]) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Buka Hutang');
+    expect(html).not.toContain('Piutang/Hutang');
+    expect(html).not.toContain('Buka Piutang');
   });
 });
 
@@ -283,17 +357,24 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
     expect(validasi.boleh).toBe(true);
   });
 
-  it('menolak lawan panjar 1040, piutang 1050, dan hutang 2050 di form Bayar', () => {
+  it('menolak lawan panjar 1040, aset lain 1050, hutang 2050, dan utang usaha 2060 di form Bayar', () => {
     // Akun-akun ini punya alur/dokumen sendiri; form Bayar terpandu tidak boleh
     // membuat jurnal tanpa dokumen panjar atau tanpa pihak.
-    for (const akun of ['1040', '1050', '2050']) {
+    for (const akun of ['1040', '2050', '2060']) {
       expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
         /tidak bisa dipakai di form Bayar terpandu/,
       );
       expect(() => buatJurnalBayar(dasarBayar({ akunLawan: akun }))).toThrow(
-        /Buku Panjar.*Piutang & Hutang/,
+        /Buku Panjar.*Catat Utang/,
       );
     }
+    // 1050 hanya aset lain lama; alur piutang sudah dihapus.
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '1050' }))).toThrow(
+      /aset lain lama/i,
+    );
+    expect(() => buatJurnalBayar(dasarBayar({ akunLawan: '1050' }))).toThrow(
+      /alur piutang sudah dihapus/i,
+    );
   });
 
   it('tetap menerima akun beban lain, mis. 5000 BIAYA KESEKRETARIATAN', () => {
@@ -379,7 +460,7 @@ describe('P1-2 — builder Bayar/Beban untuk form terpandu', () => {
 });
 
 describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
-  it('menampilkan kartu Bayar siap dipakai dan pintasan Panjar/Piutang', () => {
+  it('menampilkan kartu Bayar siap dipakai dan pintasan Panjar/Hutang', () => {
     // Smoke SSR: default tetap Terima Uang, tetapi kartu Bayar sudah aktif.
     const html = renderToStaticMarkup(
       createElement(TransaksiTab, { onBukaTab: () => {} }),
@@ -392,25 +473,48 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
       ?.split('</button>')[0];
     expect(kartuBayar).toBeDefined();
     expect(kartuBayar).not.toContain('disabled');
-    expect(kartuBayar).toContain('Siap dipakai');
-    expect(html).toContain('Sedang dipakai');
-    // Panjar & Piutang/Hutang kini menjadi pintasan tab, bukan slot disabled.
-    for (const [label, tujuan] of [
-      ['Panjar', 'Buka Buku Panjar'],
-      ['Piutang/Hutang', 'Buka Piutang &amp; Hutang'],
-    ] as const) {
-      const kartu = html
-        .split('<button')
-        .find((s) => s.includes(`>${label}</span>`))
-        ?.split('</button>')[0];
-      expect(kartu).toBeDefined();
-      expect(kartu ?? '').not.toContain('disabled');
-      expect(kartu).toContain(tujuan);
-    }
+    // Status teknis "Siap dipakai" tidak boleh tampil di UI; kartu yang bisa
+    // dipakai cukup dirender normal tanpa label tambahan.
+    expect(kartuBayar).not.toContain('Siap dipakai');
+    expect(html).not.toContain('Siap dipakai');
+    // Status terpilih cukup lewat border/latar/ikon/aria-pressed; label teks hanya
+    // dipakai untuk kartu pintasan yang berpindah tab.
+    expect(html).not.toContain('Sedang dipakai');
+    // Panjar menjadi pintasan tab; form utang ada langsung di tab Transaksi.
+    const kartuPanjar = html
+      .split('<button')
+      .find((s) => s.includes('>Panjar</span>'))
+      ?.split('</button>')[0];
+    expect(kartuPanjar).toBeDefined();
+    expect(kartuPanjar ?? '').not.toContain('disabled');
+    expect(kartuPanjar).toContain('Buka Buku Panjar');
     expect(html).not.toContain('Segera hadir');
-    for (const label of ['Pindah Dana', 'Panjar', 'Piutang/Hutang']) {
+    for (const label of ['Pindah Dana', 'Catat Utang', 'Bayar Utang', 'Panjar']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Buka Hutang');
+    expect(html).not.toContain('Piutang/Hutang');
+  });
+
+  it('membawa pengguna ke form saat kartu jenis diklik', () => {
+    // Perilaku scroll tidak bisa diuji lewat SSR, jadi kunci kontraknya di
+    // sumber: klik kartu memanggil pilihJenis, lalu scroll ke wrapper form dan
+    // fokus ke isian pertama.
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/TransaksiTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('pilihJenis(id)');
+    expect(sumber).toContain('formRef');
+    expect(sumber).toContain('scrollIntoView');
+    expect(sumber).toContain("block: 'start'");
+    expect(sumber).toContain('scroll-mt-24');
+    expect(sumber).toContain('.focus({ preventScroll: true })');
+    // Sorotan singkat supaya mata tahu ke mana harus mendarat; ring memudar
+    // dan tidak dipaksakan saat pengguna memilih kurangi gerak.
+    expect(sumber).toContain('sorotForm');
+    expect(sumber).toContain('ring-2 ring-emerald-600 ring-offset-2');
+    expect(sumber).toContain('motion-reduce:transition-none');
   });
 
   it('merender form Bayar dengan label ramah dan pilihan akun non-kas', () => {
@@ -430,11 +534,11 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).toContain('Keterangan');
     expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
     expect(html).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
-    expect(html).toContain('Pagu anggaran diatur di menu Anggaran');
+    expect(html).not.toContain('Anggaran');
     expect(html).not.toContain('menyusul');
     expect(html).toContain('Untuk panjar gunakan menu Buku Panjar');
-    expect(html).toContain('untuk piutang/hutang gunakan menu Piutang &amp; Hutang');
-    // Hanya akun BEBAN yang menjadi lawan; panjar/piutang/hutang punya menu sendiri.
+    expect(html).toContain('untuk pinjaman/utang gunakan kartu Catat Utang / Bayar Utang');
+    // Hanya akun BEBAN yang menjadi lawan; panjar/utang punya kartu sendiri.
     expect(html).toContain('<optgroup label="Beban">');
     expect(html).not.toContain('<optgroup label="Hutang">');
     expect(html).not.toContain('Aset lain (panjar/piutang)');
@@ -444,6 +548,44 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     // Pendapatan & ekuitas tidak boleh menjadi lawan pembayaran.
     expect(html).not.toContain('PENDAPATAN PARKIR');
     expect(html).not.toContain('3000 — MODAL');
+  });
+
+  it('menampilkan lima akun DB-13 dan 5063 DB-13b di form Terima/Bayar, akun lama tetap ada', () => {
+    const terima = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'TERIMA',
+        coa: COA,
+        memuat: false,
+      }),
+    );
+    for (const label of [
+      '4006 — PENDAPATAN PARKIR BPD (KHUSUS)',
+      '4060 — PENDAPATAN WEWEDALAN (UPACARA)',
+    ]) {
+      expect(terima).toContain(label);
+    }
+    expect(terima).toContain('4005 — PENDAPATAN PARKIR');
+    expect(terima).toContain('4008 — PENDAPATAN PUNIA');
+    expect(terima).toContain('4041 — PENDAPATAN SESARI');
+
+    const bayar = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR',
+        coa: COA,
+        memuat: false,
+      }),
+    );
+    for (const label of [
+      '5060 — PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)',
+      '5061 — PENGELUARAN ARTOS (UPACARA)',
+      '5062 — PENGELUARAN BANTEN RUTIN (HARIAN)',
+      '5063 — BEBAN BUNGA PINJAMAN',
+    ]) {
+      expect(bayar).toContain(label);
+    }
+    expect(bayar).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
+    expect(bayar).toContain('5004 — BAGA UPAKARA');
+    expect(bayar).toContain('5050 — BIAYA LAIN-LAIN');
   });
 });
 
@@ -496,7 +638,7 @@ describe('P1-3 — builder Pindah Dana untuk form terpandu', () => {
     expect(() => buatJurnalPindahDana(dasarPindah({ ke: '1014' }))).toThrow(
       /berbeda/,
     );
-    // Kedua sisi wajib dompet kas/bank: 1040 panjar & 1050 piutang bukan dompet.
+    // Kedua sisi wajib dompet kas/bank: 1040 panjar & 1050 aset lain bukan dompet.
     expect(() => buatJurnalPindahDana(dasarPindah({ dari: '4005' }))).toThrow(
       /kas\/bank/,
     );
@@ -593,24 +735,27 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
   it('merender judul, akibat aksi, tombol Batal, dan tombol lanjut', () => {
     const html = renderToStaticMarkup(
       createElement(KonfirmasiModal, {
-        judul: 'Hapus aset dari inventaris?',
-        deskripsi: 'Aset AST-001 akan dihapus. Angka laporan tidak berubah.',
+        judul: 'Hapus akun 5011?',
+        deskripsi: 'Akun 5011 akan dihapus. Jurnal lama tetap memakai namanya.',
         labelYa: 'Ya, hapus',
         onBatal: () => {},
         onKonfirmasi: () => {},
       }),
     );
-    expect(html).toContain('Hapus aset dari inventaris?');
-    expect(html).toContain('Aset AST-001 akan dihapus.');
+    expect(html).toContain('Hapus akun 5011?');
+    expect(html).toContain('Akun 5011 akan dihapus.');
     expect(html).toContain('Batal');
     expect(html).toContain('Ya, hapus');
     expect(html).not.toContain('disabled=""');
+    // T3.8: fokus awal ke pilihan aman (Batal), bukan tombol destruktif.
+    expect(html).toContain('autofocus');
+    expect(html).toContain('data-fokus-awal="true"');
   });
 
   it('menampilkan status sibuk dan menonaktifkan tombol aksi serta X', () => {
     const html = renderToStaticMarkup(
       createElement(KonfirmasiModal, {
-        judul: 'Tutup buku?',
+        judul: 'Kunci periode?',
         deskripsi: 'Periode akan dikunci.',
         sibuk: true,
         onBatal: () => {},
@@ -624,7 +769,7 @@ describe('P1-12 — komponen konfirmasi aksi besar', () => {
 });
 
 describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
-  it('mengaktifkan kartu Pindah Dana dan menyediakan pintasan Panjar/Piutang', () => {
+  it('mengaktifkan kartu Pindah Dana dan menyediakan pintasan Panjar/Hutang', () => {
     const html = renderToStaticMarkup(
       createElement(TransaksiTab, { onBukaTab: () => {} }),
     );
@@ -635,11 +780,26 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
       ?.split('</button>')[0];
     expect(kartuPindah).toBeDefined();
     expect(kartuPindah).not.toContain('disabled');
-    expect(kartuPindah).toContain('Siap dipakai');
+    expect(kartuPindah).not.toContain('Siap dipakai');
+    expect(html).not.toContain('Siap dipakai');
     expect(html).not.toContain('Segera hadir');
-    for (const label of ['Panjar', 'Piutang/Hutang']) {
+    for (const label of ['Panjar', 'Catat Utang', 'Bayar Utang']) {
       expect(html).toContain(label);
     }
+    expect(html).not.toContain('Buka Hutang');
+    expect(html).not.toContain('Piutang/Hutang');
+  });
+
+  it('menonaktifkan simpan dan menampilkan peringatan bila akun Dari = Ke', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/TransaksiForm.tsx'),
+      'utf8',
+    );
+    // Guard UI: formSah mensyaratkan dua dompet berbeda, tombol simpan memakai
+    // formSah, dan pesan kesalahan ditampilkan di bawah pilihan Ke.
+    expect(sumber).toContain('akunKas !== akunKe');
+    expect(sumber).toContain('disabled={busy || memuat || !formSah}');
+    expect(sumber).toContain('Akun Dari dan Ke harus berbeda');
   });
 
   it('merender form Pindah Dana dengan label Dari/Ke dan penjelasan total kas', () => {
@@ -669,5 +829,403 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
     expect(html).not.toContain('3000 — MODAL');
     // Label UI memakai istilah Indonesia, bukan "Transfer".
     expect(html).not.toContain('Transfer');
+  });
+});
+
+describe('DB-14 — akun bank/LPD baru di form kas', () => {
+  const bankBaru: Coa = {
+    kode: '1101',
+    nama: 'BANK BPD REKENING BARU',
+    tipe: 'AKTIVA',
+    posisi_normal: 'DEBIT',
+    aktif: true,
+    is_kas: true,
+    kelompok: 'BANK',
+    sumber: 'TAMBAHAN',
+  };
+
+  it('builder Pindah Dana memakai is_kas dari master, bukan daftar statis', () => {
+    const input = buatJurnalPindahDana({
+      tanggal: '2026-10-22',
+      dari: '1001',
+      ke: '1101',
+      nominal: RP(250_000),
+      keterangan: 'Pindah ke rekening bank baru',
+      daftarAkun: [...COA, bankBaru],
+    });
+    expect(input.baris).toEqual([
+      { akun_kode: '1101', debit: RP(250_000), kredit: 0 },
+      { akun_kode: '1001', debit: 0, kredit: RP(250_000) },
+    ]);
+  });
+
+  it('form Pindah Dana menampilkan rekening bank tambahan sebagai pilihan kas', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: [...COA, bankBaru],
+        memuat: false,
+      }),
+    );
+    expect(html).toContain('1101 — BANK BPD REKENING BARU');
+  });
+
+  it('fallback objek Coa lama tanpa is_kas tetap mengenali 1001 sebagai kas', () => {
+    const lama = COA.filter((a) => !Object.hasOwn(a, 'is_kas'));
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: lama,
+        memuat: false,
+      }),
+    );
+    expect(html).toContain('1001 — KAS');
+  });
+
+  it('form Daftar Akun menyediakan jenis AKTIVA, kelompok, dan penanda is_kas', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/AkunTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain("'AKTIVA'");
+    expect(sumber).toContain('Kelompok akun');
+    expect(sumber).toContain('is_kas');
+    expect(sumber).toContain('KODE_KAS_TAMBAHAN_MIN');
+  });
+});
+
+describe('DB-15 — akun nonaktif tidak muncul di form input baru', () => {
+  const NONAKTIF = new Set(['5010', '1014', '2060']);
+  const coaDenganNonaktif: Coa[] = COA.map((a) => ({
+    ...a,
+    aktif: !NONAKTIF.has(a.kode),
+  }));
+
+  it('form Bayar menyembunyikan beban 5010 yang dinonaktifkan', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+
+    expect(html).not.toContain('5010 — BAGA SUAR');
+    expect(html).toContain('5060 — PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)');
+    expect(html).toContain('5004 — BAGA UPAKARA');
+    expect(html).toContain('5050 — BIAYA LAIN-LAIN');
+  });
+
+  it('form Pindah Dana menyembunyikan dompet 1014 yang dinonaktifkan', () => {
+    const html = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'PINDAH',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+
+    expect(html).not.toContain('1014 — LPD 12.005150/DL/2020');
+    expect(html).toContain('1001 — KAS');
+    expect(html).toContain('1010 — LPD 12.05163/DL/2020 KIOS');
+  });
+
+  it('form utang menyembunyikan beban/kas nonaktif', () => {
+    const catat = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'CATAT_UTANG',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+    expect(catat).not.toContain('5010 — BAGA SUAR');
+    expect(catat).toContain('5003 — BAGA WEWANGUNAN');
+
+    const bayar = renderToStaticMarkup(
+      createElement(FormTransaksiTerpandu, {
+        jenis: 'BAYAR_UTANG',
+        coa: coaDenganNonaktif,
+        memuat: false,
+      }),
+    );
+    expect(bayar).not.toContain('1014 — LPD 12.005150/DL/2020');
+    expect(bayar).toContain('1001 — KAS');
+  });
+
+  it('Saldo Awal hanya menawarkan akun aktif, bukan dompet/hutang nonaktif', () => {
+    const html = renderToStaticMarkup(
+      createElement(SaldoAwalWizard, {
+        coa: coaDenganNonaktif,
+        onClose: () => {},
+        onSukses: () => {},
+      }),
+    );
+
+    expect(html).not.toContain('1014 — LPD 12.005150/DL/2020');
+    expect(html).not.toContain('2060 — HUTANG USAHA');
+    expect(html).toContain('1001 — KAS');
+    expect(html).toContain('1010 — LPD 12.05163/DL/2020 KIOS');
+    expect(html).toContain('2050 — HUTANG LAIN-LAIN');
+  });
+
+  it('Buku Panjar hanya memakai dompet dan akun beban aktif di dropdown', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/PanjarTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('isAkunKasData(c) && c.aktif !== false');
+    expect(sumber).toContain("c.tipe === 'BEBAN' && c.aktif !== false");
+  });
+
+  it('hanya akun non-sistem yang mendapat tombol nonaktifkan', () => {
+    expect([...AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF].sort()).toEqual([
+      '1040',
+      '1050',
+      '2050',
+      '2060',
+      '3000',
+      '5050',
+      '5063',
+    ]);
+    expect(akunBolehDinonaktifkan({ kode: '5010' })).toBe(true);
+    expect(akunBolehDinonaktifkan({ kode: '1001' })).toBe(true);
+    for (const kode of ['3000', '1040', '1050', '2050', '2060', '5063', '5050']) {
+      expect(akunBolehDinonaktifkan({ kode }), `akun sistem ${kode}`).toBe(false);
+    }
+
+    // Teks bantuan AkunTab menyebut seluruh akun sistem yang dilindungi.
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/AkunTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('3000/1040/1050/2050/2060/5063/5050');
+  });
+});
+
+describe('T3.8 — poles UX aksi berisiko', () => {
+  it('ErrorBox diumumkan sebagai alert assertive', () => {
+    const html = renderToStaticMarkup(
+      createElement(ErrorBox, { msg: 'Kas akan minus. Periksa nominal lalu coba lagi.' }),
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('aria-live="assertive"');
+    expect(html).toContain('aria-atomic="true"');
+    expect(html).toContain('Periksa nominal lalu coba lagi.');
+    expect(renderToStaticMarkup(createElement(ErrorBox, { msg: null }))).toBe('');
+  });
+
+  it('memprioritaskan penanda fokus aman, lalu field, lalu kontrol pertama, lalu dialog', () => {
+    const fake = (
+      nama: string,
+      opsi: { fokusAwal?: boolean; autofocus?: boolean; field?: boolean } = {},
+    ) => ({
+      nama,
+      hasAttribute: (attr: string) =>
+        (attr === 'data-fokus-awal' && opsi.fokusAwal === true) ||
+        (attr === 'autofocus' && opsi.autofocus === true),
+      matches: (sel: string) => opsi.field === true && sel.includes('input'),
+    });
+    const aman = fake('batal', { fokusAwal: true, autofocus: true });
+    const field = fake('alasan', { field: true });
+    const tombol = fake('tombol');
+    const dialog = fake('dialog');
+
+    expect(pilihFokusAwal([tombol, field, aman], dialog)).toBe(aman);
+    expect(pilihFokusAwal([tombol, field], dialog)).toBe(field);
+    expect(pilihFokusAwal([tombol], dialog)).toBe(tombol);
+    expect(pilihFokusAwal([], dialog)).toBe(dialog);
+  });
+
+  it('modal menutup dengan Escape hanya saat tidak sibuk dan mengembalikan fokus', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/ui.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain("e.key === 'Escape'");
+    expect(sumber).toContain('if (atas.sibuk()) return;');
+    expect(sumber).toContain('pemicu.focus({ preventScroll: true })');
+  });
+
+  it('alasan tombol nonaktif selalu tersedia saat sibuk atau ada alasan', () => {
+    expect(alasanTombolNonaktif({ sibuk: true })).toBe(ALASAN_SIBUK);
+    expect(alasanTombolNonaktif({ alasan: '  Jurnal sudah dikoreksi.  ' })).toBe(
+      'Jurnal sudah dikoreksi.',
+    );
+    expect(alasanTombolNonaktif({})).toBeUndefined();
+  });
+
+  it('konfirmasi backup menjelaskan yang berubah, yang tetap, dan enkripsi', () => {
+    const lengkap = renderToStaticMarkup(
+      createElement(KonfirmasiBackup, {
+        jenis: 'lengkap',
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(lengkap).toContain('Buat backup lengkap?');
+    expect(lengkap).toContain('Yang berubah:');
+    expect(lengkap).toContain('Yang tetap:');
+    expect(lengkap).toContain('data aktif');
+    expect(lengkap).toContain('tidak dihapus');
+    expect(lengkap).toContain('tidak terenkripsi');
+    expect(lengkap).toContain('manifest.json');
+
+    const db = renderToStaticMarkup(
+      createElement(KonfirmasiBackup, {
+        jenis: 'db',
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(db).toContain('Buat backup Export .db?');
+    expect(db).toContain('tanpa');
+    expect(db).toContain('Yang berubah:');
+    expect(db).toContain('Yang tetap:');
+  });
+
+  it('konfirmasi restore menyebut penggantian data, cadangan, PIN, dan langkah berikutnya', () => {
+    const db = renderToStaticMarkup(
+      createElement(KonfirmasiRestoreDb, {
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(db).toContain('diganti');
+    expect(db).toContain('manifest.json');
+    expect(db).toContain('PIN aplikasi dipertahankan');
+    expect(db).toContain('pre-restore');
+    expect(db).toMatch(/Bila hasil restore tidak sesuai/);
+    expect(db).toContain('dikunci');
+
+    const lengkap = renderToStaticMarkup(
+      createElement(KonfirmasiRestoreLengkap, {
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(lengkap).toContain('disarankan');
+    expect(lengkap).toContain('Yang tetap:');
+    expect(lengkap).toContain('pre-restore');
+    expect(lengkap).toContain('manifest.json');
+    expect(lengkap).toContain('dikunci');
+  });
+
+  it('konfirmasi simpan saldo awal menjelaskan kunci wizard dan jalur koreksi', () => {
+    const awal = renderToStaticMarkup(
+      createElement(KonfirmasiSimpanSaldoAwal, {
+        mode: 'awal',
+        tanggal: '2026-01-01',
+        total: RP(1_500_000),
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(awal).toContain('Simpan saldo awal sekarang?');
+    expect(awal).toContain('Yang berubah:');
+    expect(awal).toContain('Yang tetap:');
+    expect(awal).toContain('Koreksi Saldo Awal');
+    expect(awal).toContain('terkunci');
+
+    const koreksi = renderToStaticMarkup(
+      createElement(KonfirmasiSimpanSaldoAwal, {
+        mode: 'koreksi',
+        tanggal: '2026-01-01',
+        total: RP(1_500_000),
+        onBatal: () => {},
+        onKonfirmasi: () => {},
+      }),
+    );
+    expect(koreksi).toContain('Simpan koreksi saldo awal?');
+    expect(koreksi).toContain('jurnal balik');
+    expect(koreksi).toContain('audit');
+    expect(koreksi).toMatch(/Koreksi Saldo Awal lagi/);
+  });
+
+  it('helper alasan tombol Simpan saldo awal dan Koreksi jurnal konsisten', () => {
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: false,
+        formSah: true,
+        modeKoreksi: false,
+        alasanKoreksiCukup: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: false,
+        formSah: false,
+        modeKoreksi: false,
+        alasanKoreksiCukup: false,
+      }),
+    ).toMatch(/minimal satu saldo/);
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: false,
+        formSah: true,
+        modeKoreksi: true,
+        alasanKoreksiCukup: false,
+      }),
+    ).toMatch(/minimal 5 karakter/);
+    expect(
+      alasanSimpanSaldoAwal({
+        busy: true,
+        formSah: true,
+        modeKoreksi: false,
+        alasanKoreksiCukup: true,
+      }),
+    ).toBe(ALASAN_SIBUK);
+
+    const dasar = {
+      busy: false,
+      alasanSah: true,
+      tanggalBalikValid: true,
+      langkah: 'alasan' as const,
+      formSah: true,
+    };
+    expect(alasanKoreksiTidakSiap(dasar)).toBeUndefined();
+    expect(alasanKoreksiTidakSiap({ ...dasar, alasanSah: false })).toMatch(
+      /minimal 5 karakter/,
+    );
+    expect(alasanKoreksiTidakSiap({ ...dasar, tanggalBalikValid: false })).toMatch(
+      /tanggal jurnal balik/,
+    );
+    expect(
+      alasanKoreksiTidakSiap({
+        ...dasar,
+        langkah: 'isi-ulang',
+        formSah: false,
+      }),
+    ).toMatch(/total debit/);
+  });
+});
+
+describe('T1.8 — tombol koreksi saldo awal di layar Transaksi', () => {
+  it('hanya memilih Koreksi saat status sudah dimuat dan terkunci', () => {
+    expect(modeTombolSaldoAwal(null)).toBe('awal');
+    expect(labelTombolSaldoAwal(null)).toBe('Wizard Saldo Awal');
+
+    expect(modeTombolSaldoAwal({ boleh: true, jumlahJurnal: 0 })).toBe('awal');
+    expect(labelTombolSaldoAwal({ boleh: true, jumlahJurnal: 0 })).toBe(
+      'Wizard Saldo Awal',
+    );
+
+    expect(modeTombolSaldoAwal({ boleh: false, jumlahJurnal: 1 })).toBe(
+      'koreksi',
+    );
+    expect(labelTombolSaldoAwal({ boleh: false, jumlahJurnal: 1 })).toBe(
+      'Koreksi Saldo Awal',
+    );
+  });
+
+  it('sumber TransaksiTab memuat alur koreksi dan tidak membuat status boleh:true', () => {
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/TransaksiTab.tsx'),
+      'utf8',
+    );
+    expect(sumber).toContain('api.saldoAwalSaatIni()');
+    expect(sumber).toContain('Koreksi Saldo Awal');
+    expect(sumber).toContain('mode={wizardMode}');
+    expect(sumber).toContain('modeTombolSaldoAwal(saldoStatus)');
+    expect(sumber).not.toContain('boleh: true');
   });
 });

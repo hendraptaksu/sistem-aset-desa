@@ -1,28 +1,20 @@
 import type { Coa, CoaTipe } from '../../db/coa.js';
 import type { JurnalInput } from '../../core/posting.js';
-import type { PengaturanPembukuan } from '../../core/pengaturan.js';
+import type { PengaturanPembukuanPublik } from '../../core/pengaturan.js';
 import type { FormSaldoAwal } from '../../core/forms.js';
-import type { AlurPihak, RekonsiliasiPihak, SaldoPihak } from '../../core/pihak.js';
-import type { RealisasiAnggaranHasil } from '../../core/anggaran.js';
-import type { StatusRekonsiliasi } from '../../core/rekonsiliasi.js';
 import type {
-  RekonsiliasiDetail,
-  RekonsiliasiTampil,
-} from '../../db/rekonsiliasi.js';
-import type {
-  Aset,
   AuditLog,
   Jurnal,
   JurnalBaris,
   JurnalBarisInput,
   JurnalHeaderInput,
-  JurnalPihakTampil,
-  LampiranJurnal,
   Panjar,
   PanjarItem,
-  Pihak,
-  PihakSaldo,
+  Pinjaman,
+  PinjamanBayar,
+  RincianPembayaranPinjaman,
   TutupBuku,
+  TutupBukuSnapshot,
 } from '../../core/types.js';
 import type {
   ArusKasHasil,
@@ -32,30 +24,27 @@ import type {
   NeracaHasil,
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
+import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
+import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.js';
 import type { DashboardHasil } from '../../features/dashboard/dashboard.js';
-import type { HasilParseImpor } from '../../features/import/parser.js';
-import type { HasilImporExcel } from '../../db/impor.js';
+import type { HasilAuditIntegritas } from '../../db/integritas.js';
 import type { LokasiData } from '../../main/lokasiData.js';
 
 export type {
   ArusKasHasil,
   BukuBesarHasil,
-  HasilImporExcel,
-  HasilParseImpor,
+  HasilAuditIntegritas,
+  HasilRekonsiliasiPinjaman,
   LabaRugiHasil,
-  LampiranJurnal,
   ModeNeracaSaldo,
+  MutasiPinjamanHasil,
   NeracaHasil,
   NeracaSaldoModeHasil,
-  RealisasiAnggaranHasil,
-  RekonsiliasiDetail,
-  RekonsiliasiTampil,
-  StatusRekonsiliasi,
 };
 export type { LokasiData };
 
 /** Nama folder tetap yang boleh dibuka dari layar Pengaturan (P2-8). */
-export type JenisFolderLokasiApi = 'data' | 'backups' | 'attachments';
+export type JenisFolderLokasiApi = 'data' | 'backups';
 
 type Ok<T> = { ok: true; data: T };
 type Fail = { ok: false; error: string; perluAlasan?: boolean; perluKonfirmasi?: boolean };
@@ -66,6 +55,11 @@ export type JurnalLengkap = Jurnal & {
   baris: JurnalBaris[];
   total_debit: number;
   reversal_id: string | null;
+  /** T2.2: capability dari backend, bukan tebakan dari `jenis`/akun. */
+  bisa_dibalik: boolean;
+  bisa_dikoreksi: boolean;
+  /** Alasan Indonesia bila aksi tidak boleh; null bila keduanya boleh. */
+  alasan_tidak_bisa: string | null;
 };
 
 /** Filter layar Buku Besar / daftar jurnal per akun (P1-8). */
@@ -98,74 +92,10 @@ export type JurnalCariPage = {
   total: number;
 };
 
-/** Pratinjau lampiran; `dataUrl` hanya tersedia untuk gambar ≤ 5 MB. */
-export type PreviewLampiranApi = {
-  dataUrl?: string;
-  mime: string;
-  namaAsli: string;
-};
-
-/** Hasil dialog unggah lampiran; `saved:false` = operator membatalkan. */
-export type UploadLampiranApi = {
-  saved: boolean;
-  lampiran?: LampiranJurnal;
-};
-
 /** Filter periode layar Laba Rugi & Arus Kas (P1-9). */
 export type FilterPeriodeApi = {
   mulai?: string;
   sampai?: string;
-};
-
-/** Pagu tersimpan satu akun per tahun (P2-1). */
-export type AnggaranTersimpan = {
-  tahun: number;
-  akun_kode: string;
-  nominal: number;
-  created_at: string;
-  updated_at: string;
-};
-
-/** Akun COA + flag aktif untuk layar input pagu. */
-export type AnggaranAkunApi = Coa & { aktif: boolean };
-
-/** Data `anggaran:list`: pagu tersimpan + seluruh akun PENDAPATAN/BEBAN. */
-export type AnggaranListData = {
-  tahun: number;
-  baris: AnggaranTersimpan[];
-  total: number;
-  akun: AnggaranAkunApi[];
-};
-
-export type SimpanAnggaranApi = {
-  tahun: number;
-  baris: { akun_kode: string; nominal: number }[];
-};
-
-export type HasilSimpanAnggaranApi = {
-  tahun: number;
-  baris: AnggaranTersimpan[];
-  total: number;
-};
-
-export type FilterLaporanAnggaranApi = {
-  tahun: number;
-  mulai?: string;
-  sampai?: string;
-};
-
-/** Filter riwayat rekonsiliasi bank (P2-2). */
-export type FilterRekonsiliasiApi = {
-  akun_kode?: string;
-  selesai?: boolean;
-};
-
-/** Input rekonsiliasi baru; saldo_bank dalam SEN (integer ≥ 0). */
-export type InputRekonsiliasiApi = {
-  akun_kode: string;
-  tanggal: string;
-  saldo_bank: number;
-  catatan?: string;
 };
 
 export type OpsiKoreksiApi = {
@@ -175,9 +105,25 @@ export type OpsiKoreksiApi = {
   konfirmasiPeringatan?: boolean;
 };
 
+/** Opsi simpan jurnal bersama untuk jalur manual dan form terpandu. */
+export type OpsiPostingApi = {
+  konfirmasiPeringatan?: boolean;
+  /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
+  alasanPeringatan?: string;
+  /** AKT-07: backend wajib menolak alasan <5 karakter. */
+  wajibAlasanPeringatan?: boolean;
+  /** AKT-02: semua pintu input UI mengirim true. */
+  wajibSaldoAwal?: boolean;
+  /** Operator memilih "mulai tanpa saldo awal" pada sesi ini. */
+  konfirmasiTanpaSaldoAwal?: boolean;
+};
+
 /** Filter riwayat audit (P0-9). Tanggal YYYY-MM-DD, inklusif. */
 export type AuditFilterApi = {
   aksi?: string;
+  /** DB-27: referensi objek terstruktur. */
+  ref_type?: string;
+  ref_id?: string;
   mulai?: string;
   sampai?: string;
   limit?: number;
@@ -189,15 +135,120 @@ export type AuditLogPage = {
   total: number;
 };
 
+/** Mode wizard pinjaman LPD (DB-16c). */
+export type ModePinjamanApi = 'PENCAIRAN' | 'BERJALAN';
+
+/** Input wizard pinjaman LPD; jadwal diisi manual, bukan hasil amortisasi. */
+export type PinjamanSimpanApi = {
+  mode: ModePinjamanApi;
+  id?: string;
+  kreditur: string;
+  tanggal: string;
+  akunKas?: string;
+  akunBunga?: string;
+  pokok?: number;
+  sisaPokok?: number;
+  tenor?: number | null;
+  catatan?: string;
+  noBukti?: string;
+  angsuran: {
+    ke: number;
+    jatuh_tempo: string;
+    pokok: number;
+    bunga: number;
+    catatan?: string;
+  }[];
+};
+
+/** Input pembayaran angsuran pinjaman LPD (DB-16d). */
+export type PinjamanBayarApi = {
+  id?: string;
+  jurnalId?: string;
+  pinjamanId: string;
+  angsuranId: number;
+  tanggal: string;
+  akunKas: string;
+  pokok?: number;
+  bunga?: number;
+  denda?: number;
+  catatan?: string;
+  noBukti?: string;
+};
+
+/** Opsi konfirmasi pembayaran angsuran (selisih jadwal / peringatan kas). */
+export type OpsiBayarPinjamanApi = {
+  konfirmasiSelisih?: boolean;
+  alasanSelisih?: string;
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+  konfirmasiTanpaSaldoAwal?: boolean;
+};
+
+/** Alasan pembatalan catatan pinjaman; opsi konfirmasi hanya untuk peringatan posting. */
+export type OpsiBatalPinjamanApi = {
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+};
+
+/** Filter kartu hutang / mutasi bulanan pinjaman LPD (DB-16e). */
+export type FilterMutasiPinjamanApi = {
+  pinjamanId: string;
+  /** Bulan `YYYY-MM`; kosongkan bila memakai rentang tanggal. */
+  periode?: string;
+  /** Tanggal `YYYY-MM-DD`; default tahun berjalan bila semuanya kosong. */
+  mulai?: string;
+  sampai?: string;
+};
+
+/** Pilihan rekonsiliasi pinjaman (DB-16f); kosong = seluruh pinjaman. */
+export type FilterRekonsiliasiPinjamanApi = {
+  pinjamanId?: string;
+};
+
 /** Status Wizard Saldo Awal (P1-6). */
 export type StatusSaldoAwal = {
   boleh: boolean;
   jumlahJurnal: number;
+  /** AUD2-02: tanggal jurnal paling awal; batas atas tanggal saldo awal. */
+  tanggalMaksimal?: string;
   alasan?: string;
 };
 
-/** Riwayat tutup buku + laba yang dihitung ulang dari jurnal. */
-export type TutupBukuTampil = TutupBuku & { laba: number };
+/** T1.8: saldo pembukaan aktif untuk prefill Wizard mode koreksi. */
+export type SaldoAwalSaatIniApi = {
+  tanggal: string;
+  /** Hanya AKTIVA/KEWAJIBAN, sisi normal positif; 3000 MODAL tidak termasuk. */
+  saldo: { akun_kode: string; nominal: number }[];
+  keterangan?: string;
+  /** Batas atas tanggal koreksi dari jurnal non-pembukaan paling awal. */
+  tanggalMaksimal?: string;
+};
+
+/** Opsi koreksi saldo awal; `alasan` wajib >=5 karakter. */
+export type OpsiKoreksiSaldoAwalApi = {
+  alasan?: string;
+  konfirmasiPeringatan?: boolean;
+  alasanPeringatan?: string;
+  wajibAlasanPeringatan?: boolean;
+};
+
+/** Riwayat tutup buku + laba snapshot yang disahkan saat periode dikunci. */
+export type TutupBukuTampil = TutupBuku & {
+  /** Laba snapshot bila ada; fallback laba live untuk data lama. */
+  laba: number;
+  /** Laba yang disahkan saat tutup; null bila belum ada snapshot. */
+  labaSnapshot: number | null;
+  /** Laba yang dihitung ulang dari jurnal saat ini. */
+  labaLive: number;
+  /** Snapshot versi terbaru untuk tahun ini. */
+  snapshotTerbaru: TutupBukuSnapshot | null;
+  /** Angka/hash live sudah berbeda dari snapshot terbaru. */
+  snapshotBerubah: boolean;
+  /** Rincian perbedaan snapshot vs live. */
+  perbedaanSnapshot: string[];
+  /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
+  catatanTahunPertama?: string;
+};
 
 export type TutupPreviewData = {
   tahun: number;
@@ -212,6 +263,23 @@ export type TutupPreviewData = {
   aksi: 'TUTUP' | 'TUTUP-ULANG';
   tahunTerakhir: number | null;
   batasTahun: number;
+  /** Temuan audit integritas (kode + pesan); kosong berarti lolos audit. */
+  temuanIntegritas: TemuanIntegritasTampil[];
+  /** DB-38: catatan bila tahun ini adalah tahun pertama pembukuan parsial. */
+  catatanTahunPertama?: string;
+  /** T-A06: snapshot terbaru untuk tahun ini, bila sudah pernah ditutup. */
+  snapshotTerbaru: TutupBukuSnapshot | null;
+  /** T-A06: angka/hash live sudah berbeda dari snapshot terbaru. */
+  snapshotBerubah: boolean;
+  /** T-A06: rincian perbedaan snapshot vs live. */
+  perbedaanSnapshot: string[];
+  /** T-A06: versi snapshot yang akan ditulis bila tutup berhasil. */
+  versiSnapshotBerikutnya: number;
+};
+
+export type TemuanIntegritasTampil = {
+  kode: string;
+  pesan: string;
 };
 
 export type TutupTersimpanData = {
@@ -220,22 +288,9 @@ export type TutupTersimpanData = {
   labaDitahan: number;
   aksi: 'TUTUP' | 'TUTUP-ULANG';
   data: TutupBuku;
-};
-
-/** Hasil dialog pratinjau import Excel; `diproses:false` = operator batal. */
-export type ImportPreviewData = {
-  diproses: boolean;
-  filePath: string;
-  namaFile: string;
-  hasil?: HasilParseImpor;
-};
-
-/** Hasil proses import Excel; `diproses:false` = operator batal. */
-export type ImportProsesData = {
-  diproses: boolean;
-  filePath: string;
-  namaFile: string;
-  hasil?: HasilImporExcel;
+  snapshot: TutupBukuSnapshot | null;
+  snapshotBerubah: boolean;
+  perbedaanSnapshot: string[];
 };
 
 declare global {
@@ -283,10 +338,13 @@ export const api = {
   lockResetKode: () => call<{ kodeDarurat: string }>('lock:reset-code'),
   lockReset: (kode: string, pinBaru: string) =>
     call<{ terbuka: boolean }>('lock:reset', kode, pinBaru),
-  /** Pengaturan pembukuan (P1-13); hanya bisa dibaca saat PIN terbuka. */
-  pengaturanGet: () => call<PengaturanPembukuan>('pengaturan:get'),
-  pengaturanSimpan: (input: PengaturanPembukuan) =>
-    call<PengaturanPembukuan>('pengaturan:simpan', input),
+  /**
+   * Pengaturan pembukuan (P1-13); hanya bisa dibaca saat PIN terbuka.
+   * DB-28: kontrak publik tanpa `awalTahunBuku` (selalu Januari di server).
+   */
+  pengaturanGet: () => call<PengaturanPembukuanPublik>('pengaturan:get'),
+  pengaturanSimpan: (input: PengaturanPembukuanPublik) =>
+    call<PengaturanPembukuanPublik>('pengaturan:simpan', input),
   /** Lokasi data & backup aktual (P2-8); dipakai kartu Pengaturan. */
   infoLokasi: () => call<LokasiData>('app:info-lokasi'),
   /** Buka salah satu folder tetap di file manager; bukan path dari renderer. */
@@ -296,15 +354,23 @@ export const api = {
       jenis,
     ),
   coa: () => call<Coa[]>('coa:list'),
-  /** Tambah akun Beban/Pendapatan baru ke master COA (P2). */
-  akunTambah: (input: { kode: string; nama: string; tipe: CoaTipe }) =>
-    call<Coa>('akun:tambah', input),
+  /** Tambah akun Beban/Pendapatan/Kas-Bank baru ke master COA (DB-14). */
+  akunTambah: (input: {
+    kode: string;
+    nama: string;
+    tipe: CoaTipe;
+    is_kas?: boolean;
+    kelompok?: string;
+  }) => call<Coa>('akun:tambah', input),
   /** Ubah nama akun tambahan; kode & jenis tetap. */
   akunUbah: (input: { kode: string; nama: string }) =>
     call<Coa>('akun:ubah', input),
-  /** Aktif/nonaktifkan akun tambahan (nonaktif = soft delete). */
-  akunSetAktif: (kode: string, aktif: boolean) =>
-    call<Coa>('akun:set-aktif', kode, aktif),
+  /**
+   * Aktif/nonaktifkan akun (DB-15: termasuk akun bawaan; nonaktif = soft
+   * delete). Akun sistem 3000/1040/1050/2050/2060/5063/5050 ditolak oleh backend.
+   */
+  akunSetAktif: (kode: string, aktif: boolean, alasan?: string) =>
+    call<Coa>('akun:set-aktif', kode, aktif, alasan),
   /** Hapus permanen akun tambahan yang belum pernah dipakai. */
   akunHapus: (kode: string) => call<{ kode: string }>('akun:hapus', kode),
   jurnalList: (
@@ -340,40 +406,65 @@ export const api = {
   /** Arus Kas metode langsung per periode (P1-9). */
   laporanArusKas: (f: FilterPeriodeApi = {}) =>
     call<ArusKasHasil>('laporan:arus-kas', f),
-  /** Pagu + akun PENDAPATAN/BEBAN untuk input tahun terpilih (P2-1). */
-  anggaranList: (tahun: number) =>
-    call<AnggaranListData>('anggaran:list', { tahun }),
-  /** Simpan pagu (upsert; nominal 0 menghapus pagu akun tersebut). */
-  anggaranSimpan: (f: SimpanAnggaranApi, opsi: { alasan?: string } = {}) =>
-    call<HasilSimpanAnggaranApi>('anggaran:simpan', f, opsi),
-  /** Realisasi vs pagu; realisasi dihitung dari jurnal (bukan angka tersimpan). */
-  laporanAnggaran: (f: FilterLaporanAnggaranApi) =>
-    call<RealisasiAnggaranHasil>('laporan:anggaran', f),
-  /** Riwayat rekonsiliasi bank; saldo buku/selisih dihitung dari jurnal (P2-2). */
-  rekonsiliasiList: (f: FilterRekonsiliasiApi = {}) =>
-    call<RekonsiliasiTampil[]>('rekonsiliasi:list', f),
-  /** Detail + mutasi jurnal sejak rekonsiliasi selesai sebelumnya (P2-2). */
-  rekonsiliasiDetail: (id: string) =>
-    call<RekonsiliasiDetail>('rekonsiliasi:detail', id),
-  /** Simpan saldo menurut rekening koran; tidak menyimpan saldo buku/selisih. */
-  rekonsiliasiCreate: (input: InputRekonsiliasiApi) =>
-    call<RekonsiliasiTampil>('rekonsiliasi:create', input),
-  /** Tandai selesai; audit mencatat kondisi lama/baru. */
-  rekonsiliasiSelesai: (id: string, opsi: { catatan?: string } = {}) =>
-    call<RekonsiliasiTampil>('rekonsiliasi:selesai', id, opsi),
-  /** Simpan jurnal dari form terpandu (P1-1). Aturan bisnis ada di posting layer. */
+  /**
+   * DB-03: simpan transaksi dari form terpandu. Hanya menerima jenis
+   * TERIMA/BAYAR/TRANSFER/HUTANG; jurnal manual memakai `jurnalPosting`.
+   */
+  transaksiPosting: (
+    input: JurnalInput,
+    opsi: OpsiPostingApi = {},
+  ) => call<{ jurnal: Jurnal }>('transaksi:posting', input, opsi),
+  /**
+   * DB-03: simpan jurnal manual Jurnal Umum. Backend menolak semua jenis
+   * selain UMUM; dokumen lain harus lewat form/jalur khususnya.
+   */
   jurnalPosting: (
     input: JurnalInput,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: OpsiPostingApi = {},
   ) => call<{ jurnal: Jurnal }>('jurnal:posting', input, opsi),
   jurnalReverse: (id: string, alasan: string, opsi: OpsiKoreksiApi = {}) =>
     call<{ jurnal: Jurnal }>('jurnal:reverse', id, alasan, opsi),
-  /** Wizard Saldo Awal: hanya bisa dipakai saat belum ada jurnal (P1-6). */
+  /** Wizard Saldo Awal: sekali pakai, boleh disusulkan sebelum jurnal pertama (P1-6/AUD2-02). */
   saldoAwalStatus: () => call<StatusSaldoAwal>('saldo-awal:status'),
   saldoAwalPosting: (
     input: FormSaldoAwal,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      /** AKT-07: alasan operator melanjutkan meski ada peringatan. */
+      alasanPeringatan?: string;
+      /** AKT-07: backend wajib menolak alasan <5 karakter. */
+      wajibAlasanPeringatan?: boolean;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) => call<{ jurnal: Jurnal }>('saldo-awal:posting', input, opsi),
+  /** T1.8: saldo pembukaan aktif untuk prefill Wizard mode koreksi. */
+  saldoAwalSaatIni: () =>
+    call<SaldoAwalSaatIniApi>('saldo-awal:saat-ini'),
+  /**
+   * T1.7: koreksi saldo awal (Opsi A). Jurnal pembukaan lama dibalik dan
+   * jurnal penyesuaian `UMUM` baru dibuat atomik; `alasan` wajib >=5 karakter.
+   *
+   * T1.8: mendukung bentuk `(input, { alasan, ...opsi })` yang dipakai wizard,
+   * sekaligus bentuk lama `(input, alasan, opsi)` agar pemanggil lama tetap sah.
+   */
+  saldoAwalKoreksi: (
+    input: FormSaldoAwal,
+    alasanAtauOpsi: string | OpsiKoreksiSaldoAwalApi,
+    opsi: OpsiKoreksiSaldoAwalApi = {},
+  ) =>
+    typeof alasanAtauOpsi === 'string'
+      ? call<{ jurnal: Jurnal; reversal: Jurnal }>(
+          'saldo-awal:koreksi',
+          input,
+          alasanAtauOpsi,
+          opsi,
+        )
+      : call<{ jurnal: Jurnal; reversal: Jurnal }>(
+          'saldo-awal:koreksi',
+          input,
+          alasanAtauOpsi,
+        ),
   jurnalKoreksiIsiUlang: (
     id: string,
     alasan: string,
@@ -387,49 +478,54 @@ export const api = {
       input,
       opsi,
     ),
-  // ---- Lampiran bukti jurnal (P2-4) ----
-  /** Metadata lampiran satu jurnal; file fisik ada di folder aplikasi. */
-  lampiranList: (jurnalId: string) =>
-    call<LampiranJurnal[]>('lampiran:list', jurnalId),
-  /** Dialog unggah di main; batalkan = `{ saved:false }`. */
-  lampiranUpload: (jurnalId: string) =>
-    call<UploadLampiranApi>('lampiran:upload', jurnalId),
-  /** Pratinjau gambar inline (≤ 5 MB); PDF hanya metadata, buka via OS. */
-  lampiranPreview: (id: string) =>
-    call<PreviewLampiranApi>('lampiran:preview', id),
-  /** Buka file lampiran dengan aplikasi OS; path divalidasi di main. */
-  lampiranOpen: (id: string) =>
-    call<{ opened: boolean }>('lampiran:open', id),
-  /** Hapus metadata + file (best-effort); audit LAMPIRAN-HAPUS. */
-  lampiranDelete: (id: string) =>
-    call<{ deleted: boolean; id: string }>('lampiran:delete', id),
-  // ---- Piutang & Hutang + master pihak (P1-5) ----
-  pihakList: () => call<Pihak[]>('pihak:list'),
-  pihakSaldo: () => call<PihakSaldo[]>('pihak:saldo'),
-  /** Rekonsiliasi saldo akun 1050/2050 vs jurnal yang sudah dipetakan ke pihak. */
-  pihakRekon: (sampai?: string) =>
-    call<RekonsiliasiPihak>('pihak:rekon', sampai),
-  pihakJurnal: (pihakId: string) =>
-    call<JurnalPihakTampil[]>('pihak:jurnal', pihakId),
-  pihakCreate: (input: { nama: string; catatan?: string }) =>
-    call<{ id: string; pihak: Pihak }>('pihak:create', input),
-  pihakUpdate: (id: string, input: { nama: string; catatan?: string }) =>
-    call<{ id: string; pihak: Pihak }>('pihak:update', id, input),
-  pihakDelete: (id: string) => call<{ id: string }>('pihak:delete', id),
-  pihakPosting: (
-    req: { pihakId: string; input: JurnalInput },
-    opsi: { konfirmasiPeringatan?: boolean; konfirmasiSaldo?: boolean } = {},
-  ) =>
-    call<{
-      jurnal: Jurnal;
-      pihak?: Pihak;
-      alur?: AlurPihak;
-      akunPihak?: string;
-      saldoSebelum?: SaldoPihak;
-      saldoSesudah?: SaldoPihak;
-    }>('pihak:posting', req, opsi),
-  panjarList: (status?: 'OPEN' | 'CLOSED') => call<Panjar[]>('panjar:list', status),
+  // ---- Panjar & tutup buku (P1-5) ----
+  panjarList: (status?: 'OPEN' | 'CLOSED' | 'DIBATALKAN') =>
+    call<Panjar[]>('panjar:list', status),
   panjarItems: (id: string) => call<PanjarItem[]>('panjar:items', id),
+  /**
+   * T-A11: catat panjar yang sudah beredar pada cut-over. Tidak membuat jurnal
+   * baru; 1040 sudah ada di jurnal pembukaan.
+   */
+  panjarSaldoAwal: (
+    input: {
+      id?: string;
+      jumlah: number;
+      penerima?: string;
+      akunKasSumber?: string;
+      tanggal?: string;
+      catatan?: string;
+      alasan?: string;
+    },
+    alasan?: string,
+  ) => call<{ panjar: Panjar }>('panjar:saldo-awal', input, alasan),
+  /**
+   * T-A11: hapus HANYA dokumen representasi saldo awal, tanpa jurnal balik.
+   * Jurnal pembukaan tidak diubah; alasan wajib >= 5 karakter.
+   */
+  panjarBatalSaldoAwal: (id: string, alasan: string) =>
+    call<{ id: string }>('panjar:batal-saldo-awal', id, alasan),
+  /** DB-21: batalkan panjar OPEN; alasan wajib >= 5 karakter. */
+  panjarBatal: (
+    id: string,
+    alasan: string,
+    opsi: {
+      tanggalBatal?: string;
+      konfirmasiPeringatan?: boolean;
+    } = {},
+  ) => call<{ panjar: Panjar; jurnal?: Jurnal }>('panjar:batal', id, alasan, opsi),
+  /** AUD2-03: koreksi pertanggungjawaban CLOSED lewat jurnal balik; alasan >= 5 karakter. */
+  panjarBatalClose: (
+    input: { id: string; alasan: string; tanggalBatal?: string },
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      alasanPeringatan?: string;
+    } = {},
+  ) =>
+    call<{ panjar: Panjar; jurnal?: Jurnal }>(
+      'panjar:batal-close',
+      input,
+      opsi,
+    ),
   panjarCreate: (
     input: {
       tanggal: string;
@@ -440,7 +536,12 @@ export const api = {
       noBukti?: string;
     },
     alasan?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      alasanPeringatan?: string;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ) =>
     call<{ id: string; panjar: Panjar; jurnal?: Jurnal }>(
       'panjar:create',
@@ -452,9 +553,23 @@ export const api = {
     req: {
       id: string;
       tanggalClose: string;
-      items: { kategori_baga: string; nominal: number }[];
+      items: {
+        kategori_baga: string;
+        nominal: number;
+        /** DB-18: detail nota per baris; kosong = perilaku legacy. */
+        nota_nomor?: string;
+        nota_tanggal?: string;
+        toko?: string;
+        keterangan?: string;
+      }[];
       konfirmasiKurang?: boolean;
       konfirmasiPeringatan?: boolean;
+      /** AKT-08: alasan operator saat realisasi melebihi panjar. */
+      alasanKurang?: string;
+      /** AKT-08: alasan saat peringatan kas dari posting layer dikonfirmasi. */
+      alasanPeringatan?: string;
+      wajibSaldoAwal?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
     },
     alasan?: string,
   ) =>
@@ -465,63 +580,107 @@ export const api = {
       panjar: Panjar;
       jurnal?: Jurnal;
     }>('panjar:close', req, alasan),
-  asetList: (f: { jenis?: string; cari?: string } = {}) => call<Aset[]>('aset:list', f),
-  asetCreate: (input: {
-    kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;
-    status_hukum: string; tahun_perolehan: number | null; asal_usul: string; kondisi: string;
-    keterangan: string; nilai_sen: number | null;
-  }) => call<{ id: string }>('aset:create', input),
-  asetUpdate: (id: string, input: {
-    kode: string; nama: string; jenis: string; luas_m2: number | null; lokasi: string;
-    status_hukum: string; tahun_perolehan: number | null; asal_usul: string; kondisi: string;
-    keterangan: string; nilai_sen: number | null;
-  }) => call<{ id: string }>('aset:update', id, input),
-  asetDelete: (id: string) => call<{ id: string }>('aset:delete', id),
+  // ---- Pinjaman LPD (DB-16c) ----
+  pinjamanList: () => call<Pinjaman[]>('pinjaman:list'),
+  pinjamanDetail: (id: string) => call<Pinjaman>('pinjaman:detail', id),
+  pinjamanSimpan: (
+    input: PinjamanSimpanApi,
+    opsi: OpsiPostingApi = {},
+  ) =>
+    call<{
+      mode: ModePinjamanApi;
+      pinjaman: Pinjaman;
+      jurnal: Jurnal | null;
+    }>('pinjaman:simpan', input, opsi),
+  /** DB-16d: bayar satu angsuran; server membuat jurnal + link atomik. */
+  pinjamanBayar: (
+    input: PinjamanBayarApi,
+    opsi: OpsiBayarPinjamanApi = {},
+  ) =>
+    call<{
+      pembayaran: PinjamanBayar;
+      jurnal: Jurnal;
+      rincian?: RincianPembayaranPinjaman;
+      selisih?: { pokok: number; bunga: number };
+      pinjaman: Pinjaman | null;
+    }>('pinjaman:bayar', input, opsi),
+  /** Pembayaran per pinjaman, termasuk catatan yang sudah dibatalkan. */
+  pinjamanPembayaran: (id: string) =>
+    call<PinjamanBayar[]>('pinjaman:pembayaran', id),
+  /** Membalik catatan pembayaran yang keliru; jurnal dan riwayat lama tetap ada. */
+  pinjamanBayarBatal: (id: string, alasan: string, opsi: OpsiBatalPinjamanApi = {}) =>
+    call<{
+      pembayaran: PinjamanBayar;
+      jurnal: Jurnal;
+      pinjaman?: Pinjaman | null;
+    }>('pinjaman:bayar-batal', { id, alasan }, opsi),
+  /** Membalik pencairan yang keliru bila belum ada pembayaran aktif. */
+  pinjamanBatal: (id: string, alasan: string, opsi: OpsiBatalPinjamanApi = {}) =>
+    call<{
+      pinjaman: Pinjaman;
+      jurnal: Jurnal;
+    }>('pinjaman:batal', { id, alasan }, opsi),
+  /** DB-16e: kartu hutang / mutasi bulanan dari jurnal pembayaran tertaut. */
+  pinjamanMutasi: (f: FilterMutasiPinjamanApi) =>
+    call<MutasiPinjamanHasil>('pinjaman:mutasi', f),
+  /**
+   * DB-16f: status rekonsiliasi 2050 vs jadwal. Tanpa ID mengembalikan seluruh
+   * pinjaman; dengan ID mengembalikan satu pinjaman. Hanya membaca.
+   */
+  pinjamanRekonsiliasi: (f: FilterRekonsiliasiPinjamanApi = {}) =>
+    call<HasilRekonsiliasiPinjaman | HasilRekonsiliasiPinjaman[]>(
+      'pinjaman:rekonsiliasi',
+      f,
+    ),
+  pinjamanRekonsiliasiSemua: () =>
+    call<HasilRekonsiliasiPinjaman[]>('pinjaman:rekonsiliasi', {}),
   tutupList: () => call<TutupBukuTampil[]>('tutup:list'),
   tutupPreview: (tahun: number) => call<TutupPreviewData>('tutup:preview', tahun),
   tutupCreate: (req: {
     tahun: number;
     catatan?: string;
-    backupPath?: string;
     konfirmasiTimpak?: boolean;
   }) => call<TutupTersimpanData>('tutup:create', req),
   auditList: (f: AuditFilterApi = {}) => call<AuditLogPage>('audit:list', f),
+  /** DB-12: audit integritas read-only; mengembalikan temuan + ringkasan. */
+  auditIntegritas: () => call<HasilAuditIntegritas>('audit:integritas'),
+  /**
+   * T-A16: hasil audit yang dijalankan main saat startup/restore. `null` bila
+   * audit belum tersedia atau gagal dibaca; tidak memicu audit/tulis DB baru.
+   */
+  auditAwal: () => call<HasilAuditIntegritas | null>('audit:awal'),
   saldo: (cutoff?: string) => call<{ perKas: Record<string, number>; total: number }>('saldo:list', cutoff),
   dashboard: (cutoff: string) => call<DashboardHasil>('dashboard:get', cutoff),
-  // ---- Import jurnal massal dari Excel (P2-9) ----
-  /** Unduh template .xlsx lewat save dialog; batal = `{saved:false}`. */
-  importTemplate: () => call<{ saved: boolean; path: string }>('import:template'),
-  /**
-   * Pilih file (atau kirim path hasil preview untuk "Muat ulang"), parse +
-   * validasi DB tanpa menulis jurnal. Batal = `{diproses:false}`.
-   */
-  importPreview: (filePath?: string) =>
-    call<ImportPreviewData>('import:preview', filePath),
-  /** Impor grup valid; file diparse ulang di main. Batal = `{diproses:false}`. */
-  importProses: (
-    filePath?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
-  ) => call<ImportProsesData>('import:proses', filePath, opsi),
   saveBuffer: (req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) =>
     call<{ saved: boolean; path: string }>('file:save-buffer', req),
   /** Simpan PDF langsung (hidden window + printToPDF di main). HTML dari paginator P1-16. */
   savePdf: (req: { htmlB64: string; defaultName: string; landscape?: boolean }) =>
     call<{ saved: boolean; path: string }>('file:save-pdf', req),
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
-  /** Backup lengkap satu folder: DB + lampiran + manifest. */
-  backupLengkap: () =>
-    call<{ saved: boolean; path: string; jumlahLampiran: number }>('backup:lengkap'),
+  /** Backup lengkap satu folder: DB + manifest. */
+  backupLengkap: () => call<{ saved: boolean; path: string }>('backup:lengkap'),
   backupAuto: (tahun: number) => call<{ path: string }>('backup:auto', tahun),
   backupStatus: () => call<{ path: string }>('backup:status'),
-  backupImport: () => call<{ restored: boolean; path: string; preRestorePath?: string }>('backup:import'),
-  /** Restore lengkap: DB + lampiran + manifest dari satu folder backup. */
+  /**
+   * Restore `.db` (jalur lanjutan). Main menolak panggilan tanpa konfirmasi
+   * eksplisit karena hanya database yang dipulihkan, tanpa validasi manifest.
+   * T2.7: setelah sukses main mengunci sesi — renderer harus menampilkan layar
+   * kunci, bukan memanggil `dashboard()` lagi.
+   */
+  backupImport: (konfirmasiRestoreDb: boolean) =>
+    call<{ restored: boolean; path: string; preRestorePath?: string }>(
+      'backup:import',
+      { konfirmasiRestoreDb },
+    ),
+  /**
+   * Restore lengkap: DB + manifest dari satu folder backup.
+   * T2.7: sama seperti `backupImport`, sesi dikunci ulang setelah sukses.
+   */
   backupRestoreLengkap: () =>
     call<{
       restored: boolean;
       path: string;
       preRestorePath?: string;
-      preRestoreAttachmentsPath?: string;
-      jumlahLampiran: number;
     }>('backup:restore-lengkap'),
 };
 

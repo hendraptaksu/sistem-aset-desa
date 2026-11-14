@@ -9,7 +9,11 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { parseRupiahToSen } from '../../utils/format.js';
+import {
+  MIN_ALASAN_PERINGATAN,
+  alasanPeringatanCukup,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={clsx('rounded-xl border bg-white p-5 shadow-sm', className)}>{children}</div>;
@@ -88,16 +92,41 @@ export function Badge({
   return <span className={clsx('rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;
 }
 
+/**
+ * T3.8: error harus diumumkan pembaca layar. `role="alert"` sudah implisit
+ * assertive, tetapi `aria-live` ditulis eksplisit agar perilakunya tidak
+ * bergantung pada dukungan AT terhadap role tersebut.
+ */
 export function ErrorBox({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
     <div
       role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
       className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
     >
       {msg}
     </div>
   );
+}
+
+/** T3.8: satu alasan baku saat aksi dinonaktifkan karena proses lain. */
+export const ALASAN_SIBUK = 'Tunggu proses yang sedang berjalan selesai.';
+
+/**
+ * T3.8: alasan yang ditampilkan pada tombol nonaktif. Tombol berisiko tidak
+ * boleh mati tanpa penjelasan; kembalikan `undefined` hanya bila aksi boleh.
+ */
+export function alasanTombolNonaktif(opsi: {
+  sibuk?: boolean;
+  alasan?: string | false | null;
+}): string | undefined {
+  if (opsi.sibuk) return ALASAN_SIBUK;
+  if (typeof opsi.alasan === 'string' && opsi.alasan.trim()) {
+    return opsi.alasan.trim();
+  }
+  return opsi.alasan === false ? 'Aksi ini belum bisa dipakai.' : undefined;
 }
 
 /** Input PIN 6 kotak ala m-banking. Keyboard fisik: ketik maju otomatis,
@@ -220,8 +249,62 @@ export function PinInput({
   );
 }
 
+const rpInput = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
+// 13 digit rupiah ×100 masih bilangan aman.
+// 20 = 13 digit + 4 titik ribuan + koma + 2 digit desimal.
+const MAX_DIGIT_RUPIAH = 13;
+const MAX_PANJANG_INPUT = 20;
+
+/** Cari pemisah desimal pada teks nominal.
+ * - Koma/titik diikuti 1–2 digit di akhir → desimal.
+ * - Koma diikuti 3+ digit setelah titik ribuan → desimal tidak valid; potong 2 digit.
+ * - Koma diikuti 3 digit tanpa titik ribuan → pemisah ribuan (paste `100,000`).
+ * - Koma di akhir dipertahankan agar desimal bisa diketik bertahap. */
+function cariDesimal(bersih: string): { index: number; frac: string } | null {
+  if (bersih.endsWith(',')) {
+    return { index: bersih.length - 1, frac: '' };
+  }
+  const pendek = /([.,])(\d{1,2})$/.exec(bersih);
+  if (pendek) return { index: pendek.index, frac: pendek[2]! };
+  const panjang = /([.,])(\d{3,})$/.exec(bersih);
+  if (panjang) {
+    const index = panjang.index;
+    const sebelum = bersih.slice(0, index);
+    // Desimal lebih dari 2 digit: pertahankan dua digit pertama.
+    if (panjang[1] === ',' && sebelum.includes('.')) {
+      return { index, frac: panjang[2]!.slice(0, 2) };
+    }
+    if (panjang[1] === '.' && sebelum.includes(',')) {
+      return { index, frac: panjang[2]!.slice(0, 2) };
+    }
+  }
+  return null;
+}
+
+/** Baca ketikan/paste CurrencyInput.
+ * - '150000' → { tampil: '150.000', sen: 15_000_000 }
+ * - '1.500,50' → { tampil: '1.500,50', sen: 150_050 }
+ * - '100,000' → { tampil: '100.000', sen: 10_000_000 } (paste gaya AS)
+ * - '1.500,505' → { tampil: '1.500,50', sen: 150_050 } (desimal >2 digit dipotong) */
+export function parseCurrencyInput(teks: string): { tampil: string; sen: number } {
+  const bersih = teks.replace(/[^\d.,]/g, '');
+  if (bersih === '') return { tampil: '', sen: 0 };
+
+  const desimal = cariDesimal(bersih);
+  const intPart = desimal ? bersih.slice(0, desimal.index) : bersih;
+  const frac = desimal?.frac ?? '';
+  const digit = intPart.replace(/\D/g, '').slice(0, MAX_DIGIT_RUPIAH);
+  if (digit === '') return { tampil: '', sen: 0 };
+
+  const rupiah = Number(digit);
+  const sen = rupiah * 100 + Number((frac + '00').slice(0, 2));
+  const tampil = desimal ? `${rpInput.format(rupiah)},${frac}` : rpInput.format(rupiah);
+  return { tampil, sen };
+}
+
 /** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
- * Desimal opsional — ketik '1500' jadi Rp 1.500,00; '1500,50' jadi Rp 1.500,50. */
+ * Mendukung nominal bulat maupun pecahan sen: mengetik '1.500,50' →
+ * onChange(150050). */
 export function CurrencyInput({
   value,
   onChange,
@@ -233,45 +316,55 @@ export function CurrencyInput({
 }) {
   const [teks, setTeks] = useState<string | null>(null);
   const [fokus, setFokus] = useState(false);
-  // Perubahan value dari luar (cth. reset form setelah submit) tersinkron saat blur.
+  const terakhirDikirim = useRef(value);
+  // Sinkronkan value dari luar: saat blur (reset form) maupun saat fokus
+  // (mis. parent mengoreksi nominal), tanpa menimpa ketikan sendiri.
   useEffect(() => {
-    if (!fokus) setTeks(null);
+    if (!fokus) {
+      setTeks(null);
+      terakhirDikirim.current = value;
+      return;
+    }
+    if (value !== terakhirDikirim.current) {
+      terakhirDikirim.current = value;
+      setTeks(value === 0 ? '' : formatSenInput(value));
+    }
   }, [value, fokus]);
   const shown = fokus && teks !== null ? teks : value === 0 ? '' : formatSenInput(value);
   return (
     <TextInput
-      inputMode="decimal"
+      inputMode="numeric"
       placeholder="0"
+      maxLength={MAX_PANJANG_INPUT}
       disabled={disabled}
       value={shown}
       onFocus={() => {
         setFokus(true);
         setTeks(value === 0 ? '' : formatSenInput(value));
+        terakhirDikirim.current = value;
       }}
       onBlur={() => {
         setFokus(false);
         setTeks(null);
+        terakhirDikirim.current = value;
       }}
       onChange={(e) => {
-        const v = e.target.value;
-        setTeks(v);
-        try {
-          onChange(parseRupiahToSen(v));
-        } catch {
-          /* abaikan state ketik antara (cth. '1,') */
-        }
+        const { tampil, sen } = parseCurrencyInput(e.target.value);
+        setTeks(tampil);
+        terakhirDikirim.current = sen;
+        onChange(sen);
       }}
     />
   );
 }
 
-/** SEN → teks input: '1.500' bila bulat, '1.500,50' bila pecahan. */
+/** SEN → teks input saat tidak fokus: '1.500' bila bulat, '1.500,50' bila pecahan. */
 function formatSenInput(sen: number): string {
   const neg = sen < 0 ? '-' : '';
   const abs = Math.abs(sen);
   const rupiah = Math.floor(abs / 100);
   const sisa = abs % 100;
-  const grup = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(rupiah);
+  const grup = rpInput.format(rupiah);
   return sisa === 0 ? `${neg}${grup}` : `${neg}${grup},${String(sisa).padStart(2, '0')}`;
 }
 
@@ -305,6 +398,23 @@ function elemenFokusable(dialog: HTMLElement): HTMLElement[] {
       el.getClientRects().length > 0
     );
   });
+}
+
+/**
+ * T3.8: prioritas fokus awal modal. Penanda `data-fokus-awal` menang (dipakai
+ * tombol Batal pada konfirmasi berisiko), lalu elemen ber-`autoFocus`, field
+ * isian, kontrol pertama, dan dialog itu sendiri sebagai cadangan.
+ */
+export function pilihFokusAwal<
+  T extends { hasAttribute(nama: string): boolean; matches(selektor: string): boolean },
+>(fokusable: readonly T[], dialog: T): T {
+  return (
+    fokusable.find((el) => el.hasAttribute('data-fokus-awal')) ??
+    fokusable.find((el) => el.hasAttribute('autofocus')) ??
+    fokusable.find((el) => el.matches('input, select, textarea')) ??
+    fokusable[0] ??
+    dialog
+  );
 }
 
 type EntriModal = {
@@ -463,11 +573,7 @@ export function Modal({
     pastikanPendengarModal();
 
     const fokusable = elemenFokusable(dialog);
-    const fokusAwal =
-      fokusable.find((el) => el.hasAttribute('autofocus')) ??
-      fokusable.find((el) => el.matches('input, select, textarea')) ??
-      fokusable[0] ??
-      dialog;
+    const fokusAwal = pilihFokusAwal(fokusable, dialog);
     fokusAwal.focus({ preventScroll: true });
 
     return () => {
@@ -505,6 +611,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={idJudul}
+        aria-busy={sibuk || undefined}
         {...(deskripsi ? { 'aria-describedby': idDeskripsi } : {})}
         tabIndex={-1}
         data-modal="true"
@@ -529,7 +636,7 @@ export function Modal({
           <button
             type="button"
             aria-label="Tutup dialog"
-            title="Tutup dialog"
+            title={sibuk ? 'Tunggu proses selesai sebelum menutup' : 'Tutup dialog'}
             disabled={sibuk}
             onClick={onTutup}
             className={`-m-1 shrink-0 rounded-lg p-1.5 text-xl leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 ${RING_FOKUS}`}
@@ -562,7 +669,7 @@ export function LockModal({
   return (
     <Modal
       judul="Periode sudah ditutup"
-      deskripsi="Tanggal ini masuk tahun yang sudah tutup buku. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
+      deskripsi="Tanggal ini masuk tahun yang sudah dikunci lewat Kunci Periode. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
       onTutup={onCancel}
       lebar="md"
     >
@@ -576,6 +683,90 @@ export function LockModal({
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>Batal</Button>
         <Button onClick={() => alasan.trim().length >= 5 && onSubmit(alasan.trim())}>Tetap simpan</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * AKT-07: modal alasan saat operator tetap menyimpan meski ada peringatan
+ * (mis. kas minus). Terpisah dari `LockModal` yang meminta alasan kunci
+ * periode; alasan di sini dikirim sebagai `alasanPeringatan` ke audit.
+ */
+export function PeringatanModal({
+  pesan,
+  pesanError,
+  sibuk = false,
+  onCancel,
+  onSubmit,
+}: {
+  /** Ringkasan peringatan dari backend (mis. saldo kas akan minus). */
+  pesan: ReactNode;
+  /** Penolakan backend karena alasan kurang; ditampilkan agar bisa diperbaiki. */
+  pesanError?: string | null;
+  sibuk?: boolean;
+  onCancel: () => void;
+  onSubmit: (alasan: string) => void;
+}) {
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasanPeringatanCukup(alasan);
+
+  return (
+    <Modal
+      judul="Konfirmasi peringatan"
+      deskripsi={
+        <div className="space-y-2 text-[15px] text-stone-700">
+          <p>{pesan}</p>
+          <p>
+            Anda boleh tetap menyimpan, tetapi wajib menuliskan alasan minimal{' '}
+            {MIN_ALASAN_PERINGATAN} karakter. Alasan ini tercatat di audit.
+          </p>
+        </div>
+      }
+      onTutup={onCancel}
+      sibuk={sibuk}
+      lebar="md"
+    >
+      <Field
+        label={`Alasan tetap menyimpan (min. ${MIN_ALASAN_PERINGATAN} karakter)`}
+      >
+        <TextInput
+          autoFocus
+          value={alasan}
+          disabled={sibuk}
+          onChange={(e) => setAlasan(e.target.value)}
+          placeholder="cth: kas minus disetujui pemilik"
+        />
+      </Field>
+      {pesanError && (
+        <p
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+          className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+        >
+          {pesanError}
+        </p>
+      )}
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">
+          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
+          dan akhir diabaikan.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
+        <Button
+          disabled={sibuk || !cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(rapikanAlasanPeringatan(alasan));
+          }}
+        >
+          Ya, tetap simpan
+        </Button>
       </div>
     </Modal>
   );
@@ -615,7 +806,14 @@ export function KonfirmasiModal({
       lebar="md"
     >
       <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="ghost" disabled={sibuk} onClick={onBatal}>
+        {/* T3.8: fokus awal ke pilihan aman (Batal), bukan tombol destruktif. */}
+        <Button
+          variant="ghost"
+          autoFocus
+          data-fokus-awal="true"
+          disabled={sibuk}
+          onClick={onBatal}
+        >
           {labelBatal}
         </Button>
         <Button variant={variant} disabled={sibuk} onClick={onKonfirmasi}>

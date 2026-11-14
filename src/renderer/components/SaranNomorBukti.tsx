@@ -5,7 +5,7 @@ import { api } from '../lib/api.js';
 /**
  * Ambil saran nomor bukti berikutnya dari server setiap tanggal berubah
  * (P1-11). Saran hanya petunjuk: nomor final tetap diberikan atomik oleh
- * `insertJurnal` bila operator mengosongkan kolom.
+ * `postingJurnal` bila operator mengosongkan kolom.
  */
 export function useSaranNomorBukti(tanggal: string): string | null {
   const [nomor, setNomor] = useState<string | null>(null);

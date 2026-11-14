@@ -1,10 +1,18 @@
 // Satuan nominal aplikasi = SEN (integer). 1 Rp = 100 sen.
 
+const rp0 = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
 const rp2 = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** Rupiah bulat tampil tanpa `,00`; pecahan sen tetap dua desimal.
+ * Negatif memakai kurung gaya akuntansi, mis. `(Rp 1.500.000)`.
+ * Ekspor Excel sengaja tidak memakai fungsi ini (lihat `NUMFMT_RP`). */
 export function formatRp(sen: number): string {
-  if (sen < 0) return `(Rp ${rp2.format(Math.abs(sen) / 100)})`;
-  return `Rp ${rp2.format(sen / 100)}`;
+  const abs = Math.abs(sen);
+  const nominal = abs % 100 === 0 ? rp0.format(abs / 100) : rp2.format(abs / 100);
+  return sen < 0 ? `(Rp ${nominal})` : `Rp ${nominal}`;
 }
 
 const persen1 = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -44,9 +52,11 @@ export function formatTanggal(iso: string): string {
 }
 
 /**
- * Parse nominal gaya Indonesia ke SEN.
+ * Parse nominal final gaya Indonesia ke SEN (parser ketat).
  * '1500' → 150000, '1.500' → 150000, '1500,50' → 150050, '' → 0.
  * Throw Error (pesan Indonesia) untuk huruf, >2 digit desimal, negatif.
+ * Dipakai pencarian jurnal; input live memakai `parseCurrencyInput` yang
+ * menerima ketikan parsial (mis. koma di akhir).
  */
 export function parseRupiahToSen(s: string): number {
   const t = s.trim();

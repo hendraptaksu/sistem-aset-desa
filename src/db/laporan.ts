@@ -11,6 +11,8 @@ import {
   type JurnalLengkap,
 } from './repository.js';
 import type { JurnalJenis } from '../core/types.js';
+import { kodeKasDariDaftarAkun } from './coa.js';
+import { kemampuanKoreksiJurnal } from './kemampuanKoreksi.js';
 import {
   arusKas,
   bukuBesar,
@@ -26,6 +28,8 @@ import {
   type NeracaHasil,
   type NeracaSaldoModeHasil,
 } from '../core/reports.js';
+import { catatanTahunPertamaParsial } from '../core/pengaturan.js';
+import { getCutoverTanggal } from './pembukaan.js';
 import { tanggalLokal } from '../utils/tanggal.js';
 
 export type FilterBarisJurnal = {
@@ -159,6 +163,7 @@ export function laporanBukuBesar(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     akun,
     filter,
+    daftarAkun,
   );
 }
 
@@ -189,10 +194,17 @@ export function laporanNeracaSaldo(
 
   const akhir = sampai ?? tanggalLokal();
   const mulai = `${akhir.slice(0, 4)}-01-01`;
-  return {
-    ...neracaSaldoPeriode(baris, { mulai, sampai: akhir, daftarAkun }),
-    mode: 'tahun',
-  };
+  const hasil = neracaSaldoPeriode(baris, {
+    mulai,
+    sampai: akhir,
+    daftarAkun,
+    cutover: getCutoverTanggal(db),
+  });
+  return denganCatatanTahunPertama(
+    db,
+    { ...hasil, mode: 'tahun' as const },
+    tahunPertamaDalamRentang(db, mulai, akhir),
+  );
 }
 
 /**
@@ -224,11 +236,15 @@ export function laporanDetailJurnal(
   const reversal = db
     .prepare('SELECT id FROM jurnal WHERE reversal_of = ? ORDER BY rowid LIMIT 1')
     .get(jurnalId) as { id: string } | undefined;
+  const kemampuan = kemampuanKoreksiJurnal(db, { id: jurnalId });
   return {
     ...detail.jurnal,
     baris: detail.baris,
     total_debit: detail.baris.reduce((s, b) => s + b.debit, 0),
     reversal_id: reversal ? String(reversal.id) : null,
+    bisa_dibalik: kemampuan.bisaDibalik,
+    bisa_dikoreksi: kemampuan.bisaDikoreksi,
+    alasan_tidak_bisa: kemampuan.alasan,
   };
 }
 
@@ -242,6 +258,45 @@ export type FilterPeriodeLaporanDb = {
 };
 
 /**
+ * DB-38: catatan tahun pertama parsial hanya relevan bila rentang laporan
+ * menyentuh tahun pembukuan pertama (bukan untuk tahun-tahun berikutnya).
+ */
+function tahunPertamaDalamRentang(
+  db: Database.Database,
+  mulai?: string,
+  sampai?: string,
+): number | null {
+  const tanggalMulai = getCutoverTanggal(db);
+  if (!tanggalMulai) return null;
+  const tahun = Number(tanggalMulai.slice(0, 4));
+  if (!Number.isInteger(tahun)) return null;
+  const tahunDari = (tanggal?: string): number | null => {
+    const teks = String(tanggal ?? '').trim();
+    if (!teks) return null;
+    const angka = Number(teks.slice(0, 4));
+    return Number.isInteger(angka) ? angka : null;
+  };
+  const tahunMulai = tahunDari(mulai);
+  const tahunSampai = tahunDari(sampai);
+  if (tahunMulai !== null && tahun < tahunMulai) return null;
+  if (tahunSampai !== null && tahun > tahunSampai) return null;
+  return catatanTahunPertamaParsial(tanggalMulai, tahun) ? tahun : null;
+}
+
+function denganCatatanTahunPertama<T extends { catatanTahunPertama?: string }>(
+  db: Database.Database,
+  hasil: T,
+  tahun: number | null,
+): T {
+  if (tahun === null) return hasil;
+  const catatan = catatanTahunPertamaParsial(
+    getCutoverTanggal(db),
+    tahun,
+  );
+  return catatan ? { ...hasil, catatanTahunPertama: catatan } : hasil;
+}
+
+/**
  * Laba Rugi periode. Adapter hanya mengambil baris jurnal; seluruh
  * perhitungan (termasuk akun bernominal nol) diserahkan ke `labaRugi` murni.
  */
@@ -249,10 +304,16 @@ export function laporanLabaRugi(
   db: Database.Database,
   filter: FilterPeriodeLaporanDb = {},
 ): LabaRugiHasil {
-  return labaRugi(
+  const hasil = labaRugi(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
     filter,
     listAkun(db),
+    getCutoverTanggal(db),
+  );
+  return denganCatatanTahunPertama(
+    db,
+    hasil,
+    tahunPertamaDalamRentang(db, filter.mulai, filter.sampai),
   );
 }
 
@@ -265,13 +326,22 @@ export function laporanNeraca(
   db: Database.Database,
   cutoff: string,
 ): NeracaHasil {
-  return neraca(
+  const hasil = neraca(
     listBarisJurnal(db, { sampai: cutoff }),
     {
       cutoff,
       tutup: listTutupBuku(db),
     },
     listAkun(db),
+    getCutoverTanggal(db),
+  );
+  const tahun = Number(cutoff.slice(0, 4));
+  return denganCatatanTahunPertama(
+    db,
+    hasil,
+    catatanTahunPertamaParsial(getCutoverTanggal(db), tahun)
+      ? tahun
+      : null,
   );
 }
 
@@ -283,9 +353,10 @@ export function laporanArusKas(
   db: Database.Database,
   filter: FilterPeriodeLaporanDb = {},
 ): ArusKasHasil {
+  const daftarAkun = listAkun(db);
   return arusKas(
     listBarisJurnal(db, filter.sampai ? { sampai: filter.sampai } : {}),
-    filter,
-    listAkun(db),
+    { ...filter, kasKodes: kodeKasDariDaftarAkun(daftarAkun) },
+    daftarAkun,
   );
 }

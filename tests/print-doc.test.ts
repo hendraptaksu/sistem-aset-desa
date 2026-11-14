@@ -317,6 +317,10 @@ const panjar: PanjarTampil[] = [
         kategori_baga: '5003',
         nominal: RP(600_000),
         jurnal_id: 'j-panjar-tutup',
+        nota_nomor: '',
+        nota_tanggal: '',
+        toko: '',
+        keterangan: '',
       },
     ],
   },
@@ -531,7 +535,7 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     expect(laba.nilai?.[2]).toBe(lr.laba);
 
     const htmlDefisit = renderPrintHtml(labaRugiPrintDoc(lrDefisit, { tanggalCetak: '2026-10-23' }));
-    expect(htmlDefisit).toContain('(Rp 500.000,00)');
+    expect(htmlDefisit).toContain('(Rp 500.000)');
   });
 
   it('Neraca: aset/kewajiban/ekuitas, laba turunan, total aset/pasiva', () => {
@@ -562,6 +566,13 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     expect(mutasi.footer?.[0]!.nilai?.[4]).toBe(ak.totalMasuk);
     expect(mutasi.footer?.[0]!.nilai?.[5]).toBe(ak.totalKeluar);
     expect(ringkasan.baris.some((r) => r.sel[0] === 'Saldo akhir')).toBe(true);
+
+    const denganPenyesuaian = arusKasPrintDoc({
+      ...ak,
+      penyesuaianSaldoAwal: RP(1_250),
+    });
+    expect(cariBarisCetak(denganPenyesuaian, 'Saldo pembukaan / penyesuaian')?.nilai?.[3])
+      .toBe(RP(1_250));
   });
 
   it('Panjar: daftar + rincian item + total numerik', () => {
@@ -587,6 +598,11 @@ describe('P1-16 — adapter memakai angka core/reports (SEN)', () => {
     const p: PanjarTampil = panjar[0]!;
     const dasar: Panjar = p;
     expect(dasar.id).toBe('p-1');
+  });
+
+  it('DB-24: adapter cetak anggaran sudah dihapus', async () => {
+    const mod = await import('../src/features/export/printAdapters.js');
+    expect('anggaranPrintDoc' in mod).toBe(false);
   });
 });
 

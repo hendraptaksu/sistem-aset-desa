@@ -1,19 +1,24 @@
 // P0-1: COA ber-tipe + akun 1040 Uang Panjar.
-// Sumber kode/nama: KODE AKUN.csv (dibaca langsung agar tidak ada kode yang hilang).
+// DB-13a: `KODE AKUN.csv` adalah sumber mesin tunggal; `docs/KODE AKUN.xlsx`
+// adalah arsip client 48 akun. Test ini menjaga CSV, xlsx, dan COA tidak drift.
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import {
   AKUN_HUTANG,
+  AKUN_HUTANG_USAHA,
   AKUN_LEGACY_TIDAK_DIPOSTING,
   AKUN_MODAL,
   AKUN_PANJAR,
   AKUN_PIUTANG,
   COA,
   KAS_KODES,
+  KODE_EKSTENSI_SISTEM,
   LPD_KODES,
   PESAN_AKUN_LEGACY,
   POSISI_NORMAL,
@@ -23,6 +28,7 @@ import {
   isAktiva,
   isBeban,
   isEkuitas,
+  isHutang,
   isKewajiban,
   isPendapatan,
 } from '../src/db/coa.js';
@@ -30,6 +36,86 @@ import { openDb } from '../src/db/database.js';
 import { getAkun, listAkun } from '../src/db/repository.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const CSV_PATH = join(ROOT, 'KODE AKUN.csv');
+const XLSX_PATH = join(ROOT, 'docs', 'KODE AKUN.xlsx');
+const DOKUMEN_SUMBER_COA = join(ROOT, 'docs', 'skema.md');
+
+/**
+ * Arsip xlsx client adalah baseline 48 akun. Hash byte menjaga file biner ini
+ * tidak berubah diam-diam; perubahan hanya boleh lewat persetujuan client dan
+ * harus memperbarui dokumen + test ini secara sadar.
+ */
+const XLSX_BASELINE_JUMLAH = 48;
+const XLSX_BASELINE_SHA256 =
+  'c9a3f9f674f57ead20c1747bac25a16939f64acad6ea6aa6a9286fae4faae6b6';
+
+/** DB-13/DB-13b: CSV baseline 48 + 6 akun baru = 54 baris; COA = 54 + 2 ekstensi = 56. */
+const CSV_BASELINE_JUMLAH = 48;
+const CSV_JUMLAH = 54;
+const COA_JUMLAH = 56;
+
+/** Lima akun baru, dalam urutan baris CSV 49–53 (urutan persetujuan client). */
+const AKUN_DB13_CSV = [
+  { kode: '5060', nama: 'PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)' },
+  { kode: '5061', nama: 'PENGELUARAN ARTOS (UPACARA)' },
+  { kode: '5062', nama: 'PENGELUARAN BANTEN RUTIN (HARIAN)' },
+  { kode: '4060', nama: 'PENDAPATAN WEWEDALAN (UPACARA)' },
+  { kode: '4006', nama: 'PENDAPATAN PARKIR BPD (KHUSUS)' },
+] as const;
+
+/** Bentuk COA lengkap kelima akun baru, urut kode seperti array COA. */
+const AKUN_DB13_COA = [
+  {
+    kode: '4006',
+    nama: 'PENDAPATAN PARKIR BPD (KHUSUS)',
+    tipe: 'PENDAPATAN',
+    posisi_normal: 'KREDIT',
+  },
+  {
+    kode: '4060',
+    nama: 'PENDAPATAN WEWEDALAN (UPACARA)',
+    tipe: 'PENDAPATAN',
+    posisi_normal: 'KREDIT',
+  },
+  {
+    kode: '5060',
+    nama: 'PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)',
+    tipe: 'BEBAN',
+    posisi_normal: 'DEBIT',
+  },
+  {
+    kode: '5061',
+    nama: 'PENGELUARAN ARTOS (UPACARA)',
+    tipe: 'BEBAN',
+    posisi_normal: 'DEBIT',
+  },
+  {
+    kode: '5062',
+    nama: 'PENGELUARAN BANTEN RUTIN (HARIAN)',
+    tipe: 'BEBAN',
+    posisi_normal: 'DEBIT',
+  },
+] as const;
+
+/** DB-13b: akun bunga pinjaman, baris CSV 54, setelah lima akun DB-13. */
+const AKUN_DB13B_CSV = { kode: '5063', nama: 'BEBAN BUNGA PINJAMAN' } as const;
+
+const AKUN_DB13B_COA = {
+  kode: '5063',
+  nama: 'BEBAN BUNGA PINJAMAN',
+  tipe: 'BEBAN',
+  posisi_normal: 'DEBIT',
+} as const;
+
+/** Akun lama yang mirip tetap ada dan tidak diganti/dinonaktifkan oleh DB-13. */
+const AKUN_LAMA_TETAP = [
+  { kode: '5010', nama: 'BAGA SUAR (TELPON, LISTRIK, PDAM)' },
+  { kode: '5050', nama: 'BIAYA LAIN-LAIN' },
+  { kode: '5004', nama: 'BAGA UPAKARA' },
+  { kode: '4008', nama: 'PENDAPATAN PUNIA' },
+  { kode: '4041', nama: 'PENDAPATAN SESARI' },
+  { kode: '4005', nama: 'PENDAPATAN PARKIR' },
+] as const;
 
 /** Parser CSV sederhana (cukup untuk KODE AKUN.csv; mendukung tanda kutip). */
 function parseCsvLine(line: string): string[] {
@@ -57,7 +143,8 @@ function parseCsvLine(line: string): string[] {
 }
 
 function bacaCsv(): { kode: string; nama: string }[] {
-  const isi = readFileSync(join(ROOT, 'KODE AKUN.csv'), 'utf8');
+  expect(existsSync(CSV_PATH), 'KODE AKUN.csv (sumber mesin COA) harus ada').toBe(true);
+  const isi = readFileSync(CSV_PATH, 'utf8');
   return isi
     .split(/\r?\n/)
     .filter((line) => /^\d+,/.test(line))
@@ -67,16 +154,181 @@ function bacaCsv(): { kode: string; nama: string }[] {
     });
 }
 
+/** Baca baris akun dari arsip xlsx client (kolom B nama, kolom C kode). */
+async function bacaXlsx(): Promise<{ kode: string; nama: string }[]> {
+  expect(existsSync(XLSX_PATH), 'docs/KODE AKUN.xlsx (arsip client) harus ada').toBe(true);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(XLSX_PATH);
+  const ws = wb.worksheets[0];
+  expect(ws, 'xlsx harus punya satu worksheet').toBeDefined();
+  const rows: { kode: string; nama: string }[] = [];
+  ws!.eachRow((row, nomor) => {
+    if (nomor < 4) return; // 3 baris judul/header client
+    const nama = row.getCell(2).value;
+    const kode = row.getCell(3).value;
+    if (typeof nama !== 'string' || typeof kode !== 'number') return;
+    const kodeTeks = String(kode);
+    if (!/^\d{4}$/.test(kodeTeks)) return;
+    rows.push({ kode: kodeTeks, nama: nama.trim() });
+  });
+  return rows;
+}
+
 describe('COA P0-1', () => {
-  it('memuat semua kode & nama dari KODE AKUN.csv', () => {
+  it('memuat semua kode & nama dari KODE AKUN.csv secara persis', () => {
     const csv = bacaCsv();
-    expect(csv).toHaveLength(48);
+    expect(csv).toHaveLength(CSV_JUMLAH);
     for (const { kode, nama } of csv) {
-      expect(akun(kode), `akun ${kode} hilang`).toMatchObject({ kode, nama });
+      expect(kode, `kode CSV tidak 4 digit: ${kode}`).toMatch(/^\d{4}$/);
+      expect(akun(kode), `akun ${kode} hilang dari COA`).toMatchObject({ kode, nama });
     }
-    // CSV + 1040 UANG PANJAR (tambahan yang disetujui).
-    expect(COA).toHaveLength(csv.length + 1);
-    expect(COA.map((c) => c.kode)).toContain(AKUN_PANJAR);
+  });
+
+  it('docs/KODE AKUN.xlsx tetap arsip baseline 48 akun dan tidak diubah', async () => {
+    expect(existsSync(XLSX_PATH), 'arsip xlsx client harus ada').toBe(true);
+    const hash = createHash('sha256').update(readFileSync(XLSX_PATH)).digest('hex');
+    expect(hash, 'file xlsx client berubah tanpa persetujuan').toBe(XLSX_BASELINE_SHA256);
+
+    const xlsx = await bacaXlsx();
+    expect(xlsx).toHaveLength(XLSX_BASELINE_JUMLAH);
+    const csv = bacaCsv();
+    // Baseline xlsx harus sama dengan 48 baris pertama CSV; lima akun DB-13
+    // ditambahkan di belakang CSV sehingga arsip lama tetap utuh.
+    expect(csv.slice(0, CSV_BASELINE_JUMLAH)).toHaveLength(XLSX_BASELINE_JUMLAH);
+    expect(xlsx).toEqual(csv.slice(0, XLSX_BASELINE_JUMLAH));
+
+    // Baseline subset: setiap akun arsip wajib ada identik di COA.
+    for (const { kode, nama } of xlsx) {
+      expect(akun(kode), `akun arsip ${kode} hilang dari COA`).toMatchObject({ kode, nama });
+    }
+  });
+
+  it('menambahkan lima akun DB-13 di baris CSV 49–53 tanpa mengganti akun lama', () => {
+    const csv = bacaCsv();
+    expect(
+      csv.slice(CSV_BASELINE_JUMLAH, CSV_BASELINE_JUMLAH + AKUN_DB13_CSV.length),
+    ).toEqual([...AKUN_DB13_CSV]);
+
+    // Bentuk COA: tipe + posisi normal benar, dan nama pembeda persis.
+    for (const diharapkan of AKUN_DB13_COA) {
+      expect(akun(diharapkan.kode), `akun DB-13 ${diharapkan.kode} hilang`).toEqual(diharapkan);
+    }
+
+    // Posisi COA mengikuti urutan kode di dalam kelompoknya.
+    const kodeCoa = COA.map((c) => c.kode);
+    expect(kodeCoa.indexOf('4006')).toBe(kodeCoa.indexOf('4005') + 1);
+    expect(kodeCoa.indexOf('4060')).toBe(kodeCoa.indexOf('4050') + 1);
+    expect(kodeCoa.indexOf('5060')).toBe(kodeCoa.indexOf('5050') + 1);
+    expect(kodeCoa.indexOf('5061')).toBe(kodeCoa.indexOf('5060') + 1);
+    expect(kodeCoa.indexOf('5062')).toBe(kodeCoa.indexOf('5061') + 1);
+
+    // Akun lama yang mirip tidak di-rename, tidak dihapus, dan tetap bisa diposting.
+    for (const lama of AKUN_LAMA_TETAP) {
+      expect(akun(lama.kode)).toMatchObject({ kode: lama.kode, nama: lama.nama });
+      expect(akunBolehDiposting(lama.kode), `${lama.kode} tidak boleh dinonaktifkan`).toBe(true);
+    }
+
+    // Nama baru harus berbeda tegas dari semua nama lama.
+    const namaLama = new Set(AKUN_LAMA_TETAP.map((a) => a.nama.toUpperCase()));
+    for (const baru of AKUN_DB13_CSV) {
+      expect(namaLama.has(baru.nama.toUpperCase())).toBe(false);
+    }
+  });
+
+  it('menambahkan 5063 BEBAN BUNGA PINJAMAN di baris CSV 54, 5050 tetap utuh', () => {
+    const csv = bacaCsv();
+    expect(csv).toHaveLength(CSV_JUMLAH);
+    expect(csv[CSV_JUMLAH - 1]).toEqual(AKUN_DB13B_CSV);
+
+    // Bentuk COA persis: BEBAN, normal DEBIT.
+    expect(akun('5063')).toEqual(AKUN_DB13B_COA);
+    expect(isBeban('5063')).toBe(true);
+    expect(akunBolehDiposting('5063')).toBe(true);
+
+    // 5063 adalah tambahan: 5050 BIAYA LAIN-LAIN tidak diganti/dinonaktifkan.
+    expect(akun('5050')).toEqual({
+      kode: '5050',
+      nama: 'BIAYA LAIN-LAIN',
+      tipe: 'BEBAN',
+      posisi_normal: 'DEBIT',
+    });
+    expect(akunBolehDiposting('5050')).toBe(true);
+
+    // Urutan COA: 5063 tepat setelah 5062, dan tidak ada duplikat.
+    const kodeCoa = COA.map((c) => c.kode);
+    expect(kodeCoa.indexOf('5063')).toBe(kodeCoa.indexOf('5062') + 1);
+    expect(COA.filter((c) => c.kode === '5063')).toHaveLength(1);
+    expect(csv.filter((row) => row.kode === '5063')).toHaveLength(1);
+  });
+
+  it('COA = baris CSV + tepat ekstensi sistem 1040/2060', () => {
+    const csv = bacaCsv();
+    expect([...KODE_EKSTENSI_SISTEM]).toEqual([AKUN_PANJAR, AKUN_HUTANG_USAHA]);
+    expect([...KODE_EKSTENSI_SISTEM]).toEqual(['1040', '2060']);
+
+    const ekstensi = [
+      { kode: '1040', nama: 'UANG PANJAR (KAS DI MUKA)' },
+      { kode: '2060', nama: 'HUTANG USAHA' },
+    ];
+    const diharapkan = new Map(
+      [...csv, ...ekstensi].map(({ kode, nama }) => [kode, { kode, nama }]),
+    );
+    expect(diharapkan.size).toBe(CSV_JUMLAH + ekstensi.length);
+    expect(diharapkan.size).toBe(COA_JUMLAH);
+    expect(COA).toHaveLength(diharapkan.size);
+
+    for (const c of COA) {
+      expect(diharapkan.get(c.kode), `${c.kode} bukan CSV/ekstensi terdokumentasi`).toEqual({
+        kode: c.kode,
+        nama: c.nama,
+      });
+    }
+    for (const { kode } of ekstensi) {
+      expect(csv.some((row) => row.kode === kode), `${kode} tidak boleh ada di CSV`).toBe(false);
+    }
+
+    // Baris CSV tidak boleh hilang hanya karena COA memakai nama lain.
+    for (const { kode, nama } of csv) {
+      expect(akun(kode), `akun CSV ${kode} hilang`).toMatchObject({ kode, nama });
+    }
+  });
+
+  it('tidak ada kode atau nama duplikat di COA maupun CSV', () => {
+    for (const [label, rows] of [
+      ['COA', COA],
+      ['CSV', bacaCsv()],
+    ] as const) {
+      const kode = rows.map((row) => row.kode);
+      const nama = rows.map((row) => row.nama.trim().toUpperCase());
+      expect(new Set(kode).size, `${label} punya kode duplikat`).toBe(kode.length);
+      expect(new Set(nama).size, `${label} punya nama duplikat`).toBe(nama.length);
+    }
+  });
+
+  it('dokumentasi sumber COA mencatat keputusan DB-13a', () => {
+    expect(existsSync(DOKUMEN_SUMBER_COA), 'docs/skema.md harus ada').toBe(true);
+    const dokumen = readFileSync(DOKUMEN_SUMBER_COA, 'utf8');
+    for (const istilah of [
+      'KODE AKUN.csv',
+      'KODE AKUN.xlsx',
+      'sumber mesin',
+      '48',
+      '54',
+      '56',
+      '1040',
+      '2060',
+      '5060',
+      '5061',
+      '5062',
+      '5063',
+      'BEBAN BUNGA PINJAMAN',
+      '4060',
+      '4006',
+      'tambahan',
+      XLSX_BASELINE_SHA256,
+    ]) {
+      expect(dokumen, `docs/skema.md harus menyebut "${istilah}"`).toContain(istilah);
+    }
   });
 
   it('memakai tipe akuntansi baku + posisi normal yang benar', () => {
@@ -95,6 +347,12 @@ describe('COA P0-1', () => {
     expect(akun('1001')).toMatchObject({ tipe: 'AKTIVA', posisi_normal: 'DEBIT' });
     expect(akun('1050')).toMatchObject({ tipe: 'AKTIVA', posisi_normal: 'DEBIT' });
     expect(akun('2050')).toMatchObject({ tipe: 'KEWAJIBAN', posisi_normal: 'KREDIT' });
+    expect(akun('2060')).toMatchObject({
+      kode: '2060',
+      nama: 'HUTANG USAHA',
+      tipe: 'KEWAJIBAN',
+      posisi_normal: 'KREDIT',
+    });
     expect(akun('3000')).toMatchObject({ tipe: 'EKUITAS', posisi_normal: 'KREDIT' });
     expect(akun('4005')).toMatchObject({ tipe: 'PENDAPATAN', posisi_normal: 'KREDIT' });
     expect(akun('5003')).toMatchObject({ tipe: 'BEBAN', posisi_normal: 'DEBIT' });
@@ -141,6 +399,10 @@ describe('COA P0-1', () => {
     expect(isAktiva('1001')).toBe(true);
     expect(isAktiva('1040')).toBe(true);
     expect(isKewajiban('2050')).toBe(true);
+    expect(isKewajiban('2060')).toBe(true);
+    expect(isHutang('2050')).toBe(true);
+    expect(isHutang('2060')).toBe(true);
+    expect(isHutang('1050')).toBe(false);
     expect(isEkuitas('3000')).toBe(true);
     expect(isPendapatan('9999')).toBe(false);
     expect(isBeban('PANJAR')).toBe(false);
@@ -166,6 +428,49 @@ describe('COA P0-1', () => {
     expect(akunBolehDiposting('4005', false)).toBe(false);
   });
 
+  it('enam akun baru DB-13/DB-13b muncul di listAkun setelah seed DB, akun lama tetap aktif', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pura-coa-db13-'));
+    try {
+      const db = openDb(join(dir, 'pura.db'));
+      try {
+        const rows = listAkun(db);
+        expect(rows).toHaveLength(COA_JUMLAH);
+        expect(listAkun(db, { aktif: true })).toHaveLength(COA_JUMLAH);
+
+        for (const diharapkan of [...AKUN_DB13_COA, AKUN_DB13B_COA]) {
+          expect(getAkun(db, diharapkan.kode)).toEqual({
+            ...diharapkan,
+            aktif: true,
+            is_kas: false,
+            kelompok: diharapkan.tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN',
+            sumber: 'BAWAAN',
+          });
+        }
+
+        // listAkun mengurutkan kode; posisi akun baru mengikuti kode di COA.
+        const posisi = (kode: string): number => rows.findIndex((r) => r.kode === kode);
+        expect(posisi('4006')).toBe(posisi('4005') + 1);
+        expect(posisi('4060')).toBe(posisi('4050') + 1);
+        expect(posisi('5060')).toBe(posisi('5050') + 1);
+        expect(posisi('5061')).toBe(posisi('5060') + 1);
+        expect(posisi('5062')).toBe(posisi('5061') + 1);
+        expect(posisi('5063')).toBe(posisi('5062') + 1);
+
+        for (const lama of AKUN_LAMA_TETAP) {
+          expect(getAkun(db, lama.kode), `${lama.kode} harus tetap ada`).toMatchObject({
+            kode: lama.kode,
+            nama: lama.nama,
+            aktif: true,
+          });
+        }
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('menyimpan daftar akun ke tabel akun saat openDb (upsert)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pura-coa-'));
     try {
@@ -179,6 +484,13 @@ describe('COA P0-1', () => {
         nama: 'UANG PANJAR (KAS DI MUKA)',
         tipe: 'AKTIVA',
         posisi_normal: 'DEBIT',
+        aktif: true,
+      });
+      expect(getAkun(db, '2060')).toMatchObject({
+        kode: '2060',
+        nama: 'HUTANG USAHA',
+        tipe: 'KEWAJIBAN',
+        posisi_normal: 'KREDIT',
         aktif: true,
       });
 

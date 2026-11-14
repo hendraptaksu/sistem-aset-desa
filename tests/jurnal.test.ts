@@ -1,18 +1,23 @@
 // P0-2: skema & repository jurnal double-entry.
 // Fokus: jurnal seimbang tersimpan atomik, input tidak sah ditolak,
-// migrasi `user_version` aman untuk DB lama (POC, tanpa migrasi data).
+// dan DB baru langsung memakai skema v1 (tanpa migrasi data).
 
-import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
+import {
+  PESAN_JENIS_JURNAL_DB,
+  PESAN_TANGGAL_JURNAL_DB,
+  SCHEMA_VERSION,
+  openDb,
+} from '../src/db/database.js';
+import { JENIS_JURNAL } from '../src/core/posting.js';
 import {
   getJurnal,
   getJurnalDetail,
   hitungJurnal,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listJurnal,
   listJurnalBaris,
   listJurnalLengkapPage,
@@ -21,7 +26,6 @@ import {
 import { postingJurnal } from '../src/db/posting.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
 import { closePanjarV2, serahkanPanjar } from '../src/db/panjar.js';
-import { createPihak, postingPihak } from '../src/db/pihak.js';
 import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
 
@@ -51,7 +55,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('membuat tabel jurnal + jurnal_baris dan menaikkan user_version ke versi skema', () => {
     const { db } = freshDb();
     try {
-      expect(SCHEMA_VERSION).toBe(9);
+      expect(SCHEMA_VERSION).toBe(2);
       expect(versi(db)).toBe(SCHEMA_VERSION);
       const tabel = db
         .prepare(
@@ -95,7 +99,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('menyimpan jurnal seimbang: grup_id default = id, created_at ISO, baris urut', () => {
     const { db } = freshDb();
     try {
-      const jurnal = insertJurnal(
+      const jurnal = insertJurnalTervalidasi(
         db,
         {
           id: 'j-parkir-1',
@@ -176,7 +180,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
 
       for (const baris of kasus) {
         expect(() =>
-          insertJurnal(
+          insertJurnalTervalidasi(
             db,
             { id: `j-gagal-${kasus.indexOf(baris)}`, tanggal: '2026-01-02', keterangan: 'Uji' },
             baris,
@@ -196,15 +200,15 @@ describe('P0-2 — skema jurnal double-entry', () => {
     const { db } = freshDb();
     try {
       expect(() =>
-        insertJurnal(db, { id: 'j-a', tanggal: '2026-01-02', keterangan: '   ' }, pasangan('1001', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-a', tanggal: '2026-01-02', keterangan: '   ' }, pasangan('1001', '4005')),
       ).toThrow(/Keterangan/);
       expect(() =>
-        insertJurnal(db, { id: 'j-b', tanggal: '02-01-2026', keterangan: 'Salah format' }, pasangan('1001', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-b', tanggal: '02-01-2026', keterangan: 'Salah format' }, pasangan('1001', '4005')),
       ).toThrow(/Tanggal/);
 
-      insertJurnal(db, { id: 'j-c', tanggal: '2026-01-02', keterangan: 'Asli' }, pasangan('1001', '4005'));
+      insertJurnalTervalidasi(db, { id: 'j-c', tanggal: '2026-01-02', keterangan: 'Asli' }, pasangan('1001', '4005'));
       expect(() =>
-        insertJurnal(db, { id: 'j-c', tanggal: '2026-01-03', keterangan: 'Duplikat' }, pasangan('1029', '4005')),
+        insertJurnalTervalidasi(db, { id: 'j-c', tanggal: '2026-01-03', keterangan: 'Duplikat' }, pasangan('1029', '4005')),
       ).toThrow(/sudah ada/);
       expect(listJurnal(db)).toHaveLength(1);
       expect(listJurnalBaris(db, 'j-c')).toHaveLength(2);
@@ -216,7 +220,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('mendukung grup, reversal_of, created_at eksplisit, dan menolak referensi reversal asing', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-asli',
@@ -227,12 +231,13 @@ describe('P0-2 — skema jurnal double-entry', () => {
         },
         pasangan('5003', '1001'),
       );
-      const reversal = insertJurnal(
+      const reversal = insertJurnalTervalidasi(
         db,
         {
           id: 'j-balik',
           tanggal: '2026-02-02',
           keterangan: 'KOREKSI: beli alat',
+          jenis: 'REVERSAL',
           grup_id: 'g-beli-alat',
           reversal_of: 'j-asli',
         },
@@ -242,7 +247,7 @@ describe('P0-2 — skema jurnal double-entry', () => {
       expect(reversal.grup_id).toBe('g-beli-alat');
 
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           { id: 'j-asing', tanggal: '2026-02-03', keterangan: 'Salah', reversal_of: 'tidak-ada' },
           pasangan('1001', '4005'),
@@ -256,10 +261,10 @@ describe('P0-2 — skema jurnal double-entry', () => {
   it('listJurnal mendukung filter periode, jenis, grup, akun, dan pagination', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(db, { id: 'j-1', tanggal: '2026-01-05', keterangan: 'Parkir', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4005'));
-      insertJurnal(db, { id: 'j-2', tanggal: '2026-02-10', keterangan: 'Listrik', jenis: 'BAYAR' }, pasangan('5010', '1001'));
-      insertJurnal(db, { id: 'j-3', tanggal: '2026-02-20', keterangan: 'Beji', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4001'));
-      insertJurnal(db, { id: 'j-4', tanggal: '2026-03-01', keterangan: 'Pindah dana', jenis: 'TRANSFER' }, pasangan('1029', '1001'));
+      insertJurnalTervalidasi(db, { id: 'j-1', tanggal: '2026-01-05', keterangan: 'Parkir', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4005'));
+      insertJurnalTervalidasi(db, { id: 'j-2', tanggal: '2026-02-10', keterangan: 'Listrik', jenis: 'BAYAR' }, pasangan('5010', '1001'));
+      insertJurnalTervalidasi(db, { id: 'j-3', tanggal: '2026-02-20', keterangan: 'Beji', jenis: 'TERIMA', grup_id: 'g-pendapatan' }, pasangan('1001', '4001'));
+      insertJurnalTervalidasi(db, { id: 'j-4', tanggal: '2026-03-01', keterangan: 'Pindah dana', jenis: 'TRANSFER' }, pasangan('1029', '1001'));
 
       const ids = (f: Parameters<typeof listJurnal>[1] = {}) => listJurnal(db, f).map((j) => j.id);
       expect(ids()).toEqual(['j-1', 'j-2', 'j-3', 'j-4']);
@@ -278,6 +283,97 @@ describe('P0-2 — skema jurnal double-entry', () => {
   });
 });
 
+describe('DB-10 — constraint jurnal di DB', () => {
+  const insertMentah = (
+    db: ReturnType<typeof openDb>,
+    id: string,
+    tanggal: string,
+    jenis: string,
+    reversalOf: string | null = null,
+  ): void => {
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, grup_id, reversal_of, created_at)
+       VALUES (?, ?, '', ?, ?, ?, ?, '2026-01-01T00:00:00.000Z')`,
+    ).run(id, tanggal, `Uji ${id}`, jenis, id, reversalOf);
+  };
+
+  it('menolak reversal kedua untuk jurnal yang sama lewat unique index', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        { id: 'j-asli', tanggal: '2026-02-01', keterangan: 'Jurnal asli' },
+        pasangan('1001', '4005'),
+      );
+
+      expect(() => insertMentah(db, 'j-balik-1', '2026-02-02', 'REVERSAL', 'j-asli')).not.toThrow();
+      expect(() => insertMentah(db, 'j-balik-2', '2026-02-03', 'REVERSAL', 'j-asli')).toThrow(
+        /UNIQUE constraint failed: jurnal\.reversal_of|ux_jurnal_reversal/,
+      );
+
+      expect(listJurnal(db).map((j) => j.id)).toEqual(['j-asli', 'j-balik-1']);
+      expect(
+        db.prepare('SELECT COUNT(*) AS n FROM jurnal WHERE reversal_of IS NOT NULL').get(),
+      ).toEqual({ n: 1 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menolak jenis tidak dikenal dan tanggal salah bentuk dengan pesan Indonesia', () => {
+    const { db } = freshDb();
+    try {
+      expect(() => insertMentah(db, 'j-jenis', '2026-01-02', 'NGARANG')).toThrow(
+        PESAN_JENIS_JURNAL_DB,
+      );
+      // Bentuk harus persis YYYY-MM-DD, bukan tanggal yang hanya "mirip".
+      expect(() => insertMentah(db, 'j-tgl-1', '02-01-2026', 'UMUM')).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(() => insertMentah(db, 'j-tgl-2', '2026-1-02', 'UMUM')).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(() => insertMentah(db, 'j-tgl-3', '2026-01-02T00:00:00Z', 'UMUM')).toThrow(
+        PESAN_TANGGAL_JURNAL_DB,
+      );
+      expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual({ n: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('trigger menerima seluruh JENIS_JURNAL resmi dan jurnal normal tetap tersimpan', () => {
+    const { db } = freshDb();
+    try {
+      for (const jenis of JENIS_JURNAL) {
+        if (jenis === 'REVERSAL') {
+          // REVERSAL wajib menunjuk jurnal asli yang sudah ada.
+          insertMentah(db, 'j-acuan-reversal', '2026-01-02', 'UMUM');
+          expect(() =>
+            insertMentah(db, `j-${jenis}`, '2026-01-02', jenis, 'j-acuan-reversal'),
+          ).not.toThrow();
+        } else {
+          expect(() => insertMentah(db, `j-${jenis}`, '2026-01-02', jenis)).not.toThrow();
+        }
+      }
+      expect(db.prepare('SELECT COUNT(*) AS n FROM jurnal').get()).toEqual({
+        n: JENIS_JURNAL.length + 1,
+      });
+
+      // Jalur aplikasi (repository) juga tidak terhalang trigger.
+      const jurnal = insertJurnalTervalidasi(
+        db,
+        { id: 'j-normal', tanggal: '2026-03-01', keterangan: 'Jurnal normal' },
+        pasangan('1001', '4005'),
+      );
+      expect(jurnal.jenis).toBe('UMUM');
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   const D = (akun: string, nominal: number): JurnalBarisInput => ({
     akun_kode: akun,
@@ -290,25 +386,25 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     kredit: nominal,
   });
 
-  it('insertJurnal tanpa no_bukti mengisi JU-tahun-0001 lalu 0002, per tahun terpisah', () => {
+  it('insertJurnalTervalidasi tanpa no_bukti mengisi JU-tahun-0001 lalu 0002, per tahun terpisah', () => {
     const { db } = freshDb();
     try {
-      const satu = insertJurnal(
+      const satu = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-1', tanggal: '2026-01-02', keterangan: 'Pertama' },
         pasangan('1001', '4005'),
       );
-      const dua = insertJurnal(
+      const dua = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-2', tanggal: '2026-03-04', keterangan: 'Kedua' },
         pasangan('1029', '4005'),
       );
-      const tahunLalu = insertJurnal(
+      const tahunLalu = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-3', tanggal: '2025-12-31', keterangan: 'Tahun lain' },
         pasangan('1001', '4005'),
       );
-      const tiga = insertJurnal(
+      const tiga = insertJurnalTervalidasi(
         db,
         { id: 'j-auto-4', tanggal: '2026-12-31', keterangan: 'Ketiga' },
         pasangan('1001', '4005'),
@@ -320,7 +416,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(tiga.no_bukti).toBe('JU-2026-0003');
 
       // Nomor eksplisit operator dipakai apa adanya (bukan dipaksa JU).
-      const manual = insertJurnal(
+      const manual = insertJurnalTervalidasi(
         db,
         {
           id: 'j-manual',
@@ -339,7 +435,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('max+1 setelah celah, saran form ikut bergerak, dan nomor duplikat ditolak', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-gap',
@@ -351,7 +447,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       );
       expect(saranNomorBukti(db, '2026-07-01')).toBe('JU-2026-0006');
 
-      const auto = insertJurnal(
+      const auto = insertJurnalTervalidasi(
         db,
         { id: 'j-auto', tanggal: '2026-07-02', keterangan: 'Setelah celah' },
         pasangan('1001', '4005'),
@@ -361,7 +457,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
 
       // Nomor lama (0005) dan nomor baru (0006) tidak boleh dipakai ulang.
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           {
             id: 'j-dup-lama',
@@ -373,7 +469,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
         ),
       ).toThrow(/sudah dipakai/);
       expect(() =>
-        insertJurnal(
+        insertJurnalTervalidasi(
           db,
           {
             id: 'j-dup-baru',
@@ -393,7 +489,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     }
   });
 
-  it('semua jalur simpan mendapat nomor: posting, reversal, koreksi isi ulang, panjar, pihak', () => {
+  it('semua jalur simpan mendapat nomor: posting, reversal, koreksi isi ulang, panjar', () => {
     const { db } = freshDb();
     try {
       const posting = postingJurnal(db, {
@@ -437,7 +533,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('koreksi & isi ulang memberi nomor baru untuk balik dan pengganti', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-asli',
@@ -473,7 +569,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
   it('nomor pengganti pilihan operator tidak ditabrak nomor balik otomatis', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-asli',
@@ -507,10 +603,10 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
     }
   });
 
-  it('panjar dan pihak juga otomatis JU (serah, close, piutang)', () => {
+  it('panjar dan utang usaha juga otomatis JU (serah, close, catat utang)', () => {
     const { db } = freshDb();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         {
           id: 'j-modal',
@@ -539,21 +635,17 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
       expect(tutup.jurnal?.no_bukti).toBe('JU-2026-0003');
 
-      const pihak = createPihak(db, { nama: 'Banjar Uji' });
-      const pinjam = postingPihak(db, {
-        pihakId: pihak.id,
-        input: {
-          header: {
-            id: 'j-pinjam',
-            tanggal: '2026-03-01',
-            keterangan: 'Beri pinjaman',
-            jenis: 'PIUTANG',
-          },
-          baris: [D('1050', 500_000), K('1001', 500_000)],
+      const utang = postingJurnal(db, {
+        header: {
+          id: 'j-catat-utang',
+          tanggal: '2026-03-01',
+          keterangan: 'Catat utang usaha ke Toko Bangunan Jaya',
+          jenis: 'HUTANG',
         },
+        baris: [D('5003', 500_000), K('2060', 500_000)],
       });
-      expect(pinjam.tersimpan, pinjam.errors.join(' ')).toBe(true);
-      expect(pinjam.jurnal?.no_bukti).toBe('JU-2026-0004');
+      expect(utang.tersimpan, utang.errors.join(' ')).toBe(true);
+      expect(utang.jurnal?.no_bukti).toBe('JU-2026-0004');
     } finally {
       db.close();
     }
@@ -561,7 +653,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
 
   function dbPencarian(): ReturnType<typeof openDb> {
     const { db } = freshDb();
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-parkir',
@@ -572,7 +664,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1001', 15_000_000), K('4005', 15_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-listrik',
@@ -583,7 +675,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('5010', 5_000_000), K('1001', 5_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-transfer',
@@ -594,7 +686,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1029', 7_500_000), K('1001', 7_500_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-panjar',
@@ -605,7 +697,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1040', 2_000_000), K('1001', 2_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-piutang',
@@ -616,7 +708,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1050', 9_000_000), K('1001', 9_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-beji',
@@ -627,7 +719,7 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       },
       [D('1001', 3_000_000), K('4001', 3_000_000)],
     );
-    insertJurnal(
+    insertJurnalTervalidasi(
       db,
       {
         id: 'j-toilet',
@@ -658,10 +750,41 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       expect(ids('150000')).toEqual(['j-parkir']);
       expect(ids('150.000')).toEqual(['j-parkir']);
       expect(ids('Rp 150.000')).toEqual(['j-parkir']);
+      expect(ids('150.000,00')).toEqual(['j-parkir']);
+      expect(ids('150,000')).toEqual(['j-parkir']);
       expect(ids('20.000')).toEqual(['j-panjar']);
       // Wildcard LIKE diperlakukan sebagai teks biasa.
       expect(ids('%')).toEqual([]);
       expect(ids('_')).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('mencari nominal pecahan dengan koma desimal', () => {
+    const { db } = freshDb();
+    try {
+      insertJurnalTervalidasi(
+        db,
+        {
+          id: 'j-pecahan',
+          tanggal: '2026-08-01',
+          no_bukti: 'JU-2026-0007',
+          keterangan: 'Jurnal pecahan',
+          jenis: 'TERIMA',
+        },
+        [D('1001', 150_050), K('4005', 150_050)],
+      );
+      const ids = (cari: string) =>
+        listJurnalLengkapPage(db, { cari }).rows.map((j) => j.id);
+
+      expect(ids('1.500,50')).toEqual(['j-pecahan']);
+      expect(ids('Rp 1.500,50')).toEqual(['j-pecahan']);
+      expect(ids('1,500.50')).toEqual(['j-pecahan']);
+      // '150050' berarti Rp 150.050, bukan 150050 sen.
+      expect(ids('150050')).toEqual([]);
+      expect(ids('1.500,51')).toEqual([]);
+      expect(ids('1.500,505')).toEqual([]);
     } finally {
       db.close();
     }
@@ -717,146 +840,6 @@ describe('P1-11 — nomor bukti JU otomatis & pencarian jurnal', () => {
       // Cocok lewat nama akun 4005/4001/4002 → tiga jurnal, urut tanggal.
       expect(cariPaged.total).toBe(3);
       expect(cariPaged.rows.map((j) => j.id)).toEqual(['j-beji']);
-    } finally {
-      db.close();
-    }
-  });
-});
-
-describe('P0-3 — reset DB lama (POC, tanpa migrasi data)', () => {
-  it('membuang tabel single-entry, mempertahankan pengaturan & aset, idempoten', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-migrasi-'));
-    dirs.push(dir);
-    const path = join(dir, 'lama.db');
-
-    // Simulasi DB v1 (single-entry) sebelum reset POC.
-    const lama = new Database(path);
-    lama.exec(`
-      CREATE TABLE coa (kode TEXT PRIMARY KEY, nama TEXT NOT NULL, tipe TEXT NOT NULL);
-      CREATE TABLE transaksi (
-        id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, keterangan TEXT NOT NULL,
-        akun_kas TEXT NOT NULL, kategori TEXT NOT NULL,
-        masuk INTEGER NOT NULL DEFAULT 0, keluar INTEGER NOT NULL DEFAULT 0
-      );
-      CREATE TABLE panjar (
-        id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, penerima TEXT NOT NULL,
-        jumlah INTEGER NOT NULL, akun_kas_sumber TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'OPEN'
-      );
-      CREATE TABLE panjar_item (
-        panjar_id TEXT NOT NULL, kategori_baga TEXT NOT NULL, nominal INTEGER NOT NULL
-      );
-      CREATE TABLE tutup_buku (
-        tahun INTEGER PRIMARY KEY, laba INTEGER NOT NULL,
-        created_at TEXT NOT NULL, backup_path TEXT NOT NULL DEFAULT ''
-      );
-      CREATE TABLE pengaturan (kunci TEXT PRIMARY KEY, nilai TEXT NOT NULL DEFAULT '');
-      CREATE TABLE aset (
-        id TEXT PRIMARY KEY, kode TEXT NOT NULL UNIQUE, nama TEXT NOT NULL,
-        jenis TEXT NOT NULL DEFAULT 'LAINNYA', luas_m2 REAL, lokasi TEXT NOT NULL DEFAULT '',
-        status_hukum TEXT NOT NULL DEFAULT '', tahun_perolehan INTEGER,
-        asal_usul TEXT NOT NULL DEFAULT '', kondisi TEXT NOT NULL DEFAULT 'BAIK',
-        keterangan TEXT NOT NULL DEFAULT '', nilai_sen INTEGER,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      );
-      PRAGMA user_version = 0;
-    `);
-    lama.prepare("INSERT INTO pengaturan (kunci, nilai) VALUES ('pin_salt', 'lama')").run();
-    lama
-      .prepare(
-        "INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori, masuk, keluar) VALUES ('t-lama', '2025-12-31', 'Data lama', '1001', '4005', 123, 0)",
-      )
-      .run();
-    lama
-      .prepare(
-        `INSERT INTO aset (id, kode, nama, jenis, lokasi, status_hukum, asal_usul,
-          kondisi, keterangan, created_at, updated_at)
-         VALUES ('a-lama', 'AST-001', 'Tanah Druwe', 'TANAH', 'Puri', 'druwe', '',
-          'BAIK', '', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')`,
-      )
-      .run();
-    lama.prepare("INSERT INTO tutup_buku (tahun, laba, created_at) VALUES (2025, 999, '2025-12-31T00:00:00.000Z')").run();
-    lama.close();
-
-    const db = openDb(path);
-    try {
-      expect(versi(db)).toBe(SCHEMA_VERSION);
-
-      const tabel = (
-        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
-      ).map((t) => t.name);
-      for (const usang of ['transaksi', 'coa']) {
-        expect(tabel, `tabel ${usang} harus dibuang`).not.toContain(usang);
-      }
-      // P1-4: panjar v1 dibuang lalu dibuat ulang dalam bentuk v2 (metadata
-      // jurnal_open_id) — data lamanya tetap tidak dimigrasi.
-      expect(tabel).toEqual(expect.arrayContaining(['panjar', 'panjar_item']));
-      const kolomPanjar = (db.pragma('table_info(panjar)') as { name: string }[]).map(
-        (k) => k.name,
-      );
-      expect(kolomPanjar).toContain('jurnal_open_id');
-      expect(
-        (db.prepare('SELECT COUNT(*) AS c FROM panjar').get() as { c: number }).c,
-      ).toBe(0);
-
-      // PIN & inventaris aset dipertahankan.
-      expect(db.prepare("SELECT nilai FROM pengaturan WHERE kunci = 'pin_salt'").get()).toEqual({ nilai: 'lama' });
-      expect(db.prepare("SELECT kode, nama FROM aset WHERE id = 'a-lama'").get()).toEqual({
-        kode: 'AST-001',
-        nama: 'Tanah Druwe',
-      });
-
-      // tutup_buku lama (punya `laba`) diganti bentuk v2 tanpa angka laba tersimpan.
-      const kolom = (db.pragma('table_info(tutup_buku)') as { name: string }[]).map((k) => k.name);
-      expect(kolom).toEqual(expect.arrayContaining(['tahun', 'created_at', 'backup_path', 'catatan']));
-      expect(kolom).not.toContain('laba');
-
-      expect(listJurnal(db)).toEqual([]);
-      expect(() =>
-        insertJurnal(db, { id: 'j-baru', tanggal: '2026-01-01', keterangan: 'Setelah reset' }, pasangan('1001', '4005')),
-      ).not.toThrow();
-    } finally {
-      db.close();
-    }
-
-    // Buka ulang: reset idempoten, jurnal tetap ada.
-    const db2 = openDb(path);
-    try {
-      expect(versi(db2)).toBe(SCHEMA_VERSION);
-      expect(listJurnal(db2).map((j) => j.id)).toEqual(['j-baru']);
-    } finally {
-      db2.close();
-    }
-  });
-
-  it('DB v2 awal (P0-2) yang masih membawa tabel lama ikut dibersihkan', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-migrasi-v2-'));
-    dirs.push(dir);
-    const path = join(dir, 'p0-2.db');
-
-    // DB v2 P0-2: user_version sudah 2, tetapi tabel single-entry masih ada.
-    const lama = new Database(path);
-    lama.exec(`
-      CREATE TABLE transaksi (
-        id TEXT PRIMARY KEY, tanggal TEXT NOT NULL, keterangan TEXT NOT NULL,
-        akun_kas TEXT NOT NULL, kategori TEXT NOT NULL,
-        masuk INTEGER NOT NULL DEFAULT 0, keluar INTEGER NOT NULL DEFAULT 0
-      );
-      CREATE TABLE coa (kode TEXT PRIMARY KEY, nama TEXT NOT NULL, tipe TEXT NOT NULL);
-      PRAGMA user_version = 2;
-    `);
-    lama.prepare("INSERT INTO transaksi (id, tanggal, keterangan, akun_kas, kategori) VALUES ('t-lama', '2026-01-01', 'Lama', '1001', '4005')").run();
-    lama.close();
-
-    const db = openDb(path);
-    try {
-      expect(versi(db)).toBe(SCHEMA_VERSION);
-      const tabel = (
-        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
-      ).map((t) => t.name);
-      expect(tabel).not.toContain('transaksi');
-      expect(tabel).not.toContain('coa');
-      expect(tabel).toEqual(expect.arrayContaining(['akun', 'jurnal', 'jurnal_baris']));
     } finally {
       db.close();
     }

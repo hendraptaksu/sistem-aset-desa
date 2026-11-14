@@ -11,11 +11,6 @@ import type {
   NeracaHasil,
   NeracaSaldoModeHasil,
 } from '../../core/reports.js';
-import type {
-  RealisasiAnggaranBaris,
-  RealisasiAnggaranHasil,
-  TotalRealisasiAnggaran,
-} from '../../core/anggaran.js';
 import { formatPersen, formatRp, formatTanggal } from '../../utils/format.js';
 import type { KopOrganisasi } from '../../core/pengaturan.js';
 import {
@@ -415,111 +410,12 @@ export function labaRugiPrintDoc(
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
     ...opsiKop(opts.kop),
     orientasi: 'portrait',
-    blok: [{ jenis: 'tabel', tabel }],
-  };
-}
-
-const statusAnggaranCetak = (lebih: boolean): string => (lebih ? 'Lebih' : 'Sesuai');
-
-/**
- * Anggaran & realisasi (P2-1) — portrait, satu tabel dengan seksi
- * PENDAPATAN/BEBAN, subtotal per seksi, dan total gabungan. Semua angka
- * diambil dari hasil core/anggaran.ts (tidak ada perhitungan ulang).
- */
-export function anggaranPrintDoc(
-  hasil: RealisasiAnggaranHasil,
-  opts: { tanggalCetak?: string; kop?: KopOrganisasi } = {},
-): PrintDoc {
-  const rows: PrintRow[] = [];
-
-  const tulisBagian = (
-    judul: string,
-    daftar: readonly RealisasiAnggaranBaris[],
-    total: TotalRealisasiAnggaran,
-  ): void => {
-    rows.push(baris(['', judul, '', '', '', '', ''], undefined, 'seksi', true));
-    for (const b of daftar.filter((r) => r.anggaran !== 0 || r.realisasi !== 0)) {
-      rows.push(
-        baris(
-          [
-            b.kode,
-            b.nama,
-            formatRp(b.anggaran),
-            formatRp(b.realisasi),
-            formatRp(b.sisa),
-            formatPersen(b.persen),
-            statusAnggaranCetak(b.lebih),
-          ],
-          [null, null, b.anggaran, b.realisasi, b.sisa, b.persen, null],
-        ),
-      );
-    }
-    rows.push(
-      baris(
-        [
-          '',
-          `Total ${judul === 'PENDAPATAN' ? 'Pendapatan' : judul === 'BEBAN' ? 'Beban' : judul}`,
-          formatRp(total.anggaran),
-          formatRp(total.realisasi),
-          formatRp(total.sisa),
-          formatPersen(total.persen),
-          statusAnggaranCetak(total.lebih),
-        ],
-        [null, null, total.anggaran, total.realisasi, total.sisa, total.persen, null],
-        'subtotal',
-        true,
-      ),
-    );
-  };
-
-  tulisBagian('PENDAPATAN', hasil.pendapatan, hasil.totalPendapatan);
-  tulisBagian('BEBAN', hasil.beban, hasil.totalBeban);
-
-  const tabel: PrintTable = {
-    judul: 'ANGGARAN & REALISASI',
-    kolom: [
-      { label: 'Kode', width: 10 },
-      { label: 'Uraian', width: 34 },
-      { label: 'Pagu', width: 12, align: 'right' },
-      { label: 'Realisasi', width: 12, align: 'right' },
-      { label: 'Sisa', width: 12, align: 'right' },
-      { label: '%', width: 8, align: 'right' },
-      { label: 'Status', width: 10, align: 'center' },
+    blok: [
+      ...(lr.catatanTahunPertama
+        ? [{ jenis: 'paragraf' as const, teks: lr.catatanTahunPertama }]
+        : []),
+      { jenis: 'tabel', tabel },
     ],
-    baris: rows,
-    footer: [
-      baris(
-        [
-          '',
-          'TOTAL ANGGARAN & REALISASI',
-          formatRp(hasil.total.anggaran),
-          formatRp(hasil.total.realisasi),
-          formatRp(hasil.total.sisa),
-          formatPersen(hasil.total.persen),
-          statusAnggaranCetak(hasil.total.lebih),
-        ],
-        [
-          null,
-          null,
-          hasil.total.anggaran,
-          hasil.total.realisasi,
-          hasil.total.sisa,
-          hasil.total.persen,
-          null,
-        ],
-        'total',
-        true,
-      ),
-    ],
-  };
-
-  return {
-    judul: 'ANGGARAN & REALISASI',
-    subjudul: kopPeriodeEfektif(hasil.mulai, hasil.sampai),
-    ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
-    ...opsiKop(opts.kop),
-    orientasi: 'portrait',
-    blok: [{ jenis: 'tabel', tabel }],
   };
 }
 
@@ -589,7 +485,12 @@ export function neracaPrintDoc(
     ...(opts.tanggalCetak ? { tanggalCetak: opts.tanggalCetak } : {}),
     ...opsiKop(opts.kop),
     orientasi: 'portrait',
-    blok: [{ jenis: 'tabel', tabel }],
+    blok: [
+      ...(n.catatanTahunPertama
+        ? [{ jenis: 'paragraf' as const, teks: n.catatanTahunPertama }]
+        : []),
+      { jenis: 'tabel', tabel },
+    ],
   };
 }
 
@@ -616,6 +517,14 @@ export function arusKasPrintDoc(
       [null, ak.transfer.masuk, ak.transfer.keluar, ak.transfer.neto],
     ),
     baris(['Saldo awal', formatRp(0), formatRp(0), formatRp(ak.saldoAwal)], [null, 0, 0, ak.saldoAwal], 'subtotal', true),
+    ...(ak.penyesuaianSaldoAwal !== 0
+      ? [baris(
+          ['Saldo pembukaan / penyesuaian', formatRp(0), formatRp(0), formatRp(ak.penyesuaianSaldoAwal)],
+          [null, 0, 0, ak.penyesuaianSaldoAwal],
+          'subtotal',
+          true,
+        )]
+      : []),
     baris(
       ['Total masuk', formatRp(ak.totalMasuk), formatRp(0), formatRp(ak.totalMasuk)],
       [null, ak.totalMasuk, 0, ak.totalMasuk],
@@ -740,13 +649,19 @@ export function panjarPrintDoc(
           p.penerima,
           namaAkun(coa, p.akun_kas_sumber),
           formatRp(p.jumlah),
-          p.status === 'OPEN' ? 'Belum' : 'Sudah',
+          p.status === 'OPEN'
+            ? 'Belum'
+            : p.status === 'CLOSED'
+              ? 'Sudah'
+              : 'DIBATALKAN',
           formatRp(realisasi),
           formatRp(sisa),
           formatRp(kurang),
           p.status === 'CLOSED'
             ? `Ditutup ${p.tanggal_close ? formatTanggal(p.tanggal_close) : ''}`.trim()
-            : 'Masih terbuka',
+            : p.status === 'DIBATALKAN'
+              ? `Dibatalkan ${p.tanggal_batal ? formatTanggal(p.tanggal_batal) : ''}`.trim()
+              : 'Masih terbuka',
         ],
         [null, null, null, p.jumlah, null, realisasi, sisa, kurang, null],
       ),

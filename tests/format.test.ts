@@ -2,16 +2,20 @@
 import { describe, expect, it } from 'vitest';
 import { formatRp, formatTanggal, parseRupiahToSen } from '../src/utils/format.js';
 
-describe('formatRp sen → 2 desimal', () => {
-  it('bulat tampil ,00', () => {
-    expect(formatRp(150_000_000)).toBe('Rp 1.500.000,00');
-    expect(formatRp(0)).toBe('Rp 0,00');
+describe('formatRp sen → Rupiah bulat, desimal hanya bila ada pecahan', () => {
+  it('bulat tampil tanpa ,00', () => {
+    expect(formatRp(15_000_000)).toBe('Rp 150.000');
+    expect(formatRp(150_000_000)).toBe('Rp 1.500.000');
+    expect(formatRp(0)).toBe('Rp 0');
   });
-  it('pecahan tampil', () => {
+  it('pecahan sen tetap tampil', () => {
     expect(formatRp(150_050)).toBe('Rp 1.500,50');
+    expect(formatRp(15_000_050)).toBe('Rp 150.000,50');
   });
-  it('negatif kurung', () => {
-    expect(formatRp(-10_000_000)).toBe('(Rp 100.000,00)');
+  it('negatif kurung, bulat maupun pecahan', () => {
+    expect(formatRp(-15_000_000)).toBe('(Rp 150.000)');
+    expect(formatRp(-10_000_000)).toBe('(Rp 100.000)');
+    expect(formatRp(-15_000_050)).toBe('(Rp 150.000,50)');
   });
 });
 

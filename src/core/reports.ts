@@ -10,11 +10,12 @@
 // drill-down/tampilan. Nominal selalu integer SEN.
 
 import {
+  AKUN_HUTANG_USAHA,
   AKUN_PANJAR,
   AKUN_PIUTANG,
   COA,
   KAS_KODES,
-  isAkunKas,
+  kodeKasDariDaftarAkun,
   type Coa,
   type PosisiNormal,
 } from '../db/coa.js';
@@ -41,6 +42,24 @@ export type BarisJurnalSumber = {
 const petaAkun = (daftar: readonly Coa[]): Map<string, Coa> =>
   new Map(daftar.map((a) => [a.kode, a]));
 
+/**
+ * Pastikan setiap baris memakai akun yang ada di master COA.
+ *
+ * Laporan tidak boleh diam-diam membuang baris berakun asing: total bisa
+ * tampak seimbang padahal ada saldo yang tidak masuk laporan.
+ */
+function pastikanAkunDikenal(
+  baris: readonly BarisJurnalSumber[],
+  daftarAkun: readonly Coa[],
+): void {
+  const peta = petaAkun(daftarAkun);
+  for (const b of baris) {
+    if (!peta.has(b.akun_kode)) {
+      throw new Error(`Akun ${b.akun_kode} pada jurnal tidak dikenal di COA.`);
+    }
+  }
+}
+
 function cariAkun(kode: string, daftar: readonly Coa[]): Coa {
   const a = daftar.find((x) => x.kode === kode);
   if (!a) throw new Error(`Akun ${kode} tidak dikenal di COA.`);
@@ -53,6 +72,26 @@ function resolveAkun(akun: string | Coa, daftar: readonly Coa[]): Coa {
 
 const dalamRentang = (tanggal: string, mulai?: string, sampai?: string): boolean =>
   (!mulai || tanggal >= mulai) && (!sampai || tanggal <= sampai);
+
+/**
+ * Apakah baris P&L bertanggal `tanggal` boleh masuk laporan bila cut-over
+ * eksplisit diberikan.
+ *
+ * Aturan T-A00/DB-38: cut-over HANYA membatasi P&L pada tahun cut-over.
+ * Tanggal sebelum cut-over di tahun yang sama disaring; tahun lain dihitung
+ * penuh. Tanpa cut-over tidak ada penyaringan (data lama tetap bisa dilaporkan).
+ */
+function setelahCutover(
+  tanggal: string,
+  cutover: string | null | undefined,
+): boolean {
+  const batas = String(cutover ?? '').trim();
+  if (!batas) return true;
+  const tahunTanggal = String(tanggal).slice(0, 4);
+  const tahunCutover = batas.slice(0, 4);
+  if (tahunTanggal !== tahunCutover) return true;
+  return tanggal >= batas;
+}
 
 /** Saldo bertanda normal: positif = sesuai posisi normal akun. */
 function saldoNormal(
@@ -162,6 +201,7 @@ export function bukuBesar(
   opsi: BukuBesarOpsi = {},
   daftarAkun: readonly Coa[] = COA,
 ): BukuBesarHasil {
+  pastikanAkunDikenal(baris, daftarAkun);
   const a = resolveAkun(akun, daftarAkun);
   const { mulai, sampai } = opsi;
   const arah = a.posisi_normal === 'DEBIT' ? 1 : -1;
@@ -270,6 +310,8 @@ export function neracaSaldo(
     typeof cutoffAtauOpsi === 'string' ? { cutoff: cutoffAtauOpsi } : cutoffAtauOpsi;
   const { cutoff, hanyaAdaSaldo = false } = opsi;
 
+  pastikanAkunDikenal(baris, daftarAkun);
+
   const debitMentah = new Map<string, number>();
   const kreditMentah = new Map<string, number>();
   const adaMutasi = new Set<string>();
@@ -321,6 +363,11 @@ export type NeracaSaldoPeriodeOpsi = {
   hanyaAdaSaldo?: boolean;
   /** Master COA; default COA bawaan. */
   daftarAkun?: readonly Coa[];
+  /**
+   * T-A00: cut-over eksplisit dari DB/pengaturan. Hanya membatasi P&L pada
+   * tahun cut-over; kosong = tanpa penyaringan.
+   */
+  cutover?: string | null;
 };
 
 /** Baris Neraca Saldo periode; `sintetis` menandai laba ditahan non-akun COA. */
@@ -350,6 +397,11 @@ export type NeracaSaldoPeriodeHasil = {
   totalPendapatan: number;
   /** Total beban hanya dalam `mulai..sampai`. */
   totalBeban: number;
+  /**
+   * Catatan adapter DB bila periode ini adalah tahun pertama pembukuan yang
+   * dimulai di tengah tahun (DB-38). Fungsi murni tidak mengisinya.
+   */
+  catatanTahunPertama?: string;
 };
 
 /** Mode tampilan/export Neraca Saldo (AUD-21b). */
@@ -384,7 +436,13 @@ export function neracaSaldoPeriode(
   baris: readonly BarisJurnalSumber[],
   opsi: NeracaSaldoPeriodeOpsi,
 ): NeracaSaldoPeriodeHasil {
-  const { mulai, sampai, hanyaAdaSaldo = false, daftarAkun = COA } = opsi;
+  const {
+    mulai,
+    sampai,
+    hanyaAdaSaldo = false,
+    daftarAkun = COA,
+    cutover,
+  } = opsi;
   if (!mulai || !sampai) {
     throw new Error('Neraca Saldo periode membutuhkan tanggal mulai dan sampai.');
   }
@@ -410,7 +468,11 @@ export function neracaSaldoPeriode(
     const a = peta.get(b.akun_kode)!;
     // Akun P&L hanya periode berjalan; saldo P&L lama sudah diwakili baris
     // sintetis laba ditahan. Akun neraca tetap kumulatif.
-    if ((a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN') && b.tanggal < mulai) continue;
+    if (a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN') {
+      if (b.tanggal < mulai) continue;
+      // DB-38: P&L sebelum cut-over tahun pertama bukan laba berjalan.
+      if (!setelahCutover(b.tanggal, cutover)) continue;
+    }
     debit.set(b.akun_kode, (debit.get(b.akun_kode) ?? 0) + b.debit);
     kredit.set(b.akun_kode, (kredit.get(b.akun_kode) ?? 0) + b.kredit);
     adaMutasi.add(b.akun_kode);
@@ -446,6 +508,7 @@ export function neracaSaldoPeriode(
     baris,
     { sampai: hariSebelum(mulai) },
     daftarAkun,
+    cutover,
   ).laba;
   if (labaDitahanSebelumPeriode !== 0) {
     const laba = labaDitahanSebelumPeriode;
@@ -514,6 +577,11 @@ export type LabaRugiHasil = {
   laba: number;
   labaBersih: number;
   defisit: boolean;
+  /**
+   * Catatan adapter DB bila periode ini adalah tahun pertama pembukuan yang
+   * dimulai di tengah tahun (DB-38). Fungsi murni tidak mengisinya.
+   */
+  catatanTahunPertama?: string;
 };
 
 /**
@@ -524,19 +592,21 @@ export function labaRugi(
   baris: readonly BarisJurnalSumber[],
   rentang: RentangLaporan = {},
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): LabaRugiHasil {
+  pastikanAkunDikenal(baris, daftarAkun);
   const { mulai, sampai } = rentang;
   const pendapatan: LabaRugiBaris[] = [];
   const beban: LabaRugiBaris[] = [];
   let totalPendapatan = 0;
   let totalBeban = 0;
+  const barisPeriode = baris.filter(
+    (b) => dalamRentang(b.tanggal, mulai, sampai) && setelahCutover(b.tanggal, cutover),
+  );
 
   for (const a of [...daftarAkun].sort((x, y) => x.kode.localeCompare(y.kode))) {
     if (a.tipe !== 'PENDAPATAN' && a.tipe !== 'BEBAN') continue;
-    const nominal = saldoNormal(
-      baris.filter((b) => dalamRentang(b.tanggal, mulai, sampai)),
-      a,
-    );
+    const nominal = saldoNormal(barisPeriode, a);
     if (a.tipe === 'PENDAPATAN') {
       pendapatan.push({ kode: a.kode, nama: a.nama, nominal });
       totalPendapatan += nominal;
@@ -560,16 +630,23 @@ export function labaRugi(
   };
 }
 
-/** Laba satu tahun kalender (1 Jan – 31 Des), dari jurnal. */
+/**
+ * Laba satu tahun kalender (1 Jan – 31 Des), dari jurnal. Bila `cutover`
+ * eksplisit diberikan dan berada pada tahun yang sama, P&L sebelum tanggal
+ * cut-over tidak dihitung (tahun pertama parsial, DB-38). Tahun lain tetap
+ * dihitung penuh.
+ */
 export function labaTahun(
   baris: readonly BarisJurnalSumber[],
   tahun: number,
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): number {
   return labaRugi(
     baris,
     { mulai: `${tahun}-01-01`, sampai: `${tahun}-12-31` },
     daftarAkun,
+    cutover,
   ).laba;
 }
 
@@ -617,6 +694,11 @@ export type NeracaHasil = {
   /** Alias istilah lama agar pemanggil UI lama tetap kompatibel. */
   aktiva: number;
   pasiva: number;
+  /**
+   * Catatan adapter DB bila cut-off berada di tahun pertama pembukuan yang
+   * dimulai di tengah tahun (DB-38). Fungsi murni tidak mengisinya.
+   */
+  catatanTahunPertama?: string;
 };
 
 /**
@@ -627,6 +709,7 @@ export function neraca(
   baris: readonly BarisJurnalSumber[],
   cutoffAtauOpsi: string | NeracaOpsi,
   daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): NeracaHasil {
   const opsi: NeracaOpsi =
     typeof cutoffAtauOpsi === 'string' ? { cutoff: cutoffAtauOpsi } : cutoffAtauOpsi;
@@ -667,7 +750,7 @@ export function neraca(
   let labaDitahan = 0;
   let labaBelumDitutup = 0;
   for (let tahun = tahunAwal; tahun < tahunCutoff; tahun++) {
-    const laba = labaTahun(baris, tahun, daftarAkun);
+    const laba = labaTahun(baris, tahun, daftarAkun, cutover);
     if (!adaInfoTutup || tahunTutup.has(tahun)) labaDitahan += laba;
     else labaBelumDitutup += laba;
   }
@@ -676,6 +759,7 @@ export function neraca(
     baris,
     { mulai: `${tahunCutoff}-01-01`, sampai: cutoff },
     daftarAkun,
+    cutover,
   ).laba;
   const totalEkuitas =
     totalEkuitasAkun + labaDitahan + labaBelumDitutup + labaBerjalan;
@@ -745,10 +829,53 @@ export type ArusKasKelompok = {
   neto: number;
 };
 
+type KelompokAktivitasArusKas = Exclude<KelompokArusKas, 'TRANSFER'>;
+
+export const PESAN_ARUS_KAS_AMBIGU =
+  'Jurnal memiliki komponen arus masuk dan keluar lintas kategori. ' +
+  'Pisahkan transaksi kas yang berbeda ke jurnal terpisah agar Arus Kas dapat diklasifikasikan dengan benar.';
+
+function kelompokArusKasAkun(
+  kode: string,
+  akun?: Pick<Coa, 'tipe'>,
+): KelompokAktivitasArusKas {
+  if (!akun) return 'OPERASI';
+  if (
+    kode === AKUN_HUTANG_USAHA ||
+    akun.tipe === 'PENDAPATAN' ||
+    akun.tipe === 'BEBAN' ||
+    kode === AKUN_PANJAR
+  ) return 'OPERASI';
+  if (akun.tipe === 'KEWAJIBAN' || akun.tipe === 'EKUITAS') return 'PENDANAAN';
+  if (akun.tipe === 'AKTIVA' || kode === AKUN_PIUTANG) return 'INVESTASI';
+  return 'OPERASI';
+}
+
+/** Guard bersama agar posting dan laporan menyepakati jurnal yang ambigu. */
+export function jurnalKasMemilikiKomponenAmbigu(
+  baris: readonly Pick<BarisJurnalSumber, 'akun_kode' | 'debit' | 'kredit'>[],
+  daftarAkun: readonly Pick<Coa, 'kode' | 'tipe'>[],
+  isKas: (kode: string) => boolean,
+): boolean {
+  if (!baris.some((b) => b && typeof b === 'object' && isKas(b.akun_kode))) return false;
+  const peta = new Map(daftarAkun.map((akun) => [akun.kode, akun]));
+  const komponen = new Map<KelompokAktivitasArusKas, number>();
+  for (const b of baris) {
+    if (!b || typeof b !== 'object') continue;
+    if (isKas(b.akun_kode)) continue;
+    const kelompok = kelompokArusKasAkun(b.akun_kode, peta.get(b.akun_kode));
+    komponen.set(kelompok, (komponen.get(kelompok) ?? 0) + b.kredit - b.debit);
+  }
+  const values = [...komponen.values()];
+  return values.some((v) => v > 0) && values.some((v) => v < 0);
+}
+
 export type ArusKasHasil = {
   mulai?: string;
   sampai?: string;
   saldoAwal: number;
+  /** Mutasi SALDO_AWAL/koreksi setelah tanggal awal periode. */
+  penyesuaianSaldoAwal: number;
   totalMasuk: number;
   totalKeluar: number;
   /** totalMasuk − totalKeluar (mutasi transfer antar kas tidak dihitung dua kali). */
@@ -770,29 +897,113 @@ function tambahKelompok(k: ArusKasKelompok, masuk: number, keluar: number): void
 }
 
 /**
- * Arus Kas metode langsung: setiap mutasi akun kas/bank dalam periode menjadi
- * satu baris, dikelompokkan menurut akun lawan:
- * - pendapatan/beban/piutang/panjar → OPERASI
- * - kewajiban/modal → PENDANAAN
+ * Arus Kas metode langsung: komponen lawan non-kas menentukan kategori dan
+ * arah arus. Kredit pada akun lawan berarti kas masuk; debit berarti kas keluar.
+ * Dengan demikian jurnal pembayaran pinjaman yang memuat pokok dan bunga
+ * terbagi antara PENDANAAN (2050) dan OPERASI (beban bunga), tanpa membebankan
+ * seluruh kas keluar ke satu kategori.
+ * - pendapatan/beban/panjar/utang usaha (2060) → OPERASI
+ * - piutang/aset non-kas (1050, dll.) → INVESTASI
+ * - kewajiban/modal (2050/ekuitas) → PENDANAAN
  * - perpindahan antar dompet kas (tanpa akun lawan non-kas) → TRANSFER,
  *   tidak dihitung sebagai arus masuk/keluar (neto 0) agar total tidak dobel.
+ * - jurnal kas campuran (antar dompet sekaligus arus nyata) dipecah: porsi
+ *   transfer dipasangkan antar dompet, sedangkan arus nyata dibagi menurut
+ *   komponen akun lawan.
+ * - SALDO_AWAL beserta reversal/penggantinya (satu grup_id) membentuk saldo
+ *   pembukaan, bukan aktivitas periode. Koreksinya tetap menjadi bagian saldo
+ *   pembukaan pada periode tempat koreksi itu terjadi.
  *
- * `saldoAwal`/`saldoAkhir` adalah total seluruh dompet kas/bank, sehingga
- * `saldoAkhir = saldoAwal + kenaikan` konsisten dengan Buku Besar.
+ * `saldoAwal` adalah saldo Buku Besar sebelum tanggal mulai, kecuali mutasi
+ * SALDO_AWAL tepat pada tanggal mulai yang lazim menjadi saldo awal. Mutasi
+ * saldo pembukaan di tengah rentang ditampilkan terpisah sebagai penyesuaian.
+ * Rekonsiliasi: `saldoAwal + penyesuaianSaldoAwal + kenaikan = saldoAkhir`.
  */
 export function arusKas(
   baris: readonly BarisJurnalSumber[],
   opsi: ArusKasOpsi = {},
   daftarAkun: readonly Coa[] = COA,
 ): ArusKasHasil {
+  pastikanAkunDikenal(baris, daftarAkun);
   const { mulai, sampai, kasKodes = KAS_KODES } = opsi;
   const peta = petaAkun(daftarAkun);
   const kodeKas = new Set(kasKodes);
-  const saldoAwal = mulai
-    ? Object.values(
-        saldoSemuaKas(baris, kasKodes, hariSebelum(mulai), daftarAkun),
-      ).reduce((s, v) => s + v, 0)
-    : 0;
+
+  const kunciJurnal = (b: BarisJurnalSumber, urutan: number): string =>
+    b.jurnal_id?.trim() ||
+    (b.no_bukti?.trim() ? `bukti:${b.no_bukti.trim()}` : `baris:${urutan}`);
+  const grupSaldoAwal = new Set<string>();
+  const jurnalSaldoAwal = new Set<string>();
+  const tanggalSaldoAwal = baris
+    .filter((b) => b.jenis === 'SALDO_AWAL')
+    .map((b) => b.tanggal)
+    .sort()[0];
+  baris.forEach((b, urutan) => {
+    if (b.jenis !== 'SALDO_AWAL') return;
+    if (b.grup_id?.trim()) grupSaldoAwal.add(b.grup_id.trim());
+    else jurnalSaldoAwal.add(kunciJurnal(b, urutan));
+  });
+
+  // Pembatalan catatan dengan tanggal asli tidak menggambarkan uang yang
+  // benar-benar masuk lalu keluar. Hilangkan pasangan jurnal yang identik
+  // terbalik hanya bila REVERSAL menunjuk langsung ke jurnal asal, tanggalnya
+  // sama, dan keduanya berada di grup koreksi yang sama. Reversal lintas
+  // tanggal tetap tampil sebagai mutasi pada tanggal masing-masing.
+  const jurnalById = new Map<string, {
+    tanggal: string;
+    jenis?: JurnalJenis;
+    grup_id?: string;
+    reversal_of?: string | null;
+    rows: BarisJurnalSumber[];
+  }>();
+  for (const b of baris) {
+    const id = b.jurnal_id?.trim();
+    if (!id) continue;
+    const jurnal = jurnalById.get(id) ?? {
+      tanggal: b.tanggal,
+      jenis: b.jenis,
+      grup_id: b.grup_id,
+      reversal_of: b.reversal_of,
+      rows: [],
+    };
+    jurnal.rows.push(b);
+    jurnalById.set(id, jurnal);
+  }
+  const jurnalDibatalkan = new Set<string>();
+  const rekapBaris = (rows: readonly BarisJurnalSumber[]) => {
+    const rekap = new Map<string, { debit: number; kredit: number }>();
+    for (const b of rows) {
+      const cur = rekap.get(b.akun_kode) ?? { debit: 0, kredit: 0 };
+      cur.debit += b.debit;
+      cur.kredit += b.kredit;
+      rekap.set(b.akun_kode, cur);
+    }
+    return rekap;
+  };
+  for (const [id, balik] of jurnalById) {
+    const idAsli = balik.reversal_of?.trim();
+    if (balik.jenis !== 'REVERSAL' || !idAsli) continue;
+    const asli = jurnalById.get(idAsli);
+    if (
+      !asli ||
+      asli.jenis === 'REVERSAL' ||
+      asli.tanggal !== balik.tanggal ||
+      !asli.grup_id?.trim() ||
+      asli.grup_id.trim() !== balik.grup_id?.trim()
+    ) continue;
+    const rekapAsli = rekapBaris(asli.rows);
+    const rekapBalik = rekapBaris(balik.rows);
+    const exactInverse =
+      rekapAsli.size === rekapBalik.size &&
+      [...rekapAsli].every(([kode, nilai]) => {
+        const nilaiBalik = rekapBalik.get(kode);
+        return nilaiBalik?.debit === nilai.kredit && nilaiBalik.kredit === nilai.debit;
+      });
+    if (exactInverse) {
+      jurnalDibatalkan.add(idAsli);
+      jurnalDibatalkan.add(id);
+    }
+  }
 
   // Kelompokkan baris dalam periode per jurnal. Jurnal tanpa id (data uji
   // minimal) memakai no_bukti, lalu indeks baris sebagai kunci cadangan.
@@ -812,13 +1023,33 @@ export function arusKas(
   const pendanaan = kosongKelompok();
   const transfer = kosongKelompok();
   const rows: ArusKasBaris[] = [];
+  let perubahanSaldoAwal = 0;
+  let penyesuaianSaldoAwal = 0;
 
   for (const isi of grup.values()) {
+    const jurnalId = isi[0]?.b.jurnal_id?.trim();
+    if (jurnalId && jurnalDibatalkan.has(jurnalId)) continue;
     const kas = isi.filter(({ b }) => kodeKas.has(b.akun_kode));
     if (kas.length === 0) continue;
+
+    // Satu grup SALDO_AWAL dapat berisi jurnal asli, reversal, dan jurnal
+    // pengganti. Perlakukan semua mutasi kas dalam grup itu sebagai saldo
+    // pembukaan pada tanggal masing-masing, bukan arus kegiatan.
+    const saldoPembukaan = isi.some(({ b, urutan }) =>
+      b.grup_id?.trim()
+        ? grupSaldoAwal.has(b.grup_id.trim())
+        : jurnalSaldoAwal.has(kunciJurnal(b, urutan)),
+    );
+    if (saldoPembukaan) {
+      const perubahan = kas.reduce((jumlah, { b }) => jumlah + b.debit - b.kredit, 0);
+      const tanggalJurnal = isi[0]?.b.tanggal;
+      if (tanggalJurnal === (mulai ?? tanggalSaldoAwal)) perubahanSaldoAwal += perubahan;
+      else penyesuaianSaldoAwal += perubahan;
+      continue;
+    }
+
     const nonKas = isi.filter(({ b }) => !kodeKas.has(b.akun_kode));
     const lawan = [...new Set(nonKas.map(({ b }) => b.akun_kode))];
-    const jenisLawan = lawan.map((kode) => peta.get(kode)).filter((a): a is Coa => Boolean(a));
 
     if (nonKas.length === 0) {
       // Pindah dana antar dompet: tampilkan sebagai transfer, neto 0.
@@ -844,21 +1075,43 @@ export function arusKas(
       continue;
     }
 
-    const kelompok: KelompokArusKas = jenisLawan.some(
-      (a) =>
-        a.tipe === 'PENDAPATAN' ||
-        a.tipe === 'BEBAN' ||
-        a.kode === AKUN_PIUTANG ||
-        a.kode === AKUN_PANJAR,
-    )
-      ? 'OPERASI'
-      : jenisLawan.some((a) => a.tipe === 'KEWAJIBAN' || a.tipe === 'EKUITAS')
-        ? 'PENDANAAN'
-        : jenisLawan.some((a) => a.tipe === 'AKTIVA')
-          ? 'INVESTASI'
-          : 'OPERASI';
+    // Saldo lawan non-kas mengungkap arah dan kategori tiap komponen: kredit
+    // adalah sumber kas, debit adalah penggunaan kas. Akumulasi per kategori
+    // memungkinkan pembayaran pokok+bunga dibagi tanpa rasio atau pembulatan.
+    const komponen = new Map<KelompokAktivitasArusKas, {
+      neto: number;
+      lawan: Set<string>;
+    }>();
+    for (const { b } of nonKas) {
+      const kelompok = kelompokArusKasAkun(b.akun_kode, peta.get(b.akun_kode));
+      const nilai = komponen.get(kelompok) ?? { neto: 0, lawan: new Set<string>() };
+      nilai.neto += b.kredit - b.debit;
+      nilai.lawan.add(b.akun_kode);
+      komponen.set(kelompok, nilai);
+    }
+    const komponenAktif = [...komponen]
+      .filter(([, v]) => v.neto !== 0)
+      .map(([kelompok, v]) => ({ kelompok, neto: v.neto, lawan: [...v.lawan] }));
+    const adaMasuk = komponenAktif.some((v) => v.neto > 0);
+    const adaKeluar = komponenAktif.some((v) => v.neto < 0);
+    if (adaMasuk && adaKeluar) {
+      const id = isi[0]?.b.jurnal_id || isi[0]?.b.no_bukti || '(tanpa nomor)';
+      throw new Error(`Jurnal ${id}: ${PESAN_ARUS_KAS_AMBIGU}`);
+    }
 
-    // Satu baris per dompet: neto debit−kredit dalam jurnal tersebut.
+    // Satu jurnal bisa memuat perpindahan antar dompet sekaligus arus nyata.
+    // Contoh: D bank 100 / D beban 5 / K kas 105 berisi transfer bank→kas 100
+    // dan biaya operasi 5, bukan operasi masuk 100 + keluar 105.
+    //
+    // Neto per dompet dihitung lebih dulu (debit−kredit). Porsi transfer adalah
+    // min(total neto masuk, total neto keluar); sisanya adalah arus nyata yang
+    // dikelompokkan menurut sifat akun non-kas.
+    //
+    // Alokasi porsi transfer dilakukan berurutan (FIFO) mengikuti urutan baris
+    // jurnal: dompet masuk pertama menyerap porsi transfer lebih dulu, begitu
+    // pula dompet keluar. Sisa alokasi tiap arah dihitung terpisah agar kedua
+    // sisi transfer selalu sama besar. Konsekuensinya deterministik, tanpa
+    // pecahan, dan transfer tiap dompet tidak pernah melebihi neto kasnya.
     const perKas = new Map<string, { masuk: number; keluar: number; pertama: BarisJurnalSumber }>();
     for (const { b } of kas) {
       const cur = perKas.get(b.akun_kode) ?? { masuk: 0, keluar: 0, pertama: b };
@@ -866,31 +1119,145 @@ export function arusKas(
       cur.keluar += b.kredit;
       perKas.set(b.akun_kode, cur);
     }
+
+    let totalNetoMasuk = 0;
+    let totalNetoKeluar = 0;
+    for (const v of perKas.values()) {
+      const neto = v.masuk - v.keluar;
+      if (neto > 0) totalNetoMasuk += neto;
+      else if (neto < 0) totalNetoKeluar -= neto;
+    }
+    const porsiTransfer = Math.min(totalNetoMasuk, totalNetoKeluar);
+    let sisaTransferMasuk = porsiTransfer;
+    let sisaTransferKeluar = porsiTransfer;
+
+    type AlokasiKas = {
+      pertama: BarisJurnalSumber;
+      /** Arus nyata (bukan transfer) per dompet. */
+      masuk: number;
+      keluar: number;
+      transferMasuk: number;
+      transferKeluar: number;
+    };
+    const alokasi = new Map<string, AlokasiKas>();
     for (const [kode, v] of perKas) {
       const neto = v.masuk - v.keluar;
-      if (neto === 0) continue;
+      const isi: AlokasiKas = {
+        pertama: v.pertama,
+        masuk: 0,
+        keluar: 0,
+        transferMasuk: 0,
+        transferKeluar: 0,
+      };
+      if (neto > 0) {
+        isi.transferMasuk = Math.min(sisaTransferMasuk, neto);
+        sisaTransferMasuk -= isi.transferMasuk;
+        isi.masuk = neto - isi.transferMasuk;
+      } else if (neto < 0) {
+        const bruto = -neto;
+        isi.transferKeluar = Math.min(sisaTransferKeluar, bruto);
+        sisaTransferKeluar -= isi.transferKeluar;
+        isi.keluar = bruto - isi.transferKeluar;
+      }
+      alokasi.set(kode, isi);
+    }
+    const kodeTransfer = [...alokasi]
+      .filter(([, v]) => v.transferMasuk > 0 || v.transferKeluar > 0)
+      .map(([kode]) => kode);
+
+    const dasarKas = new Map<string, {
+      pertama: BarisJurnalSumber;
+      masuk: number;
+      keluar: number;
+      transferMasuk: number;
+      transferKeluar: number;
+    }>();
+    for (const [kode, v] of alokasi) {
       const a = peta.get(kode);
-      const masuk = neto > 0 ? neto : 0;
-      const keluar = neto < 0 ? -neto : 0;
-      rows.push({
+      const dasar = {
         tanggal: v.pertama.tanggal,
         jurnal_id: v.pertama.jurnal_id ?? '',
         no_bukti: v.pertama.no_bukti ?? '',
         keterangan: v.pertama.keterangan_baris || v.pertama.keterangan || '',
         akun_kode: kode,
         akun_nama: a?.nama ?? kode,
-        masuk,
-        keluar,
-        lawan,
-        kelompok,
+      };
+      if (v.transferMasuk > 0 || v.transferKeluar > 0) {
+        rows.push({
+          ...dasar,
+          masuk: v.transferMasuk,
+          keluar: v.transferKeluar,
+          lawan: kodeTransfer.filter((x) => x !== kode),
+          kelompok: 'TRANSFER',
+        });
+        tambahKelompok(transfer, v.transferMasuk, v.transferKeluar);
+      }
+      dasarKas.set(kode, {
+        pertama: v.pertama,
+        masuk: v.masuk,
+        keluar: v.keluar,
+        transferMasuk: v.transferMasuk,
+        transferKeluar: v.transferKeluar,
       });
+    }
+
+    // Kategori dan arah harus cocok dengan sisa mutasi kas setelah transfer.
+    // Jika tidak, jurnal menggabungkan sumber/penggunaan kas berlawanan yang
+    // tidak dapat dipasangkan secara pasti dari baris jurnalnya.
+    const kasMasukNyata = [...dasarKas.values()].reduce((s, v) => s + v.masuk, 0);
+    const kasKeluarNyata = [...dasarKas.values()].reduce((s, v) => s + v.keluar, 0);
+    const komponenMasuk = komponenAktif.reduce((s, v) => s + Math.max(v.neto, 0), 0);
+    const komponenKeluar = komponenAktif.reduce((s, v) => s + Math.max(-v.neto, 0), 0);
+    if (kasMasukNyata !== komponenMasuk || kasKeluarNyata !== komponenKeluar) {
+      const id = isi[0]?.b.jurnal_id || isi[0]?.b.no_bukti || '(tanpa nomor)';
+      throw new Error(
+        `Komponen non-kas pada jurnal ${id} tidak cocok dengan mutasi kas setelah transfer; periksa jurnal sebelum menyusun arus kas.`,
+      );
+    }
+
+    // Alokasi kategori ke dompet kas FIFO menjaga rincian per akun tetap sama
+    // dengan saldo kas aktual. Semua nominal tetap integer sen.
+    const alokasiKategori = (kelompok: KelompokAktivitasArusKas, jumlah: number, arah: 'masuk' | 'keluar', akunLawan: string[]) => {
+      let sisa = jumlah;
+      for (const [kode, v] of dasarKas) {
+        const kapasitas = v[arah];
+        if (kapasitas <= 0 || sisa <= 0) continue;
+        const bagian = Math.min(kapasitas, sisa);
+        sisa -= bagian;
+        v[arah] -= bagian;
+        const a = peta.get(kode);
+        rows.push({
+          tanggal: v.pertama.tanggal,
+          jurnal_id: v.pertama.jurnal_id ?? '',
+          no_bukti: v.pertama.no_bukti ?? '',
+          keterangan: v.pertama.keterangan_baris || v.pertama.keterangan || '',
+          akun_kode: kode,
+          akun_nama: a?.nama ?? kode,
+          masuk: arah === 'masuk' ? bagian : 0,
+          keluar: arah === 'keluar' ? bagian : 0,
+          lawan: akunLawan,
+          kelompok,
+        });
+      }
+      if (sisa !== 0) {
+        const id = isi[0]?.b.jurnal_id || isi[0]?.b.no_bukti || '(tanpa nomor)';
+        throw new Error(`Alokasi arus kas jurnal ${id} tidak seimbang.`);
+      }
+    };
+    for (const v of komponenAktif) {
       const target =
-        kelompok === 'PENDANAAN'
+        v.kelompok === 'PENDANAAN'
           ? pendanaan
-          : kelompok === 'INVESTASI'
+          : v.kelompok === 'INVESTASI'
             ? investasi
             : operasi;
-      tambahKelompok(target, masuk, keluar);
+      if (v.neto > 0) {
+        alokasiKategori(v.kelompok, v.neto, 'masuk', v.lawan);
+        tambahKelompok(target, v.neto, 0);
+      } else {
+        alokasiKategori(v.kelompok, -v.neto, 'keluar', v.lawan);
+        tambahKelompok(target, 0, -v.neto);
+      }
     }
   }
 
@@ -902,14 +1269,21 @@ export function arusKas(
   const totalMasuk = nonTransfer.reduce((s, r) => s + r.masuk, 0);
   const totalKeluar = nonTransfer.reduce((s, r) => s + r.keluar, 0);
   const kenaikan = totalMasuk - totalKeluar;
+  const saldoAwalDasar = mulai ? totalKas(baris, kasKodes, hariSebelum(mulai), daftarAkun) : 0;
+  const saldoAwal = saldoAwalDasar + perubahanSaldoAwal;
+  const saldoAkhir = totalKas(baris, kasKodes, sampai, daftarAkun);
+  if (saldoAwal + penyesuaianSaldoAwal + kenaikan !== saldoAkhir) {
+    throw new Error('Saldo awal, penyesuaian pembukaan, dan kenaikan arus kas tidak cocok dengan saldo kas Buku Besar.');
+  }
   return {
     mulai,
     sampai,
     saldoAwal,
+    penyesuaianSaldoAwal,
     totalMasuk,
     totalKeluar,
     kenaikan,
-    saldoAkhir: saldoAwal + kenaikan,
+    saldoAkhir,
     operasi,
     investasi,
     pendanaan,
@@ -933,5 +1307,7 @@ export function rincianKas(
   cutoff?: string,
   daftarAkun: readonly Coa[] = COA,
 ): Record<string, number> {
-  return saldoSemuaKas(baris, KAS_KODES.filter((k) => isAkunKas(k)), cutoff, daftarAkun);
+  // DB-14: daftar dompet dari master akun (is_kas=1); COA statis menjadi
+  // fallback lewat `isAkunKasData` sehingga pemanggil lama tetap sama.
+  return saldoSemuaKas(baris, kodeKasDariDaftarAkun(daftarAkun), cutoff, daftarAkun);
 }

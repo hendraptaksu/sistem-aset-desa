@@ -224,9 +224,15 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('PANJAR-CLOSE p-1788665578796-123456')).toBe('Tutup panjar');
   });
 
-  it('TUTUP / TUTUP-ULANG → label tutup buku', () => {
-    expect(formatAksiAudit('TUTUP 2025')).toBe('Tutup buku');
-    expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Tutup buku (ulang)');
+  it('DB-21: PANJAR-BATAL p-… → Batalkan panjar', () => {
+    expect(formatAksiAudit('PANJAR-BATAL p-1788665578796-123456')).toBe(
+      'Batalkan panjar',
+    );
+  });
+
+  it('TUTUP / TUTUP-ULANG → label Kunci periode', () => {
+    expect(formatAksiAudit('TUTUP 2025')).toBe('Kunci periode');
+    expect(formatAksiAudit('TUTUP-ULANG 2025')).toBe('Kunci periode (ulang)');
   });
 
   it('aksi P0-9 memakai label ramah', () => {
@@ -234,13 +240,16 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('REVERSAL j-1')).toBe('Koreksi jurnal (balik)');
     expect(formatAksiAudit('KOREKSI-ISI-ULANG j-1')).toBe('Koreksi & isi ulang jurnal');
     expect(formatAksiAudit('SALDO-AWAL j-1')).toBe('Saldo awal');
-    expect(formatAksiAudit('ASET-CREATE a-1')).toBe('Tambah aset');
-    expect(formatAksiAudit('ASET-UPDATE a-1')).toBe('Ubah aset');
-    expect(formatAksiAudit('ASET-DELETE a-1')).toBe('Hapus aset');
     expect(formatAksiAudit('BACKUP-AUTO')).toBe('Backup otomatis');
     expect(formatAksiAudit('BACKUP-EXPORT')).toBe('Backup manual');
     expect(formatAksiAudit('RESTORE')).toBe('Restore database');
     expect(formatAksiAudit('PENGATURAN-IDLE')).toBe('Ubah auto-kunci');
+  });
+
+  it('DB-32 — label audit lama ASET-* tetap tampil walau modul dihapus', () => {
+    expect(formatAksiAudit('ASET-CREATE a-1')).toBe('Tambah aset');
+    expect(formatAksiAudit('ASET-UPDATE a-1')).toBe('Ubah aset');
+    expect(formatAksiAudit('ASET-DELETE a-1')).toBe('Hapus aset');
   });
 
   it('aksi pihak, piutang, dan hutang memakai label ramah', () => {
@@ -262,7 +271,7 @@ describe('T12 formatAksiAudit', () => {
     );
   });
 
-  it('aksi anggaran, rekonsiliasi, impor, dan lampiran berlabel', () => {
+  it('aksi legacy anggaran, rekonsiliasi, impor, dan lampiran berlabel', () => {
     expect(formatAksiAudit('ANGGARAN')).toBe('Ubah anggaran');
     expect(formatAksiAudit('REKONSILIASI')).toBe('Rekonsiliasi bank');
     expect(formatAksiAudit('REKONSILIASI-SELESAI')).toBe(

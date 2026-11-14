@@ -1,7 +1,7 @@
 // P1-9: layar Laba Rugi, Neraca, dan Arus Kas.
 // Fokus: adapter DB hanya mengambil baris jurnal lalu menyerahkan seluruh
 // perhitungan ke core/reports.ts (bukan rumus baru), Neraca memakai daftar
-// tutup buku, Arus Kas konsisten (saldo akhir = saldo awal + kenaikan) dan
+// tutup buku, Arus Kas konsisten (saldo awal + penyesuaian + kenaikan) dan
 // transfer antar dompet tidak dihitung dua kali, drill-down jurnal benar,
 // serta validasi tanggal/helper tampilan.
 
@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDb } from '../src/db/database.js';
 import {
-  insertJurnal,
+  insertJurnalTervalidasi,
   insertTutupBuku,
   listTutupBuku,
 } from '../src/db/repository.js';
@@ -59,7 +59,7 @@ function catat(
   tanggal: string,
   baris: BarisRingkas[],
 ): void {
-  insertJurnal(
+  insertJurnalTervalidasi(
     db,
     {
       id,
@@ -158,10 +158,10 @@ describe('P1-9 — adapter Laba Rugi sama persis dengan core/reports', () => {
     // Februari–Desember 2026: pendapatan Januari tidak ikut, beban 500rb ikut.
     expect(defisit.laba).toBe(RP(-500_000));
     expect(defisit.defisit).toBe(true);
-    expect(formatRp(defisit.laba)).toBe('(Rp 500.000,00)');
+    expect(formatRp(defisit.laba)).toBe('(Rp 500.000)');
 
     // Format kurung diuji langsung pada nominal negatif (kontrak formatRp).
-    expect(formatRp(RP(-1_500_000))).toBe('(Rp 1.500.000,00)');
+    expect(formatRp(RP(-1_500_000))).toBe('(Rp 1.500.000)');
   });
 });
 
@@ -182,7 +182,6 @@ describe('P1-9 — adapter Neraca memakai daftar tutup buku', () => {
     insertTutupBuku(db, {
       tahun: 2025,
       created_at: '2026-01-01T00:00:00.000Z',
-      backup_path: '',
       catatan: 'Sudah diperiksa',
     });
 
@@ -220,7 +219,7 @@ describe('P1-9 — adapter Neraca memakai daftar tutup buku', () => {
 });
 
 describe('P1-9 — adapter Arus Kas & drill-down jurnal', () => {
-  it('saldo akhir = saldo awal + kenaikan dan transfer tidak menambah arus', () => {
+  it('saldo akhir = saldo awal + penyesuaian pembukaan + kenaikan dan transfer tidak menambah arus', () => {
     const db = freshDb();
     isiContoh(db);
     const baris = listBarisJurnal(db);
@@ -233,7 +232,9 @@ describe('P1-9 — adapter Arus Kas & drill-down jurnal', () => {
     expect(ak.totalMasuk).toBe(RP(5_000_000));
     expect(ak.totalKeluar).toBe(RP(1_500_000));
     expect(ak.kenaikan).toBe(RP(3_500_000));
-    expect(ak.saldoAkhir).toBe(ak.saldoAwal + ak.kenaikan);
+    expect(ak.saldoAkhir).toBe(
+      ak.saldoAwal + ak.penyesuaianSaldoAwal + ak.kenaikan,
+    );
     expect(ak.saldoAkhir).toBe(RP(109_500_000));
     expect(ak.saldoAkhir).toBe(totalKas(baris, undefined, '2026-12-31'));
 

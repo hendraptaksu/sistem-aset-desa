@@ -3,21 +3,16 @@ import { clsx } from 'clsx';
 import {
   ArrowLeftRight,
   Banknote,
-  BarChart3,
   BookMarked,
   BookOpen,
-  Building2,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
-  FileSpreadsheet,
-  HandCoins,
-  Landmark,
   LayoutDashboard,
+  Landmark,
   List,
   ListChecks,
   Lock,
-  NotebookText,
   Scale,
   Settings,
   TrendingUp,
@@ -29,13 +24,8 @@ import { AkunTab } from './components/AkunTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
 import { BukuBesarTab } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
-import { AsetTab } from './components/AsetTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
-import { PihakTab } from './components/PihakTab.js';
-import { PembantuTab } from './components/PembantuTab.js';
-import { RealisasiTab } from './components/RealisasiTab.js';
-import { RekonsiliasiBankTab } from './components/RekonsiliasiBankTab.js';
-import { ImportExcelTab } from './components/ImportExcelTab.js';
+import { PinjamanTab } from './components/PinjamanTab.js';
 import { LabaRugiTab } from './components/LabaRugiTab.js';
 import { ArusKasTab } from './components/ArusKasTab.js';
 import { NeracaTab } from './components/NeracaTab.js';
@@ -48,13 +38,24 @@ import type {
 import { LockScreen } from './components/LockScreen.js';
 import { KodeDaruratModal } from './components/KodeDaruratModal.js';
 import { PengaturanTab } from './components/PengaturanTab.js';
+import { AuditAwalBanner } from './components/AuditAwalBanner.js';
 import { Button, RING_FOKUS_GELAP } from './components/ui.js';
 import { DEFAULT_PENGATURAN } from '../core/pengaturan.js';
+import {
+  ringkasanAuditAwal,
+  type RingkasanAuditAwal,
+} from '../core/auditAwalRingkasan.js';
 import { api, type LockStatus } from './lib/api.js';
 import { useAksiSibuk } from './lib/aksiSibuk.js';
 import { UnsavedChangesProvider, useTabGuard } from './lib/tabGuard.js';
+import {
+  bacaModeLanjutan,
+  menuTerlihat,
+  simpanModeLanjutan,
+  tabSetelahModeLanjutan,
+} from './lib/modeLanjutan.js';
 
-type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'aset' | 'panjar' | 'pihak' | 'pembantu' | 'realisasi' | 'rekonsiliasi' | 'import' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
+type TabId = 'dashboard' | 'transaksi' | 'akun' | 'jurnal' | 'buku-besar' | 'neraca-saldo' | 'panjar' | 'pinjaman' | 'laba-rugi' | 'neraca' | 'arus-kas' | 'tutup' | 'pengaturan';
 
 const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -63,17 +64,12 @@ const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: 'jurnal', label: 'Jurnal Umum', Icon: BookOpen },
   { id: 'buku-besar', label: 'Buku Besar', Icon: BookMarked },
   { id: 'neraca-saldo', label: 'Neraca Saldo', Icon: ListChecks },
-  { id: 'aset', label: 'Inventaris Aset', Icon: Building2 },
   { id: 'panjar', label: 'Buku Panjar', Icon: Wallet },
-  { id: 'pihak', label: 'Piutang & Hutang', Icon: HandCoins },
-  { id: 'pembantu', label: 'Buku Pembantu', Icon: NotebookText },
-  { id: 'realisasi', label: 'Anggaran', Icon: BarChart3 },
-  { id: 'rekonsiliasi', label: 'Rekonsiliasi Bank', Icon: Landmark },
-  { id: 'import', label: 'Import Excel', Icon: FileSpreadsheet },
+  { id: 'pinjaman', label: 'Pinjaman LPD', Icon: Landmark },
   { id: 'laba-rugi', label: 'Laba Rugi', Icon: TrendingUp },
   { id: 'neraca', label: 'Neraca', Icon: Scale },
   { id: 'arus-kas', label: 'Arus Kas', Icon: Banknote },
-  { id: 'tutup', label: 'Tutup Buku', Icon: Lock },
+  { id: 'tutup', label: 'Kunci Periode', Icon: Lock },
   { id: 'pengaturan', label: 'Pengaturan', Icon: Settings },
 ];
 
@@ -92,7 +88,7 @@ const GRUP_MENU: {
     id: 'harian',
     label: 'Harian',
     defaultTerbuka: true,
-    item: ['dashboard', 'transaksi', 'panjar', 'pihak', 'jurnal'],
+    item: ['dashboard', 'transaksi', 'panjar', 'pinjaman'],
   },
   {
     id: 'laporan',
@@ -104,17 +100,14 @@ const GRUP_MENU: {
       'laba-rugi',
       'neraca',
       'arus-kas',
-      'realisasi',
-      'rekonsiliasi',
-      'pembantu',
-      'aset',
     ],
   },
   {
     id: 'data',
     label: 'Data & Sistem',
     defaultTerbuka: true,
-    item: ['akun', 'import', 'tutup'],
+    // DB-26: Jurnal Umum hanya tampil di sini saat Mode lanjutan aktif.
+    item: ['akun', 'tutup', 'jurnal'],
   },
 ];
 
@@ -124,11 +117,9 @@ const GRUP_DARI_TAB: Partial<Record<TabId, GrupId>> = Object.fromEntries(
   GRUP_MENU.flatMap((g) => g.item.map((id) => [id, g.id] as const)),
 );
 
-const BUKA_AWAL: Record<GrupId, boolean> = {
-  harian: GRUP_MENU[0].defaultTerbuka,
-  laporan: GRUP_MENU[1].defaultTerbuka,
-  data: GRUP_MENU[2].defaultTerbuka,
-};
+const BUKA_AWAL = Object.fromEntries(
+  GRUP_MENU.map((grup) => [grup.id, grup.defaultTerbuka]),
+) as Record<GrupId, boolean>;
 
 // UI-05: status lipat sidebar disimpan per profil. Nilai hanya ditulis saat
 // pengguna menekan tombol lipat, sehingga default otomatis tidak menimpa
@@ -177,6 +168,9 @@ function AppShell() {
   // menimpa pilihan manual saat resize; pengguna yang mengubah lebar tidak
   // boleh memaksa ulang status lipat.
   const [collapsed, setCollapsed] = useState(bacaStatusLipatAwal);
+  // DB-26: preferensi per profil; default mati sehingga Jurnal Umum tersembunyi
+  // dari operator harian sampai akuntan mengaktifkannya lewat Pengaturan.
+  const [modeLanjutan, setModeLanjutan] = useState(bacaModeLanjutan);
   // UI-05: isyarat masih ada item di bawah area nav yang terlihat.
   const navRef = useRef<HTMLElement | null>(null);
   const navIsiRef = useRef<HTMLDivElement | null>(null);
@@ -188,6 +182,12 @@ function AppShell() {
   const tabSebelumnya = useRef<TabId>('dashboard');
   const perluGulirAktif = useRef(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
+  // T2.7: pesan restore ditampilkan di layar kunci sampai PIN berhasil dibuka.
+  const [pesanRestore, setPesanRestore] = useState<string | null>(null);
+  // T-A16: ringkasan audit startup dan status abaikan banner. Audit hanya
+  // diminta setelah sesi terbuka karena kanal IPC-nya dijaga `perluBuka`.
+  const [auditAwal, setAuditAwal] = useState<RingkasanAuditAwal | null>(null);
+  const [auditAwalDitutup, setAuditAwalDitutup] = useState(false);
   // AUD-19: plaintext kode darurat hanya hidup di state ini sampai modal ditutup.
   const [kodeDaruratBaru, setKodeDaruratBaru] = useState<string | null>(null);
   const [namaEntitas, setNamaEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
@@ -233,6 +233,20 @@ function AppShell() {
     },
     [konfirmasiTinggalkan, lakukanPindah],
   );
+
+  // DB-26: aktif/nonaktifkan Mode lanjutan. Persistensi mengikuti pola status
+  // lipat sidebar; kegagalan localStorage tidak menghalangi perubahan UI.
+  const ubahModeLanjutan = useCallback((aktif: boolean) => {
+    setModeLanjutan(aktif);
+    simpanModeLanjutan(aktif);
+  }, []);
+
+  // DB-26: jangan pernah meninggalkan Jurnal Umum aktif saat mode dimatikan.
+  // `lakukanPindah` melewati guard form karena tab ini sekarang tidak tersedia.
+  useEffect(() => {
+    const tujuan = tabSetelahModeLanjutan(tab, modeLanjutan);
+    if (tujuan !== tab) lakukanPindah(tujuan);
+  }, [tab, modeLanjutan, lakukanPindah]);
 
   // UI-06: catat modalitas input terakhir. `keydown` selalu mendahului klik
   // yang dipicu Enter/Space, sedangkan `pointerdown` mendahului klik mouse.
@@ -363,6 +377,8 @@ function AppShell() {
   /** Sukses setup/unlock/reset: optimistis buka UI, lalu sinkronkan status main. */
   const tanganiTerbuka = useCallback(
     (kodeDarurat?: string) => {
+      // T2.7: pesan restore hanya untuk layar kunci; PIN benar = sudah dibaca.
+      setPesanRestore(null);
       if (kodeDarurat) setKodeDaruratBaru(kodeDarurat);
       setLock((l) =>
         l
@@ -378,6 +394,42 @@ function AppShell() {
     },
     [refreshLock],
   );
+
+  // T2.7: setelah restore sukses, main sudah mengunci sesi. Simpan pesan dan
+  // sinkronkan status kunci segera agar layar PIN muncul tanpa menunggu polling.
+  const tanganiRestoreSelesai = useCallback(
+    (pesan: string) => {
+      setPesanRestore(pesan);
+      void refreshLock();
+    },
+    [refreshLock],
+  );
+
+  // T-A16: ambil hasil audit startup setelah sesi terbuka. Bila restore
+  // mengganti DB, main mengaudit ulang dan sesi dikunci; saat dibuka lagi efek
+  // ini membaca hasil terbaru. Kegagalan bersifat diam karena banner hanyalah
+  // pemberitahuan, bukan penghalang.
+  useEffect(() => {
+    if (!lock?.terbuka || !lock.sudahSetup) {
+      setAuditAwal(null);
+      setAuditAwalDitutup(false);
+      return;
+    }
+    let batal = false;
+    void api
+      .auditAwal()
+      .then((hasil) => {
+        if (batal) return;
+        setAuditAwal(ringkasanAuditAwal(hasil));
+        setAuditAwalDitutup(false);
+      })
+      .catch(() => {
+        /* IPC belum siap/gagal sesaat: jangan ganggu alur utama. */
+      });
+    return () => {
+      batal = true;
+    };
+  }, [lock?.terbuka, lock?.sudahSetup]);
 
   // AUD-18: keputusan lock ada di main (idle/suspend). Renderer hanya polling
   // status; saat main mengunci, layar PIN muncul tanpa menunggu aksi user.
@@ -463,11 +515,23 @@ function AppShell() {
     return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;
   }
   if (lock.sudahSetup && !lock.terbuka) {
-    return <LockScreen sudahSetup={lock.sudahSetup} onTerbuka={tanganiTerbuka} />;
+    return (
+      <LockScreen
+        sudahSetup={lock.sudahSetup}
+        onTerbuka={tanganiTerbuka}
+        pesan={pesanRestore ?? undefined}
+      />
+    );
   }
   // Belum setup PIN → wajib buat dulu (gembok depan aktif sejak awal).
   if (!lock.sudahSetup) {
-    return <LockScreen sudahSetup={false} onTerbuka={tanganiTerbuka} />;
+    return (
+      <LockScreen
+        sudahSetup={false}
+        onTerbuka={tanganiTerbuka}
+        pesan={pesanRestore ?? undefined}
+      />
+    );
   }
 
   const renderItem = (id: TabId) => {
@@ -563,7 +627,9 @@ function AppShell() {
                         !collapsed && 'mt-1',
                       )}
                     >
-                      {grup.item.map((id) => renderItem(id))}
+                      {grup.item
+                        .filter((id) => menuTerlihat(id, modeLanjutan))
+                        .map((id) => renderItem(id))}
                     </div>
                   </div>
                   {collapsed && index < GRUP_MENU.length - 1 && (
@@ -618,14 +684,27 @@ function AppShell() {
             {mengunci ? 'Mengunci…' : 'Kunci'}
           </Button>
         </header>
+        {auditAwal && !auditAwalDitutup && (
+          <div className="px-6 pt-4">
+            <AuditAwalBanner
+              ringkasan={auditAwal}
+              onBukaAudit={() => pindahTab('pengaturan')}
+              onTutup={() => setAuditAwalDitutup(true)}
+            />
+          </div>
+        )}
         {tab === 'dashboard' ? (
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">{namaEntitas}</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Piutang &amp; Hutang, Aset, Laba Rugi, Neraca, Arus Kas</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Utang Usaha, Laba Rugi, Neraca, Arus Kas</p>
             </div>
             <div className="px-6 py-4">
-              <DashboardTab onBukaTab={bukaDariDashboard} />
+              <DashboardTab
+                onBukaTab={bukaDariDashboard}
+                modeLanjutan={modeLanjutan}
+                onRestoreSelesai={tanganiRestoreSelesai}
+              />
             </div>
           </>
         ) : (
@@ -634,7 +713,7 @@ function AppShell() {
               <TransaksiTab jenisAwal={jenisTransaksiAwal} onBukaTab={pindahTab} />
             )}
             {tab === 'akun' && <AkunTab />}
-            {tab === 'jurnal' && <JurnalTab />}
+            {tab === 'jurnal' && modeLanjutan && <JurnalTab />}
             {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
             {tab === 'neraca-saldo' && (
               <NeracaSaldoTab
@@ -644,13 +723,8 @@ function AppShell() {
                 }}
               />
             )}
-            {tab === 'aset' && <AsetTab />}
             {tab === 'panjar' && <PanjarTab />}
-            {tab === 'pihak' && <PihakTab />}
-            {tab === 'pembantu' && <PembantuTab />}
-            {tab === 'realisasi' && <RealisasiTab />}
-            {tab === 'rekonsiliasi' && <RekonsiliasiBankTab />}
-            {tab === 'import' && <ImportExcelTab />}
+            {tab === 'pinjaman' && <PinjamanTab />}
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (
               <NeracaTab
@@ -667,6 +741,8 @@ function AppShell() {
                 idleAwal={lock.idleMenit}
                 kodeDaruratDiatur={lock.kodeDaruratDiatur}
                 onIdleBerubah={(m) => setLock((l) => (l ? { ...l, idleMenit: m } : l))}
+                modeLanjutan={modeLanjutan}
+                onModeLanjutanBerubah={ubahModeLanjutan}
               />
             )}
           </div>

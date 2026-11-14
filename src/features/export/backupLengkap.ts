@@ -1,13 +1,12 @@
-// AUD-11 — backup lengkap: satu folder berisi DB konsisten + semua lampiran.
+// AUD-11 / DB-37 — backup lengkap: satu folder berisi DB konsisten + manifest.
 //
 // Modul ini main-only (memakai `node:fs`). DB TIDAK boleh disalin dengan
 // `copyFileSync` saat koneksi terbuka karena transaksi terbaru bisa masih di
 // WAL; `backupVacuumInto` (VACUUM INTO) dipakai agar salinan konsisten.
-// Attachment disalin apa adanya (termasuk subfolder bila ada), lalu manifest
-// ditulis terakhir sebagai penanda backup selesai.
+// Sejak DB-37 tidak ada folder lampiran: backup lengkap hanya berisi `pura.db`
+// dan `manifest.json`.
 
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -15,30 +14,41 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import type Database from 'better-sqlite3';
 import pkg from '../../../package.json';
 import { SCHEMA_VERSION } from '../../db/database.js';
 import { formatWaktuLokal } from '../../utils/tanggal.js';
+import { auditSebelumBackup } from './auditBackup.js';
 import { backupVacuumInto } from './export.js';
 
 /** Versi aplikasi yang sedang berjalan, diambil dari package.json saat build. */
 export const VERSI_APP = pkg.version;
+
+/**
+ * DB-12: ringkasan audit integritas yang dijalankan tepat sebelum backup.
+ * Backup hanya dibuat bila `ok`; field ini memberi bukti audit di manifest.
+ */
+export type AuditManifestBackup = {
+  ok: boolean;
+  jumlahTemuan: number;
+  ringkasan: string;
+};
 
 export type ManifestBackupLengkap = {
   versiApp: string;
   schemaVersion: number;
   /** Waktu backup dibuat dalam ISO UTC. */
   dibuat: string;
-  jumlahLampiran: number;
   /** Ukuran `pura.db` hasil VACUUM dalam byte. */
   ukuranDb: number;
   /**
-   * Semua file muatan backup, relatif terhadap folder backup dan memakai `/`
-   * (mis. `pura.db`, `attachments/foto.jpg`). `manifest.json` sendiri tidak
-   * ikut didaftar.
+   * Semua file muatan backup, relatif terhadap folder backup dan memakai `/`.
+   * Sejak DB-37 hanya berisi `pura.db`; `manifest.json` sendiri tidak didaftar.
    */
   daftarFile: string[];
+  /** DB-12: hasil audit integritas sebelum backup; backup hanya dibuat bila ok. */
+  auditIntegritas?: AuditManifestBackup;
 };
 
 export type OpsiBackupLengkap = {
@@ -46,12 +56,8 @@ export type OpsiBackupLengkap = {
   db: Database.Database;
   /** Path DB aktif, dipakai untuk validasi sumber. */
   dbPath: string;
-  /** Folder lampiran aktif (boleh belum ada/kosong). */
-  attachmentsDir: string;
   /** Folder backup yang akan dibuat/diisi. */
   destDir: string;
-  /** Awalan waktu lokal; default `YYYY-MM-DD-HHmm` zona aplikasi (WITA). */
-  stamp?: string;
   /** Override versi aplikasi (dipakai test); default `VERSI_APP`. */
   versiApp?: string;
 };
@@ -72,39 +78,12 @@ export function stampBackupLokal(now: Date = new Date()): string {
   return `${m[1]}-${m[2]}-${m[3]}-${m[4]}${m[5]}`;
 }
 
-/** Salin isi folder secara rekursif; folder tujuan selalu dibuat. */
-export function salinIsiFolder(sumber: string, tujuan: string): void {
-  mkdirSync(tujuan, { recursive: true });
-  for (const entri of readdirSync(sumber, { withFileTypes: true })) {
-    const asal = join(sumber, entri.name);
-    const target = join(tujuan, entri.name);
-    if (entri.isDirectory()) salinIsiFolder(asal, target);
-    else if (entri.isFile()) copyFileSync(asal, target);
-  }
-}
-
-/** Daftar file di bawah folder, relatif dan memakai separator `/`. */
-export function daftarFileRelatif(root: string, folder: string): string[] {
-  const hasil: string[] = [];
-  const jelajah = (dir: string): void => {
-    for (const entri of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entri.name);
-      if (entri.isDirectory()) jelajah(path);
-      else if (entri.isFile()) {
-        hasil.push(relative(root, path).split(sep).join('/'));
-      }
-    }
-  };
-  jelajah(folder);
-  return hasil.sort();
-}
-
 /**
  * Buat satu folder backup lengkap:
- * `pura.db` (VACUUM INTO), `attachments/` (salinan), dan `manifest.json`.
+ * `pura.db` (VACUUM INTO) dan `manifest.json`.
  *
  * Folder tujuan baru boleh kosong/belum ada; folder berisi file ditolak agar
- * lampiran lama tidak tercampur dengan backup baru. Bila pembuatan gagal dan
+ * backup lama tidak tercampur dengan backup baru. Bila pembuatan gagal dan
  * folder tujuan dibuat oleh fungsi ini, folder parsial dibersihkan.
  */
 export function buatBackupLengkap(opsi: OpsiBackupLengkap): HasilBackupLengkap {
@@ -128,28 +107,26 @@ export function buatBackupLengkap(opsi: OpsiBackupLengkap): HasilBackupLengkap {
     }
   }
 
+  // DB-12: fail-safe sebelum menulis apa pun. Backup dari DB yang tidak lolos
+  // audit akan ditolak restore (AKT-11), jadi jangan dibuat seolah-olah sehat.
+  const audit = auditSebelumBackup(opsi.db);
+
   mkdirSync(destDir, { recursive: true });
   try {
     backupVacuumInto(opsi.db, destDb);
 
-    const destLampiran = join(destDir, 'attachments');
-    mkdirSync(destLampiran, { recursive: true });
-    if (existsSync(opsi.attachmentsDir)) {
-      if (!statSync(opsi.attachmentsDir).isDirectory()) {
-        throw new Error('Folder lampiran tidak valid. Backup dibatalkan.');
-      }
-      salinIsiFolder(opsi.attachmentsDir, destLampiran);
-    }
-
-    const lampiran = daftarFileRelatif(destDir, destLampiran);
     const manifest: ManifestBackupLengkap = {
       versiApp: opsi.versiApp?.trim() || VERSI_APP,
       schemaVersion:
         Number(opsi.db.pragma('user_version', { simple: true })) || SCHEMA_VERSION,
       dibuat: new Date().toISOString(),
-      jumlahLampiran: lampiran.length,
       ukuranDb: statSync(destDb).size,
-      daftarFile: ['pura.db', ...lampiran],
+      daftarFile: ['pura.db'],
+      auditIntegritas: {
+        ok: audit.ok,
+        jumlahTemuan: audit.temuan.length,
+        ringkasan: audit.ringkasan,
+      },
     };
     writeFileSync(
       join(destDir, 'manifest.json'),

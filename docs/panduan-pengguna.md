@@ -1,7 +1,7 @@
 # Panduan Pengguna — Keuangan Pura Dalem Puri
 
 **Versi aplikasi:** 2.0.0  
-**Tanggal dokumen:** 2026-10-27  
+**Tanggal dokumen:** 2026-11-09  
 **Untuk:** operator harian (pengurus/bendahara) dan akuntan pendamping
 
 Panduan ini ditulis dengan bahasa sehari-hari. Istilah akuntansi hanya dipakai
@@ -11,7 +11,6 @@ jurnal, jadi tidak ada saldo atau laba yang “disimpan mati”.
 > Dokumen pendamping:
 > - `docs/panduan-pemeriksaan.md` — untuk akuntan pendamping.
 > - `docs/panduan-portable.md` — lokasi data installer vs portable dan cara pindah laptop.
-> - `docs/lampiran-bukti.md` — aturan foto/PDF bukti jurnal.
 
 ---
 
@@ -37,9 +36,14 @@ memfokuskannya kembali.
 
 ## 2. Alur harian (SOP singkat)
 
-Prinsipnya: **catat saat kejadian**, lalu lampirkan bukti bila ada. Operator tidak
-perlu menghitung debit/kredit; sistem menyusun jurnalnya dan menampilkan
-pratinjau sebelum menyimpan.
+Prinsipnya: **catat saat kejadian**, lalu simpan bukti fisik di tempat aman.
+Operator tidak perlu menghitung debit/kredit; sistem menyusun jurnalnya dan
+menampilkan pratinjau sebelum menyimpan.
+
+> **Peringatan wajib alasan.** Di form Transaksi, Jurnal Umum, Saldo Awal, dan
+> Panjar, peringatan (mis. kas/bank akan minus, atau realisasi panjar melebihi
+> panjar) hanya bisa dilanjutkan setelah menulis **alasan minimal 5 karakter**.
+> Alasan tercatat di Riwayat Audit.
 
 ### 2.1 Terima Uang
 
@@ -66,21 +70,56 @@ hanya menawarkan **akun beban** sebagai akun lawan.
 3. Periksa pratinjau: beban di debit, kas di kredit.
 4. Simpan.
 
-**Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`, `1050 PIUTANG`,
-maupun `2050 HUTANG`. Untuk panjar gunakan menu **Buku Panjar**; untuk
-piutang/hutang gunakan menu **Piutang & Hutang**. Jurnal Umum tetap boleh
-memakai akun tersebut untuk koreksi oleh akuntan pendamping.
+**Penting:** form Bayar tidak menawarkan `1040 UANG PANJAR`,
+`2050 HUTANG LAIN-LAIN`, maupun `2060 HUTANG USAHA`. Untuk panjar gunakan menu
+**Buku Panjar**; untuk utang usaha gunakan kartu **Catat Utang** dan
+**Bayar Utang**. Akun `1050 PIUTANG LAIN LAIN` hanya dipertahankan untuk data
+lama dan tidak lagi punya form input piutang. Jurnal Umum tetap boleh memakai
+akun tersebut untuk koreksi oleh akuntan pendamping.
 
 ### 2.3 Pindah Dana
 
 Dipakai untuk memindahkan uang antar dompet kas/bank, misalnya **LPD → Kas
-Bendahara**. Ini bukan pendapatan dan bukan beban.
+Bendahara**. Ini **bukan pendapatan dan bukan beban**: tidak ada akun 4xxx/5xxx
+yang dipakai, tidak masuk Laba Rugi, dan total kas seluruh dompet tidak
+berubah. Yang berubah hanya saldo masing-masing dompet.
 
-1. Buka **Transaksi** → **Pindah Dana**.
-2. Isi **Dari** (dompet asal), **Ke** (dompet tujuan), nominal, tanggal, dan
-   keterangan.
-3. Asal dan tujuan tidak boleh sama. Total kas tidak berubah, hanya pindah tempat.
-4. Periksa pratinjau lalu simpan.
+1. Buka **Transaksi** → pilih kartu **Pindah Dana**.
+2. Isi **Tanggal**, **Dari** (dompet asal), **Ke** (dompet tujuan), **Nominal**,
+   dan **Keterangan**.
+3. Asal dan tujuan harus dua dompet berbeda. Bila sama, tombol simpan tetap
+   nonaktif dan aplikasi menampilkan peringatan.
+4. Periksa pratinjau: **debit = dompet tujuan**, **kredit = dompet asal**.
+   Kedua sisi harus sama besar.
+5. Tekan **Simpan Pindah Dana**.
+
+**Contoh konkret.** Tanggal 31 Oktober 2026 Bendahara memindahkan Rp 250.000
+dari LPD `1014 LPD 12.005150/DL/2020` ke kas tunai `1001 KAS`.
+
+| Isian | Nilai |
+|---|---|
+| Tanggal | 2026-10-31 |
+| Dari | `1014 — LPD 12.005150/DL/2020` |
+| Ke | `1001 — KAS` |
+| Nominal | Rp 250.000 |
+| Keterangan | Pindah kas LPD ke Kas Bendahara |
+
+Pratinjau jurnal yang disimpan:
+
+| Akun | Debit | Kredit |
+|---|---:|---:|
+| `1001 KAS` (tujuan) | Rp 250.000 | — |
+| `1014 LPD 12.005150/DL/2020` (asal) | — | Rp 250.000 |
+| **Total** | **Rp 250.000** | **Rp 250.000** |
+
+Setelah disimpan: saldo `1014` berkurang Rp 250.000, saldo `1001` bertambah
+Rp 250.000, dan **total kas tetap**. Jurnal ini berjenis **Transfer** di daftar
+jurnal.
+
+**Dompet baru.** Rekening bank/LPD yang ditambahkan lewat **Daftar Akun**
+dengan penanda kas/bank (`is_kas = 1`) otomatis muncul di pilihan **Dari** dan
+**Ke** Pindah Dana. Akun yang dinonaktifkan tidak muncul di form baru, tetapi
+saldo historisnya tetap terbaca di laporan.
 
 ### 2.4 Panjar (uang muka kegiatan)
 
@@ -91,42 +130,226 @@ pertanggungjawabannya.
    sumber, tanggal, dan keterangan. Simpan. Jurnalnya: `1040 UANG PANJAR` di
    debit, kas di kredit.
 2. Setelah kegiatan selesai, pilih panjar tersebut → **Pertanggungjawaban**.
-3. Isi rincian belanja per akun beban. Bila ada sisa uang, isi pengembalian ke
-   kas. Bila kurang, sistem meminta konfirmasi.
-4. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
+3. Isi rincian belanja **per nota**: nomor nota, tanggal nota, toko/penerima,
+   akun beban, nominal, dan keterangan baris. Gunakan **+ Tambah baris nota**
+   bila satu pertanggungjawaban memuat beberapa nota. Dua nota dengan akun beban
+   yang sama tetap disimpan sebagai dua baris rincian; jurnal close tetap
+   menggabungkan debit per akun agar tidak ada baris jurnal ganda. Detail nota
+   bisa dibuka lewat **Lihat rincian** di daftar panjar.
+4. Nomor nota maksimal 100 karakter, toko/penerima maksimal 200 karakter, dan
+   keterangan baris maksimal 500 karakter. Tanggal nota tidak boleh setelah
+   tanggal realisasi. Bila nota fisik tidak ada, field nota boleh dikosongkan
+   (perilaku lama tetap sah).
+5. Bila ada sisa uang, isi pengembalian ke kas. Bila kurang, sistem meminta
+   konfirmasi dengan alasan minimal 5 karakter.
+6. Periksa pratinjau lalu simpan. Saldo `1040` harus kembali nol setelah semua
    panjar dipertanggungjawabkan.
+
+**Membatalkan panjar OPEN (salah serah):** bila uang sudah diserahkan tetapi
+panjar belum dipertanggungjawabkan, buka **Buku Panjar**, cari panjar berstatus
+**Belum**, lalu klik **Batalkan**. Tulis alasan minimal 5 karakter dan konfirmasi.
+Sistem membuat **jurnal balik** (kas sumber kembali di debit, `1040` di kredit),
+menyimpan status **DIBATALKAN**, dan mencatat audit `PANJAR-BATAL`. Jurnal serah
+asli tidak dihapus/diubah, dan panjar yang sudah dibatalkan tidak bisa
+dipertanggungjawabkan atau dibatalkan ulang. Panjar yang sudah **Sudah**
+(CLOSED) belum bisa dibatalkan lewat alur ini.
 
 **Penting — koreksi panjar:** jurnal serah maupun pertanggungjawaban panjar
 tidak bisa direversal dari **Jurnal Umum**. Sistem menolak agar status panjar
 tidak basi (mis. panjar tetap CLOSED padahal `1040` sudah bersaldo lagi).
-Koreksi panjar belum lewat Jurnal Umum; gunakan modul **Buku Panjar**. Alur
-**Batalkan panjar** masih backlog dan belum tersedia di aplikasi.
+Gunakan modul **Buku Panjar**: **Batalkan** untuk panjar OPEN yang salah serah,
+atau alur pertanggungjawaban untuk panjar yang benar-benar sudah dibelanjakan.
 
-### 2.5 Piutang & Hutang
+### 2.5 Utang Usaha
 
-Buka menu **Piutang & Hutang**. Form Bayar terpandu sengaja tidak menawarkan
-akun `1050`/`2050` agar setiap transaksi piutang/hutang memiliki pihak yang
-jelas. Gunakan menu ini untuk semua alur berikut:
+Tidak ada daftar pihak. Utang usaha non-LPD dicatat lewat dua form sederhana di
+tab **Transaksi**. Nama kreditur (orang/toko/lembaga) cukup ditulis di
+**Keterangan**; sistem tidak menyimpan daftar pihak.
 
-| Kejadian | Jurnal yang dibuat sistem |
+| Form | Jurnal yang dibuat sistem |
 |---|---|
-| Memberi pinjaman | Debit `1050 PIUTANG` / Kredit kas |
-| Menerima pelunasan piutang | Debit kas / Kredit `1050 PIUTANG` |
-| Menerima pinjaman | Debit kas / Kredit `2050 HUTANG` |
-| Membayar hutang | Debit `2050 HUTANG` / Kredit kas |
-| Beli/perbaikan barang secara kredit | Debit akun beban / Kredit `2050 HUTANG` |
+| **Catat Utang Usaha** | Debit akun beban / Kredit `2060 HUTANG USAHA` |
+| **Bayar Utang Usaha** | Debit `2060 HUTANG USAHA` / Kredit kas/bank |
 
-Pihak (nama orang/lembaga) wajib dipilih untuk piutang dan hutang. Saldo per
-pihak dihitung dari jurnal, bukan diketik manual.
+**Catat Utang Usaha** dipakai untuk pembelian atau perbaikan yang dibayar
+belakangan. Pilih akun beban (mis. `5003 BAGA WEWANGUNAN`), isi nominal, lalu
+tulis nama kreditur di keterangan — misalnya “Perbaikan gedung — utang ke Toko
+Bangunan Jaya”. Uang kas belum keluar dan modal `3000` tidak berubah.
+
+**Bayar Utang Usaha** dipakai saat utang dilunasi. Pilih kas/bank sumber dan
+tulis nama kreditur di keterangan — misalnya “Bayar utang bahan ke Toko
+Bangunan Jaya”. Pembayaran `2060` masuk kelompok **Operasi** di laporan Arus
+Kas.
+
+Saldo `2060` dihitung dari jurnal dan bisa diperiksa di Buku Besar atau Neraca.
+Tidak ada tabel saldo per pihak yang disimpan.
+
+`2050 HUTANG LAIN-LAIN` adalah pinjaman atau saldo lama; pembayarannya masuk
+kelompok **Pendanaan**. Pinjaman LPD memakai menu **Pinjaman LPD** tersendiri,
+dan angsuran dibayar lewat tombol **Bayar Angsuran** di detail jadwal.
+Jangan membuat pinjaman baru lewat Jurnal Umum kecuali untuk koreksi
+oleh akuntan pendamping; saldo 2050 lama tetap terbaca di laporan.
+
+### 2.5a Pinjaman LPD (jadwal dan pembayaran)
+
+Pinjaman LPD dipisahkan dari **rencana** dan **realisasi**:
+
+- **Jadwal angsuran** adalah rencana dari perjanjian LPD: nomor angsuran,
+  jatuh tempo, pokok, dan bunga. Total pokok jadwal harus sama dengan sisa
+  pokok saat pinjaman mulai diinput.
+- **Jurnal adalah realisasi.** Pembayaran angsuran memakai jurnal:
+  **D 2050 HUTANG LAIN-LAIN (pokok) + D 5063 BEBAN BUNGA PINJAMAN (bunga)
+  + D beban denda bila ada / K kas/bank**. Jangan mencatat seluruh angsuran
+  ke 2050; bunga harus masuk Laba Rugi dan pokok saja yang mengurangi utang.
+- Setiap pembayaran ditautkan ke angsuran dan memiliki jurnal tersendiri.
+  Riwayat beberapa pembayaran untuk satu angsuran tetap ditampilkan satu per
+  satu; nominal pokok, bunga, dan denda dibaca dari jurnal agar tidak ada angka
+  ganda.
+- **Sisa pokok pinjaman** dihitung dari `sisa pokok awal - total pokok yang
+  dibayar menurut jurnal`, bukan dari kolom saldo tersimpan. Angsuran berstatus
+  **BELUM**, **SEBAGIAN**, atau **LUNAS**. Angsuran yang dibayar sebagian dapat
+  dilanjutkan; status **LUNAS** berarti seluruh sisa pokok dan bunga jadwal
+  sudah dibayar.
+- Jika pinjaman **sudah berjalan** sebelum aplikasi dipakai, isi sisa pokok
+  dan jadwalnya tanpa membuat jurnal pencairan baru. Sisa pokok itu harus sudah
+  masuk sebagai **kredit 2050 di Saldo Awal**. Membuat jurnal pencairan baru
+  akan membuat kas dan utang menjadi dobel.
+
+#### Langkah wizard Pinjaman LPD
+
+Buka menu **Pinjaman LPD** (juga tersedia sebagai kartu di tab **Transaksi**),
+lalu pilih salah satu mode:
+
+1. **Pencairan baru** — isi tanggal pencairan, nama kreditur/LPD, pokok,
+   akun kas/bank penerima, akun bunga (default `5063 BEBAN BUNGA PINJAMAN`),
+   tenor, dan catatan. Saat disimpan, sistem membuat jurnal seimbang
+   **D akun kas penerima / K 2050 HUTANG LAIN-LAIN** dengan keterangan yang
+   memuat nama kreditur, lalu menyimpan pinjaman + jadwal secara atomik.
+2. **Sudah berjalan** — isi kreditur, **sisa pokok saat ini**, tanggal mulai
+   jadwal, akun bunga, tenor, dan catatan. Mode ini **tidak** membuat jurnal
+   pencairan baru. Pastikan sisa pokok sudah tercatat sebagai kredit 2050 di
+   **Saldo Awal**; jika belum, isi Saldo Awal lebih dulu agar 2050 tidak dobel.
+3. **Jadwal angsuran** diisi manual per baris: nomor ke, jatuh tempo, pokok,
+   bunga, dan catatan. Aplikasi tidak menghitung amortisasi sendiri. Total
+   pokok semua baris wajib sama dengan pokok (mode pencairan) atau sisa pokok
+   (mode berjalan); tanggal jatuh tempo tidak boleh mundur dan nomor ke tidak
+   boleh ganda. Server menolak simpan bila aturan ini dilanggar.
+4. Setelah tersimpan, pinjaman dan jadwal tampil di **Daftar Pinjaman LPD**.
+   Tombol **Lihat jadwal** menampilkan rincian angsuran dan statusnya. Jurnal
+   pencairan bisa dibuka lewat menu **Jurnal Umum**; pinjaman mode berjalan
+   ditandai **Saldo awal** dan tidak memiliki jurnal pencairan.
+
+#### Langkah membayar angsuran
+
+1. Buka **Lihat jadwal** pada pinjaman yang akan dibayar. Angsuran **BELUM**
+   menampilkan tombol **Bayar Angsuran**; angsuran **SEBAGIAN** menampilkan
+   **Lanjut Bayar**. Angsuran **LUNAS** tidak dapat dibayar lagi.
+2. Form menampilkan tanggal bayar, akun kas/bank aktif dari master akun,
+   pokok, bunga, denda, dan catatan. Pokok serta bunga otomatis terisi sebesar
+   sisa yang belum dibayar; denda default 0. Nominal yang lebih kecil boleh
+   dicatat sebagai pembayaran sebagian. Setelah tersimpan, sistem menampilkan
+   jumlah yang sudah dibayar dan sisa pokok/bunga.
+3. Periksa total. Jurnal yang dibuat server selalu seimbang:
+   **D 2050 HUTANG LAIN-LAIN sebesar pokok + D akun bunga pinjaman sebesar
+   bunga + D 5050 BIAYA LAIN-LAIN sebesar denda / K akun kas/bank sebesar
+   total**. Komponen boleh 0, tetapi total pembayaran harus lebih dari 0.
+4. Pokok tidak boleh melebihi sisa pokok angsuran. Bunga yang melebihi sisa
+   bunga meminta konfirmasi dan alasan minimal 5 karakter; pilih **Ya, bayar
+   dengan konfirmasi** setelah memastikan jumlahnya benar. Pembayaran pokok
+   atau bunga di bawah sisa tidak memerlukan konfirmasi. Jadwal rencana tidak
+   berubah oleh pembayaran.
+5. Setelah tersimpan, satu angsuran dapat tetap **SEBAGIAN** dan menerima
+   pembayaran berikutnya. Outstanding pinjaman dihitung ulang dari pokok yang
+   dibayar; setiap catatan pembayaran memiliki jurnal sendiri yang dapat dibuka
+   lewat **Jurnal Umum**.
+
+#### Membetulkan catatan pembayaran atau pencairan
+
+Gunakan **Batalkan catatan pembayaran** atau **Batalkan catatan pencairan**
+hanya untuk membetulkan pencatatan yang keliru. Isi alasan minimal 5 karakter.
+Sistem membuat jurnal balik pada tanggal jurnal asli, menyimpan jurnal dan
+riwayat asal, lalu menandai catatan sebagai **DIBATALKAN**. Periksa alasan dan
+konfirmasi peringatan posting bila muncul. Setelah catatan pembayaran yang salah
+dibatalkan, masukkan kembali pembayaran yang benar melalui **Bayar Angsuran**.
+
+> Pembatalan ini adalah pembetulan catatan, bukan bukti bahwa uang benar-benar
+> dikembalikan. Jika uang memang diterima atau dibayar kembali, catat transaksi
+> yang benar secara terpisah. Pencairan baru hanya dapat dibatalkan bila belum
+> ada pembayaran aktif yang terkait. Pinjaman **Sudah berjalan** tidak memiliki
+> jurnal pencairan baru untuk dibatalkan.
+
+#### Kartu hutang / mutasi bulanan
+
+Bagian **Kartu Hutang / Mutasi Bulanan** di menu **Pinjaman LPD** menampilkan
+mutasi pokok, bunga, denda, dan kas keluar setiap bulan. Pilih pinjaman, tahun,
+dan bulan (kosongkan bulan untuk satu tahun penuh; default tahun berjalan).
+
+- **Saldo awal** periode dihitung dari `sisa pokok awal - pokok jurnal yang
+  tanggalnya sebelum periode`. **Saldo akhir** bulan = saldo awal − pokok bulan
+  itu; saldo berantai bulan ke bulan dan berakhir sama dengan outstanding
+  pinjaman.
+- **Pokok** di laporan adalah penurunan akun `2050 HUTANG LAIN-LAIN`;
+  **bunga** adalah beban akun bunga pinjaman; **denda** adalah beban denda; dan
+  **kas keluar** adalah kredit kas/bank pada jurnal pembayaran yang tertaut.
+- Tabel **Jadwal vs Realisasi** membandingkan pokok/bunga jadwal dengan nominal
+  jurnal per angsuran. Selisih negatif berarti kurang bayar. Jadwal tidak
+  diubah oleh realisasi.
+- Tombol **Lihat jurnal** per bulan menampilkan nomor bukti, tanggal jurnal,
+  tanggal link pembayaran, dan ID jurnal untuk drill-down. Semua angka dibaca
+  dari baris jurnal; total bulanan/saldo **tidak disimpan** di tabel pembayaran.
+
+#### Rekonsiliasi 2050 vs jadwal pinjaman
+
+Bagian **Rekonsiliasi 2050 vs Jadwal Pinjaman** di menu **Pinjaman LPD**
+menampilkan status setiap pinjaman: **Cocok** atau **Selisih**, beserta
+outstanding menurut jurnal **2050 HUTANG LAIN-LAIN**, outstanding menurut
+jadwal, dan nominal selisihnya.
+
+- Untuk pinjaman **pencairan baru**, outstanding GL dihitung dari kredit 2050
+  pada jurnal pencairan dikurangi debit 2050 pada jurnal pembayaran yang
+  tertaut. Untuk pinjaman **sudah berjalan**, saldo awalnya adalah sisa pokok
+  awal yang sudah tercatat di **Saldo Awal 2050**.
+- Outstanding jadwal dihitung dari sisa pokok awal dikurangi pokok aktual pada
+  jurnal pembayaran yang tertaut. Bila jurnal pembayaran tidak memakai akun
+  2050 (mis. pokok salah akun), selisihnya akan terlihat.
+- Perbandingan **hanya memakai jurnal yang tertaut ke pinjaman itu**. Saldo
+  2050 untuk utang non-LPD dan jurnal 2050 yang belum ditautkan tidak ikut
+  dibandingkan; link pembayaran yang hilang tidak terdeteksi oleh pemeriksaan
+  per pinjaman ini.
+- Bila muncul **Selisih**, periksa jurnal pencairan, jurnal pembayaran (akun
+  pokok dan link `pinjaman_bayar`), atau Saldo Awal 2050. Aplikasi
+  **tidak mengoreksi otomatis** dan tidak menyediakan tombol koreksi di bagian
+  ini. Koreksi data lama dilakukan lewat jurnal koreksi/reversal oleh akuntan
+  pendamping. Pinjaman yang bersih tidak menampilkan peringatan.
+
+**Piutang tidak dipakai lagi.** Client tidak meminta pencatatan piutang, jadi
+tidak ada form/menu input piutang baru. Akun `1050 PIUTANG LAIN LAIN` tetap ada
+di COA dan tetap terbaca di Buku Besar/Neraca/Arus Kas untuk data lama; jangan
+membuat jurnal piutang baru. Jika ada saldo 1050 lama, koreksi hanya lewat
+Jurnal Umum oleh akuntan pendamping.
 
 **Penting:** perbaikan gedung yang dibayar belakangan **tidak menambah modal**.
-Yang naik adalah beban (Laba Rugi) dan hutang (Neraca). Modal hanya berubah lewat
-setoran/penarikan modal atau wizard Saldo Awal.
+Yang naik adalah beban (Laba Rugi) dan Utang Usaha `2060` (Neraca). Modal hanya
+berubah lewat setoran/penarikan modal atau wizard Saldo Awal.
 
 ### 2.6 Jurnal Umum (untuk akuntan pendamping)
 
+> **Mode lanjutan.** Menu **Jurnal Umum** tidak tampil untuk operator
+> harian. Akuntan/pendamping membukanya lewat **Pengaturan → Mode lanjutan**,
+> lalu menekan **Aktifkan Mode lanjutan** dan menyetujui konfirmasi. Setelah
+> aktif, menu Jurnal Umum muncul di grup **Data & Sistem**. Ini adalah tampilan
+> debit/kredit mentah untuk pemeriksaan, bukan menu input harian. Mematikan
+> mode menyembunyikan menu lagi; bila tab Jurnal Umum sedang terbuka, aplikasi
+> kembali ke Dashboard. Pilihan tersimpan per profil di perangkat ini.
+
 Menu **Jurnal Umum** dipakai bila transaksi tidak cocok dengan form terpandu,
 atau untuk pemeriksaan. Di sini debit/kredit diisi manual:
+
+> **Jenis jurnal di layar ini selalu `UMUM`.** Transaksi harian (Terima Uang,
+> Bayar, Pindah Dana, Catat/Bayar Utang Usaha) harus lewat tab **Transaksi**;
+> panjar lewat **Buku Panjar**; koreksi lewat tombol **Koreksi**; dan saldo awal
+> lewat **Wizard Saldo Awal**. Aplikasi menolak jenis dokumen lain dari layar
+> Jurnal Umum.
 
 1. Pilih tanggal, isi keterangan dan nomor bukti (opsional; sistem menyarankan
    `JU-...`).
@@ -139,83 +362,122 @@ atau untuk pemeriksaan. Di sini debit/kredit diisi manual:
 
 **Tanggal koreksi:** jurnal balik otomatis memakai **tanggal jurnal asli**, bukan
 tanggal hari ini, supaya koreksi tidak memindahkan laba ke tahun yang salah.
-Jika tanggal balik atau tanggal pengganti diubah sampai berbeda tahun, aplikasi
-menampilkan peringatan kuning. Baca peringatan itu sebelum melanjutkan.
+Tanggal balik boleh diubah secara eksplisit, termasuk ke tahun berbeda; aplikasi
+tidak memblokir, tetapi menampilkan peringatan kuning bila tanggal balik dan
+tanggal pengganti jatuh di tahun berbeda. Baca peringatan itu sebelum melanjutkan.
 
-### 2.7 Lampiran bukti
+### 2.7 Mulai pembukuan di tengah tahun (cut-over)
 
-Foto kuitansi/nota atau PDF ditempelkan per jurnal:
+Tahun buku tetap **Januari–Desember**. Bila pura mulai memakai aplikasi pada
+1 Juli 2026, jangan membuat tahun buku fiskal Juli–Juni dan jangan memasukkan
+transaksi pendapatan/beban Januari–Juni 2026. Cut-over hanya membutuhkan dua hal:
 
-1. Buka **Jurnal Umum** → **Lihat** pada jurnal yang dituju.
-2. Di bagian **Lampiran Bukti**, tekan **Unggah Lampiran**.
-3. Pilih JPG/JPEG/PNG/WEBP/PDF, maksimal 10 MB per file.
+1. **Tanggal mulai pembukuan** = tanggal cut-over, misalnya `2026-07-01`.
+2. **Saldo awal aset, kewajiban, dan ekuitas** per tanggal itu. Selisih otomatis
+   menjadi `3000 MODAL`, jadi operator tidak perlu menghitung debit/kredit.
 
-Lampiran disimpan sebagai file di folder `attachments`, **bukan** di dalam file
-database. Karena itu lampiran **tidak ikut backup `.db`** — lihat bagian 5.
+Saldo awal **hanya berisi akun neraca** (kas/bank, panjar, aset lain, dan
+hutang). Jangan memasukkan akun pendapatan `4xxx` atau beban `5xxx` ke Saldo
+Awal. Laba sebelum cut-over tidak boleh dicatat sebagai pendapatan/beban 2026;
+hasil usaha sebelum cut-over sudah menjadi bagian ekuitas/modal awal. Setelah
+cut-over, catat pendapatan dan beban mulai tanggal tersebut lewat form harian.
 
-### 2.8 Import Excel (migrasi data lama / banyak jurnal sekaligus)
+**Contoh jurnal saldo awal per 2026-07-01:**
 
-Menu **Import Excel** dipakai bila data sudah ada di Excel dan ingin dimasukkan
-sekaligus. Alurnya empat langkah:
+| Akun | Debit | Kredit |
+|---|---:|---:|
+| `1001 KAS` | Rp 25.000.000 | — |
+| `1029 BANK` (contoh) | Rp 75.000.000 | — |
+| `2050 HUTANG LAIN-LAIN` | — | Rp 20.000.000 |
+| `3000 MODAL` (selisih) | — | Rp 80.000.000 |
+| **Total** | **Rp 100.000.000** | **Rp 100.000.000** |
 
-1. **Unduh Template** → simpan file `.xlsx`. Di dalamnya ada sheet:
-   - **Jurnal** — tabel yang diisi (contoh 3 grup sudah tersedia),
-   - **Petunjuk** — cara pakai singkat,
-   - **Akun** — daftar kode akun yang sah beserta nama dan tipenya.
-2. **Isi file.** Satu **grup** = satu jurnal. Kolom sheet Jurnal:
-   `grup`, `tanggal`, `no_bukti`, `keterangan`, `akun`, `debit`, `kredit`,
-   `catatan`.
-   - `tanggal` ditulis `YYYY-MM-DD` (mis. `2026-01-31`) atau `DD/MM/YYYY`
-     (mis. `31/01/2026`). Tanggal yang tidak ada (31 Feb) ditolak.
-   - `akun` berisi **kode akun**, bukan nama (mis. `1001`).
-   - `debit` dan `kredit` berisi **angka rupiah** pada salah satu kolom saja,
-     bukan sen dan tanpa tulisan `Rp`.
-   - `tanggal`, `keterangan`, dan `no_bukti` boleh hanya diisi di baris pertama
-     grup; baris berikutnya otomatis mengikuti.
-   - Setiap grup minimal 2 baris dan **total debit harus sama dengan total
-     kredit**. Grup yang tidak seimbang ditolak seluruhnya.
-   - `no_bukti` opsional. Kosong = sistem membuat `JU-<tahun>-<urut>`.
-3. **Pilih & Pratinjau** → pilih file `.xlsx`. Sistem menampilkan ringkasan dan
-   hasil **per baris** (baris Excel, grup, tanggal, keterangan, akun, debit,
-   kredit, status, alasan). Tahap ini **belum menyimpan apa pun**.
-4. **Impor N Jurnal Valid** → konfirmasi. Hanya grup valid yang disimpan. Bila
-   ada peringatan kas/bank minus, centang izin khusus setelah memeriksa saldo;
-   tanpa centang, grup tersebut tidak diimpor. Setelah selesai, nomor bukti yang
-   dibuat ditampilkan dan jurnal bisa dilihat di **Jurnal Umum**.
+Laba 2026 adalah **tahun pertama (parsial)**: hanya transaksi
+`2026-07-01` s/d `2026-12-31`. Ini **normal, bukan error**. Laba tersebut juga
+yang akan terlihat saat **Kunci Periode 2026** dilakukan pada 2027. Kunci
+periode tetap tidak membuat jurnal penutup dan tidak memindahkan P&L ke modal.
 
-Bentuk sederhana juga didukung: satu baris Excel dengan kolom `tanggal`,
-`keterangan`, `akun_debit`, `akun_kredit`, `nominal` menjadi satu jurnal dua
-baris. Batas aman: file maksimal **10 MB** dan maksimal **5.000 baris** data.
-Jurnal yang sudah diimpor tetap permanen; koreksi dilakukan lewat jurnal balik,
-bukan edit/hapus.
+> Bila aplikasi sudah terlanjur memakai tanggal mulai 1 Januari, jangan
+> mengubahnya menjadi tanggal setelah jurnal pertama. Untuk data yang sudah
+> berjalan, mulai tengah tahun hanya dilakukan pada database baru sebelum ada
+> jurnal, lalu isi Saldo Awal.
 
-### 2.9 Daftar Akun (tambah/ubah/nonaktifkan akun)
+### 2.8 Daftar Akun (tambah/ubah/nonaktifkan akun)
 
 Menu **Daftar Akun** menampilkan seluruh COA yang dipakai aplikasi. Di sini
-operator dapat mengelola akun **Beban** atau **Pendapatan** baru tanpa menunggu
-update aplikasi:
+operator dapat mengelola akun **Beban**, **Pendapatan**, atau **Kas/Bank/LPD**
+baru tanpa menunggu update aplikasi:
 
 1. Buka **Daftar Akun**.
-2. Isi **Kode akun** 4 digit yang belum dipakai (Beban `5xxx`, Pendapatan
-   `4xxx`), **Nama akun**, dan **Jenis akun**.
-3. Tekan **Tambah Akun**. Akun langsung muncul di form **Transaksi**,
-   **Jurnal Umum**, laporan, dan template **Import Excel**.
-4. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
+2. Isi **Kode akun** 4 digit yang belum dipakai:
+   - Beban `5xxx`, mis. `5011`;
+   - Pendapatan `4xxx`, mis. `4043`;
+   - Kas/Bank/LPD baru wajib di rentang khusus **`1100`–`1199`**, mis. `1101`.
+3. Pilih **Jenis akun**. Untuk **Aktiva** (kas/bank/LPD), pilih **Kelompok
+   akun** (`Kas`, `Bank`, atau `LPD`) dan pastikan **Dompet kas/bank (is_kas)**
+   tercentang. Akun kas/bank baru otomatis bersaldo normal **Debit**.
+4. Isi **Nama akun**, lalu tekan **Tambah Akun**. Akun langsung muncul di form
+   **Transaksi**, **Pindah Dana**, **Buku Panjar**, pembayaran, **Jurnal Umum**,
+   dan laporan.
+5. Setiap penambahan tercatat di **Riwayat Audit** dengan aksi **Tambah akun**.
 
-Untuk akun tambahan yang sudah ada:
+Akun kas/bank/LPD baru langsung ikut dihitung di **total kas** dan muncul di
+pilihan dompet. Kode `1100`–`1199` dicadangkan agar tidak bentrok dengan akun
+client di `KODE AKUN.csv`. Jangan memakai kode itu untuk beban/pendapatan.
 
-- **Ubah** — memperbaiki nama akun. Kode dan jenis akun tetap agar histori
-  jurnal tidak berubah. Perubahan nama tercatat di audit.
-- **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal,
-  anggaran, dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**.
-- **Hapus** — hanya berhasil bila akun belum pernah dipakai di jurnal,
-  anggaran, atau panjar. Bila sudah dipakai, sistem menolak dan menyarankan
-  **Nonaktifkan** agar histori tidak hilang.
+Enam akun hasil persetujuan 2026-10-30 sudah tersedia otomatis dan **tidak
+menggantikan** akun lama:
 
-Contoh: `5011 PENGELUARAN ARTOS` (Beban) atau
-`4043 PENDAPATAN WEWEDALAN` (Pendapatan). Akun bawaan tidak bisa diubah,
-dinonaktifkan, atau dihapus dari layar ini; akun kas/bank baru juga belum bisa
-ditambahkan lewat layar ini karena perlu penanda kas khusus.
+- **5060 PENGELUARAN AIR, LISTRIK, TELEPON (OPERASIONAL)** — Beban. Akun lama
+  **5010 BAGA SUAR (TELPON, LISTRIK, PDAM)** tetap aktif.
+- **5061 PENGELUARAN ARTOS (UPACARA)** — Beban. Akun lama **5050 BIAYA
+  LAIN-LAIN** tetap aktif.
+- **5062 PENGELUARAN BANTEN RUTIN (HARIAN)** — Beban. Akun lama **5004 BAGA
+  UPAKARA** tetap aktif.
+- **5063 BEBAN BUNGA PINJAMAN** — Beban. Akun lama **5050 BIAYA LAIN-LAIN**
+  tetap aktif. 5063 adalah akun bunga pinjaman LPD dan akan menjadi pilihan
+  default akun bunga saat form pinjaman LPD tersedia; 5050 tetap untuk biaya
+  lain-lain dan denda.
+- **4060 PENDAPATAN WEWEDALAN (UPACARA)** — Pendapatan. Akun lama **4008
+  PENDAPATAN PUNIA** dan **4041 PENDAPATAN SESARI** tetap aktif.
+- **4006 PENDAPATAN PARKIR BPD (KHUSUS)** — Pendapatan. Akun lama **4005
+  PENDAPATAN PARKIR** tetap aktif.
+
+Pilih akun yang paling spesifik untuk transaksi baru. Jangan menonaktifkan akun
+lama hanya karena akun baru tersedia; keduanya boleh dipakai sesuai kebutuhan.
+
+Untuk akun yang sudah ada:
+
+- **Ubah** — memperbaiki nama akun **tambahan**. Kode dan jenis akun tetap agar
+  histori jurnal tidak berubah. Perubahan nama tercatat di audit.
+- **Nonaktifkan** — akun tidak muncul lagi di form input baru, tetapi jurnal
+  dan laporan lama tetap utuh. Akun bisa **diaktifkan kembali**. Akun
+  **bawaan** juga boleh dinonaktifkan (mis. `5010` yang digantikan `5060`),
+  tanpa mengubah namanya.
+- **Hapus** — hanya untuk akun **tambahan** dan hanya berhasil bila akun belum
+  pernah dipakai di jurnal atau panjar. Bila sudah dipakai, sistem menolak dan
+  menyarankan **Nonaktifkan** agar histori tidak hilang.
+
+Contoh: `5011 PENGELUARAN ARTOS` (Beban), `4043 PENDAPATAN WEWEDALAN`
+(Pendapatan), atau `1101 BANK BPD REKENING BARU` (Kas/Bank, kelompok Bank).
+
+Akun bawaan **tidak bisa diubah namanya atau dihapus**, tetapi status aktifnya
+boleh diubah. Empat akun sistem tetap tidak bisa dinonaktifkan karena dibutuhkan
+wizard/alur: **3000 MODAL** (penyeimbang Saldo Awal), **1040 UANG PANJAR**
+(jurnal panjar), **1050 PIUTANG** (data lama yang masih dibaca laporan), dan
+**2050 HUTANG LAIN-LAIN** (utang/pinjaman). Akun sistem ini ditandai **Sistem**
+di tabel dan tidak menampilkan tombol Nonaktifkan.
+
+Setiap perubahan status aktif/nonaktif dicatat di **Riwayat Audit** sebagai
+**Nonaktifkan akun** atau **Aktifkan akun** beserta alasannya. Akun nonaktif
+tetap tampil di jurnal, Buku Besar, Neraca Saldo, Laba Rugi, Neraca, dan Arus
+Kas historis beserta saldonya; akun itu hanya hilang dari pilihan input baru.
+
+Setiap akun menyimpan metadata **is_kas** (dompet kas/bank), **kelompok**
+(`KAS`, `BANK`, `LPD`, `PANJAR`, `PIUTANG`, `HUTANG`, `EKUITAS`, `PENDAPATAN`,
+`BEBAN`), dan **sumber** (`BAWAAN` dari CSV/COA atau `TAMBAHAN` buatan
+operator). Akun `TAMBAHAN` tidak pernah ditimpa saat aplikasi membuka database
+atau memperbarui COA bawaan.
 
 ---
 
@@ -226,8 +488,9 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
 - Buka **Dashboard**, periksa **Saldo Kas & Bank**, **Laba/Rugi tahun berjalan**,
   dan badge **Neraca Saldo: Seimbang**.
 - Periksa **Jurnal Terakhir** dan **Backup Terakhir**.
-- Lakukan **Backup Lengkap (DB + lampiran)** ke flashdisk/Drive. Alternatifnya:
-  **Backup Export .db** lalu salin folder `attachments` ke media yang sama.
+- Lakukan **Backup Lengkap** ke flashdisk/Drive — ini jalur yang disarankan.
+  **Backup Export .db** hanya untuk kebutuhan lanjutan (satu file database,
+  tanpa manifest).
 
 ### Bulanan
 
@@ -236,35 +499,46 @@ ditambahkan lewat layar ini karena perlu penanda kas khusus.
    buku saja, atau **Kumulatif sejak awal** untuk seluruh riwayat. Pada mode
    tahun berjalan, laba tahun sebelumnya diringkas pada baris
    **Laba ditahan sebelum periode** — baris ini bukan akun yang bisa diposting.
-2. Bandingkan saldo bank di aplikasi dengan rekening koran lewat menu
-   **Rekonsiliasi Bank**. Isi saldo menurut rekening koran; selisih dihitung
-   sistem.
-3. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
-4. Periksa **Anggaran** vs realisasi bila pagu tahunan sudah diisi.
-5. Buat **Backup Lengkap** (DB + lampiran) dalam satu folder bertanggal,
-   misalnya `backup-2026-10-31`. Bila memakai Backup Export `.db`, salin folder
-   `attachments` secara terpisah ke folder yang sama.
-6. Catatan: **tutup buku hanya untuk tahun yang sudah selesai**, bukan tutup
-   bulanan. Tidak ada tutup buku bulanan di aplikasi ini.
+2. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
+3. Buat **Backup Lengkap** dalam satu folder bertanggal,
+   misalnya `backup-2026-10-31`. Ini jalur utama; jangan mengandalkan satu file
+   **Backup Export .db** kecuali diminta pendamping.
+4. Catatan: **kunci periode hanya untuk tahun yang sudah selesai**, bukan
+   penutupan bulanan. Tidak ada penutupan bulanan di aplikasi ini.
 
 ---
 
-## 4. Tutup buku tahunan
+## 4. Kunci periode tahunan
 
-Tutup buku adalah **penanda + kunci periode + catatan**, bukan menyimpan angka
-laba. Laba dan laba ditahan selalu dihitung ulang dari jurnal.
+Kunci periode adalah **penanda tahun selesai + kunci tanggal + catatan**. Ini
+bukan jurnal penutup dan bukan tempat menyimpan angka laba: laba dan laba
+ditahan selalu dihitung ulang dari jurnal.
+
+Kunci periode **tidak membuat jurnal penutup** dan tidak memindahkan
+pendapatan/beban ke modal. Jangan membuat jurnal penutup manual; aplikasi menolak
+jurnal yang mencampur akun pendapatan/beban dengan ekuitas dalam satu jurnal
+(kecuali jurnal **Saldo Awal** dari wizard).
 
 1. Pastikan laporan tahun tersebut sudah diperiksa dan **Neraca Saldo seimbang**.
-2. Buka menu **Tutup Buku**.
-3. Isi **Tahun** yang akan ditutup. Hanya tahun yang sudah selesai yang boleh
+2. Buka menu **Kunci Periode**.
+3. Isi **Tahun** yang akan dikunci. Hanya tahun yang sudah selesai yang boleh
    (mis. pada 2026 hanya sampai 2025). Tahun berjalan ditolak.
 4. Tekan **Preview laba**, periksa laba dan laba ditahan.
 5. Tekan **Backup otomatis & lanjut** — sistem membuat backup `.db` lebih dulu.
-6. Isi catatan (opsional), lalu **Konfirmasi tutup buku**.
+6. Isi catatan (opsional), lalu **Konfirmasi kunci periode**.
 
-Setelah tutup buku, tanggal pada tahun tersebut terkunci. Koreksi masih boleh,
-tetapi wajib memberi **alasan** dan tercatat di **Riwayat Audit**. Menutup ulang
+Riwayat kunci periode menampilkan **tahun**, **laba yang dihitung ulang**, dan
+**catatan**. Lokasi file backup tidak disimpan di riwayat; backup otomatis tetap
+dibuat sebagai berkas terpisah di folder `backups`.
+
+Setelah kunci periode, tanggal pada tahun tersebut terkunci. Koreksi masih boleh,
+tetapi wajib memberi **alasan** dan tercatat di **Riwayat Audit**. Mengunci ulang
 tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.
+
+Bila pembukuan dimulai di tengah tahun (mis. `2026-07-01`), tahun itu adalah
+**tahun pertama (parsial)**. Laba yang ditampilkan dan dikunci hanya laba sejak
+tanggal mulai sampai 31 Desember, dan itu memang benar. Tidak ada jurnal penutup
+yang dibuat untuk tahun parsial ini.
 
 ---
 
@@ -272,51 +546,79 @@ tahun yang sama juga tercatat sebagai `TUTUP-ULANG`.
 
 ### 5.1 Apa yang harus dibackup
 
-| Yang dibackup | Letaknya | Backup Export `.db` | Backup Lengkap |
+| Yang dibackup | Letaknya | Backup Lengkap (disarankan) | Backup Export `.db` (lanjutan) |
 |---|---|---|---|
-| Database | file `pura.db` | ya — inilah file backup | ya |
-| Lampiran bukti | folder `attachments` | **tidak** | ya |
-| Backup otomatis | folder `backups` | bukan sumber data, hanya salinan | bukan sumber data |
+| Database | file `pura.db` | ya | ya — hanya database |
+| Manifest | file `manifest.json` | ya | tidak ada |
+| Backup otomatis | folder `backups` | bukan sumber data, hanya salinan | bukan sumber data, hanya salinan |
 
-- **Backup otomatis harian:** aplikasi membuat `auto-YYYY-MM-DD.db` di folder
-  `backups` saat dibuka (dan saat aplikasi dibiarkan terbuka), menyimpan 7 file
-  terakhir. Backup ini **hanya database**, tanpa lampiran.
-- **Backup Export .db:** **Dashboard → Backup Export .db**, lalu pilih lokasi
-  penyimpanan (flashdisk/Drive). Sebaiknya beri nama bertanggal. Ini juga
-  **hanya database**.
-- **Backup Lengkap (DB + lampiran):** **Dashboard → Backup Lengkap**, lalu pilih
-  folder induk. Aplikasi membuat satu folder berisi `pura.db`, folder
-  `attachments`, dan `manifest.json`. Pakai cara ini untuk arsip jangka panjang
-  atau pindah laptop.
-- **Backup lampiran manual:** buka **Pengaturan → Lokasi Data & Backup → Buka
-  Folder** pada folder lampiran, lalu salin seluruh isinya.
+- **Backup otomatis harian:** aplikasi membuat satu file `auto-YYYY-MM-DD.db`
+  di folder `backups` saat dibuka (dan saat aplikasi dibiarkan terbuka),
+  menyimpan 7 file terakhir. Backup ini **sengaja berupa satu file database**
+  karena aplikasi tidak lagi menyimpan file bukti terpisah; tidak ada folder
+  lain yang perlu ikut disalin. Backup otomatis adalah jaring pemulihan cepat,
+  **bukan pengganti Backup Lengkap**.
+- **Backup Lengkap (disarankan):** **Dashboard → Backup Lengkap**, lalu pilih
+  folder induk. Aplikasi membuat satu folder berisi `pura.db` dan
+  `manifest.json`. Pakai cara ini untuk arsip jangka panjang, pindah laptop,
+  atau sebelum perubahan besar.
+- **Backup Export .db (lanjutan):** **Dashboard → Backup Export .db**, lalu
+  pilih lokasi penyimpanan (flashdisk/Drive). File ini hanya berisi database
+  dan **tidak punya manifest**. Gunakan hanya bila diminta pendamping.
 
-Simpan `.db` dan folder lampiran dalam **satu folder backup bertanggal**. File
-`.db` saja tidak cukup untuk memulihkan foto/PDF bukti. Backup **tidak
-terenkripsi**; simpan di media yang aman dan pisahkan dari laptop.
+Simpan backup dalam **satu folder bertanggal**. Backup **tidak terenkripsi**;
+simpan di media yang aman dan pisahkan dari laptop.
 
-### 5.2 Restore database dan lampiran
+> **Penting — file backup tidak terenkripsi, dan PIN bukan enkripsi.** PIN hanya
+> mengunci aplikasi di layar; PIN **tidak** mengunci isi file `pura.db` maupun
+> backup-nya. Siapa pun yang menemukan file backup dapat membukanya dengan alat
+> SQLite biasa, tanpa PIN. Untuk rilis ini aplikasi belum menyediakan enkripsi
+> backup (opsi enkripsi penuh/arsip berpassword akan dibahas sebagai tiket
+> terpisah).
+>
+> Langkah praktis:
+> 1. Simpan backup di **laptop sendiri** atau **disk/flashdisk yang terenkripsi**
+>    (mis. BitLocker di Windows atau FileVault di macOS). Bila media tidak bisa
+>    dienkripsi, simpan di tempat terkunci dan jangan dibawa sembarangan.
+> 2. **Jangan unggah ke cloud publik** atau mengirim lewat chat/email. Bila perlu
+>    cloud, gunakan penyimpanan pribadi yang terenkripsi dan batasi aksesnya.
+> 3. **Hapus salinan lama** yang tidak lagi dipakai, termasuk di flashdisk dan
+>    folder unduhan, agar tidak ada salinan data yang terlupakan.
+> 4. Jangan menyalin file `pura.db`/backup ke komputer bersama atau warnet.
+> 5. Ganti PIN secara berkala dan aktifkan auto-kunci; ingat bahwa itu hanya
+>    melindungi aplikasi yang sedang terbuka, **bukan** file yang disalin.
+
+### 5.2 Restore database
 
 Ada dua pilihan di **Dashboard**:
 
-- **Restore Lengkap (DB + lampiran)** — pilih folder hasil **Backup Lengkap**
-  (yang berisi `manifest.json`). Database dan lampiran dipulihkan bersama.
-- **Restore Import .db** — hanya memulihkan database dari satu file `.db`.
-  Folder `attachments` tidak ikut berubah.
+- **Restore Lengkap (disarankan)** — pilih folder hasil **Backup Lengkap** yang
+  berisi `manifest.json` dan `pura.db`. Manifest diperiksa lebih dulu, sehingga
+  aplikasi tahu folder itu memang backup lengkap.
+- **Restore Import .db (lanjutan/berisiko)** — memulihkan database dari satu
+  file `.db`. Jalur ini **hanya memulihkan database**, **tidak memvalidasi
+  manifest.json**, dan selalu meminta dua konfirmasi. Gunakan hanya bila folder
+  Backup Lengkap tidak tersedia atau Anda diminta pendamping.
 
 Langkah umum:
 
 1. Tutup pekerjaan lain; jangan menutup aplikasi saat restore berjalan.
-2. Buka **Dashboard**, pilih tombol restore yang sesuai.
-3. Baca peringatan, lalu pilih file `.db` atau folder backup lengkap.
-4. Sistem memvalidasi isi backup dan membuat cadangan data lama lebih dulu
-   (`pre-restore-<waktu>.db`, dan untuk restore lengkap juga salinan lampiran
-   lama), lalu mengganti data aktif.
-5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa
-   lampiran.
+2. Buka **Dashboard** dan pilih **Restore Lengkap** (disarankan). Untuk file
+   `.db`, pilih **Restore Import .db** dan baca peringatan lanjutannya.
+3. Baca peringatan, lalu pilih folder backup lengkap atau file `.db`.
+4. Sistem memvalidasi isi backup sebelum menyentuh data aktif: file SQLite
+   terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim,
+   **skema harus baseline v2**, 12 tabel wajib tersedia, dan audit akuntansi
+   tidak menemukan masalah. Restore Lengkap juga memeriksa `manifest.json`;
+   Restore Import .db tidak. Setelah lolos, sistem membuat cadangan data lama
+   (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
+5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
 
-Bila hanya memakai **Restore Import .db**, folder `attachments` harus disalin
-kembali secara terpisah.
+**Hanya backup dengan skema baseline v2 yang didukung.** Backup dari skema lama
+ditolak; tidak ada migrasi atau pre-upgrade. Bila aplikasi menolak database lama
+saat dibuka, jangan menimpa file lama: pulihkan backup v2 yang sehat. Untuk DB
+dev, gunakan `npm run db:reset-dev` yang memindahkan file lama lebih dulu.
+Jangan menimpa backup yang sah.
 
 ### 5.3 Ganti laptop
 
@@ -326,16 +628,16 @@ kembali secara terpisah.
    flashdisk/Drive.
 2. Di laptop baru: pasang aplikasi, buat PIN, lalu
    **Dashboard → Restore Lengkap** dan pilih folder backup tadi.
-3. Buka aplikasi, periksa beberapa jurnal dan pastikan lampiran bisa dibuka.
+3. Buka aplikasi dan periksa beberapa jurnal serta **Neraca Saldo**.
 
-Bila memakai **Backup Export .db**, restore hanya database; salin folder
-`attachments` dari laptop lama ke folder lampiran laptop baru secara terpisah
-(lokasi persis ada di `docs/panduan-portable.md` atau di
-**Pengaturan → Lokasi Data & Backup**).
+Bila terpaksa memakai **Backup Export .db**, ingat bahwa restore hanya
+memulihkan database dari file tersebut: manifest tidak ada, tidak ada validasi
+manifest, dan aplikasi meminta konfirmasi tambahan. Jalur **Backup Lengkap →
+Restore Lengkap** tetap yang paling aman.
 
 **Cara portable:** tutup aplikasi, lalu salin **seluruh folder portable**
-(file `.exe`, `data`, `attachments`, `backups`) ke flashdisk/laptop baru. Jangan
-hanya menyalin file `.exe`.
+(file `.exe`, `data`, `backups`) ke flashdisk/laptop baru. Jangan hanya
+menyalin file `.exe`.
 
 ---
 
@@ -367,16 +669,15 @@ hanya menyalin file `.exe`.
 
 | Pesan | Artinya | Yang harus dilakukan |
 |---|---|---|
-| **Kas akan minus** | Transaksi membuat saldo kas/bank di akun itu negatif (kas minus). | Periksa saldo awal dan tanggal. Bila memang benar (kas belum tercatat), konfirmasi; bila ragu, jangan simpan. |
+| **Kas akan minus** | Transaksi membuat saldo kas/bank di akun itu negatif (kas minus). | Periksa saldo awal dan tanggal. Bila memang benar (kas belum tercatat), isi alasan minimal 5 karakter lalu konfirmasi; bila ragu, jangan simpan. |
 | **Periode sudah ditutup** | Tanggal transaksi berada di tahun yang sudah ditutup. | Bila koreksi memang perlu, isi **alasan** minimal 5 karakter. Koreksi tercatat di audit. |
 | **Nomor bukti sudah dipakai** | Nomor `JU-...` sudah ada. | Ganti nomor atau kosongkan agar sistem membuat nomor berikutnya. |
-| **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan tutup buku. Periksa Jurnal Umum dan hubungi pendamping. |
+| **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan kunci periode. Periksa Jurnal Umum dan hubungi pendamping. |
 | **Aplikasi terkunci** | Sesi PIN habis karena idle. | Masukkan PIN kembali. |
 | **Terlalu banyak salah** | PIN salah 5 kali. | Tunggu 60 detik, lalu coba lagi dengan hati-hati. |
-| **File lampiran tidak ditemukan** | Metadata ada, file fisik tidak ada di folder `attachments`. | Salin kembali folder lampiran dari backup, atau unggah ulang filenya. |
 | **Backup gagal** | Media penyimpanan penuh/tidak bisa ditulis. | Ganti lokasi simpan, pastikan flashdisk tidak dikunci, coba lagi. |
-| **Database dibuat versi lebih baru** | File backup berasal dari aplikasi versi lebih baru. | Perbarui aplikasi di laptop ini, jangan memaksa restore. |
-| **Tahun belum boleh ditutup** | Tutup buku hanya untuk tahun yang sudah selesai. | Tutup tahun lalu lebih dulu; tahun berjalan jangan ditutup. |
+| **Database tidak kompatibel** | File database/backup memakai skema lama atau bukan skema baseline v2. | Pindahkan atau hapus file database lama, lalu jalankan aplikasi lagi. Untuk backup, pilih backup berskema v2 buatan aplikasi versi ini. |
+| **Tahun belum boleh dikunci** | Kunci periode hanya untuk tahun yang sudah selesai. | Kunci tahun lalu lebih dulu; tahun berjalan jangan dikunci. |
 
 ---
 
@@ -385,7 +686,7 @@ hanya menyalin file `.exe`.
 Semua laporan memakai alur yang sama:
 
 1. Buka laporan (mis. **Jurnal Umum**, **Buku Besar**, **Neraca Saldo**,
-   **Laba Rugi**, **Neraca**, **Arus Kas**, **Anggaran**, atau **Buku Panjar**).
+   **Laba Rugi**, **Neraca**, **Arus Kas**, atau **Buku Panjar**).
 2. Atur periode/akun/cut-off.
 3. Tekan **Pratinjau Cetak**. Periksa kop, periode, kolom, dan nomor halaman.
 4. Tekan **Cetak** untuk printer, atau **Simpan PDF** untuk file PDF.
@@ -405,11 +706,90 @@ perlu mengatur ukuran kertas manual.
 | Layar minta PIN terus | PIN salah/blokir sementara, atau auto-kunci terlalu pendek. Tunggu, lalu ubah idle di Pengaturan. |
 | Laporan tidak berubah setelah input | Pastikan tanggal jurnal masuk rentang/cut-off laporan, lalu muat ulang laporan. |
 | Angka kas berbeda dengan uang fisik | Periksa Buku Besar akun kas, cari jurnal yang salah, lalu gunakan **Koreksi** (bukan hapus). |
-| Lampiran tidak bisa dibuka | Pastikan folder `attachments` ada dan file tidak dipindah. Pulihkan dari backup lampiran. |
 | Restore berhenti di tengah | Jangan tutup aplikasi. Tunggu; bila gagal, aplikasi otomatis memakai data lama dan menampilkan pesan. |
-| Portable dipindah ke laptop lain tetapi data kosong | Yang disalin hanya `.exe`. Salin seluruh folder portable (`data`, `attachments`, `backups`). |
+| Portable dipindah ke laptop lain tetapi data kosong | Yang disalin hanya `.exe`. Salin seluruh folder portable (`data`, `backups`). |
 | Aplikasi portable tidak bisa menulis | Jangan taruh di folder read-only seperti `Program Files` atau folder jaringan. Pindahkan ke folder biasa, mis. `D:\Keuangan Pura`. |
 | Komputer mati saat input | Buka aplikasi lagi; data yang sudah tersimpan ada di `pura.db`, data yang belum ditekan Simpan tidak tersimpan. |
 
 Bila masalah tidak selesai: **jangan menghapus `pura.db`**. Backup dulu file
-`.db` dan folder `attachments`, lalu hubungi akuntan pendamping/pengembang.
+`.db`, lalu hubungi akuntan pendamping/pengembang.
+
+---
+
+## 10. Runbook singkat (pemulihan)
+
+Tiga masalah di bawah ini butuh langkah berbeda. Bila ragu, salin dulu file
+`pura.db` ke tempat aman dan hubungi pendamping; **jangan menghapus atau
+menimpa database aktif**.
+
+### 10.1 Saldo awal salah
+
+1. Buka tab **Transaksi**.
+2. Pada kartu **Saldo Awal**, tekan **Koreksi Saldo Awal**. Tombol ini tersedia
+   karena saldo awal sudah pernah disimpan; form saldo awal biasa tetap terkunci
+   agar tidak ada saldo awal kedua.
+3. Form terisi saldo saat ini. Perbaiki nominal/tanggal/keterangan sesuai
+   kondisi sebenarnya.
+4. Tulis **alasan koreksi minimal 5 karakter**, misalnya “Kas awal kurang catat
+   Rp 500.000”.
+5. Periksa pratinjau: selisih dan baris penyeimbang `3000 MODAL`. Tekan
+   **Simpan**.
+6. Buka **Neraca Saldo**, **Neraca**, dan **Buku Besar** untuk memastikan laporan
+   memakai angka baru.
+
+Jurnal lama **tidak dihapus dan tidak diedit**. Sistem membuat jurnal balik +
+jurnal penyesuaian, mencatat audit **KOREKSI-SALDO-AWAL**, dan semua laporan
+menghitung ulang dari jurnal sehingga memakai angka baru. Jurnal lama tetap
+terlihat di audit dan Buku Besar. Bila hasilnya masih salah, ulangi langkah yang
+sama dengan alasan baru; koreksi berikutnya membalik penyesuaian terakhir, bukan
+saldo awal asli.
+
+### 10.2 Backup dan restore
+
+**Membuat backup**
+
+1. Buka **Dashboard**.
+2. Tekan **Backup Lengkap** (disarankan) dan pilih folder induk. Hasilnya satu
+   folder berisi `pura.db` + `manifest.json`.
+3. **Backup Export .db** hanya untuk kebutuhan lanjutan: satu file database,
+   tanpa manifest.
+4. Simpan di **media/disk terenkripsi**, pisahkan dari laptop, dan hapus salinan
+   lama yang tidak dipakai. Backup **tidak terenkripsi**; **PIN bukan enkripsi**
+   dan tidak melindungi isi file.
+
+**Memulihkan**
+
+1. Tutup pekerjaan lain dan jangan menutup aplikasi saat restore berjalan.
+2. **Dashboard → Restore Lengkap** (disarankan) lalu pilih folder Backup Lengkap;
+   atau **Restore Import .db** untuk satu file `.db` (jalur lanjutan, baca
+   peringatannya).
+3. Konfirmasi. Sistem memeriksa backup (SQLite terbaca, integritas, foreign key,
+   skema v2, 12 tabel wajib) sebelum menyentuh data aktif.
+4. Sistem membuat cadangan otomatis **`pre-restore-<waktu>.db`** berisi data
+   lama, lalu mengganti data aktif.
+5. Setelah selesai aplikasi **terkunci** dan meminta **PIN**. PIN tidak berubah
+   karena restore database; masukkan PIN yang biasa dipakai.
+6. Periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
+
+### 10.3 Database ditolak (skema tidak kompatibel / tabel atau kolom hilang)
+
+Pesan seperti “skema tidak kompatibel”, “versi database tidak didukung”, atau
+yang menyebut **tabel/kolom wajib hilang** berarti aplikasi menolak file sebelum
+mengubahnya.
+
+1. **Jangan membuat DB baru** dan **jangan menimpa atau menghapus** file database
+   yang ditolak. Jangan mencoba menambal tabel/kolom dengan alat SQLite.
+2. Tutup aplikasi. Salin file database yang bermasalah ke tempat aman, misalnya
+   `pura-rusak-<tanggal>.db`.
+3. **Pulihkan dari backup sehat** lewat **Dashboard → Restore Lengkap** atau
+   **Restore Import .db**. Ini jalur yang disarankan.
+4. Bila tidak ada backup sehat atau restore juga ditolak, **hubungi pendamping**.
+   Aplikasi tidak memigrasikan dan tidak membuat ulang tabel/kolom yang hilang.
+
+Database v2 yang tidak lengkap **harus dipulihkan dari backup**, bukan dibuat
+ulang. Membuat database baru hanya untuk file skema lain/asing yang memang tidak
+didukung, dan hanya setelah file lama dipindahkan (bukan ditimpa) serta
+dipastikan tidak ada data yang perlu diselamatkan.
+
+**PIN bukan enkripsi** dan **backup tidak terenkripsi** — perlindungan file
+adalah tanggung jawab akun OS dan enkripsi disk.

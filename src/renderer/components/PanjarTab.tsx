@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { isAkunKas } from '../../db/coa.js';
+import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
 import {
   buatJurnalPanjarClose,
@@ -7,6 +7,7 @@ import {
   type HasilPanjarClose,
 } from '../../core/forms.js';
 import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
+import { totalPanjarPerAkun } from '../../core/rekonsiliasiPanjar.js';
 import type { Panjar, PanjarItem } from '../../core/types.js';
 import {
   panjarToWorkbook,
@@ -16,7 +17,23 @@ import {
 import { panjarPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
-import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import {
+  api,
+  isPerluAlasan,
+  isPerluKonfirmasi,
+  type SaldoAwalSaatIniApi,
+} from '../lib/api.js';
+import {
+  MIN_ALASAN_PERINGATAN,
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
@@ -26,9 +43,13 @@ import {
   ErrorBox,
   Field,
   LockModal,
+  Modal,
+  PeringatanModal,
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
+import { PetunjukAkunKembar } from './PetunjukAkunKembar.js';
 import { ExportActions } from './ExportActions.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
@@ -37,7 +58,37 @@ import {
   pesanError,
 } from '../../utils/pesanError.js';
 
-type ItemRow = { kategori_baga: string; nominal: number };
+type ItemRow = {
+  kategori_baga: string;
+  nominal: number;
+  nota_nomor: string;
+  nota_tanggal: string;
+  toko: string;
+  keterangan: string;
+};
+
+function barisItemBaru(notaTanggal = ''): ItemRow {
+  return {
+    kategori_baga: '5004',
+    nominal: 0,
+    nota_nomor: '',
+    nota_tanggal: notaTanggal,
+    toko: '',
+    keterangan: '',
+  };
+}
+
+/** Bentuk item yang dikirim ke IPC; detail nota kosong tetap boleh (legacy). */
+function itemKeInput(it: ItemRow) {
+  return {
+    kategori_baga: it.kategori_baga,
+    nominal: it.nominal,
+    nota_nomor: it.nota_nomor.trim(),
+    nota_tanggal: it.nota_tanggal.trim(),
+    toko: it.toko.trim(),
+    keterangan: it.keterangan.trim(),
+  };
+}
 
 type Pratinjau = {
   input: JurnalInput | null;
@@ -90,6 +141,349 @@ function TabelPratinjau({
   );
 }
 
+/** Tahun dari tanggal ISO; null bila format tidak valid. */
+function tahunDariIso(tanggal: string): string | null {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(String(tanggal ?? '').trim());
+  return m ? m[1]! : null;
+}
+
+/**
+ * AUD2-06: peringatan bila realisasi berada di tahun yang berbeda dari panjar
+ * atau nota. Beban selalu masuk Laba Rugi tahun `tanggalClose`, bukan tahun
+ * panjar/nota, sehingga operator perlu memastikan tanggalnya memang disengaja.
+ */
+export function PeringatanTahunPertanggungjawaban({
+  tanggalClose,
+  tanggalPanjar,
+  notaTanggal,
+}: {
+  tanggalClose: string;
+  tanggalPanjar: string;
+  notaTanggal: readonly string[];
+}) {
+  const tahunClose = tahunDariIso(tanggalClose);
+  if (!tahunClose) return null;
+
+  const tahunPanjar = tahunDariIso(tanggalPanjar);
+  const panjarBeda = tahunPanjar !== null && tahunPanjar !== tahunClose;
+  const notaBeda = notaTanggal
+    .map((tanggal) => ({
+      tanggal: String(tanggal ?? '').trim(),
+      tahun: tahunDariIso(tanggal),
+    }))
+    .filter(
+      (n): n is { tanggal: string; tahun: string } =>
+        n.tahun !== null && n.tahun !== tahunClose,
+    );
+
+  if (!panjarBeda && notaBeda.length === 0) return null;
+
+  const rincian: string[] = [];
+  if (panjarBeda) {
+    rincian.push(
+      `panjar diserahkan ${formatTanggal(tanggalPanjar)} (tahun ${tahunPanjar})`,
+    );
+  }
+  if (notaBeda.length > 0) {
+    const tanggalNota = [...new Set(notaBeda.map((n) => formatTanggal(n.tanggal)))].join(
+      ', ',
+    );
+    const tahunNota = [...new Set(notaBeda.map((n) => n.tahun))].join(', ');
+    rincian.push(`tanggal nota ${tanggalNota} berada di tahun ${tahunNota}`);
+  }
+  const tahunLain = [
+    ...new Set([
+      ...(panjarBeda && tahunPanjar ? [tahunPanjar] : []),
+      ...notaBeda.map((n) => n.tahun),
+    ]),
+  ].join(', ');
+
+  return (
+    <div
+      role="status"
+      className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900"
+    >
+      <p className="font-semibold">
+        Perhatian: tahun realisasi berbeda dari tahun panjar/nota.
+      </p>
+      <p className="mt-1">
+        Tanggal realisasi {formatTanggal(tanggalClose)} berada di tahun{' '}
+        <b>{tahunClose}</b>, sedangkan {rincian.join(' dan ')}. Beban akan masuk
+        ke <b>Laba Rugi tahun {tahunClose}</b>, bukan tahun {tahunLain}. Pastikan
+        tanggal realisasi memang disengaja.
+      </p>
+    </div>
+  );
+}
+
+/** DB-21: konfirmasi pembatalan panjar OPEN dengan alasan wajib. */
+function BatalPanjarModal({
+  target,
+  sibuk,
+  pesanError,
+  onCancel,
+  onSubmit,
+}: {
+  target: Panjar;
+  sibuk: boolean;
+  pesanError: string | null;
+  onCancel: () => void;
+  onSubmit: (alasan: string) => void;
+}) {
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasanPeringatanCukup(alasan);
+
+  return (
+    <Modal
+      judul="Batalkan panjar?"
+      deskripsi={
+        <div className="space-y-2 text-[15px] text-stone-700">
+          <p>
+            Panjar <b>{target.penerima}</b> sebesar{' '}
+            <b>{formatRp(target.jumlah)}</b> akan dibatalkan. Sistem membuat
+            jurnal balik sehingga kas sumber bertambah dan Uang Panjar (1040)
+            kembali seperti sebelum panjar.
+          </p>
+          <p>
+            Jurnal serah asli tetap tersimpan; status panjar menjadi{' '}
+            <b>DIBATALKAN</b> dan tidak bisa dipertanggungjawabkan lagi. Tulis
+            alasan minimal {MIN_ALASAN_PERINGATAN} karakter — alasan ini tercatat
+            di audit.
+          </p>
+        </div>
+      }
+      onTutup={onCancel}
+      sibuk={sibuk}
+      lebar="md"
+    >
+      <Field label={`Alasan pembatalan (min. ${MIN_ALASAN_PERINGATAN} karakter)`}>
+        <TextInput
+          autoFocus
+          value={alasan}
+          disabled={sibuk}
+          onChange={(e) => setAlasan(e.target.value)}
+          placeholder="cth: salah serah ke panitia lain"
+        />
+      </Field>
+      {pesanError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+        >
+          {pesanError}
+        </p>
+      )}
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">
+          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
+          dan akhir diabaikan.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
+        <Button
+          variant="danger"
+          disabled={sibuk || !cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(rapikanAlasanPeringatan(alasan));
+          }}
+        >
+          {sibuk ? 'Membatalkan…' : 'Ya, batalkan panjar'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * T-A11: pembatalan khusus dokumen representasi panjar saldo awal. Tidak ada
+ * jurnal balik; jurnal pembukaan tidak boleh dibalik dari menu Panjar.
+ */
+function BatalPanjarSaldoAwalModal({
+  target,
+  sibuk,
+  pesanError,
+  onCancel,
+  onSubmit,
+}: {
+  target: Panjar;
+  sibuk: boolean;
+  pesanError: string | null;
+  onCancel: () => void;
+  onSubmit: (alasan: string) => void;
+}) {
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasanPeringatanCukup(alasan);
+
+  return (
+    <Modal
+      judul="Batalkan panjar saldo awal?"
+      deskripsi={
+        <div className="space-y-2 text-[15px] text-stone-700">
+          <p>
+            Dokumen representasi saldo awal untuk <b>{target.penerima}</b>{' '}
+            sebesar <b>{formatRp(target.jumlah)}</b> akan dihapus.
+          </p>
+          <p>
+            Tidak ada jurnal balik. Jurnal pembukaan <b>{target.jurnal_open_id}</b>{' '}
+            tetap utuh dan tidak diubah dari menu Panjar. Bila saldo 1040 di
+            jurnal pembukaan memang salah, perbaiki lewat <b>Wizard Koreksi
+            Saldo Awal</b>; audit integritas akan menampilkan selisih selama
+            saldo itu belum dikoreksi.
+          </p>
+          <p>
+            Hanya boleh untuk panjar saldo awal berstatus OPEN tanpa item
+            realisasi. Tulis alasan minimal {MIN_ALASAN_PERINGATAN} karakter —
+            alasan ini tercatat di audit.
+          </p>
+        </div>
+      }
+      onTutup={onCancel}
+      sibuk={sibuk}
+      lebar="md"
+    >
+      <Field label={`Alasan pembatalan (min. ${MIN_ALASAN_PERINGATAN} karakter)`}>
+        <TextInput
+          autoFocus
+          value={alasan}
+          disabled={sibuk}
+          onChange={(e) => setAlasan(e.target.value)}
+          placeholder="cth: saldo awal 1040 sudah tidak beredar"
+        />
+      </Field>
+      {pesanError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+        >
+          {pesanError}
+        </p>
+      )}
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">
+          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
+          dan akhir diabaikan.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
+        <Button
+          variant="danger"
+          disabled={sibuk || !cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(rapikanAlasanPeringatan(alasan));
+          }}
+        >
+          {sibuk ? 'Menghapus…' : 'Ya, hapus representasi'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** AUD2-03: konfirmasi koreksi pertanggungjawaban panjar CLOSED. */
+function KoreksiPertanggungjawabanModal({
+  target,
+  sibuk,
+  pesanError,
+  perluKonfirmasi,
+  onCancel,
+  onSubmit,
+}: {
+  target: Panjar;
+  sibuk: boolean;
+  pesanError: string | null;
+  perluKonfirmasi: boolean;
+  onCancel: () => void;
+  onSubmit: (alasan: string, konfirmasiPeringatan: boolean) => void;
+}) {
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasanPeringatanCukup(alasan);
+
+  return (
+    <Modal
+      judul="Koreksi pertanggungjawaban?"
+      deskripsi={
+        <div className="space-y-2 text-[15px] text-stone-700">
+          <p>
+            Pertanggungjawaban panjar <b>{target.penerima}</b> sebesar{' '}
+            <b>{formatRp(target.jumlah)}</b> akan dibatalkan lewat jurnal balik.
+            Uang Panjar (1040) kembali sebesar panjar dan beban dari rincian lama
+            kembali nol.
+          </p>
+          <p>
+            Rincian nota lama dihapus dari dokumen ini, tetapi seluruh datanya
+            tetap tersimpan di audit. Panjar kembali <b>OPEN</b> agar rincian
+            yang benar bisa diisi ulang. Jurnal close asli tidak diubah/dihapus.
+          </p>
+          <p>
+            Tulis alasan minimal {MIN_ALASAN_PERINGATAN} karakter — alasan ini
+            tercatat di audit.
+          </p>
+        </div>
+      }
+      onTutup={onCancel}
+      sibuk={sibuk}
+      lebar="md"
+    >
+      <Field label={`Alasan koreksi (min. ${MIN_ALASAN_PERINGATAN} karakter)`}>
+        <TextInput
+          autoFocus
+          value={alasan}
+          disabled={sibuk}
+          onChange={(e) => setAlasan(e.target.value)}
+          placeholder="cth: salah akun beban, seharusnya 5010"
+        />
+      </Field>
+      {pesanError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[15px] text-red-800"
+        >
+          {pesanError}
+        </p>
+      )}
+      {perluKonfirmasi && (
+        <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
+          Jurnal balik memunculkan peringatan posting. Periksa pesan di atas,
+          lalu klik tombol di bawah sekali lagi untuk tetap melanjutkan.
+        </p>
+      )}
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">
+          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
+          dan akhir diabaikan.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
+        <Button
+          variant={perluKonfirmasi ? 'danger' : 'primary'}
+          disabled={sibuk || !cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(rapikanAlasanPeringatan(alasan), perluKonfirmasi);
+          }}
+        >
+          {sibuk
+            ? 'Memproses…'
+            : perluKonfirmasi
+              ? 'Ya, tetap koreksi'
+              : 'Koreksi pertanggungjawaban'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 export function PanjarTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [list, setList] = useState<Panjar[]>([]);
@@ -97,8 +491,38 @@ export function PanjarTab() {
   const [info, setInfo] = useState<string | null>(null);
   const [errClose, setErrClose] = useState<string | null>(null);
   const [infoClose, setInfoClose] = useState<string | null>(null);
-  const [fStatus, setFStatus] = useState<'' | 'OPEN' | 'CLOSED'>('');
+  const [fStatus, setFStatus] = useState<'' | 'OPEN' | 'CLOSED' | 'DIBATALKAN'>('');
+  const [batalTarget, setBatalTarget] = useState<Panjar | null>(null);
+  const [busyBatal, setBusyBatal] = useState(false);
+  const busyBatalRef = useRef(false);
+  const [errBatal, setErrBatal] = useState<string | null>(null);
+  const [infoBatal, setInfoBatal] = useState<string | null>(null);
+  const [batalSaldoAwalTarget, setBatalSaldoAwalTarget] =
+    useState<Panjar | null>(null);
+  const [koreksiTarget, setKoreksiTarget] = useState<Panjar | null>(null);
+  const [busyKoreksi, setBusyKoreksi] = useState(false);
+  const busyKoreksiRef = useRef(false);
+  const [errKoreksi, setErrKoreksi] = useState<string | null>(null);
+  const [infoKoreksi, setInfoKoreksi] = useState<string | null>(null);
+  const [perluKonfirmasiKoreksi, setPerluKonfirmasiKoreksi] = useState(false);
   const [lockRetry, setLockRetry] = useState<null | ((alasan: string) => Promise<void>)>(null);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalTargetRef = useRef<'OPEN' | 'CLOSE'>('OPEN');
+  const saldoAwalPendingRef = useRef<{
+    konfirmasiPeringatan?: boolean;
+    alasanPeringatan?: string;
+  }>({});
+
+  // T-A11: pembukaan aktif + form panjar saldo awal.
+  const [pembukaan, setPembukaan] = useState<SaldoAwalSaatIniApi | null>(null);
+  const [saJumlah, setSaJumlah] = useState(0);
+  const [saPenerima, setSaPenerima] = useState('');
+  const [saSumber, setSaSumber] = useState('1001');
+  const [saCatatan, setSaCatatan] = useState('');
+  const [busySaldoAwal, setBusySaldoAwal] = useState(false);
+  const busySaldoAwalRef = useRef(false);
+  const [errSaldoAwal, setErrSaldoAwal] = useState<string | null>(null);
+  const [infoSaldoAwal, setInfoSaldoAwal] = useState<string | null>(null);
 
   // Form serah
   const [tanggal, setTanggal] = useState(tanggalLokal());
@@ -110,6 +534,7 @@ export function PanjarTab() {
   const [busyOpen, setBusyOpen] = useState(false);
   const busyOpenRef = useRef(false);
   const [pesanKonfirmasiSerah, setPesanKonfirmasiSerah] = useState<string | null>(null);
+  const [errorKonfirmasiSerah, setErrorKonfirmasiSerah] = useState<string | null>(null);
   // Alasan periode terkunci disimpan agar retry konfirmasi kas minus tidak
   // kehilangan alasan yang sudah diisi operator.
   const alasanOpenRef = useRef('');
@@ -117,11 +542,11 @@ export function PanjarTab() {
   // Form pertanggungjawaban
   const [closeId, setCloseId] = useState('');
   const [tanggalClose, setTanggalClose] = useState(tanggalLokal());
-  const [items, setItems] = useState<ItemRow[]>([{ kategori_baga: '5004', nominal: 0 }]);
-  const [setujuKurang, setSetujuKurang] = useState(false);
+  const [items, setItems] = useState<ItemRow[]>([barisItemBaru()]);
   const [busyClose, setBusyClose] = useState(false);
   const busyCloseRef = useRef(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const alasanCloseRef = useRef('');
 
   // Rincian item di daftar
@@ -145,7 +570,7 @@ export function PanjarTab() {
   useEffect(() => () => setDirty(false), [setDirty]);
 
   const kasList = useMemo(
-    () => coa.filter((c) => isAkunKas(c.kode) && c.aktif !== false),
+    () => coa.filter((c) => isAkunKasData(c) && c.aktif !== false),
     [coa],
   );
   const bagaList = useMemo(
@@ -157,9 +582,15 @@ export function PanjarTab() {
 
   async function refresh() {
     try {
-      const [c, p] = await Promise.all([api.coa(), api.panjarList()]);
+      const [c, p, sa] = await Promise.all([
+        api.coa(),
+        api.panjarList(),
+        // Belum ada pembukaan aktif bukan error: tombol saldo awal disembunyikan.
+        api.saldoAwalSaatIni().catch(() => null),
+      ]);
       setCoa(c);
       setList(p);
+      setPembukaan(sa);
     } catch (e) {
       setErr(pesanError(e, PESAN_MUAT_GAGAL));
     }
@@ -172,7 +603,7 @@ export function PanjarTab() {
   useEffect(() => {
     if (coa.length === 0) return;
     const pertama = coa.find(
-      (c) => isAkunKas(c.kode) && c.aktif !== false,
+      (c) => isAkunKasData(c) && c.aktif !== false,
     )?.kode;
     if (pertama)
       setSumber((sebelum) =>
@@ -182,9 +613,27 @@ export function PanjarTab() {
       );
   }, [coa, namaAkun, kasList]);
 
+  useEffect(() => {
+    if (kasList.length === 0) return;
+    setSaSumber((sebelum) =>
+      kasList.some((k) => k.kode === sebelum) ? sebelum : kasList[0]!.kode,
+    );
+  }, [kasList]);
+
   const shown = list.filter((p) => !fStatus || p.status === fStatus);
   const openList = list.filter((p) => p.status === 'OPEN');
   const closeTarget = openList.find((p) => p.id === closeId);
+
+  const saldo1040Pembukaan =
+    pembukaan?.saldo.find((a) => a.akun_kode === '1040')?.nominal ?? 0;
+  const adaDokumenSaldoAwal = list.some((p) => p.sumber === 'SALDO_AWAL');
+  const formSaldoAwalSah =
+    Boolean(pembukaan) &&
+    !adaDokumenSaldoAwal &&
+    Number.isInteger(saJumlah) &&
+    saJumlah > 0 &&
+    saJumlah <= saldo1040Pembukaan &&
+    Boolean(saSumber);
   const totalRealisasi = items.reduce((s, i) => s + i.nominal, 0);
   const selisih = closeTarget ? closeTarget.jumlah - totalRealisasi : 0;
   const sisa = Math.max(0, selisih);
@@ -222,7 +671,14 @@ export function PanjarTab() {
           penerima: closeTarget.penerima,
           akunKas: closeTarget.akun_kas_sumber,
           jumlahPanjar: closeTarget.jumlah,
-          items: items.map((it) => ({ akun: it.kategori_baga, nominal: it.nominal })),
+          items: items.map((it) => ({
+            akun: it.kategori_baga,
+            nominal: it.nominal,
+            nota_nomor: it.nota_nomor.trim(),
+            nota_tanggal: it.nota_tanggal.trim(),
+            toko: it.toko.trim(),
+            keterangan: it.keterangan.trim(),
+          })),
           keterangan: `Pertanggungjawaban panjar ${closeTarget.penerima}`,
           daftarAkun: coa,
         }),
@@ -251,13 +707,23 @@ export function PanjarTab() {
 
   async function submitOpen(
     alasan?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      alasanPeringatan?: string;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyOpenRef.current) return;
     setErr(null);
     setInfo(null);
     setLockRetry(null);
-    setPesanKonfirmasiSerah(null);
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (opsi.konfirmasiPeringatan !== true) {
+      setPesanKonfirmasiSerah(null);
+      setErrorKonfirmasiSerah(null);
+    }
+    setSaldoAwalOpen(false);
 
     if (!formSerahSah) {
       setErr(
@@ -268,9 +734,23 @@ export function PanjarTab() {
       return;
     }
 
+    const alasanPeringatan = rapikanAlasanPeringatan(opsi.alasanPeringatan);
+    if (
+      opsi.konfirmasiPeringatan === true &&
+      !alasanPeringatanCukup(alasanPeringatan)
+    ) {
+      setPesanKonfirmasiSerah(
+        (sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN,
+      );
+      setErrorKonfirmasiSerah(PESAN_ALASAN_PERINGATAN_MIN);
+      return;
+    }
+
     if (alasan !== undefined) alasanOpenRef.current = alasan;
     const alasanPakai = alasan ?? (alasanOpenRef.current || undefined);
 
+    saldoAwalTargetRef.current = 'OPEN';
+    saldoAwalPendingRef.current = { ...opsi };
     busyOpenRef.current = true;
     setBusyOpen(true);
     try {
@@ -284,9 +764,17 @@ export function PanjarTab() {
           ...(noBukti.trim() ? { noBukti: noBukti.trim() } : {}),
         },
         alasanPakai,
-        opsi,
+        {
+          konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          ...(opsi.konfirmasiPeringatan === true && alasanPeringatan
+            ? { alasanPeringatan }
+            : {}),
+          ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
+        },
       );
       alasanOpenRef.current = '';
+      setPesanKonfirmasiSerah(null);
+      setErrorKonfirmasiSerah(null);
       setPenerima('');
       setJumlah(0);
       setKeterangan('');
@@ -299,11 +787,25 @@ export function PanjarTab() {
           'Kas berkurang, Uang Panjar (1040) bertambah.',
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setPesanKonfirmasiSerah(null);
+        setErrorKonfirmasiSerah(null);
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
+        setPesanKonfirmasiSerah(null);
+        setErrorKonfirmasiSerah(null);
         setLockRetry(() => (a: string) => submitOpen(a));
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
-        setPesanKonfirmasiSerah(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasiSerah((sebelum) => sebelum ?? pesan);
+        // Penolakan "alasan kurang" ditampilkan di dalam modal agar operator
+        // bisa langsung memperbaiki isian yang sama.
+        setErrorKonfirmasiSerah(
+          opsi.konfirmasiPeringatan === true ? pesan : null,
+        );
       } else {
+        setPesanKonfirmasiSerah(null);
+        setErrorKonfirmasiSerah(null);
         setErr(pesanError(e));
       }
     } finally {
@@ -314,13 +816,27 @@ export function PanjarTab() {
 
   async function submitClose(
     alasan?: string,
-    opsi: { konfirmasiPeringatan?: boolean } = {},
+    opsi: {
+      konfirmasiPeringatan?: boolean;
+      konfirmasiKurang?: boolean;
+      alasanKurang?: string;
+      alasanPeringatan?: string;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyCloseRef.current) return;
     setErrClose(null);
     setInfoClose(null);
     setLockRetry(null);
-    setPesanKonfirmasi(null);
+    const konfirmasi =
+      opsi.konfirmasiPeringatan === true || opsi.konfirmasiKurang === true;
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (!konfirmasi) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
+    setSaldoAwalOpen(false);
 
     if (!closeTarget) {
       setErrClose('Pilih panjar yang akan dipertanggungjawabkan.');
@@ -334,17 +850,29 @@ export function PanjarTab() {
       );
       return;
     }
-    if (kurang > 0 && !setujuKurang) {
-      setErrClose(
-        `Realisasi melebihi panjar sebesar ${formatRp(kurang)}. Centang persetujuan ` +
-          'bahwa kekurangan dibayar dari kas sumber sebelum menyimpan.',
+    if (kurang > 0 && opsi.konfirmasiKurang !== true) {
+      setPesanKonfirmasi(
+        `Realisasi melebihi panjar sebesar ${formatRp(kurang)}. Tulis alasan minimal ` +
+          `${MIN_ALASAN_PERINGATAN} karakter untuk tetap menyimpan.`,
       );
+      setErrorKonfirmasi(null);
+      return;
+    }
+
+    const alasanKonfirmasi = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? opsi.alasanKurang,
+    );
+    if (konfirmasi && !alasanPeringatanCukup(alasanKonfirmasi)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
       return;
     }
 
     if (alasan !== undefined) alasanCloseRef.current = alasan;
     const alasanPakai = alasan ?? (alasanCloseRef.current || undefined);
 
+    saldoAwalTargetRef.current = 'CLOSE';
+    saldoAwalPendingRef.current = { ...opsi };
     busyCloseRef.current = true;
     setBusyClose(true);
     try {
@@ -352,16 +880,24 @@ export function PanjarTab() {
         {
           id: closeTarget.id,
           tanggalClose,
-          items,
-          konfirmasiKurang: kurang > 0 && setujuKurang,
+          items: items.map(itemKeInput),
+          konfirmasiKurang: opsi.konfirmasiKurang === true,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          ...(konfirmasi
+            ? {
+                alasanKurang: alasanKonfirmasi,
+                alasanPeringatan: alasanKonfirmasi,
+              }
+            : {}),
+          ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
         },
         alasanPakai,
       );
       alasanCloseRef.current = '';
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
       setCloseId('');
-      setItems([{ kategori_baga: '5004', nominal: 0 }]);
-      setSetujuKurang(false);
+      setItems([barisItemBaru()]);
       setDetailId('');
       setDetailItems({});
       setCloseDirty(false);
@@ -372,10 +908,17 @@ export function PanjarTab() {
           (r.kurang > 0 ? `, kurang ${formatRp(r.kurang)} dibayar dari kas sumber.` : '.'),
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
-        setLockRetry(() => (a: string) => submitClose(a));
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasiPeringatan) {
-        setPesanKonfirmasi(pesanError(e));
+      if (adalahErrorSaldoAwal(e)) {
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
+        // Alasan kunci periode terpisah; opsi konfirmasi (termasuk alasan
+        // overrun/peringatan) dipertahankan agar tidak diminta ulang.
+        const opsiLanjut = { ...opsi };
+        setLockRetry(() => (a: string) => submitClose(a, opsiLanjut));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        setErrorKonfirmasi(konfirmasi ? pesan : null);
       } else {
         setErrClose(pesanError(e));
       }
@@ -385,12 +928,213 @@ export function PanjarTab() {
     }
   }
 
+  async function submitBatal(alasan: string): Promise<void> {
+    if (!batalTarget || busyBatalRef.current) return;
+    const alasanBersih = rapikanAlasanPeringatan(alasan);
+    setErrBatal(null);
+    if (!alasanPeringatanCukup(alasanBersih)) {
+      setErrBatal('Alasan pembatalan panjar wajib diisi minimal 5 karakter.');
+      return;
+    }
+    setLockRetry(null);
+    busyBatalRef.current = true;
+    setBusyBatal(true);
+    try {
+      const r = await api.panjarBatal(batalTarget.id, alasanBersih);
+      setBatalTarget(null);
+      setErrBatal(null);
+      setDetailId('');
+      setDetailItems({});
+      await refresh();
+      setInfoBatal(
+        `Panjar untuk ${r.panjar.penerima} dibatalkan. Jurnal balik dibuat; ` +
+          `Uang Panjar (1040) dan kas sumber kembali seperti sebelum panjar. ` +
+          `Jurnal asli tetap tersimpan.`,
+      );
+    } catch (e) {
+      if (isPerluAlasan(e)) {
+        // Alasan pembatalan (>= 5 karakter) yang sama juga memenuhi kunci
+        // periode, jadi operator tidak perlu mengetik ulang.
+        setLockRetry(() => (a: string) => submitBatal(a));
+      } else {
+        setErrBatal(pesanError(e));
+      }
+    } finally {
+      busyBatalRef.current = false;
+      setBusyBatal(false);
+    }
+  }
+
+  async function submitSaldoAwal(): Promise<void> {
+    if (busySaldoAwalRef.current) return;
+    setErrSaldoAwal(null);
+    setInfoSaldoAwal(null);
+    if (!pembukaan) {
+      setErrSaldoAwal(
+        'Belum ada jurnal pembukaan aktif. Catat saldo awal lebih dahulu.',
+      );
+      return;
+    }
+    if (!Number.isInteger(saJumlah) || saJumlah <= 0) {
+      setErrSaldoAwal('Jumlah panjar saldo awal wajib lebih dari 0.');
+      return;
+    }
+    if (saJumlah > saldo1040Pembukaan) {
+      setErrSaldoAwal(
+        `Jumlah melebihi saldo 1040 jurnal pembukaan (${formatRp(
+          saldo1040Pembukaan,
+        )}).`,
+      );
+      return;
+    }
+    busySaldoAwalRef.current = true;
+    setBusySaldoAwal(true);
+    try {
+      const r = await api.panjarSaldoAwal({
+        jumlah: saJumlah,
+        tanggal: pembukaan.tanggal,
+        akunKasSumber: saSumber,
+        ...(saPenerima.trim() ? { penerima: saPenerima.trim() } : {}),
+        ...(saCatatan.trim() ? { catatan: saCatatan.trim() } : {}),
+      });
+      setSaJumlah(0);
+      setSaPenerima('');
+      setSaCatatan('');
+      await refresh();
+      setInfoSaldoAwal(
+        `Panjar saldo awal ${formatRp(r.panjar.jumlah)} untuk ` +
+          `${r.panjar.penerima} tercatat tanpa jurnal baru. Debit 1040 sudah ada ` +
+          `di jurnal pembukaan ${r.panjar.jurnal_open_id}.`,
+      );
+    } catch (e) {
+      setErrSaldoAwal(pesanError(e));
+    } finally {
+      busySaldoAwalRef.current = false;
+      setBusySaldoAwal(false);
+    }
+  }
+
+  async function submitBatalSaldoAwal(alasan: string): Promise<void> {
+    if (!batalSaldoAwalTarget || busyBatalRef.current) return;
+    const alasanBersih = rapikanAlasanPeringatan(alasan);
+    setErrBatal(null);
+    if (!alasanPeringatanCukup(alasanBersih)) {
+      setErrBatal(
+        'Alasan pembatalan panjar saldo awal wajib diisi minimal 5 karakter.',
+      );
+      return;
+    }
+    setLockRetry(null);
+    busyBatalRef.current = true;
+    setBusyBatal(true);
+    try {
+      await api.panjarBatalSaldoAwal(batalSaldoAwalTarget.id, alasanBersih);
+      const target = batalSaldoAwalTarget;
+      setBatalSaldoAwalTarget(null);
+      setErrBatal(null);
+      setDetailId('');
+      setDetailItems({});
+      await refresh();
+      setInfoBatal(
+        `Dokumen panjar saldo awal untuk ${target.penerima} dihapus. ` +
+          'Tidak ada jurnal balik; jurnal pembukaan tidak diubah. Bila saldo ' +
+          '1040 pembukaan memang salah, koreksi lewat Wizard Koreksi Saldo Awal.',
+      );
+    } catch (e) {
+      if (isPerluAlasan(e)) {
+        setLockRetry(() => (a: string) => submitBatalSaldoAwal(a));
+      } else {
+        setErrBatal(pesanError(e));
+      }
+    } finally {
+      busyBatalRef.current = false;
+      setBusyBatal(false);
+    }
+  }
+
+  async function submitKoreksi(
+    alasan: string,
+    konfirmasiPeringatan = false,
+  ): Promise<void> {
+    if (!koreksiTarget || busyKoreksiRef.current) return;
+    const alasanBersih = rapikanAlasanPeringatan(alasan);
+    setErrKoreksi(null);
+    if (!alasanPeringatanCukup(alasanBersih)) {
+      setErrKoreksi(
+        'Alasan koreksi pertanggungjawaban wajib diisi minimal 5 karakter.',
+      );
+      return;
+    }
+    const target = koreksiTarget;
+    setLockRetry(null);
+    busyKoreksiRef.current = true;
+    setBusyKoreksi(true);
+    try {
+      const r = await api.panjarBatalClose(
+        { id: target.id, alasan: alasanBersih },
+        konfirmasiPeringatan
+          ? { konfirmasiPeringatan: true, alasanPeringatan: alasanBersih }
+          : {},
+      );
+      setKoreksiTarget(null);
+      setErrKoreksi(null);
+      setPerluKonfirmasiKoreksi(false);
+      setDetailId('');
+      setDetailItems({});
+      await refresh();
+
+      // Muat panjar yang baru dibuka ke form pertanggungjawaban. Tanggal lama
+      // dipakai lagi bila masih valid agar koreksi tidak menggeser periode.
+      const tanggalIsi =
+        target.tanggal_close && target.tanggal_close >= target.tanggal
+          ? target.tanggal_close
+          : tanggalLokal() < target.tanggal
+            ? target.tanggal
+            : tanggalLokal();
+      setCloseId(target.id);
+      setTanggalClose(tanggalIsi);
+      setItems([barisItemBaru(tanggalIsi)]);
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+      setErrClose(null);
+      setInfoClose(null);
+      setCloseDirty(false);
+      setInfoKoreksi(
+        `Pertanggungjawaban ${target.penerima} dikoreksi. Jurnal balik ` +
+          `${r.jurnal?.no_bukti || r.jurnal?.id || ''} dibuat; Uang Panjar ` +
+          `(1040) kembali ${formatRp(target.jumlah)} dan beban lama kembali nol. ` +
+          'Rincian item lama tersimpan di audit. Panjar sudah dimuat ke form ' +
+          'pertanggungjawaban untuk diisi ulang.',
+      );
+      if (typeof document !== 'undefined') {
+        document.getElementById('panjar-pertanggungjawaban')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    } catch (e) {
+      if (isPerluAlasan(e)) {
+        setLockRetry(
+          () => (a: string) => submitKoreksi(a, konfirmasiPeringatan),
+        );
+      } else if (isPerluKonfirmasi(e)) {
+        setPerluKonfirmasiKoreksi(true);
+        setErrKoreksi(pesanError(e));
+      } else {
+        setErrKoreksi(pesanError(e));
+      }
+    } finally {
+      busyKoreksiRef.current = false;
+      setBusyKoreksi(false);
+    }
+  }
+
   function pilihUntukClose(p: Panjar) {
     setCloseId(p.id);
     setTanggalClose(tanggalLokal() < p.tanggal ? p.tanggal : tanggalLokal());
-    setItems([{ kategori_baga: '5004', nominal: 0 }]);
-    setSetujuKurang(false);
+    setItems([barisItemBaru()]);
     setPesanKonfirmasi(null);
+    setErrorKonfirmasi(null);
     setErrClose(null);
     setInfoClose(null);
     // Prefill terprogram (bukan ketikan operator) tidak menandai form kotor.
@@ -403,6 +1147,11 @@ export function PanjarTab() {
         block: 'start',
       });
     }
+  }
+
+  function ubahItem(i: number, patch: Partial<ItemRow>): void {
+    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    setCloseDirty(true);
   }
 
   async function toggleDetail(id: string) {
@@ -458,6 +1207,24 @@ export function PanjarTab() {
       return `Kekurangan dibayar dari kas — ${labelAkun(akun)}`;
     return `Beban — ${labelAkun(akun)}`;
   };
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    const opsi = {
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    };
+    if (saldoAwalTargetRef.current === 'CLOSE') void submitClose(undefined, opsi);
+    else void submitOpen(undefined, opsi);
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    if (saldoAwalTargetRef.current === 'CLOSE')
+      void submitClose(undefined, saldoAwalPendingRef.current);
+    else void submitOpen(undefined, saldoAwalPendingRef.current);
+  }
 
   return (
     <div className="space-y-4">
@@ -579,25 +1346,21 @@ export function PanjarTab() {
         </div>
 
         {pesanKonfirmasiSerah && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasiSerah}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                disabled={busyOpen}
-                onClick={() => void submitOpen(undefined, { konfirmasiPeringatan: true })}
-              >
-                Ya, tetap serahkan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busyOpen}
-                onClick={() => setPesanKonfirmasiSerah(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasiSerah}
+            pesanError={errorKonfirmasiSerah}
+            sibuk={busyOpen}
+            onCancel={() => {
+              setPesanKonfirmasiSerah(null);
+              setErrorKonfirmasiSerah(null);
+            }}
+            onSubmit={(alasan) => {
+              void submitOpen(undefined, {
+                konfirmasiPeringatan: true,
+                alasanPeringatan: alasan,
+              });
+            }}
+          />
         )}
 
         <div className="mt-4">
@@ -608,6 +1371,104 @@ export function PanjarTab() {
             {busyOpen ? 'Menyimpan…' : 'Serahkan Panjar'}
           </Button>
         </div>
+      </Card>
+
+      <Card>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="mb-1 text-lg font-bold">Panjar Saldo Awal (Cut-over)</h2>
+            <p className="text-sm text-stone-600">
+              Bila saat pembukaan masih ada uang panjar yang beredar, catat
+              dokumennya di sini. Sistem <b>tidak membuat jurnal baru</b> karena
+              debit 1040 sudah ada di jurnal pembukaan; dokumen ini hanya
+              representasi agar saldo 1040 bisa direkonsiliasi.
+            </p>
+          </div>
+          {adaDokumenSaldoAwal && <Badge tone="stone">Sudah tercatat</Badge>}
+        </div>
+        <ErrorBox msg={errSaldoAwal} />
+        {infoSaldoAwal && (
+          <div className="mb-2 mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+            {infoSaldoAwal}
+          </div>
+        )}
+        {!pembukaan ? (
+          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px] text-stone-600">
+            Belum ada jurnal pembukaan aktif. Catat atau koreksi saldo awal
+            terlebih dahulu; setelah itu alur ini muncul otomatis.
+          </p>
+        ) : adaDokumenSaldoAwal ? (
+          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px] text-stone-700">
+            Jurnal pembukaan {pembukaan.tanggal} sudah punya satu dokumen panjar
+            saldo awal. Satu jurnal pembukaan hanya boleh punya satu dokumen;
+            gunakan tombol pembatalan khusus di daftar bila representasi itu
+            salah.
+          </p>
+        ) : saldo1040Pembukaan <= 0 ? (
+          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
+            Jurnal pembukaan aktif tidak memuat saldo 1040 Uang Panjar, sehingga
+            tidak ada panjar saldo awal yang bisa dicatat. Periksa jurnal
+            pembukaan atau alur koreksi saldo awal.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 text-sm text-stone-600">
+              Tanggal mengikuti jurnal pembukaan <b>{pembukaan.tanggal}</b>.
+              Maksimal 1040 yang bisa direpresentasikan:{' '}
+              <b>{formatRp(saldo1040Pembukaan)}</b>.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <Field label="Penerima / panitia (opsional)">
+                <TextInput
+                  value={saPenerima}
+                  disabled={busySaldoAwal}
+                  placeholder="cth: Panitia yang masih memegang panjar"
+                  onChange={(e) => setSaPenerima(e.target.value)}
+                />
+              </Field>
+              <Field label="Jumlah panjar beredar (Rp)">
+                <CurrencyInput
+                  value={saJumlah}
+                  onChange={(n) => setSaJumlah(n)}
+                />
+              </Field>
+              <Field label="Kas sumber di jurnal pembukaan">
+                <Select
+                  value={saSumber}
+                  disabled={busySaldoAwal}
+                  onChange={(e) => setSaSumber(e.target.value)}
+                >
+                  {kasList.map((k) => (
+                    <option key={k.kode} value={k.kode}>
+                      {k.kode} — {k.nama}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Field label="Catatan (opsional, tercatat di audit)">
+                <TextInput
+                  value={saCatatan}
+                  disabled={busySaldoAwal}
+                  placeholder="cth: panjar kegiatan yang belum dipertanggungjawabkan"
+                  onChange={(e) => setSaCatatan(e.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button
+                disabled={busySaldoAwal || !formSaldoAwalSah}
+                onClick={() => void submitSaldoAwal()}
+              >
+                {busySaldoAwal ? 'Menyimpan…' : 'Catat Panjar Saldo Awal'}
+              </Button>
+              <span className="text-sm text-stone-500">
+                Tidak ada jurnal serah baru; 1040 pembukaan dihitung satu kali.
+              </span>
+            </div>
+          </>
+        )}
       </Card>
 
       <Card>
@@ -667,60 +1528,98 @@ export function PanjarTab() {
           </div>
         )}
 
-        <div className="mt-3 space-y-2">
+        {closeTarget && (
+          <PeringatanTahunPertanggungjawaban
+            tanggalClose={tanggalClose}
+            tanggalPanjar={closeTarget.tanggal}
+            notaTanggal={items.map((it) => it.nota_tanggal)}
+          />
+        )}
+
+        <div className="mt-3 space-y-3">
           {items.map((it, i) => (
-            <div key={i} className="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_180px_auto]">
-              <Field label={i === 0 ? 'Jenis belanja (baga)' : ''}>
-                <Select
-                  value={it.kategori_baga}
-                  disabled={busyClose}
-                  onChange={(e) => {
-                    const nilai = e.target.value;
-                    setItems((xs) =>
-                      xs.map((x, j) =>
-                        j === i ? { ...x, kategori_baga: nilai } : x,
-                      ),
-                    );
+            <div
+              key={i}
+              className="rounded-xl border border-stone-200 bg-stone-50 p-3"
+            >
+              <div className="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_150px_1fr_auto]">
+                <Field label="Nomor nota">
+                  <TextInput
+                    value={it.nota_nomor}
+                    disabled={busyClose}
+                    placeholder="cth: 001/NOTA/2026"
+                    onChange={(e) => ubahItem(i, { nota_nomor: e.target.value })}
+                  />
+                </Field>
+                <Field label="Tanggal nota">
+                  <TextInput
+                    type="date"
+                    value={it.nota_tanggal}
+                    max={tanggalClose || undefined}
+                    disabled={busyClose}
+                    onChange={(e) => ubahItem(i, { nota_tanggal: e.target.value })}
+                  />
+                </Field>
+                <Field label="Toko / penerima nota">
+                  <TextInput
+                    value={it.toko}
+                    disabled={busyClose}
+                    placeholder="cth: Toko Bangunan Jaya"
+                    onChange={(e) => ubahItem(i, { toko: e.target.value })}
+                  />
+                </Field>
+                <Button
+                  variant="ghost"
+                  disabled={busyClose || items.length === 1}
+                  onClick={() => {
+                    setItems((xs) => xs.filter((_, j) => j !== i));
                     setCloseDirty(true);
                   }}
                 >
-                  {bagaList.map((b) => (
-                    <option key={b.kode} value={b.kode}>
-                      {b.kode} — {b.nama}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label={i === 0 ? 'Nominal (Rp)' : ''}>
-                <CurrencyInput
-                  value={it.nominal}
-                  onChange={(n) => {
-                    setItems((xs) => xs.map((x, j) => (j === i ? { ...x, nominal: n } : x)));
-                    setCloseDirty(true);
-                  }}
-                />
-              </Field>
-              <Button
-                variant="ghost"
-                disabled={busyClose || items.length === 1}
-                onClick={() => {
-                  setItems((xs) => xs.filter((_, j) => j !== i));
-                  setCloseDirty(true);
-                }}
-              >
-                ✕
-              </Button>
+                  Hapus
+                </Button>
+              </div>
+              <div className="mt-2 grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_180px_1fr]">
+                <Field label="Akun beban">
+                  <Select
+                    value={it.kategori_baga}
+                    disabled={busyClose}
+                    onChange={(e) => ubahItem(i, { kategori_baga: e.target.value })}
+                  >
+                    {bagaList.map((b) => (
+                      <option key={b.kode} value={b.kode}>
+                        {b.kode} — {b.nama}
+                      </option>
+                    ))}
+                  </Select>
+                  <PetunjukAkunKembar kode={it.kategori_baga} />
+                </Field>
+                <Field label="Nominal (Rp)">
+                  <CurrencyInput
+                    value={it.nominal}
+                    onChange={(n) => ubahItem(i, { nominal: n })}
+                  />
+                </Field>
+                <Field label="Keterangan baris (opsional)">
+                  <TextInput
+                    value={it.keterangan}
+                    disabled={busyClose}
+                    placeholder="cth: beli bahan bangunan"
+                    onChange={(e) => ubahItem(i, { keterangan: e.target.value })}
+                  />
+                </Field>
+              </div>
             </div>
           ))}
           <Button
             variant="ghost"
             disabled={busyClose}
             onClick={() => {
-              setItems((xs) => [...xs, { kategori_baga: '5004', nominal: 0 }]);
+              setItems((xs) => [...xs, barisItemBaru(tanggalClose)]);
               setCloseDirty(true);
             }}
           >
-            + Tambah baris belanja
+            + Tambah baris nota
           </Button>
         </div>
 
@@ -745,22 +1644,14 @@ export function PanjarTab() {
         )}
 
         {kurang > 0 && (
-          <label className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={setujuKurang}
-              disabled={busyClose}
-              onChange={(e) => {
-                setSetujuKurang(e.target.checked);
-                setCloseDirty(true);
-              }}
-            />
-            <span>
-              Saya setuju kekurangan <b>{formatRp(kurang)}</b> dibayar dari kas sumber{' '}
-              <b>{labelAkun(closeTarget?.akun_kas_sumber ?? '')}</b>.
-            </span>
-          </label>
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[15px] text-amber-900">
+            <p>
+              Kekurangan <b>{formatRp(kurang)}</b> akan dibayar dari kas sumber{' '}
+              <b>{labelAkun(closeTarget?.akun_kas_sumber ?? '')}</b>. Sistem tidak
+              memblokir, tetapi saat menyimpan Anda wajib menulis alasan minimal{' '}
+              {MIN_ALASAN_PERINGATAN} karakter dan alasan itu tercatat di audit.
+            </p>
+          </div>
         )}
 
         <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
@@ -781,25 +1672,23 @@ export function PanjarTab() {
         </div>
 
         {pesanKonfirmasi && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                disabled={busyClose}
-                onClick={() => void submitClose(undefined, { konfirmasiPeringatan: true })}
-              >
-                Ya, tetap simpan
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={busyClose}
-                onClick={() => setPesanKonfirmasi(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasi}
+            pesanError={errorKonfirmasi}
+            sibuk={busyClose}
+            onCancel={() => {
+              setPesanKonfirmasi(null);
+              setErrorKonfirmasi(null);
+            }}
+            onSubmit={(alasan) => {
+              void submitClose(undefined, {
+                konfirmasiKurang: true,
+                konfirmasiPeringatan: true,
+                alasanKurang: alasan,
+                alasanPeringatan: alasan,
+              });
+            }}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -807,7 +1696,8 @@ export function PanjarTab() {
             {busyClose ? 'Menyimpan…' : 'Simpan Pertanggungjawaban'}
           </Button>
           <span className="text-sm text-stone-500">
-            Setelah disimpan, 1040 untuk panjar ini kembali nol.
+            Setelah disimpan, 1040 untuk panjar ini kembali nol. Bila realisasi melebihi
+            panjar, sistem akan meminta alasan minimal {MIN_ALASAN_PERINGATAN} karakter.
           </span>
         </div>
       </Card>
@@ -818,11 +1708,14 @@ export function PanjarTab() {
           <div className="flex flex-col items-start gap-2 md:items-end">
             <Select
               value={fStatus}
-              onChange={(e) => setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED')}
+              onChange={(e) =>
+                setFStatus(e.target.value as '' | 'OPEN' | 'CLOSED' | 'DIBATALKAN')
+              }
             >
               <option value="">Semua status</option>
               <option value="OPEN">Belum dipertanggungjawabkan</option>
               <option value="CLOSED">Sudah dipertanggungjawabkan</option>
+              <option value="DIBATALKAN">Dibatalkan</option>
             </Select>
             <ExportActions
               namaDasar={namaDasarPanjar}
@@ -837,6 +1730,31 @@ export function PanjarTab() {
             />
           </div>
         </div>
+        <ErrorBox msg={errBatal} />
+        {infoBatal && (
+          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+            {infoBatal}
+          </div>
+        )}
+        <ErrorBox msg={errKoreksi} />
+        {infoKoreksi && (
+          <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+            {infoKoreksi}
+          </div>
+        )}
+        <p className="mb-2 text-sm text-stone-600">
+          Panjar yang masih <b>OPEN</b> bisa dibatalkan lewat tombol{' '}
+          <b>Batalkan</b>. Pembatalan membuat jurnal balik (kas kembali, 1040
+          nol), menyimpan alasan minimal 5 karakter, dan menampilkan status{' '}
+          <b>DIBATALKAN</b>; jurnal serah asli tidak dihapus. Panjar{' '}
+          <b>CLOSED</b> yang salah input bisa dikoreksi lewat tombol{' '}
+          <b>Koreksi Pertanggungjawaban</b>: jurnal balik dibuat, rincian item
+          lama dihapus dari dokumen tetapi tersimpan di audit, dan panjar
+          kembali <b>OPEN</b> untuk diisi ulang. Panjar berlabel{' '}
+          <b>Saldo awal</b> adalah representasi 1040 dari jurnal pembukaan:
+          penutupannya memakai alur normal setelah ada realisasi, sedangkan
+          pembatalannya menghapus dokumen tanpa jurnal balik.
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">
             <thead>
@@ -853,6 +1771,8 @@ export function PanjarTab() {
             <tbody>
               {shown.map((p) => {
                 const realisasi = p.total_realisasi ?? 0;
+                const realisasiPerAkun =
+                  detailId === p.id ? totalPanjarPerAkun(detailItems[p.id] ?? []) : [];
                 return (
                   <Fragment key={p.id}>
                     <tr className="border-b last:border-0 align-top">
@@ -863,9 +1783,31 @@ export function PanjarTab() {
                         {formatRp(p.jumlah)}
                       </td>
                       <td className="py-2 pr-3">
-                        <Badge tone={p.status === 'OPEN' ? 'amber' : 'green'}>
-                          {p.status === 'OPEN' ? 'Belum' : 'Sudah'}
+                        <Badge
+                          tone={
+                            p.status === 'OPEN'
+                              ? 'amber'
+                              : p.status === 'CLOSED'
+                                ? 'green'
+                                : 'red'
+                          }
+                        >
+                          {p.status === 'OPEN'
+                            ? 'Belum'
+                            : p.status === 'CLOSED'
+                              ? 'Sudah'
+                              : 'DIBATALKAN'}
                         </Badge>
+                        {p.sumber === 'SALDO_AWAL' && (
+                          <div className="mt-1">
+                            <Badge tone="stone">Saldo awal</Badge>
+                          </div>
+                        )}
+                        {p.status === 'DIBATALKAN' && p.tanggal_batal && (
+                          <div className="mt-1 text-helper text-stone-500">
+                            {formatTanggal(p.tanggal_batal)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 pr-3 text-right whitespace-nowrap">
                         {p.status === 'CLOSED' ? (
@@ -892,6 +1834,46 @@ export function PanjarTab() {
                               Pertanggungjawaban
                             </Button>
                           )}
+                          {p.status === 'OPEN' && p.sumber !== 'SALDO_AWAL' && (
+                            <Button
+                              variant="danger"
+                              disabled={busyBatal}
+                              onClick={() => {
+                                setErrBatal(null);
+                                setInfoBatal(null);
+                                setBatalTarget(p);
+                              }}
+                            >
+                              Batalkan
+                            </Button>
+                          )}
+                          {p.status === 'OPEN' && p.sumber === 'SALDO_AWAL' && (
+                            <Button
+                              variant="danger"
+                              disabled={busyBatal}
+                              onClick={() => {
+                                setErrBatal(null);
+                                setInfoBatal(null);
+                                setBatalSaldoAwalTarget(p);
+                              }}
+                            >
+                              Batalkan saldo awal
+                            </Button>
+                          )}
+                          {p.status === 'CLOSED' && (
+                            <Button
+                              variant="ghost"
+                              disabled={busyKoreksi}
+                              onClick={() => {
+                                setErrKoreksi(null);
+                                setInfoKoreksi(null);
+                                setPerluKonfirmasiKoreksi(false);
+                                setKoreksiTarget(p);
+                              }}
+                            >
+                              Koreksi Pertanggungjawaban
+                            </Button>
+                          )}
                           <Button variant="ghost" onClick={() => void toggleDetail(p.id)}>
                             {detailId === p.id ? 'Tutup rincian' : 'Lihat rincian'}
                           </Button>
@@ -904,28 +1886,51 @@ export function PanjarTab() {
                           {detailBusy === p.id ? (
                             <p className="text-stone-500">Memuat rincian…</p>
                           ) : (detailItems[p.id]?.length ?? 0) > 0 ? (
-                            <table className="w-full text-left text-sm">
-                              <thead>
-                                <tr className="text-stone-500">
-                                  <th className="py-1 pr-3">Jenis belanja</th>
-                                  <th className="py-1 pr-3 text-right">Nominal</th>
-                                  <th className="py-1">Jurnal</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {detailItems[p.id]!.map((it) => (
-                                  <tr key={it.id ?? `${it.kategori_baga}-${it.nominal}`}>
-                                    <td className="py-1 pr-3">{labelAkun(it.kategori_baga)}</td>
-                                    <td className="py-1 pr-3 text-right">
-                                      {formatRp(it.nominal)}
-                                    </td>
-                                    <td className="py-1 text-xs text-stone-500">
-                                      {it.jurnal_id ?? '—'}
-                                    </td>
+                            <>
+                              <table className="w-full text-left text-sm">
+                                <thead>
+                                  <tr className="text-stone-500">
+                                    <th className="py-1 pr-3">No. nota</th>
+                                    <th className="py-1 pr-3">Tgl nota</th>
+                                    <th className="py-1 pr-3">Toko / penerima</th>
+                                    <th className="py-1 pr-3">Jenis belanja</th>
+                                    <th className="py-1 pr-3 text-right">Nominal</th>
+                                    <th className="py-1 pr-3">Keterangan</th>
+                                    <th className="py-1">Jurnal</th>
                                   </tr>
+                                </thead>
+                                <tbody>
+                                  {detailItems[p.id]!.map((it) => (
+                                    <tr key={it.id ?? `${it.kategori_baga}-${it.nominal}`}>
+                                      <td className="py-1 pr-3">{it.nota_nomor || '—'}</td>
+                                      <td className="py-1 pr-3 whitespace-nowrap">
+                                        {it.nota_tanggal ? formatTanggal(it.nota_tanggal) : '—'}
+                                      </td>
+                                      <td className="py-1 pr-3">{it.toko || '—'}</td>
+                                      <td className="py-1 pr-3">{labelAkun(it.kategori_baga)}</td>
+                                      <td className="py-1 pr-3 text-right">
+                                        {formatRp(it.nominal)}
+                                      </td>
+                                      <td className="py-1 pr-3">{it.keterangan || '—'}</td>
+                                      <td className="py-1 text-xs text-stone-500">
+                                        {it.jurnal_id ?? '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-1 border-t pt-2 text-sm">
+                                <span className="font-semibold">Total per akun:</span>
+                                {realisasiPerAkun.map((a) => (
+                                  <span key={a.akun}>
+                                    {labelAkun(a.akun)} = {formatRp(a.nominal)}
+                                  </span>
                                 ))}
-                              </tbody>
-                            </table>
+                                <span className="font-semibold">
+                                  Total realisasi = {formatRp(realisasi)}
+                                </span>
+                              </div>
+                            </>
                           ) : (
                             <p className="text-stone-500">
                               Belum ada rincian. Rincian muncul setelah pertanggungjawaban
@@ -950,6 +1955,52 @@ export function PanjarTab() {
         </div>
       </Card>
 
+      {batalTarget && (
+        <BatalPanjarModal
+          target={batalTarget}
+          sibuk={busyBatal}
+          pesanError={errBatal}
+          onCancel={() => {
+            if (busyBatal) return;
+            setBatalTarget(null);
+            setErrBatal(null);
+          }}
+          onSubmit={(alasan) => void submitBatal(alasan)}
+        />
+      )}
+
+      {batalSaldoAwalTarget && (
+        <BatalPanjarSaldoAwalModal
+          target={batalSaldoAwalTarget}
+          sibuk={busyBatal}
+          pesanError={errBatal}
+          onCancel={() => {
+            if (busyBatal) return;
+            setBatalSaldoAwalTarget(null);
+            setErrBatal(null);
+          }}
+          onSubmit={(alasan) => void submitBatalSaldoAwal(alasan)}
+        />
+      )}
+
+      {koreksiTarget && (
+        <KoreksiPertanggungjawabanModal
+          target={koreksiTarget}
+          sibuk={busyKoreksi}
+          pesanError={errKoreksi}
+          perluKonfirmasi={perluKonfirmasiKoreksi}
+          onCancel={() => {
+            if (busyKoreksi) return;
+            setKoreksiTarget(null);
+            setErrKoreksi(null);
+            setPerluKonfirmasiKoreksi(false);
+          }}
+          onSubmit={(alasan, konfirmasi) =>
+            void submitKoreksi(alasan, konfirmasi)
+          }
+        />
+      )}
+
       {lockRetry && (
         <LockModal
           onCancel={() => {
@@ -963,6 +2014,15 @@ export function PanjarTab() {
           }}
         />
       )}
+
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        coa={coa}
+        sibuk={saldoAwalTargetRef.current === 'CLOSE' ? busyClose : busyOpen}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={mulaiTanpaSaldoAwal}
+        onSaldoAwalTersimpan={saldoAwalTersimpan}
+      />
     </div>
   );
 }

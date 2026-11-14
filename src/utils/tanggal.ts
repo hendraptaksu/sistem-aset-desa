@@ -73,6 +73,19 @@ export function tahunLokal(now?: Date | number, timeZone = ZONA_WAKTU_APP): numb
 }
 
 /**
+ * Periode laporan berjalan: 1 Januari tahun lokal s/d hari ini (default WITA).
+ * Dipakai sebagai default filter Laba Rugi & Arus Kas agar konsisten dengan
+ * cut-off Neraca/Dashboard, tanpa menutup akses ke seluruh riwayat.
+ */
+export function periodeBerjalan(
+  now?: Date | number,
+  timeZone = ZONA_WAKTU_APP,
+): { mulai: string; sampai: string } {
+  const sampai = tanggalLokal(now, timeZone);
+  return { mulai: `${sampai.slice(0, 4)}-01-01`, sampai };
+}
+
+/**
  * Waktu audit ISO → `YYYY-MM-DD HH:mm` dalam zona lokal (default WITA).
  * Input yang tidak bisa diparse dikembalikan apa adanya.
  */

@@ -1,8 +1,11 @@
-// P2-8 — dokumentasi pengguna, pemeriksaan, dan portable.
-// AUD-31 — versi, README, arsip ERD, dan istilah baru.
-// Fokus: file ada, istilah kunci tersedia, dan contoh path di dokumen cocok
-// dengan helper `tentukanLokasiData` (bukan snapshot seluruh file).
-import { existsSync, readFileSync } from 'node:fs';
+// T5.7 — kontrak dokumen kanonik.
+//
+// Fokus pada hal yang stabil, bukan detail historis per tiket:
+// - dokumen kanonik ada dan daftar `docs/*.md` sama persis dengan daftar ini;
+// - istilah akuntansi kunci tersedia di dokumen yang tepat;
+// - modul yang sudah dihapus tidak ditawarkan lagi;
+// - path dokumen di README benar-benar ada.
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -16,146 +19,264 @@ const bacaRoot = (nama: string): string => readFileSync(join(rootDir, nama), 'ut
 const PENGGUNA = baca('panduan-pengguna.md');
 const PEMERIKSAAN = baca('panduan-pemeriksaan.md');
 const PORTABLE = baca('panduan-portable.md');
+const SKEMA = baca('skema.md');
+const PRINSIP = baca('prinsip-akuntansi.md');
 const README = bacaRoot('README.md');
-const PAKET = JSON.parse(bacaRoot('package.json')) as { version: string };
 
-describe('AUD-31 — versi, README, dan arsip ERD', () => {
-  it('versi package dan header panduan aktif konsisten', () => {
-    expect(PAKET.version).toBe('2.0.0');
-    expect(README).toContain('**Versi:** 2.0.0');
-    for (const dokumen of [PENGGUNA, PEMERIKSAAN, PORTABLE]) {
-      expect(dokumen).toContain('**Versi aplikasi:** 2.0.0');
+/**
+ * Satu-satunya markdown yang boleh ada di `docs/`. Menambah dokumen historis
+ * baru harus mengubah daftar ini secara sadar, bukan menumpuk arsip tiket.
+ */
+const DOKUMEN_KANONIK = [
+  'skema.md',
+  'prinsip-akuntansi.md',
+  'panduan-pengguna.md',
+  'panduan-pemeriksaan.md',
+  'panduan-portable.md',
+  'hardening-electron.md',
+  'debugging.md',
+  'template-cetak.md',
+  'rilis.md',
+] as const;
+
+const DOKUMEN_PENGGUNA = [README, PENGGUNA, PEMERIKSAAN, PORTABLE, SKEMA, PRINSIP];
+
+describe('dokumen kanonik', () => {
+  it('seluruh dokumen kanonik ada', () => {
+    for (const nama of DOKUMEN_KANONIK) {
+      expect(existsSync(join(docsDir, nama)), `docs/${nama} tidak ada`).toBe(true);
     }
   });
 
-  it('README memuat ringkasan, arsitektur, perintah, data, backup, dan status', () => {
+  it('daftar docs/*.md sama persis dengan daftar kanonik', () => {
+    const diDisk = readdirSync(docsDir)
+      .filter((nama) => nama.endsWith('.md'))
+      .sort();
+    expect(diDisk).toEqual([...DOKUMEN_KANONIK].sort());
+  });
+});
+
+describe('istilah akuntansi kunci', () => {
+  it('prinsip akuntansi memuat konsep double-entry dan koreksi', () => {
     for (const istilah of [
-      'Ringkasan',
-      'Arsitektur satu halaman',
-      'npm run dev',
-      'npm test',
-      'npm run typecheck',
-      'npm run build',
-      'npm run dist:win',
-      'pura.db',
-      'attachments',
-      'backups',
-      'Backup Lengkap',
-      'POC',
-      'produksi',
+      'double-entry',
+      'debit',
+      'kredit',
+      'jurnal',
+      'reversal',
+      'kunci periode',
+      'panjar',
+      'pinjaman',
     ]) {
-      expect(README, `README memuat "${istilah}"`).toContain(istilah);
+      expect(PRINSIP, `prinsip akuntansi memuat "${istilah}"`).toContain(istilah);
     }
   });
 
-  it('README dan panduan menjelaskan PIN bukan enkripsi', () => {
-    for (const dokumen of [README, PENGGUNA, PEMERIKSAAN, PORTABLE]) {
+  it('panduan pemeriksaan memuat laba ditahan dan selisih nol', () => {
+    expect(PEMERIKSAAN).toContain('laba ditahan');
+    expect(PEMERIKSAAN).toContain('selisih 0');
+  });
+
+  it('panduan pengguna/pemeriksaan/portable menjelaskan PIN, backup, dan pura.db', () => {
+    for (const dokumen of [PENGGUNA, PEMERIKSAAN, PORTABLE]) {
       expect(dokumen).toMatch(/PIN[^\n]*bukan enkripsi|bukan enkripsi/i);
+      expect(dokumen).toContain('Backup Lengkap');
       expect(dokumen).toContain('pura.db');
     }
   });
 
-  it('ERD v1 diarsipkan dan tidak menjadi acuan aktif', () => {
-    expect(existsSync(join(docsDir, 'erd-dan-arsitektur.md'))).toBe(false);
-    const arsip = baca('erd-v1-arsip.md');
-    expect(arsip).toMatch(/BUKAN ACUAN AKTIF/i);
-    expect(arsip).toContain('single-entry');
+  it('dokumen skema memuat kontrak sumber angka dan STRICT', () => {
+    for (const istilah of [
+      'satu-satunya sumber angka',
+      'STRICT',
+      'jurnal_baris',
+      'panjar_item',
+      'pinjaman_bayar',
+    ]) {
+      expect(SKEMA, `skema memuat "${istilah}"`).toContain(istilah);
+    }
   });
 
-  it('.env.example menyebut 240 jurnal dan tidak memuat kode darurat global', () => {
-    const env = bacaRoot('.env.example');
-    expect(env).toContain('240 jurnal');
-    expect(env).not.toContain('240 transaksi');
-    expect(env).not.toContain('PURA_RESET_CODE');
-    expect(env).toMatch(/kode darurat[^\n]*(per-install|tampil sekali)/i);
+  it('keputusan enkripsi backup T3.3 tercatat di README dan panduan pengguna', () => {
+    // Keputusan rilis ini: dokumentasi + imbauan media terenkripsi, bukan
+    // implementasi SQLCipher/arsip terenkripsi.
+    expect(README).toMatch(/Keputusan enkripsi backup/i);
+    expect(README).toMatch(/backup[^\n]*tidak (di|ter)?enkripsi/i);
+    expect(README).toMatch(/PIN bukan enkripsi/i);
+    expect(README).toMatch(/disk\/volume terenkripsi|media\/disk yang terenkripsi|enkripsi disk/i);
+    expect(README).toMatch(/tiket terpisah/i);
+    expect(README).toMatch(/SQLCipher/i);
+    expect(README).toMatch(/arsip terenkripsi/i);
+
+    expect(PENGGUNA).toMatch(/backup[^\n]*tidak terenkripsi/i);
+    expect(PENGGUNA).toMatch(/PIN bukan enkripsi/i);
+    expect(PENGGUNA).toMatch(/(media\/disk|disk\/flashdisk) yang terenkripsi/i);
+    expect(PENGGUNA).toMatch(/cloud publik/i);
+    expect(PENGGUNA).toMatch(/hapus salinan lama/i);
+
+    // Peringatan harus terlihat di sumber UI, bukan hanya komentar/tooltip.
+    const dashboard = bacaRoot('src/renderer/components/DashboardTab.tsx');
+    expect(dashboard).toContain('<PeringatanBackupTidakTerenkripsi />');
+    expect(dashboard).toContain('File backup tidak terenkripsi.');
+    expect(dashboard).toMatch(/PIN hanya melindungi aplikasi/i);
+    expect(dashboard).toMatch(/media\/disk yang terenkripsi/i);
+    expect(dashboard).toContain('data-testid="peringatan-backup-tidak-terenkripsi"');
+  });
+
+  it('keputusan audit actor & hash chain T3.5 tidak hilang dari dokumen', () => {
+    // Keputusan rilis v1: pertahankan trigger append-only + dokumentasi
+    // risiko, tanpa kolom actor/hash dan tanpa perubahan skema. Opsi
+    // aktor/hash chain dicatat untuk skema v2 lewat tiket terpisah.
+    for (const istilah of [
+      'tamper-evident',
+      'actor',
+      'hash chain',
+      'skema v2',
+      'append-only',
+    ]) {
+      expect(PRINSIP, `prinsip akuntansi memuat "${istilah}"`).toContain(
+        istilah,
+      );
+    }
+    expect(PRINSIP).toMatch(/tidak mencatat actor/i);
+    expect(PRINSIP).toMatch(/tabel chain terpisah/i);
+    expect(PRINSIP).toMatch(/anchor eksternal/i);
+    expect(PRINSIP).toMatch(/tiket terpisah/i);
+
+    // Catatan singkat di kontrak skema harus menunjuk keputusan lengkapnya.
+    expect(SKEMA).toMatch(/audit_log` v1[^\n]*tidak memiliki kolom `actor`/i);
+    expect(SKEMA).toMatch(/tidak tamper-evident/i);
+    expect(SKEMA).toMatch(/hash chain/i);
+    expect(SKEMA).toMatch(/prinsip-akuntansi\.md/);
   });
 });
 
-describe('P2-8 — panduan pengguna', () => {
-  it('ada, bertanggal, dan memuat istilah kunci operator', () => {
-    expect(PENGGUNA).toContain('2026-10-27');
-    for (const istilah of [
-      'Terima Uang',
-      'Bayar',
-      'Pindah Dana',
-      'Panjar',
-      'Piutang & Hutang',
-      'Jurnal Umum',
-      'Tutup buku',
-      'ganti laptop',
-      'PIN',
-      'kas minus',
-      'Periode sudah ditutup',
-      'Nomor bukti',
-      'Pratinjau Cetak',
-      'Simpan PDF',
-      'Troubleshooting',
-      'pura.db',
-      'attachments',
-      'backups',
-      'JU-',
-      'Neraca Saldo',
-      'Tahun berjalan',
-      'Kumulatif sejak awal',
-      'Laba ditahan sebelum periode',
-      'Backup Lengkap',
-      'Restore Lengkap',
-      'bukan enkripsi',
-      'restore',
-      'portable',
+describe('runbook pemulihan T3.9', () => {
+  it('README dan panduan pengguna memuat langkah saldo awal, backup, dan DB ditolak', () => {
+    for (const dokumen of [README, PENGGUNA]) {
+      expect(dokumen).toContain('Koreksi Saldo Awal');
+      expect(dokumen).toContain('pre-restore');
+      expect(dokumen).toMatch(/tabel\/kolom[^\n]*(hilang|wajib)/i);
+      expect(dokumen).toMatch(/pulihkan dari backup/i);
+      expect(dokumen).toMatch(/bukan enkripsi/i);
+      expect(dokumen).toMatch(/tidak terenkripsi/i);
+    }
+  });
+
+  it('skema menegaskan DB v2 tidak lengkap dipulihkan dari backup, bukan dibuat ulang', () => {
+    expect(SKEMA).toMatch(/SCHEMA_VERSION\s*=\s*2/);
+    expect(SKEMA).toMatch(/tabel wajib hilang|kolom wajib hilang/i);
+    expect(SKEMA).toMatch(/pulihkan dari backup/i);
+    expect(SKEMA).toMatch(/tidak\s*\**\s*membuat ulang|bukan dibuat ulang/i);
+  });
+
+  it('panduan pemeriksaan memuat checklist cepat pemulihan', () => {
+    for (const frasa of [
+      'Status saldo awal',
+      'KOREKSI-SALDO-AWAL',
+      'Backup terakhir',
+      'integrity_check',
+      'Lockout PIN',
     ]) {
-      expect(PENGGUNA, `istilah "${istilah}"`).toContain(istilah);
+      expect(PEMERIKSAAN, `panduan pemeriksaan memuat "${frasa}"`).toContain(frasa);
     }
   });
 });
 
-describe('P2-8 — panduan pemeriksaan akuntan', () => {
-  it('mencakup seluruh laporan dan glosarium debit/kredit', () => {
-    expect(PEMERIKSAAN).toContain('2026-10-27');
+describe('sinkronisasi dokumentasi akuntansi (T-A15)', () => {
+  it('prinsip koreksi saldo awal mengikuti penunjuk resmi dan tanggal yang boleh pindah', () => {
     for (const istilah of [
-      'Jurnal Umum',
-      'Buku Besar',
-      'Neraca Saldo',
-      'Tahun berjalan',
-      'Kumulatif sejak awal',
-      'Laba ditahan sebelum periode',
-      'Laba Rugi',
-      'Neraca',
-      'Arus Kas',
-      'Rekonsiliasi Bank',
-      'Anggaran',
-      'reversal',
-      'tutup buku',
-      'audit',
-      'bukan enkripsi',
-      'Debit',
-      'Kredit',
-      'Aktiva',
-      'Kewajiban',
-      'Ekuitas',
-      'Pendapatan',
-      'Beban',
-      'Laba ditahan',
-      'selisih 0',
+      'saldo_awal_aktif_id',
+      'cutover_tanggal',
+      'OPENING_REPLACEMENT',
+      'replaces_id',
+      'Wizard Koreksi Saldo Awal',
+      'tutup_buku_snapshot',
+      'SNAPSHOT_TUTUP_BERUBAH',
+      'TUTUP-ULANG',
+      "sumber = 'SALDO_AWAL'",
     ]) {
-      expect(PEMERIKSAAN, `istilah "${istilah}"`).toContain(istilah);
+      expect(PRINSIP, `prinsip akuntansi memuat "${istilah}"`).toContain(istilah);
+    }
+    expect(PRINSIP).toMatch(/tanggal saldo awal boleh dipindah/i);
+    expect(PRINSIP).toMatch(/tidak\*\* memakai `MIN\(tanggal\)`/i);
+    expect(PRINSIP).toMatch(/diperbarui\s+\*\*atomik\*\*/i);
+    expect(PRINSIP).toMatch(/jenis jurnal tidak boleh diganti/i);
+    expect(PRINSIP).toMatch(/tidak boleh mundur/i);
+    expect(PRINSIP).toMatch(/non-blok/i);
+    // Pernyataan lama yang bertentangan dengan perilaku koreksi tanggal.
+    expect(PRINSIP).not.toMatch(/KUNCI_AKUNTANSI_TANGGAL_MULAI` tidak berubah/i);
+    expect(PRINSIP).not.toMatch(/tanggal saldo awal tidak berubah/i);
+  });
+
+  it('panduan pemeriksaan mendokumentasikan seluruh kode temuan integritas', () => {
+    for (const kode of [
+      'NERACA_TIDAK_SEIMBANG',
+      'NERACA_SALDO_SELISIH',
+      'CUTOVER_TIDAK_KONSISTEN',
+      'PEMBUKAAN_AKTIF_HILANG',
+      'LABA_RUGI_SEBELUM_CUTOVER',
+      'SALDO_AWAL_MEMUAT_LABA_RUGI',
+      'SNAPSHOT_TUTUP_BERUBAH',
+      'PANJAR_OPENING_TIDAK_LENGKAP',
+    ]) {
+      expect(PEMERIKSAAN, `panduan pemeriksaan memuat "${kode}"`).toContain(kode);
+    }
+    expect(PEMERIKSAAN).toMatch(/SNAPSHOT_TUTUP_BERUBAH[\s\S]{0,160}non-blok/i);
+    expect(PEMERIKSAAN).toMatch(/memblokir kunci periode/i);
+    expect(PEMERIKSAAN).toMatch(/skema v2, dan 12 tabel wajib/i);
+    expect(PEMERIKSAAN).not.toMatch(/skema v1, 11 tabel wajib/i);
+  });
+
+  it('dokumen skema mengunci baseline v2 lengkap dengan penunjuk pembukaan', () => {
+    expect(SKEMA).toMatch(/SCHEMA_VERSION = 2/);
+    expect(SKEMA).toContain('12 tabel');
+    expect(SKEMA).toContain('tutup_buku_snapshot');
+    expect(SKEMA).toContain('`jurnal.peran`');
+    expect(SKEMA).toContain('`jurnal.replaces_id`');
+    expect(SKEMA).toContain('`panjar.sumber`');
+    expect(SKEMA).toMatch(/saldo_awal_aktif_id/);
+    expect(SKEMA).toMatch(/snapshot[\s\S]{0,80}bukan sumber angka laporan/i);
+  });
+
+  it('README tidak lagi menyebut skema v1/11 tabel dan menyediakan reset DB dev', () => {
+    expect(README).toMatch(/SCHEMA_VERSION = 2/);
+    expect(README).toContain('12 tabel');
+    expect(README).toContain('npm run db:reset-dev');
+    expect(README).not.toMatch(/skema baseline v1/i);
+    expect(README).not.toMatch(/\b11 tabel\b/i);
+  });
+});
+
+describe('modul yang sudah dihapus', () => {
+  it('tidak ditawarkan lagi di dokumen kanonik', () => {
+    for (const dokumen of DOKUMEN_PENGGUNA) {
+      expect(dokumen).not.toContain('Rekonsiliasi Bank');
+      expect(dokumen).not.toMatch(/\banggaran\b/i);
+      expect(dokumen).not.toMatch(/import\s+excel/i);
+      expect(dokumen).not.toMatch(/impor\s+jurnal/i);
+      expect(dokumen).not.toMatch(/template\s+impor/i);
+      expect(dokumen).not.toMatch(/\blampiran\b/i);
+      expect(dokumen).not.toContain('attachments');
+      expect(dokumen).not.toMatch(/master\s+pihak/i);
+      expect(dokumen).not.toMatch(/Piutang\s*(&|\/)\s*Hutang/i);
     }
   });
 });
 
-describe('P2-8 — panduan portable', () => {
-  it('menjelaskan installer vs portable dan peringatan dua salinan', () => {
-    expect(PORTABLE).toContain('2026-10-27');
-    expect(PORTABLE).toContain('%APPDATA%\\Keuangan Pura Dalem Puri');
-    expect(PORTABLE).toContain('<folder exe>\\data\\pura.db');
-    expect(PORTABLE).toContain('attachments');
-    expect(PORTABLE).toContain('backups');
-    expect(PORTABLE).toMatch(/dua salinan portable dari folder berbeda/i);
-    expect(PORTABLE).toMatch(/jangan menyalin hanya file `?\.exe`?/i);
+describe('kebersihan dokumentasi', () => {
+  it('semua path dokumen yang ditautkan README benar-benar ada', () => {
+    const tautan = [...README.matchAll(/docs\/[A-Za-z0-9._/-]+\.md/g)].map(
+      (m) => m[0],
+    );
+    expect(tautan.length).toBeGreaterThan(5);
+    for (const path of new Set(tautan)) {
+      expect(existsSync(join(rootDir, path)), `${path} tidak ada`).toBe(true);
+    }
   });
 });
 
-describe('P2-8 — konsistensi path dokumen dengan helper', () => {
+describe('konsistensi path panduan portable dengan helper', () => {
   const userDataWin = win32.join(
     'C:',
     'Users',
@@ -169,17 +290,12 @@ describe('P2-8 — konsistensi path dokumen dengan helper', () => {
   it('contoh installer memakai path yang dihasilkan tentukanLokasiData', () => {
     const lokasi = tentukanLokasiData({ userDataDir: userDataWin });
     expect(lokasi.mode).toBe('INSTALLED');
-    for (const path of [
-      lokasi.dataDir,
-      lokasi.dbPath,
-      lokasi.attachmentsDir,
-      lokasi.backupsDir,
-    ]) {
+    for (const path of [lokasi.dataDir, lokasi.dbPath, lokasi.backupsDir]) {
       expect(PORTABLE, path).toContain(path);
     }
   });
 
-  it('contoh portable menaruh data/attachments/backups di folder exe', () => {
+  it('contoh portable menaruh data/backups di folder exe', () => {
     const lokasi = tentukanLokasiData({
       userDataDir: userDataWin,
       portableDir: portableDirWin,
@@ -188,18 +304,8 @@ describe('P2-8 — konsistensi path dokumen dengan helper', () => {
     expect(lokasi.dbPath).toBe(
       win32.join('D:', 'Keuangan Pura Dalem Puri', 'data', 'pura.db'),
     );
-    for (const path of [
-      lokasi.dataDir,
-      lokasi.dbPath,
-      lokasi.attachmentsDir,
-      lokasi.backupsDir,
-    ]) {
+    for (const path of [lokasi.dataDir, lokasi.dbPath, lokasi.backupsDir]) {
       expect(PORTABLE, path).toContain(path);
     }
-    // Jangan sampai dokumen mengklaim data portable ada di AppData.
-    expect(PORTABLE).not.toContain(
-      win32.join('C:', 'Users', 'Budi', 'AppData', 'Roaming', 'Keuangan Pura Dalem Puri', 'data', 'pura.db') +
-        ' (portable)',
-    );
   });
 });

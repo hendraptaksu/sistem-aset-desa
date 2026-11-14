@@ -8,8 +8,12 @@ import {
 } from '../../features/export/workbooks.js';
 import { arusKasPrintDoc } from '../../features/export/printAdapters.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
+import { periodeBerjalan } from '../../utils/tanggal.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
-import { labelKelompokArusKas } from '../lib/tampilanLaporan.js';
+import {
+  labelKelompokArusKas,
+  labelPeriodeLaporan,
+} from '../lib/tampilanLaporan.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
@@ -21,9 +25,9 @@ const KELOMPOK: {
   label: string;
   keterangan: string;
 }[] = [
-  { kunci: 'operasi', label: 'Operasi', keterangan: 'Pendapatan, beban, piutang, panjar' },
-  { kunci: 'investasi', label: 'Investasi', keterangan: 'Perpindahan aset non-kas' },
-  { kunci: 'pendanaan', label: 'Pendanaan', keterangan: 'Hutang dan modal' },
+  { kunci: 'operasi', label: 'Operasi', keterangan: 'Pendapatan, beban, panjar, utang usaha' },
+  { kunci: 'investasi', label: 'Investasi', keterangan: 'Perpindahan aset non-kas (termasuk 1050 lama)' },
+  { kunci: 'pendanaan', label: 'Pendanaan', keterangan: 'Pinjaman dan modal' },
   { kunci: 'transfer', label: 'Transfer', keterangan: 'Pindah dana antar dompet (neto 0)' },
 ];
 
@@ -31,10 +35,14 @@ const KELOMPOK: {
  * Layar Arus Kas (P1-9). Semua angka berasal dari `laporan:arus-kas`
  * (core/reports.ts); transfer antar dompet tidak dihitung sebagai arus masuk
  * atau keluar. Klik baris mutasi untuk membuka detail jurnal asalnya.
+ *
+ * AKT-15: default filter = periode berjalan (1 Jan tahun ini s/d hari ini
+ * WITA) agar konsisten dengan Dashboard/Neraca. `sekarang` hanya untuk test.
  */
-export function ArusKasTab() {
-  const [mulai, setMulai] = useState('');
-  const [sampai, setSampai] = useState('');
+export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
+  const [periodeAwal] = useState(() => periodeBerjalan(sekarang));
+  const [mulai, setMulai] = useState(periodeAwal.mulai);
+  const [sampai, setSampai] = useState(periodeAwal.sampai);
   const [data, setData] = useState<ArusKasHasil | null>(null);
   const [coa, setCoa] = useState<Coa[]>([]);
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
@@ -103,12 +111,7 @@ export function ArusKasTab() {
       .join(', ');
   }
 
-  const periode =
-    !mulai && !sampai
-      ? 'seluruh riwayat'
-      : `${mulai ? formatTanggal(mulai) : 'awal'} s/d ${
-          sampai ? formatTanggal(sampai) : 'akhir'
-        }`;
+  const periode = labelPeriodeLaporan(mulai, sampai);
 
   return (
     <div className="space-y-4">
@@ -126,14 +129,14 @@ export function ArusKasTab() {
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Field label="Dari tanggal (opsional)">
+          <Field label="Dari tanggal">
             <TextInput
               type="date"
               value={mulai}
               onChange={(e) => setMulai(e.target.value)}
             />
           </Field>
-          <Field label="Sampai tanggal (opsional)">
+          <Field label="Sampai tanggal">
             <TextInput
               type="date"
               value={sampai}
@@ -143,6 +146,7 @@ export function ArusKasTab() {
           <div className="flex items-end">
             <Button
               variant="ghost"
+              title="Tampilkan seluruh riwayat tanpa batas tanggal"
               onClick={() => {
                 setMulai('');
                 setSampai('');
@@ -153,8 +157,9 @@ export function ArusKasTab() {
           </div>
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik baris mutasi
-          untuk melihat jurnal asal dan nomor buktinya.
+          Periode aktif: {periode}. Klik “Semua tanggal” untuk melihat seluruh
+          riwayat. Saldo awal dihitung dari jurnal sebelum tanggal “Dari”. Klik
+          baris mutasi untuk melihat jurnal asal dan nomor buktinya.
         </p>
         {data && (
           <div className="mt-3">
@@ -182,11 +187,19 @@ export function ArusKasTab() {
                 {data.rows.length} baris mutasi kas
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className={`grid grid-cols-2 gap-3 ${data.penyesuaianSaldoAwal !== 0 ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-5'}`}>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo awal</div>
                 <div className="text-lg font-bold">{formatRp(data.saldoAwal)}</div>
               </div>
+              {data.penyesuaianSaldoAwal !== 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="text-sm text-amber-800">Saldo pembukaan / penyesuaian</div>
+                  <div className="text-lg font-bold text-amber-900">
+                    {formatRp(data.penyesuaianSaldoAwal)}
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total masuk</div>
                 <div className="text-lg font-bold text-emerald-700">
@@ -209,7 +222,7 @@ export function ArusKasTab() {
                   {formatRp(data.saldoAkhir)}
                 </div>
                 <div className="mt-1 text-helper text-emerald-800">
-                  saldo awal + kenaikan
+                  saldo awal + penyesuaian pembukaan + kenaikan
                 </div>
               </div>
             </div>

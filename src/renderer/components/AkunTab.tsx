@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { COA, type Coa, type CoaTipe } from '../../db/coa.js';
+import {
+  AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF,
+  COA,
+  KELOMPOK_KAS,
+  KODE_KAS_TAMBAHAN_MAX,
+  KODE_KAS_TAMBAHAN_MIN,
+  type Coa,
+  type CoaTipe,
+  type KelompokAkun,
+} from '../../db/coa.js';
 import { api } from '../lib/api.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   Card,
@@ -21,14 +31,31 @@ const LABEL_TIPE: Record<CoaTipe, string> = {
   BEBAN: 'Beban',
 };
 
-const TIPE_TAMBAHAN: Extract<CoaTipe, 'BEBAN' | 'PENDAPATAN'>[] = [
-  'BEBAN',
-  'PENDAPATAN',
-];
+const TIPE_TAMBAHAN: CoaTipe[] = ['BEBAN', 'PENDAPATAN', 'AKTIVA'];
+const KELOMPOK_TAMBAHAN: KelompokAkun[] = [...KELOMPOK_KAS];
+const LABEL_KELOMPOK: Record<KelompokAkun, string> = {
+  KAS: 'Kas',
+  BANK: 'Bank',
+  LPD: 'LPD',
+  PANJAR: 'Panjar',
+  PIUTANG: 'Piutang',
+  HUTANG: 'Hutang',
+  EKUITAS: 'Ekuitas',
+  PENDAPATAN: 'Pendapatan',
+  BEBAN: 'Beban',
+};
 
 type StatusFilter = 'aktif' | 'nonaktif' | 'semua';
 type JenisAksi = 'hapus' | 'nonaktif' | 'aktif';
 type AksiTarget = { jenis: JenisAksi; akun: Coa };
+
+/**
+ * DB-15: akun sistem tetap ditampilkan tetapi tombol Nonaktifkan tidak boleh
+ * muncul. Akun sistem yang terlanjur nonaktif tetap boleh diaktifkan kembali.
+ */
+export function akunBolehDinonaktifkan(a: Pick<Coa, 'kode'>): boolean {
+  return !AKUN_SISTEM_TIDAK_BOLEH_NONAKTIF.has(String(a.kode));
+}
 
 export function AkunTab() {
   const [daftar, setDaftar] = useState<Coa[]>([]);
@@ -39,7 +66,9 @@ export function AkunTab() {
 
   const [kode, setKode] = useState('');
   const [nama, setNama] = useState('');
-  const [tipe, setTipe] = useState<Extract<CoaTipe, 'BEBAN' | 'PENDAPATAN'>>('BEBAN');
+  const [tipe, setTipe] = useState<CoaTipe>('BEBAN');
+  const [kelompok, setKelompok] = useState<KelompokAkun>('BANK');
+  const [isKas, setIsKas] = useState(false);
   const [editKode, setEditKode] = useState<string | null>(null);
   const [cari, setCari] = useState('');
   const [filterTipe, setFilterTipe] = useState('');
@@ -84,6 +113,8 @@ export function AkunTab() {
     setKode('');
     setNama('');
     setTipe('BEBAN');
+    setKelompok('BANK');
+    setIsKas(false);
   }
 
   function mulaiUbah(a: Coa): void {
@@ -92,7 +123,13 @@ export function AkunTab() {
     setEditKode(a.kode);
     setKode(a.kode);
     setNama(a.nama);
-    setTipe(a.tipe === 'PENDAPATAN' ? 'PENDAPATAN' : 'BEBAN');
+    setTipe(a.tipe === 'PENDAPATAN' ? 'PENDAPATAN' : a.tipe === 'AKTIVA' ? 'AKTIVA' : 'BEBAN');
+    setKelompok(
+      a.kelompok === 'KAS' || a.kelompok === 'BANK' || a.kelompok === 'LPD'
+        ? a.kelompok
+        : 'BANK',
+    );
+    setIsKas(a.is_kas === true);
     document.getElementById('form-akun')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -112,6 +149,27 @@ export function AkunTab() {
       return;
     }
     if (!editKode) {
+      if (tipe === 'AKTIVA') {
+        const nomor = Number(kodeBersih);
+        if (
+          !Number.isInteger(nomor) ||
+          nomor < KODE_KAS_TAMBAHAN_MIN ||
+          nomor > KODE_KAS_TAMBAHAN_MAX
+        ) {
+          setErr(
+            `Akun kas/bank baru harus memakai kode ${KODE_KAS_TAMBAHAN_MIN}–${KODE_KAS_TAMBAHAN_MAX}.`,
+          );
+          return;
+        }
+        if (!isKas) {
+          setErr('Akun kas/bank wajib ditandai sebagai dompet (is_kas).');
+          return;
+        }
+        if (!KELOMPOK_TAMBAHAN.includes(kelompok)) {
+          setErr('Kelompok akun kas/bank harus KAS, BANK, atau LPD.');
+          return;
+        }
+      }
       if (tipe === 'BEBAN' && !kodeBersih.startsWith('5')) {
         setErr('Akun BEBAN harus memakai kode 5xxx, mis. 5011.');
         return;
@@ -146,9 +204,12 @@ export function AkunTab() {
           kode: kodeBersih,
           nama: namaBersih,
           tipe,
+          is_kas: tipe === 'AKTIVA' ? true : false,
+          kelompok:
+            tipe === 'AKTIVA' ? kelompok : tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN',
         });
         setInfo(
-          `Akun ${baru.kode} — ${baru.nama} tersimpan. Akun langsung tersedia di form transaksi, Jurnal Umum, laporan, dan template impor.`,
+          `Akun ${baru.kode} — ${baru.nama} tersimpan. Akun langsung tersedia di form transaksi, Jurnal Umum, dan laporan.`,
         );
         setStatusFilter('aktif');
       }
@@ -173,7 +234,13 @@ export function AkunTab() {
         setInfo(`Akun ${akun.kode} — ${akun.nama} dihapus permanen.`);
       } else {
         const aktif = jenis === 'aktif';
-        await api.akunSetAktif(akun.kode, aktif);
+        await api.akunSetAktif(
+          akun.kode,
+          aktif,
+          aktif
+            ? `Aktifkan kembali akun ${akun.kode} untuk form input baru`
+            : `Nonaktifkan akun ${akun.kode} untuk form input baru`,
+        );
         setInfo(
           aktif
             ? `Akun ${akun.kode} — ${akun.nama} diaktifkan kembali.`
@@ -210,8 +277,10 @@ export function AkunTab() {
             <h1 className="text-xl font-bold">Daftar Akun (COA)</h1>
             <p className="mt-1 max-w-3xl text-sm text-stone-600">
               Akun bawaan mengikuti <b>KODE AKUN.csv</b>. Tambahkan akun{' '}
-              <b>Beban</b> atau <b>Pendapatan</b> baru di sini; akun langsung muncul
-              di form transaksi, Jurnal Umum, laporan, dan template impor.
+              <b>Beban</b>, <b>Pendapatan</b>, atau <b>Kas/Bank/LPD</b> baru di sini;
+              akun langsung muncul di form transaksi, Jurnal Umum, dan laporan.
+              Akun bawaan yang tidak dipakai lagi boleh dinonaktifkan, kecuali akun
+              sistem <b>3000/1040/1050/2050/2060/5063/5050</b>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -223,8 +292,9 @@ export function AkunTab() {
           </div>
         </div>
         <p className="mt-2 text-helper text-amber-800">
-          Catatan: akun kas/bank dan akun neraca lain belum bisa ditambah dari layar
-          ini. Untuk akun kas/bank baru, hubungi pengembang agar penanda kas ikut diatur.
+          Akun kas/bank baru memakai kode kustom {KODE_KAS_TAMBAHAN_MIN}–{KODE_KAS_TAMBAHAN_MAX}
+          {' '}agar tidak bentrok dengan COA client. Setelah disimpan, akun langsung
+          muncul di Pindah Dana, Panjar, pembayaran, dan total kas.
         </p>
       </Card>
 
@@ -236,11 +306,15 @@ export function AkunTab() {
           <p className="mb-3 text-sm text-stone-600">
             {editKode
               ? 'Kode dan jenis akun tetap agar histori jurnal tidak berubah. Hanya nama yang bisa diperbaiki.'
-              : 'Gunakan kode 4 digit yang belum dipakai. Beban memakai awalan 5, pendapatan memakai awalan 4.'}
+              : 'Gunakan kode 4 digit yang belum dipakai. Beban 5xxx, pendapatan 4xxx, kas/bank/LPD baru 1100–1199.'}
           </p>
           <ErrorBox msg={err} />
           {info && (
-            <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800">
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[15px] text-green-800"
+            >
               {info}
             </div>
           )}
@@ -251,7 +325,13 @@ export function AkunTab() {
                 inputMode="numeric"
                 maxLength={4}
                 disabled={busy || Boolean(editKode)}
-                placeholder={tipe === 'BEBAN' ? 'cth: 5011' : 'cth: 4043'}
+                placeholder={
+                  tipe === 'BEBAN'
+                    ? 'cth: 5011'
+                    : tipe === 'PENDAPATAN'
+                      ? 'cth: 4043'
+                      : 'cth: 1101'
+                }
                 onChange={(e) => setKode(e.target.value.replace(/\D/g, '').slice(0, 4))}
               />
             </Field>
@@ -263,7 +343,9 @@ export function AkunTab() {
                 placeholder={
                   tipe === 'BEBAN'
                     ? 'cth: BAGA SUAR (AIR, LISTRIK, TELEPON)'
-                    : 'cth: PENDAPATAN WEWEDALAN'
+                    : tipe === 'PENDAPATAN'
+                      ? 'cth: PENDAPATAN WEWEDALAN'
+                      : 'cth: BANK BPD REKENING BARU'
                 }
                 onChange={(e) => setNama(e.target.value)}
               />
@@ -273,8 +355,10 @@ export function AkunTab() {
                 value={tipe}
                 disabled={busy || Boolean(editKode)}
                 onChange={(e) => {
-                  const nilai = e.target.value;
-                  setTipe(nilai === 'PENDAPATAN' ? 'PENDAPATAN' : 'BEBAN');
+                  const nilai = e.target.value as CoaTipe;
+                  setTipe(nilai);
+                  setIsKas(nilai === 'AKTIVA');
+                  if (nilai !== 'AKTIVA') setKelompok('BANK');
                 }}
               >
                 {TIPE_TAMBAHAN.map((t) => (
@@ -284,9 +368,50 @@ export function AkunTab() {
                 ))}
               </Select>
             </Field>
+            {tipe === 'AKTIVA' ? (
+              <>
+                <Field label="Kelompok akun">
+                  <Select
+                    value={kelompok}
+                    disabled={busy || Boolean(editKode)}
+                    onChange={(e) => setKelompok(e.target.value as KelompokAkun)}
+                  >
+                    {KELOMPOK_TAMBAHAN.map((k) => (
+                      <option key={k} value={k}>
+                        {LABEL_KELOMPOK[k]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Dompet kas/bank (is_kas)">
+                  <label className="flex items-center gap-2 text-[15px] text-stone-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={isKas}
+                      disabled={busy || Boolean(editKode)}
+                      onChange={(e) => setIsKas(e.target.checked)}
+                    />
+                    Ya, akun ini dompet kas/bank
+                  </label>
+                </Field>
+              </>
+            ) : (
+              <Field label="Kelompok akun">
+                <TextInput
+                  value={tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN'}
+                  disabled
+                  onChange={() => {}}
+                />
+              </Field>
+            )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button disabled={busy} onClick={() => void simpan()}>
+            <Button
+              disabled={busy}
+              title={busy ? ALASAN_SIBUK : undefined}
+              onClick={() => void simpan()}
+            >
               {busy ? 'Menyimpan…' : editKode ? 'Simpan Perubahan' : 'Tambah Akun'}
             </Button>
             {editKode && (
@@ -295,7 +420,7 @@ export function AkunTab() {
               </Button>
             )}
             <span className="text-helper text-stone-500">
-              Posisi normal mengikuti jenis: Beban = Debit, Pendapatan = Kredit.
+              Posisi normal mengikuti jenis: Beban/Kas = Debit, Pendapatan = Kredit.
             </span>
           </div>
         </Card>
@@ -307,7 +432,9 @@ export function AkunTab() {
             <h2 className="text-lg font-bold">Akun</h2>
             <p className="mt-1 text-sm text-stone-600">
               Akun tambahan bisa diubah namanya, dinonaktifkan, atau dihapus bila
-              belum pernah dipakai. Akun bawaan tidak bisa diubah dari layar ini.
+              belum pernah dipakai. Akun bawaan boleh dinonaktifkan untuk form input
+              baru, tetapi nama dan hapusnya tetap terkunci. Akun sistem{' '}
+              <b>3000/1040/1050/2050/2060/5063/5050</b> tidak bisa dinonaktifkan.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -349,6 +476,7 @@ export function AkunTab() {
                 <th className="py-2 pr-3">Kode</th>
                 <th className="py-2 pr-3">Nama</th>
                 <th className="py-2 pr-3">Jenis</th>
+                <th className="py-2 pr-3">Kelompok</th>
                 <th className="py-2 pr-3">Posisi normal</th>
                 <th className="py-2 pr-3">Status</th>
                 <th className="py-2 text-right">Aksi</th>
@@ -356,8 +484,9 @@ export function AkunTab() {
             </thead>
             <tbody>
               {tampil.map((a) => {
-                const bawaan = kodeBawaan.has(a.kode);
+                const bawaan = a.sumber ? a.sumber === 'BAWAAN' : kodeBawaan.has(a.kode);
                 const nonaktif = a.aktif === false;
+                const sistem = !akunBolehDinonaktifkan(a);
                 return (
                   <tr
                     key={a.kode}
@@ -366,6 +495,9 @@ export function AkunTab() {
                     <td className="whitespace-nowrap py-2 pr-3 font-mono">{a.kode}</td>
                     <td className="py-2 pr-3">{a.nama}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{LABEL_TIPE[a.tipe]}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">
+                      {a.kelompok ? LABEL_KELOMPOK[a.kelompok] : '—'}
+                    </td>
                     <td className="whitespace-nowrap py-2 pr-3">{a.posisi_normal}</td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-1">
@@ -375,46 +507,58 @@ export function AkunTab() {
                         <Badge tone={bawaan ? 'stone' : 'green'}>
                           {bawaan ? 'Bawaan' : 'Tambahan'}
                         </Badge>
+                        {sistem && <Badge tone="amber">Sistem</Badge>}
+                        {a.is_kas && <Badge tone="amber">Kas/Bank</Badge>}
                       </div>
                     </td>
                     <td className="py-2 text-right">
-                      {bawaan ? (
-                        <span className="text-stone-400">—</span>
-                      ) : (
-                        <div className="flex flex-wrap justify-end gap-1">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {!bawaan && (
                           <Button variant="ghost" onClick={() => mulaiUbah(a)}>
                             Ubah
                           </Button>
-                          {nonaktif ? (
-                            <Button
-                              variant="ghost"
-                              onClick={() => setAksiTarget({ jenis: 'aktif', akun: a })}
-                            >
-                              Aktifkan
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              onClick={() => setAksiTarget({ jenis: 'nonaktif', akun: a })}
-                            >
-                              Nonaktifkan
-                            </Button>
-                          )}
+                        )}
+                        {nonaktif ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setAksiTarget({ jenis: 'aktif', akun: a })}
+                          >
+                            Aktifkan
+                          </Button>
+                        ) : sistem ? (
+                          <span
+                            className="px-2 py-1 text-right text-helper text-stone-400"
+                            title="Akun sistem dibutuhkan wizard/alur dan tidak bisa dinonaktifkan."
+                          >
+                            Akun sistem
+                            <span className="block text-[11px] leading-tight">
+                              tidak bisa dinonaktifkan
+                            </span>
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setAksiTarget({ jenis: 'nonaktif', akun: a })}
+                          >
+                            Nonaktifkan
+                          </Button>
+                        )}
+                        {!bawaan && (
                           <Button
                             variant="ghost"
                             onClick={() => setAksiTarget({ jenis: 'hapus', akun: a })}
                           >
                             Hapus
                           </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
               })}
               {tampil.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-4 text-center text-stone-500">
+                  <td colSpan={7} className="py-4 text-center text-stone-500">
                     {memuat
                       ? 'Memuat daftar akun…'
                       : cari || filterTipe || statusFilter !== 'semua'
@@ -438,15 +582,18 @@ export function AkunTab() {
             aksiTarget.jenis === 'hapus' ? (
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> akan
-                dihapus permanen. Penghapusan hanya berhasil bila akun belum pernah
-                dipakai di jurnal, anggaran, atau panjar. Bila sudah dipakai,
-                gunakan <b>Nonaktifkan</b>.
+                dihapus permanen dan <b>tidak bisa dibatalkan</b>. Penghapusan
+                hanya berhasil bila akun belum pernah dipakai di jurnal atau
+                panjar. Bila sudah dipakai, gunakan <b>Nonaktifkan</b> agar
+                histori dan laporan lama tetap utuh.
               </>
             ) : aksiTarget.jenis === 'nonaktif' ? (
               <>
                 Akun <b>{aksiTarget.akun.kode} — {aksiTarget.akun.nama}</b> tidak
-                akan muncul di form input baru. Jurnal, anggaran, dan laporan lama
-                tetap utuh dan bisa dibaca.
+                akan muncul di form input baru. <b>Yang tetap:</b> jurnal dan
+                laporan lama utuh dan bisa dibaca. Akun bawaan juga tidak bisa
+                diubah namanya atau dihapus; status ini bisa diaktifkan kembali
+                kapan saja.
               </>
             ) : (
               <>

@@ -6,18 +6,35 @@
 //
 // K2: hanya tahun yang sudah selesai (<= tahun lalu) yang boleh ditutup.
 
+import { COA, type Coa } from '../db/coa.js';
 import { labaTahun, type BarisJurnalSumber } from './reports.js';
+import { formatTanggal } from '../utils/format.js';
 import { tahunLokal } from '../utils/tanggal.js';
 
 export type TutupBukuRef = { tahun: number };
+
+/** AUD2-06: panjar OPEN aktif yang belum dipertanggungjawabkan/dibatalkan. */
+export type PanjarOpenTahun = {
+  id: string;
+  tanggal: string;
+  penerima: string;
+};
 
 export type KonteksValidasiTutup = {
   /** Tanggal hari ini (YYYY-MM-DD); dipakai untuk batas tahun berjalan. */
   sekarang: string;
   /** Tahun-tahun yang sudah ditutup. */
   tutup: ReadonlyArray<TutupBukuRef>;
+  /** Tahun-tahun yang memiliki jurnal, untuk cegah lompat tahun. */
+  tahunAdaJurnal: ReadonlyArray<number>;
   /** Operator sudah menyetujui penimpaan tahun yang sudah ditutup. */
   konfirmasiTimpak?: boolean;
+  /**
+   * AUD2-06: panjar OPEN aktif (belum CLOSED & belum dibatalkan). Tahun buku
+   * tidak boleh dikunci selama masih ada panjar dengan tanggal <= 31 Des tahun
+   * tersebut karena beban pertanggungjawabannya bisa menyeberang ke tahun lain.
+   */
+  panjarOpenTahun?: ReadonlyArray<PanjarOpenTahun>;
 };
 
 export type AksiTutup = 'TUTUP' | 'TUTUP-ULANG';
@@ -53,6 +70,17 @@ export function tahunTutupTerurut(tutup: ReadonlyArray<TutupBukuRef>): number[] 
   ].sort((a, b) => a - b);
 }
 
+/** Daftar tahun jurnal yang valid, unik, urut menaik. */
+export function tahunJurnalTerurut(tahunAdaJurnal: ReadonlyArray<number>): number[] {
+  return [
+    ...new Set(
+      (tahunAdaJurnal ?? [])
+        .map((t) => Number(t))
+        .filter((t) => Number.isInteger(t)),
+    ),
+  ].sort((a, b) => a - b);
+}
+
 /**
  * Validasi satu aksi tutup buku.
  *
@@ -60,7 +88,10 @@ export function tahunTutupTerurut(tutup: ReadonlyArray<TutupBukuRef>): number[] 
  * 1. Tahun bilangan bulat yang masuk akal.
  * 2. Tahun <= tahun lalu (K2); tahun berjalan/berikutnya ditolak.
  * 3. Tahun baru harus lebih besar dari tahun tutup terakhir (urut menaik).
- * 4. Tahun yang sudah ditutup boleh ditimpa, tetapi wajib konfirmasi
+ * 4. Penutupan baru ditolak bila ada tahun lebih lama yang punya jurnal tetapi
+ *    belum ditutup (AKT-12). Tahun tanpa jurnal boleh dilewati. Aturan ini
+ *    tidak berlaku untuk tutup ulang tahun yang sudah ditutup.
+ * 5. Tahun yang sudah ditutup boleh ditimpa, tetapi wajib konfirmasi
  *    (`aksi = TUTUP-ULANG`).
  */
 export function validasiTutupBuku(
@@ -77,12 +108,12 @@ export function validasiTutupBuku(
   const angka = Number(tahun);
 
   if (!Number.isInteger(angka)) {
-    errors.push('Tahun tutup buku harus bilangan bulat.');
+    errors.push('Tahun kunci periode harus bilangan bulat.');
   } else if (angka < 1900 || angka > 9999) {
-    errors.push('Tahun tutup buku tidak valid.');
+    errors.push('Tahun kunci periode tidak valid.');
   } else if (angka > batasTahun) {
     errors.push(
-      `Tutup buku hanya untuk tahun yang sudah selesai (maksimal ${batasTahun}). Tahun ${angka} belum selesai.`,
+      `Kunci periode hanya untuk tahun yang sudah selesai (maksimal ${batasTahun}). Tahun ${angka} belum selesai.`,
     );
   }
 
@@ -98,8 +129,36 @@ export function validasiTutupBuku(
       }
     } else if (tahunTerakhir !== null && angka < tahunTerakhir) {
       errors.push(
-        `Tutup buku harus berurutan menaik. Tahun ${tahunTerakhir} sudah ditutup; tahun ${angka} sudah lewat.`,
+        `Kunci periode harus berurutan menaik. Tahun ${tahunTerakhir} sudah ditutup; tahun ${angka} sudah lewat.`,
       );
+    } else {
+      const belumDitutup = tahunJurnalTerurut(ctx.tahunAdaJurnal).filter(
+        (t) => t < angka && !daftar.includes(t),
+      );
+      if (belumDitutup.length > 0) {
+        const daftarTahun = belumDitutup.join(', ');
+        errors.push(
+          `Kunci periode harus berurutan. Tahun ${daftarTahun} memiliki jurnal tetapi belum ditutup; kunci tahun tersebut lebih dulu sebelum ${angka}.`,
+        );
+      }
+    }
+
+    // AUD2-06: tahun buku tidak boleh dikunci selama masih ada uang panjar
+    // menggantung di tahun tersebut (termasuk tutup ulang). Panjar OPEN dari
+    // tahun sebelumnya juga memblokir tahun berikutnya sampai diselesaikan.
+    if (angka >= 1900 && angka <= 9999 && angka <= batasTahun) {
+      const batasTanggal = `${angka}-12-31`;
+      const panjarMenggantung = (ctx.panjarOpenTahun ?? []).filter(
+        (p) => String(p.tanggal ?? '') <= batasTanggal,
+      );
+      if (panjarMenggantung.length > 0) {
+        const rincian = panjarMenggantung
+          .map((p) => `${p.penerima} (${formatTanggal(p.tanggal)})`)
+          .join(', ');
+        errors.push(
+          `Tahun ${angka} belum bisa dikunci karena masih ada ${panjarMenggantung.length} panjar OPEN yang belum dipertanggungjawabkan/dibatalkan: ${rincian}. Selesaikan pertanggungjawaban atau batalkan panjar tersebut terlebih dahulu.`,
+        );
+      }
     }
   }
 
@@ -123,6 +182,11 @@ export function validasiTutupBuku(
 export function labaDitahan(
   baris: readonly BarisJurnalSumber[],
   tutup: ReadonlyArray<TutupBukuRef>,
+  daftarAkun: readonly Coa[] = COA,
+  cutover?: string | null,
 ): number {
-  return tahunTutupTerurut(tutup).reduce((total, tahun) => total + labaTahun(baris, tahun), 0);
+  return tahunTutupTerurut(tutup).reduce(
+    (total, tahun) => total + labaTahun(baris, tahun, daftarAkun, cutover),
+    0,
+  );
 }

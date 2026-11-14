@@ -14,16 +14,22 @@ import {
 } from '../src/core/posting.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from '../src/core/types.js';
 import {
+  validasiAlasanAkun,
   validasiBentukJurnalInput,
+  validasiBentukKoreksiInput,
   validasiBentukPanjarClose,
   validasiBentukPanjarSerah,
+  validasiBentukPembatalanPertanggungjawabanPanjar,
   validasiBentukSaldoAwal,
+  validasiBentukTransaksiInput,
   validasiCutoffLaporan,
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
   validasiFilterNeraca,
   validasiFilterNeracaSaldo,
+  validasiKodeAkun,
   validasiRentangLaporan,
+  validasiStatusAkunAktif,
   validasiTanggalOpsional,
   validatePanjarItems,
 } from '../src/main/validation.js';
@@ -155,13 +161,51 @@ describe('P0-4 — akun & jenis akun', () => {
     ).toMatch(/1050 PIUTANG/);
     expect(
       pesan(jalankan({ header: { jenis: 'HUTANG' }, baris: pasangan('1001', '4005') })),
-    ).toMatch(/2050 HUTANG/);
+    ).toMatch(/2050 HUTANG LAIN-LAIN.*2060 HUTANG USAHA/);
 
     // Pasangan yang benar untuk tiap jenis tidak menghasilkan error jenis.
     expect(jalankan({ header: { jenis: 'TRANSFER' }, baris: pasangan('1029', '1001') }).boleh).toBe(true);
     expect(jalankan({ header: { jenis: 'PANJAR' }, baris: pasangan('1040', '1001') }).boleh).toBe(true);
     expect(jalankan({ header: { jenis: 'PIUTANG' }, baris: pasangan('1050', '1001') }).boleh).toBe(true);
     expect(jalankan({ header: { jenis: 'HUTANG' }, baris: pasangan('1001', '2050') }).boleh).toBe(true);
+    expect(jalankan({ header: { jenis: 'HUTANG' }, baris: pasangan('1001', '2060') }).boleh).toBe(true);
+  });
+
+  it('menolak jurnal ber-kas yang memuat 2050 dan 2060 sekaligus, tetapi reklasifikasi non-kas boleh', () => {
+    const campuran = jalankan({
+      header: { jenis: 'UMUM' },
+      baris: [
+        { akun_kode: '2050', debit: 100_000, kredit: 0 },
+        { akun_kode: '2060', debit: 0, kredit: 50_000 },
+        { akun_kode: '1001', debit: 0, kredit: 50_000 },
+      ],
+    });
+    expect(pesan(campuran)).toMatch(/Pisahkan pembayaran utang usaha dan pinjaman/);
+
+    // AUD2-04: 2050 adalah akun kontrol pinjaman, jadi reklasifikasi lewat
+    // Jurnal Umum manual ikut ditolak. Reklasifikasi non-kas tetap bisa dicatat
+    // lewat jenis internal HUTANG.
+    const reklasUmum = jalankan({
+      header: { jenis: 'UMUM' },
+      baris: [
+        { akun_kode: '2050', debit: 100_000, kredit: 0 },
+        { akun_kode: '2060', debit: 0, kredit: 100_000 },
+      ],
+    });
+    expect(pesan(reklasUmum)).toMatch(
+      /Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman/,
+    );
+    expect(reklasUmum.boleh).toBe(false);
+
+    const reklas = jalankan({
+      header: { jenis: 'HUTANG' },
+      baris: [
+        { akun_kode: '2050', debit: 100_000, kredit: 0 },
+        { akun_kode: '2060', debit: 0, kredit: 100_000 },
+      ],
+    });
+    expect(reklas.errors).toEqual([]);
+    expect(reklas.boleh).toBe(true);
   });
 
   it('mengenal seluruh jenis jurnal dan menolak jenis asing', () => {
@@ -204,8 +248,8 @@ describe('P0-4 — bentuk & keseimbangan jurnal', () => {
       ],
     });
     expect(pesan(hasil)).toMatch(/tidak seimbang/);
-    expect(pesan(hasil)).toMatch(/Rp 1\.000,00/);
-    expect(pesan(hasil)).toMatch(/Rp 900,00/);
+    expect(pesan(hasil)).toMatch(/Rp 1\.000(?!\d|[.,]\d)/);
+    expect(pesan(hasil)).toMatch(/Rp 900(?!\d|[.,]\d)/);
     expect(hasil.boleh).toBe(false);
   });
 
@@ -253,7 +297,7 @@ describe('P0-4 — kas/bank minus = peringatan, bukan error', () => {
     expect(hasil.boleh).toBe(true);
     expect(hasil.perluKonfirmasi).toBe(true);
     expect(hasil.peringatan.join(' ')).toMatch(/Kas\/Bank 1001 KAS akan minus/);
-    expect(hasil.peringatan.join(' ')).toMatch(/Rp 500,00/);
+    expect(hasil.peringatan.join(' ')).toMatch(/Rp 500(?!\d|[.,]\d)/);
   });
 
   it('tidak memberi peringatan bila saldo pas atau justru bertambah', () => {
@@ -324,6 +368,79 @@ describe('P0-4 — kombinasi aturan', () => {
 });
 
 // ---------------------------------------------------------------------------
+// DB-03 — pemisahan validator jalur manual vs form terpandu di IPC.
+// ---------------------------------------------------------------------------
+
+describe('DB-03 — jalur manual hanya UMUM, transaksi terpandu hanya dokumennya', () => {
+  function bentuk(jenis?: JurnalJenis, baris = pasangan()) {
+    return {
+      header: header({
+        ...(jenis ? { jenis } : {}),
+      }),
+      baris,
+    };
+  }
+
+  it('manual menerima UMUM dan header tanpa jenis (dinormalisasi UMUM)', () => {
+    for (const input of [bentuk('UMUM'), bentuk()]) {
+      const hasil = validasiBentukJurnalInput(input);
+      expect(hasil.ok).toBe(true);
+      if (hasil.ok) expect(hasil.input.header.jenis).toBe('UMUM');
+    }
+  });
+
+  it('manual menolak PANJAR/PIUTANG/HUTANG/TERIMA/BAYAR/TRANSFER/SALDO_AWAL/REVERSAL', () => {
+    const ditolak: JurnalJenis[] = [
+      'PANJAR',
+      'PIUTANG',
+      'HUTANG',
+      'TERIMA',
+      'BAYAR',
+      'TRANSFER',
+      'SALDO_AWAL',
+      'REVERSAL',
+    ];
+    for (const jenis of ditolak) {
+      const hasil = validasiBentukJurnalInput(bentuk(jenis));
+      expect(hasil.ok, jenis).toBe(false);
+      if (!hasil.ok) {
+        expect(hasil.error, jenis).toMatch(/hanya menerima jenis UMUM/i);
+        expect(hasil.error, jenis).toContain(jenis);
+      }
+    }
+  });
+
+  it('transaksi terpandu menerima TERIMA/BAYAR/TRANSFER/HUTANG', () => {
+    for (const jenis of ['TERIMA', 'BAYAR', 'TRANSFER', 'HUTANG'] as const) {
+      const hasil = validasiBentukTransaksiInput(bentuk(jenis));
+      expect(hasil.ok, jenis).toBe(true);
+      if (hasil.ok) expect(hasil.input.header.jenis).toBe(jenis);
+    }
+  });
+
+  it('transaksi terpandu menolak UMUM, PANJAR, PIUTANG, SALDO_AWAL, REVERSAL, dan jenis kosong', () => {
+    for (const input of [
+      bentuk('UMUM'),
+      bentuk('PANJAR'),
+      bentuk('PIUTANG'),
+      bentuk('SALDO_AWAL'),
+      bentuk('REVERSAL'),
+      bentuk(),
+    ]) {
+      const hasil = validasiBentukTransaksiInput(input);
+      expect(hasil.ok).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toMatch(/hanya menerima jenis/i);
+    }
+  });
+
+  it('jenis asing tetap mendapat pesan jenis tidak dikenal', () => {
+    const manual = validasiBentukJurnalInput(bentuk('NGARANG' as JurnalJenis));
+    expect(manual.ok).toBe(false);
+    if (!manual.ok) expect(manual.error).toMatch(/Jenis jurnal tidak dikenal/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // P1-12 — validasi tanggal kalender seragam di semua jalur IPC utama.
 // ---------------------------------------------------------------------------
 
@@ -336,7 +453,7 @@ describe('P1-12 — tanggal kalender seragam', () => {
       tanggal: '2026-03-12',
       keterangan: 'Uji tanggal',
       no_bukti: 'JU-2026-9001',
-      jenis: 'TERIMA',
+      jenis: 'UMUM',
     },
     baris: pasangan(),
   };
@@ -455,6 +572,104 @@ describe('P1-12 — tanggal kalender seragam', () => {
   });
 });
 
+describe('AKT-22 — bentuk input koreksi & isi ulang', () => {
+  const koreksi = {
+    header: {
+      id: '',
+      tanggal: '2026-03-12',
+      keterangan: 'Jurnal pengganti',
+      no_bukti: 'JU-2026-9002',
+      jenis: 'TERIMA',
+    },
+    baris: pasangan(),
+  };
+
+  it('menerima ID kosong (dibuat main) dan tidak meneruskan grup/reversal_of', () => {
+    const hasil = validasiBentukKoreksiInput({
+      ...koreksi,
+      header: {
+        ...koreksi.header,
+        id: '   ',
+        no_bukti: '  JU-2026-9002  ',
+        grup_id: 'g-diabaikan',
+        reversal_of: null,
+      },
+      alasan: '  koreksi nominal  ',
+      extra: 'diabaikan',
+    });
+    expect(hasil.ok).toBe(true);
+    if (!hasil.ok) return;
+
+    expect(hasil.input.header).toMatchObject({
+      id: '',
+      tanggal: '2026-03-12',
+      keterangan: 'Jurnal pengganti',
+      no_bukti: 'JU-2026-9002',
+      jenis: 'TERIMA',
+    });
+    expect(hasil.input.header).not.toHaveProperty('grup_id');
+    expect(hasil.input.header).not.toHaveProperty('reversal_of');
+    expect(hasil.input.alasan).toBe('koreksi nominal');
+  });
+
+  it('menolak ID/keterangan/no bukti yang terlalu panjang', () => {
+    for (const header of [
+      { ...koreksi.header, id: 'j'.repeat(201) },
+      { ...koreksi.header, keterangan: 'k'.repeat(1001) },
+      { ...koreksi.header, no_bukti: 'B'.repeat(101) },
+    ]) {
+      const hasil = validasiBentukKoreksiInput({ ...koreksi, header });
+      expect(hasil.ok).toBe(false);
+    }
+  });
+
+  it('menolak field wajib kosong, jenis REVERSAL, dan baris tidak valid', () => {
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, keterangan: '   ' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, tanggal: '' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, jenis: 'REVERSAL' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        header: { ...koreksi.header, reversal_of: 'j-lain' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({ ...koreksi, baris: [koreksi.baris[0]] }).ok,
+    ).toBe(false);
+    expect(
+      validasiBentukKoreksiInput({
+        ...koreksi,
+        baris: [koreksi.baris[0], { ...koreksi.baris[1], debit: 1.5, kredit: 0 }],
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('mengizinkan SALDO_AWAL pada bentuk; keputusan akhir di DB', () => {
+    const hasil = validasiBentukKoreksiInput({
+      ...koreksi,
+      header: { ...koreksi.header, jenis: 'SALDO_AWAL' },
+      baris: pasangan('1001', '3000'),
+    });
+    expect(hasil.ok).toBe(true);
+    if (hasil.ok) expect(hasil.input.header.jenis).toBe('SALDO_AWAL');
+  });
+});
+
 describe('P1-12 — pesan teknis tidak bocor', () => {
   it('menyamarkan error SQLite dan TypeError dari jalur main', () => {
     expect(
@@ -469,6 +684,34 @@ describe('P1-12 — pesan teknis tidak bocor', () => {
   });
 });
 
+describe('DB-15 — bentuk IPC status akun', () => {
+  it('menerima kode 4 digit, status boolean, dan alasan opsional', () => {
+    expect(validasiKodeAkun(' 5010 ')).toEqual({ ok: true, input: '5010' });
+    expect(validasiStatusAkunAktif(false)).toEqual({ ok: true, input: false });
+    expect(validasiStatusAkunAktif(true)).toEqual({ ok: true, input: true });
+    expect(validasiAlasanAkun(undefined)).toEqual({ ok: true, input: '' });
+    expect(validasiAlasanAkun('  Digantikan 5060  ')).toEqual({
+      ok: true,
+      input: 'Digantikan 5060',
+    });
+  });
+
+  it('menolak kode/status/alasan dengan bentuk salah', () => {
+    expect(validasiKodeAkun('300')).toMatchObject({ ok: false });
+    expect(validasiKodeAkun('30a0')).toMatchObject({ ok: false });
+    expect(validasiStatusAkunAktif('false')).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/true\/false/i),
+    });
+    expect(validasiStatusAkunAktif(0)).toMatchObject({ ok: false });
+    expect(validasiAlasanAkun(123)).toMatchObject({ ok: false });
+    expect(validasiAlasanAkun('x'.repeat(201))).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/maks\. 200/i),
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Validasi legacy panjar — bentuk item masih dipakai sebagai jaring pengaman.
 // ---------------------------------------------------------------------------
@@ -479,5 +722,118 @@ describe('validasi legacy panjar', () => {
     expect(validatePanjarItems([{ kategori_baga: '4001', nominal: 100 }]).length).toBeGreaterThan(0);
     expect(validatePanjarItems([{ kategori_baga: '5004', nominal: 0 }]).length).toBeGreaterThan(0);
     expect(validatePanjarItems([{ kategori_baga: '5004', nominal: 100 }])).toEqual([]);
+  });
+});
+
+describe('DB-18 — validasi bentuk close panjar dengan detail nota', () => {
+  it('meneruskan field nota yang valid dan mengizinkan field kosong (legacy)', () => {
+    const denganNota = validasiBentukPanjarClose({
+      id: 'p-1',
+      tanggalClose: '2026-03-01',
+      items: [
+        {
+          kategori_baga: '5004',
+          nominal: 100_000,
+          nota_nomor: 'N-001',
+          nota_tanggal: '2026-02-10',
+          toko: 'Toko A',
+          keterangan: 'konsumsi',
+        },
+      ],
+    });
+    expect(denganNota.ok).toBe(true);
+    if (denganNota.ok)
+      expect(denganNota.input.items[0]).toEqual({
+        kategori_baga: '5004',
+        nominal: 100_000,
+        nota_nomor: 'N-001',
+        nota_tanggal: '2026-02-10',
+        toko: 'Toko A',
+        keterangan: 'konsumsi',
+      });
+
+    const legacy = validasiBentukPanjarClose({
+      id: 'p-1',
+      tanggalClose: '2026-03-01',
+      items: [{ kategori_baga: '5004', nominal: 100_000 }],
+    });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok)
+      expect(legacy.input.items[0]).toMatchObject({
+        nota_nomor: '',
+        nota_tanggal: '',
+        toko: '',
+        keterangan: '',
+      });
+  });
+
+  it('menolak tanggal nota setelah tanggal close, tanggal salah, dan teks kepanjangan', () => {
+    const dasar = {
+      id: 'p-1',
+      tanggalClose: '2026-03-01',
+      items: [{ kategori_baga: '5004', nominal: 100_000 }],
+    };
+    const cases: [Record<string, unknown>, RegExp][] = [
+      [{ nota_tanggal: '2026-03-02' }, /tidak boleh setelah/i],
+      [{ nota_tanggal: '2026-02-31' }, /tanggal nota tidak valid/i],
+      [{ nota_nomor: 'x'.repeat(101) }, /nomor nota maks\. 100/i],
+      [{ toko: 'x'.repeat(201) }, /toko\/penerima maks\. 200/i],
+      [{ keterangan: 'x'.repeat(501) }, /keterangan maks\. 500/i],
+    ];
+    for (const [nota, pola] of cases) {
+      const hasil = validasiBentukPanjarClose({
+        ...dasar,
+        items: [{ ...dasar.items[0], ...nota }],
+      });
+      expect(hasil.ok, String(nota)).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toMatch(pola);
+    }
+  });
+});
+
+describe('AUD2-03 — validasi bentuk koreksi pertanggungjawaban panjar', () => {
+  it('menormalisasi id/alasan/tanggal dan menolak bentuk tidak aman', () => {
+    const lengkap = validasiBentukPembatalanPertanggungjawabanPanjar({
+      id: '  p-1  ',
+      alasan: '  Salah kategori realisasi  ',
+      tanggalBatal: ' 2026-02-05 ',
+    });
+    expect(lengkap.ok).toBe(true);
+    if (lengkap.ok)
+      expect(lengkap.input).toEqual({
+        id: 'p-1',
+        alasan: 'Salah kategori realisasi',
+        tanggalBatal: '2026-02-05',
+      });
+
+    const tanpaTanggal = validasiBentukPembatalanPertanggungjawabanPanjar({
+      id: 'p-1',
+      alasan: 'Salah kategori realisasi',
+    });
+    expect(tanpaTanggal.ok).toBe(true);
+    if (tanpaTanggal.ok)
+      expect(tanpaTanggal.input).toEqual({
+        id: 'p-1',
+        alasan: 'Salah kategori realisasi',
+      });
+
+    const cases: [unknown, RegExp][] = [
+      [null, /tidak lengkap/i],
+      [{}, /wajib dipilih/i],
+      [{ id: 'p-1', alasan: 'sala' }, /minimal 5/i],
+      [
+        { id: 'p-1', alasan: 'Salah kategori', tanggalBatal: '2026-02-31' },
+        /tanggal/i,
+      ],
+      [
+        { id: 'p-1', alasan: 'Salah kategori', tanggalBatal: 20260205 },
+        /tanggal/i,
+      ],
+    ];
+    for (const [nilai, pola] of cases) {
+      const hasil = validasiBentukPembatalanPertanggungjawabanPanjar(nilai);
+      expect(hasil.ok, String(nilai)).toBe(false);
+      if (!hasil.ok) expect(hasil.error).toMatch(pola);
+    }
   });
 });

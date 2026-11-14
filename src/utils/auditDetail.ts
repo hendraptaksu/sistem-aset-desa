@@ -239,8 +239,8 @@ export function formatAksiAudit(aksi: string): string {
   const a = String(aksi ?? '');
 
   // Aksi spesifik harus dicek sebelum label generiknya.
-  if (a.startsWith('TUTUP-ULANG')) return 'Tutup buku (ulang)';
-  if (a.startsWith('TUTUP ')) return 'Tutup buku';
+  if (a.startsWith('TUTUP-ULANG')) return 'Kunci periode (ulang)';
+  if (a.startsWith('TUTUP ')) return 'Kunci periode';
   if (a.startsWith('KOREKSI-ISI-ULANG')) return 'Koreksi & isi ulang jurnal';
   if (a.startsWith('REVERSAL')) return 'Koreksi jurnal (balik)';
   if (a.startsWith('CREATE t-')) return 'Tambah transaksi BKU';
@@ -265,6 +265,8 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('ANGGARAN')) return 'Ubah anggaran';
   if (a.startsWith('REKONSILIASI-SELESAI')) return 'Selesaikan rekonsiliasi bank';
   if (a.startsWith('REKONSILIASI')) return 'Rekonsiliasi bank';
+  // Label audit lama modul Import Excel (dihapus DB-25); tetap dibaca agar
+  // riwayat audit lama tidak kehilangan keterangan.
   if (a.startsWith('IMPORT')) return 'Impor Excel';
   if (a.startsWith('LAMPIRAN-TAMBAH')) return 'Tambah lampiran';
   if (a.startsWith('LAMPIRAN-HAPUS')) return 'Hapus lampiran';
@@ -289,5 +291,9 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('RESTORE')) return 'Restore database';
   if (a.startsWith('PANJAR-OPEN')) return 'Panjar baru';
   if (a.startsWith('PANJAR-CLOSE')) return 'Tutup panjar';
+  if (a.startsWith('PANJAR-BATAL')) return 'Batalkan panjar';
+  if (a.startsWith('PINJAMAN-PENCAIRAN')) return 'Pencairan pinjaman LPD';
+  if (a.startsWith('PINJAMAN-BAYAR')) return 'Pembayaran angsuran pinjaman LPD';
+  if (a.startsWith('PINJAMAN-CREATE')) return 'Pinjaman LPD baru';
   return a;
 }

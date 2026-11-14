@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { IDLE_MAKS_MENIT, IDLE_MIN_MENIT } from '../../core/pin.js';
 import {
-  AWAL_TAHUN_BUKU_DIDUKUNG,
   DEFAULT_PENGATURAN,
   MAKS_KOP_TAMBAHAN,
   MAKS_NAMA_ENTITAS,
-  peringatanAwalTahunBukuLama,
-  type PengaturanPembukuan,
+  type PengaturanPembukuanPublik,
 } from '../../core/pengaturan.js';
 import { formatNomorBukti } from '../../core/nomorBukti.js';
 import type { AuditLog } from '../../core/types.js';
@@ -20,6 +18,7 @@ import { AuditDetail } from './AuditDetail.js';
 import { KodeDaruratModal } from './KodeDaruratModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
+  Badge,
   Button,
   Card,
   DetailModal,
@@ -36,9 +35,8 @@ const OPSI_AKSI = [
   { value: 'CREATE', label: 'Tambah jurnal / transaksi' },
   { value: 'REVERSAL', label: 'Koreksi jurnal (balik)' },
   { value: 'KOREKSI-ISI-ULANG', label: 'Koreksi & isi ulang' },
-  { value: 'TUTUP', label: 'Tutup buku' },
+  { value: 'TUTUP', label: 'Kunci periode' },
   { value: 'SALDO-AWAL', label: 'Saldo awal' },
-  { value: 'ASET', label: 'Inventaris aset' },
   { value: 'PANJAR', label: 'Panjar' },
   { value: 'BACKUP', label: 'Backup' },
   { value: 'RESTORE', label: 'Restore' },
@@ -47,39 +45,15 @@ const OPSI_AKSI = [
 
 const OPSI_LIMIT = [10, 25, 50, 100] as const;
 
-/**
- * Field awal tahun buku sengaja tidak berupa pilihan 1–12: sampai tahun buku
- * fiskal didukung penuh, semua laporan memakai Januari–Desember (AUD-20).
- */
-export function BidangAwalTahunBuku() {
-  return (
-    <Field label="Awal tahun buku">
-      <TextInput value="Januari (tahun kalender)" disabled readOnly />
-      <p className="mt-1 text-sm text-stone-500">
-        Tahun buku fiskal (mis. mulai Juli) belum didukung. Semua laporan memakai
-        Januari–Desember.
-      </p>
-    </Field>
-  );
-}
-
-/** Peringatan data lama; tidak pernah mengubah setting tersimpan. */
-export function PeringatanAwalTahunBuku({
-  awalTahunBuku,
-}: {
-  awalTahunBuku: number;
-}) {
-  const pesan = peringatanAwalTahunBukuLama(awalTahunBuku);
-  if (!pesan) return null;
-  return (
-    <div
-      role="alert"
-      className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900"
-    >
-      {pesan}
-    </div>
-  );
-}
+/** DB-27: jenis referensi audit yang ditulis aplikasi. */
+const OPSI_REF = [
+  { value: '', label: 'Semua referensi' },
+  { value: 'jurnal', label: 'Jurnal' },
+  { value: 'panjar', label: 'Panjar' },
+  { value: 'pinjaman', label: 'Pinjaman LPD' },
+  { value: 'tutup_buku', label: 'Kunci periode' },
+  { value: 'akun', label: 'Akun COA' },
+] as const;
 
 function Baris({ label, value }: { label: string; value: string }) {
   return (
@@ -90,14 +64,110 @@ function Baris({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * DB-26: saklar Mode lanjutan. Menyalakan wajib lewat konfirmasi karena menu
+ * Jurnal Umum menampilkan debit/kredit mentah dan hanya untuk akuntan/pemeriksa.
+ */
+export function ModeLanjutanCard({
+  aktif,
+  onBerubah,
+}: {
+  aktif: boolean;
+  onBerubah: (aktif: boolean) => void;
+}) {
+  const [konfirmasi, setKonfirmasi] = useState(false);
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-2xl">
+          <h2 className="mb-1 text-lg font-bold">Mode lanjutan</h2>
+          <p className="text-sm text-stone-600">
+            Untuk akuntan pendamping/pemeriksa. Mode ini menampilkan menu{' '}
+            <b>Jurnal Umum</b> berisi jurnal debit/kredit untuk pemeriksaan.
+            Operator harian tidak perlu membuka ini.
+          </p>
+        </div>
+        <Badge tone={aktif ? 'green' : 'stone'}>
+          {aktif ? 'Aktif' : 'Nonaktif'}
+        </Badge>
+      </div>
+
+      {aktif ? (
+        <>
+          <p className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+            Menu <b>Jurnal Umum</b> tampil di grup <b>Data &amp; Sistem</b>.
+            Jurnal tersimpan tidak boleh diedit/dihapus; koreksi memakai jurnal
+            balik atau form terpandu, bukan mengubah jurnal lama.
+          </p>
+          <div className="mt-3">
+            <Button variant="ghost" onClick={() => onBerubah(false)}>
+              Nonaktifkan Mode lanjutan
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+            <b>Jurnal Umum = tampilan debit/kredit untuk pemeriksaan. Operator
+            harian tidak perlu membuka ini.</b>{' '}
+            Koreksi tidak dilakukan dengan mengedit jurnal: gunakan jurnal balik
+            atau form terpandu.
+          </p>
+          <div className="mt-3">
+            <Button onClick={() => setKonfirmasi(true)}>
+              Aktifkan Mode lanjutan
+            </Button>
+          </div>
+        </>
+      )}
+
+      {konfirmasi && (
+        <KonfirmasiModal
+          judul="Aktifkan Mode lanjutan?"
+          deskripsi={
+            <>
+              <p>
+                Mode lanjutan menampilkan menu <b>Jurnal Umum</b>, yaitu tampilan
+                jurnal debit/kredit mentah untuk pemeriksaan oleh akuntan
+                pendamping/pemeriksa.
+              </p>
+              <p>
+                Operator harian tidak perlu membuka menu ini. Jurnal yang sudah
+                tersimpan tidak boleh diedit/dihapus; koreksi tetap memakai
+                jurnal balik atau form terpandu.
+              </p>
+              <p>
+                Aktifkan hanya bila Anda memahami risiko salah input jurnal
+                manual.
+              </p>
+            </>
+          }
+          labelYa="Ya, aktifkan Mode lanjutan"
+          variant="primary"
+          onBatal={() => setKonfirmasi(false)}
+          onKonfirmasi={() => {
+            setKonfirmasi(false);
+            onBerubah(true);
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
 export function PengaturanTab({
   idleAwal,
   kodeDaruratDiatur,
   onIdleBerubah,
+  modeLanjutan,
+  onModeLanjutanBerubah,
 }: {
   idleAwal: number;
   kodeDaruratDiatur: boolean;
   onIdleBerubah: (m: number) => void;
+  modeLanjutan: boolean;
+  onModeLanjutanBerubah: (aktif: boolean) => void;
 }) {
   const [lama, setLama] = useState('');
   const [baru, setBaru] = useState('');
@@ -127,9 +197,6 @@ export function PengaturanTab({
   const [entitas, setEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
   const [kopTambahan, setKopTambahan] = useState('');
   const [tanggalMulai, setTanggalMulai] = useState('');
-  const [awalTersimpan, setAwalTersimpan] = useState(
-    DEFAULT_PENGATURAN.awalTahunBuku,
-  );
   const [prefix, setPrefix] = useState(DEFAULT_PENGATURAN.prefixNomorBukti);
   const [padding, setPadding] = useState(String(DEFAULT_PENGATURAN.paddingNomorBukti));
   const [errPembukuan, setErrPembukuan] = useState<string | null>(null);
@@ -148,6 +215,8 @@ export function PengaturanTab({
   const [auditErr, setAuditErr] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [fAksi, setFAksi] = useState('');
+  const [fRefType, setFRefType] = useState('');
+  const [fRefId, setFRefId] = useState('');
   const [fMulai, setFMulai] = useState('');
   const [fSampai, setFSampai] = useState('');
   const [limit, setLimit] = useState<number>(25);
@@ -162,6 +231,8 @@ export function PengaturanTab({
     try {
       const r = await api.auditList({
         aksi: fAksi || undefined,
+        ref_type: fRefType || undefined,
+        ref_id: fRefId || undefined,
         mulai: fMulai || undefined,
         sampai: fSampai || undefined,
         limit,
@@ -180,13 +251,12 @@ export function PengaturanTab({
     void muatAudit();
     // Filter & pagination adalah satu-satunya pemicu muat ulang.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fAksi, fMulai, fSampai, limit, offset]);
+  }, [fAksi, fRefType, fRefId, fMulai, fSampai, limit, offset]);
 
-  function terapkanPembukuan(p: PengaturanPembukuan): void {
+  function terapkanPembukuan(p: PengaturanPembukuanPublik): void {
     setEntitas(p.namaEntitas);
     setKopTambahan(p.kopTambahan);
     setTanggalMulai(p.tanggalMulaiPembukuan);
-    setAwalTersimpan(p.awalTahunBuku);
     setPrefix(p.prefixNomorBukti);
     setPadding(String(p.paddingNomorBukti));
   }
@@ -322,7 +392,6 @@ export function PengaturanTab({
         namaEntitas: entitas,
         kopTambahan,
         tanggalMulaiPembukuan: tanggalMulai,
-        awalTahunBuku: AWAL_TAHUN_BUKU_DIDUKUNG,
         prefixNomorBukti: prefix,
         paddingNomorBukti: Number(padding),
       });
@@ -351,6 +420,10 @@ export function PengaturanTab({
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold">Pengaturan</h1>
+      <ModeLanjutanCard
+        aktif={modeLanjutan}
+        onBerubah={onModeLanjutanBerubah}
+      />
       <Card>
         <h2 className="mb-1 text-lg font-bold">Kunci Aplikasi (PIN)</h2>
         <p className="mb-3 text-sm text-stone-600">
@@ -447,7 +520,6 @@ export function PengaturanTab({
         {okPembukuan && (
           <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">{okPembukuan}</div>
         )}
-        <PeringatanAwalTahunBuku awalTahunBuku={awalTersimpan} />
         {memuatPembukuan ? (
           <p className="text-sm text-stone-500">Memuat pengaturan…</p>
         ) : (
@@ -480,7 +552,6 @@ export function PengaturanTab({
                 onChange={(e) => setTanggalMulai(e.target.value)}
               />
             </Field>
-            <BidangAwalTahunBuku />
             <Field label="Prefix nomor bukti (1–8 huruf/angka)">
               <TextInput
                 value={prefix}
@@ -549,15 +620,6 @@ export function PengaturanTab({
                 <p className="text-sm text-stone-500">File database</p>
                 <p className="break-all font-medium">{lokasi.dbPath}</p>
               </div>
-              <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-2">
-                <div className="min-w-0">
-                  <p className="text-sm text-stone-500">Folder lampiran bukti</p>
-                  <p className="break-all font-medium">{lokasi.attachmentsDir}</p>
-                </div>
-                <Button variant="ghost" disabled={folderSibuk !== null} onClick={() => void bukaFolder('attachments')}>
-                  {folderSibuk === 'attachments' ? 'Membuka…' : 'Buka Folder'}
-                </Button>
-              </div>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm text-stone-500">Folder backup</p>
@@ -570,15 +632,27 @@ export function PengaturanTab({
             </div>
 
             <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-              <p className="font-semibold">Cara backup manual yang benar:</p>
+              <p className="font-semibold">Cara backup manual yang disarankan:</p>
               <ol className="mt-1 list-decimal space-y-1 pl-5">
-                <li>Di Dashboard, tekan <b>Backup Export .db</b> lalu simpan ke flashdisk/Drive.</li>
-                <li>Tekan <b>Buka Folder</b> di folder lampiran, lalu salin seluruh isinya ke media yang sama.</li>
-                <li>Simpan file .db dan folder lampiran dalam satu folder bertanggal, mis. <code>backup-2026-10-23</code>.</li>
+                <li>Di Dashboard, tekan <b>Backup Lengkap</b> lalu simpan foldernya ke flashdisk/Drive.</li>
+                <li>Simpan folder backup bertanggal, mis. <code>backup-2026-10-23</code>.</li>
+                <li>Untuk memulihkan, gunakan <b>Restore Lengkap</b> dan pilih folder tersebut.</li>
               </ol>
               <p className="mt-2">
-                <b>Penting:</b> lampiran bukti <b>tidak ikut</b> di dalam file backup .db.
-                Tanpa menyalin folder lampiran, foto/PDF bukti tidak akan ikut saat ganti laptop.
+                <b>Backup Lengkap</b> berisi <code>pura.db</code> dan{' '}
+                <code>manifest.json</code>; manifest itulah yang diperiksa saat
+                Restore Lengkap.
+              </p>
+              <p className="mt-2">
+                <b>Backup Export .db (lanjutan)</b> hanya berisi database, tanpa
+                manifest. <b>Restore Import .db</b> juga hanya memulihkan database
+                dan tidak memvalidasi manifest, sehingga selalu meminta konfirmasi
+                tambahan. Pakai jalur ini hanya bila diminta pendamping.
+              </p>
+              <p className="mt-2">
+                Backup otomatis harian sengaja berupa satu file{' '}
+                <code>auto-YYYY-MM-DD.db</code> karena aplikasi tidak menyimpan
+                file bukti terpisah. Backup otomatis bukan pengganti Backup Lengkap.
               </p>
               {lokasi.mode === 'PORTABLE' && (
                 <p className="mt-2">
@@ -594,7 +668,7 @@ export function PengaturanTab({
       <Card>
         <h2 className="mb-1 text-lg font-bold">Riwayat Audit</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Semua perubahan penting tercatat: jurnal, koreksi, tutup buku, aset, backup/restore,
+          Semua perubahan penting tercatat: jurnal, koreksi, kunci periode, backup/restore,
           panjar, dan pengaturan. Data sebelum/sesudah bisa dibuka per baris.
         </p>
 
@@ -611,6 +685,29 @@ export function PengaturanTab({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </Select>
+          </Field>
+          <Field label="Jenis referensi">
+            <Select
+              value={fRefType}
+              onChange={(e) => {
+                setFRefType(e.target.value);
+                setOffset(0);
+              }}
+            >
+              {OPSI_REF.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="ID referensi">
+            <TextInput
+              value={fRefId}
+              placeholder="mis. j-... atau p-..."
+              onChange={(e) => {
+                setFRefId(e.target.value);
+                setOffset(0);
+              }}
+            />
           </Field>
           <Field label="Dari tanggal">
             <TextInput
@@ -713,6 +810,14 @@ export function PengaturanTab({
         <DetailModal title="Detail audit" onClose={() => setDetail(null)}>
           <Baris label="Waktu" value={formatWaktuAudit(detail.tanggal)} />
           <Baris label="Aksi" value={formatAksiAudit(detail.aksi)} />
+          <Baris
+            label="Referensi"
+            value={
+              detail.ref_type || detail.ref_id
+                ? `${detail.ref_type || '-'} / ${detail.ref_id || '-'}`
+                : '-'
+            }
+          />
           <Baris label="Alasan" value={detail.alasan || '-'} />
           <div>
             <p className="text-stone-500">Sebelum</p>

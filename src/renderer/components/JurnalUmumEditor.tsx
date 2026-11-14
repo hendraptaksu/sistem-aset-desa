@@ -15,6 +15,17 @@ import { formatRp } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
 import {
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  opsiPeringatanApi,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
+import {
   Badge,
   Button,
   CurrencyInput,
@@ -23,9 +34,11 @@ import {
   KonfirmasiModal,
   LockModal,
   Modal,
+  PeringatanModal,
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import { pesanError } from '../../utils/pesanError.js';
 
@@ -59,7 +72,9 @@ function barisEditorKosong(b: BarisEditor): boolean {
  *
  * Multi-baris debit/kredit dengan total live, autocomplete COA, template,
  * duplikat, serta keyboard-friendly (Tab/Enter/Esc). Penyimpanan tetap lewat
- * satu pintu `api.jurnalPosting`; semua aturan bisnis ada di posting layer.
+ * `api.jurnalPosting` (jalur manual) dan selalu UMUM; semua aturan bisnis ada
+ * di posting layer. Dokumen TERIMA/BAYAR/TRANSFER/HUTANG, panjar, saldo awal,
+ * dan koreksi memakai jalurnya masing-masing.
  */
 export function JurnalUmumEditor({
   coa,
@@ -117,12 +132,22 @@ export function JurnalUmumEditor({
 
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  /** Alasan periode terkunci dipertahankan agar konfirmasi kas minus tidak menghapusnya. */
+  /**
+   * Alasan periode terkunci dipertahankan agar konfirmasi kas minus tidak
+   * menghapusnya. Alasan peringatan punya ref sendiri (AKT-07) karena kedua
+   * alasan dikirim lewat jalur berbeda.
+   */
   const alasanPeriodeRef = useRef('');
+  const alasanPeringatanRef = useRef('');
   const [err, setErr] = useState<string | null>(null);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalPendingRef = useRef<{
+    konfirmasi?: boolean;
+  }>({});
 
   // COA bisa datang setelah editor dirender (mis. duplikat saat daftar akun
   // belum termuat). Lengkapi teks kode—nama tanpa menimpa isian manual.
@@ -280,12 +305,23 @@ export function JurnalUmumEditor({
   }
 
   async function simpan(
-    opsi: { alasan?: string; konfirmasi?: boolean } = {},
+    opsi: {
+      alasan?: string;
+      alasanPeringatan?: string;
+      konfirmasi?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErr(null);
-    setPesanKonfirmasi(null);
+    // Selama operator mengirim alasan dari modal, biarkan modal terbuka agar
+    // penolakan backend bisa ditampilkan dan diperbaiki di tempat yang sama.
+    if (opsi.konfirmasi !== true) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     setLockOpen(false);
+    setSaldoAwalOpen(false);
 
     if (!formSah) {
       setErr(
@@ -294,38 +330,86 @@ export function JurnalUmumEditor({
       return;
     }
 
+    // AKT-07: alasan kunci periode (`alasan`) dan alasan peringatan
+    // (`alasanPeringatan`) dipisah dan sama-sama dipertahankan saat retry.
+    const alasanPeriode = rapikanAlasanPeringatan(
+      opsi.alasan ?? alasanPeriodeRef.current,
+    );
+    if (opsi.alasan) alasanPeriodeRef.current = opsi.alasan;
+    const alasanPeringatan = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? alasanPeringatanRef.current,
+    );
+    if (opsi.alasanPeringatan) alasanPeringatanRef.current = opsi.alasanPeringatan;
+
+    if (opsi.konfirmasi === true && !alasanPeringatanCukup(alasanPeringatan)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
+      return;
+    }
+
     busyRef.current = true;
     setBusy(true);
     try {
-      const alasan = String(opsi.alasan ?? alasanPeriodeRef.current).trim();
-      if (opsi.alasan) alasanPeriodeRef.current = opsi.alasan;
       const input = buatJurnalUmumForm({
         ...(awal?.id ? { id: awal.id } : {}),
         tanggal,
         keterangan: keterangan.trim(),
         noBukti: noBukti.trim(),
         baris: barisForm,
-        ...(alasan ? { alasan } : {}),
+        ...(alasanPeriode ? { alasan: alasanPeriode } : {}),
       });
+      saldoAwalPendingRef.current = {
+        ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+      };
       const hasil = await api.jurnalPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        ...opsiPeringatanApi(
+          opsi.konfirmasi === true ? alasanPeringatan : undefined,
+        ),
+        ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
       });
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
       const nomor = hasil.jurnal.no_bukti || 'tanpa nomor bukti';
       onSelesai(
         `Jurnal ${nomor} tersimpan — debit = kredit ${formatRp(validasi.totalDebit)}.`,
       );
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setLockOpen(true);
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        setErrorKonfirmasi(opsi.konfirmasi === true ? pesan : null);
       } else {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setErr(pesanError(e));
       }
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    void simpan({
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    void simpan(saldoAwalPendingRef.current);
   }
 
   return (
@@ -337,6 +421,12 @@ export function JurnalUmumEditor({
       maxWidth="64rem"
     >
       <div className="-mt-1">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Badge tone="stone">Jurnal Umum</Badge>
+          <span className="text-sm text-stone-600">
+            Jalur manual ini hanya menyimpan jurnal UMUM.
+          </span>
+        </div>
         <ErrorBox msg={err} />
       </div>
 
@@ -554,27 +644,18 @@ export function JurnalUmumEditor({
         </div>
 
         {pesanKonfirmasi && (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-            <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-            <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={() => void simpan({ konfirmasi: true })}
-              >
-                Ya, tetap simpan
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setPesanKonfirmasi(null)}
-              >
-                Batal
-              </Button>
-            </div>
-          </div>
+          <PeringatanModal
+            pesan={pesanKonfirmasi}
+            pesanError={errorKonfirmasi}
+            sibuk={busy}
+            onCancel={() => {
+              setPesanKonfirmasi(null);
+              setErrorKonfirmasi(null);
+            }}
+            onSubmit={(alasan) => {
+              void simpan({ konfirmasi: true, alasanPeringatan: alasan });
+            }}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -604,10 +685,19 @@ export function JurnalUmumEditor({
             onCancel={() => setLockOpen(false)}
             onSubmit={(alasan) => {
               setLockOpen(false);
-              void simpan({ alasan });
+              void simpan({ ...saldoAwalPendingRef.current, alasan });
             }}
           />
         )}
+
+        <SaldoAwalGuard
+          terbuka={saldoAwalOpen}
+          coa={coa}
+          sibuk={busy}
+          onBatal={() => setSaldoAwalOpen(false)}
+          onMulaiTanpa={mulaiTanpaSaldoAwal}
+          onSaldoAwalTersimpan={saldoAwalTersimpan}
+        />
 
         {konfirmasiTutup && (
           <KonfirmasiModal

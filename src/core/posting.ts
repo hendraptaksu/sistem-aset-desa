@@ -7,10 +7,14 @@
 // - Peringatan = boleh disimpan, tetapi operator wajib konfirmasi (mis. kas minus).
 
 import {
+  AKUN_HUTANG,
+  AKUN_HUTANG_USAHA,
+  AKUN_PANJAR,
   PESAN_AKUN_LEGACY,
   POSISI_NORMAL,
   akunBolehDiposting,
   isAkunKas,
+  isAkunKasData,
   type CoaTipe,
   type PosisiNormal,
 } from '../db/coa.js';
@@ -18,6 +22,7 @@ import { validasiSimpanLonggar } from './periode.js';
 import type { JurnalBarisInput, JurnalHeaderInput, JurnalJenis } from './types.js';
 import { formatRp } from '../utils/format.js';
 import { PESAN_TANGGAL_TIDAK_VALID } from '../utils/pesanError.js';
+import { jurnalKasMemilikiKomponenAmbigu, PESAN_ARUS_KAS_AMBIGU } from './reports.js';
 
 export const JENIS_JURNAL: readonly JurnalJenis[] = [
   'UMUM',
@@ -40,24 +45,106 @@ export type AkunPosting = {
   tipe: CoaTipe;
   posisi_normal?: PosisiNormal;
   aktif: boolean;
+  /** DB-14: metadata opsional dari master akun. */
+  is_kas?: boolean;
+  kelompok?: string;
+  sumber?: string;
 };
 
 /** Konteks DB yang dibutuhkan posting layer, sudah diambil pemanggil. */
 export type PostingContext = {
   akun: AkunPosting[];
+  /** Hanya layanan koreksi setelah memverifikasi grup saldo awal dari DB. */
+  koreksiSaldoAwal?: boolean;
   /** Tahun yang sudah ditutup. Tanggal <= 31 Des tahun terakhir butuh alasan. */
   tutupBuku?: ReadonlyArray<{ tahun: number }>;
   /** Nomor bukti yang sudah dipakai (boleh kosong). */
   noBuktiTerpakai?: readonly string[];
   /** Saldo kas/bank saat ini dalam sen, per kode akun. */
   saldoKas?: Readonly<Record<string, number>>;
+  /**
+   * AUD2-10: saldo normal kredit akun 2060 HUTANG USAHA pada tanggal jurnal,
+   * yaitu SUM(kredit - debit) s.d. tanggal jurnal (belum termasuk jurnal yang
+   * sedang divalidasi). Kosong = pemeriksaan dilewati (kompatibel pemanggil
+   * lama/fungsi murni).
+   */
+  saldoHutangUsaha?: number;
+  /**
+   * AKT-04: minimum cumulative sum (≤ 0) mutasi kas pada tanggal SETELAH
+   * tanggal jurnal, per kode akun kas. Menunjukkan tambahan terburuk yang bisa
+   * menimpa saldo pada tanggal jurnal (mis. pengeluaran backdate). Kosong = 0.
+   */
+  kasMinimumSetelah?: Record<string, number>;
+  /**
+   * AKT-03: batas bawah tanggal jurnal (YYYY-MM-DD) dari pengaturan pembukuan.
+   * Kosong/tidak valid = tidak ada batas (kompatibel data lama).
+   */
+  tanggalMulaiPembukuan?: string;
+  /**
+   * AKT-14: tanggal acuan "hari ini" (YYYY-MM-DD) untuk menolak jurnal di masa
+   * depan. Kosong/tidak valid = pemeriksaan dilewati (kompatibel pemanggil lama
+   * dan test murni). `buatKonteksPosting` mengisinya dengan `tanggalLokal()`.
+   */
+  sekarang?: string;
+  /**
+   * T-A04: pengecualian sempit untuk koreksi histori. Akun yang kodenya ada di
+   * set ini boleh dipakai meski `aktif = 0`, tetapi aturan legacy/tipe tetap
+   * berlaku. Jangan diisi oleh jalur input manual; hanya reversal/koreksi yang
+   * sudah memverifikasi barisnya benar-benar cermin/persis jurnal asli.
+   */
+  akunNonaktifDiizinkan?: ReadonlySet<string>;
 };
+
+/** AKT-14: pesan penolakan tanggal jurnal setelah hari ini. */
+export const PESAN_TANGGAL_MASA_DEPAN = 'Tanggal jurnal tidak boleh di masa depan.';
+
+/**
+ * AKT-29: input yang tidak berbentuk objek jurnal ditolak lewat hasil validasi,
+ * bukan exception, agar pemanggil IPC/UI tetap mendapat daftar error.
+ */
+export const PESAN_INPUT_JURNAL_TIDAK_VALID =
+  'Data jurnal tidak valid: header jurnal wajib diisi.';
+
+/** AKT-16: pesan penolakan jurnal penutup manual (P&L dicampur ekuitas). */
+export const PESAN_JURNAL_PENUTUP_MANUAL =
+  'Jurnal penutup manual tidak didukung. Kunci periode hanya penanda; gunakan menu Kunci Periode. Untuk pembayaran beban oleh pemilik, buat dua jurnal: beban/kas lalu kas/modal.';
+
+/**
+ * AUD2-04: 1040/2050 adalah akun kontrol subledger. Jurnal manual UMUM yang
+ * menyentuhnya akan membuat saldo GL berbeda dari daftar Panjar/Pinjaman.
+ * Jalur internal (PANJAR/HUTANG/SALDO_AWAL/REVERSAL) dan koreksi saldo awal
+ * yang sudah memverifikasi grup pembukaan tetap diizinkan.
+ */
+export const PESAN_AKUN_KONTROL_PANJAR_UMUM =
+  'Akun 1040 UANG PANJAR adalah akun kontrol panjar dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Buku Panjar.';
+
+export const PESAN_AKUN_KONTROL_PINJAMAN_UMUM =
+  'Akun 2050 HUTANG LAIN-LAIN adalah akun kontrol pinjaman dan tidak boleh diposting lewat Jurnal Umum. Gunakan menu Pinjaman LPD (atau 2060 HUTANG USAHA untuk utang usaha).';
+
+/**
+ * T-A05: jurnal pembukaan bukan operasi laba rugi. Akun PENDAPATAN/BEBAN
+ * ditolak untuk SALDO_AWAL (termasuk pemanggilan langsung `postingSaldoAwal`)
+ * dan untuk koreksi saldo awal, agar Laba Rugi tahun pertama tidak memuat
+ * angka fiktif. Hanya AKTIVA, KEWAJIBAN, dan EKUITAS (modal penyeimbang) sah.
+ */
+export const PESAN_SALDO_AWAL_HANYA_NERACA =
+  'Saldo awal hanya boleh memakai akun AKTIVA, KEWAJIBAN, dan EKUITAS (modal penyeimbang).';
+
+/** T-A05: pesan koreksi saldo awal yang memuat akun PENDAPATAN/BEBAN. */
+export const PESAN_KOREKSI_SALDO_AWAL_HANYA_NERACA =
+  'Koreksi saldo awal hanya boleh memakai akun aset, kewajiban, dan ekuitas.';
 
 export type JurnalInput = {
   header: JurnalHeaderInput;
   baris: JurnalBarisInput[];
   /** Wajib diisi bila tanggal berada di periode yang sudah ditutup. */
   alasan?: string;
+  /**
+   * DB-16d: penanda internal untuk pembayaran angsuran pinjaman yang hanya
+   * berisi bunga/denda (pokok 0). Jurnal HUTANG tanpa akun 2050/2060 hanya sah
+   * untuk konteks ini; jalur IPC form manual tidak pernah mengirim field ini.
+   */
+  konteks?: 'PINJAMAN_BAYAR';
 };
 
 export type HasilValidasiJurnal = {
@@ -95,32 +182,91 @@ const labelAkun = (a: AkunPosting | undefined, kode: string): string =>
  * Validasi lengkap satu jurnal sebelum disimpan.
  *
  * Urutan aturan:
- * 1. Tanggal kalender nyata, keterangan, minimal 2 baris.
+ * 1. Tanggal kalender nyata, tidak sebelum tanggal mulai pembukuan (kecuali
+ *    SALDO_AWAL), tidak setelah hari ini (AKT-14), keterangan, minimal 2 baris.
  * 2. Akun ada, aktif, bukan akun legacy 3001/3002, tipe/posisi normal
  *    konsisten, nominal sen valid.
  * 3. Jenis jurnal konsisten dengan akun (TRANSFER kas/bank; PANJAR 1040;
- *    PIUTANG 1050; HUTANG 2050).
- * 4. Total debit = total kredit dan > 0.
- * 5. Periode terkunci wajib alasan >= 5 karakter.
- * 6. Kas/bank akan minus -> peringatan (bukan error).
- * 7. Nomor bukti duplikat ditolak.
+ *    PIUTANG 1050; HUTANG 2050 pinjaman atau 2060 utang usaha). UMUM tidak
+ *    boleh memakai akun kontrol 1040/2050, kecuali konteks koreksiSaldoAwal.
+ * 4. Jurnal penutup manual (P&L + ekuitas) ditolak, kecuali SALDO_AWAL.
+ * 4a. SALDO_AWAL dan koreksi saldo awal hanya boleh memakai akun AKTIVA,
+ *    KEWAJIBAN, dan EKUITAS; akun PENDAPATAN/BEBAN ditolak (T-A05).
+ * 4b. Jurnal ber-kas yang memuat 2050 dan 2060 sekaligus ditolak agar tidak
+ *    ada satu jurnal dengan dua kelompok arus kas; reklasifikasi non-kas tetap
+ *    diperbolehkan (AKT-20).
+ * 5. Total debit = total kredit dan > 0.
+ * 6. Periode terkunci wajib alasan >= 5 karakter.
+ * 7. Kas/bank akan minus -> peringatan (bukan error).
+ * 7b. Utang usaha (2060) akan minus -> peringatan (bukan error).
+ * 8. Nomor bukti duplikat ditolak.
  */
-export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilValidasiJurnal {
+export function validasiJurnal(
+  input: JurnalInput | null | undefined,
+  ctx: PostingContext,
+): HasilValidasiJurnal {
   const errors: string[] = [];
   const peringatan: string[] = [];
-  const header = input.header;
-  const baris = Array.isArray(input.baris) ? input.baris : [];
-  const alasan = String(input.alasan ?? '').trim();
+  const konteks = (ctx ?? {}) as PostingContext;
+  const headerMentah = input?.header;
+  const headerObj =
+    headerMentah !== null && typeof headerMentah === 'object'
+      ? (headerMentah as Partial<JurnalHeaderInput>)
+      : null;
+  if (!headerObj) errors.push(PESAN_INPUT_JURNAL_TIDAK_VALID);
+  const header: Partial<JurnalHeaderInput> = headerObj ?? {};
+  const tanggal = String(header.tanggal ?? '').trim();
+  const jenis = String(header.jenis ?? 'UMUM') as JurnalJenis;
+  const baris = Array.isArray(input?.baris) ? input.baris : [];
+  const alasan = String(input?.alasan ?? '').trim();
 
   // ---- 1. Kepala jurnal ----
-  if (!tanggalKalenderValid(header.tanggal))
+  if (!tanggalKalenderValid(tanggal))
     errors.push(PESAN_TANGGAL_TIDAK_VALID);
+
+  // AKT-03: tanggal mulai pembukuan adalah batas bawah. SALDO_AWAL dikecualikan
+  // agar wizard tetap bisa memakai tanggal yang berbeda; setting kosong/tidak
+  // valid tidak membatasi apa pun (kompatibel data lama).
+  const tanggalMulai = String(konteks.tanggalMulaiPembukuan ?? '').trim();
+  if (
+    jenis !== 'SALDO_AWAL' &&
+    tanggalKalenderValid(tanggalMulai) &&
+    tanggalKalenderValid(tanggal) &&
+    tanggal < tanggalMulai
+  ) {
+    errors.push(
+      `Tanggal jurnal sebelum tanggal mulai pembukuan (${tanggalMulai}).`,
+    );
+  }
+
+  // AKT-14: tanggal setelah hari ini ditolak. Perbandingan string aman karena
+  // keduanya sudah lolos validasi kalender berformat YYYY-MM-DD. Tanggal hari
+  // ini tetap diterima; ctx.sekarang kosong (pemanggil lama/fungsi murni) tidak
+  // membatasi apa pun.
+  const sekarang = String(konteks.sekarang ?? '').trim();
+  if (
+    tanggalKalenderValid(sekarang) &&
+    tanggalKalenderValid(tanggal) &&
+    tanggal > sekarang
+  ) {
+    errors.push(PESAN_TANGGAL_MASA_DEPAN);
+  }
+
   if (!String(header.keterangan ?? '').trim()) errors.push('Keterangan wajib diisi.');
   if (baris.length < 2)
     errors.push('Jurnal wajib memiliki minimal 2 baris (satu debit dan satu kredit).');
 
-  const petaAkun = new Map(ctx.akun.map((a) => [a.kode, a]));
+  const daftarAkun = Array.isArray(konteks.akun) ? konteks.akun : [];
+  const petaAkun = new Map(daftarAkun.map((a) => [a.kode, a]));
+  // DB-14: dompet ditentukan oleh `is_kas` dari master DB; objek lama tanpa
+  // penanda itu tetap memakai daftar statis (fallback aman).
+  const kasDi = (kode: string): boolean => {
+    const data = petaAkun.get(kode);
+    return data ? isAkunKasData(data) : isAkunKas(kode);
+  };
+
   const deltaKas = new Map<string, number>();
+  let deltaHutangUsaha = 0;
   let totalDebit = 0;
   let totalKredit = 0;
   let adaNominalSalah = false;
@@ -128,13 +274,26 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   // ---- 2. Baris: akun, tipe, nominal ----
   baris.forEach((b, i) => {
     const no = i + 1;
-    const kode = String(b.akun_kode ?? '').trim();
+    // AKT-29: baris null/undefined tidak boleh membuat validator melempar.
+    const item = b !== null && typeof b === 'object' ? b : ({} as JurnalBarisInput);
+    const kode = String(item.akun_kode ?? '').trim();
     const akunBaris = petaAkun.get(kode);
+    // T-A04: akun nonaktif hanya boleh dipakai bila kodenya secara eksplisit
+    // diizinkan (reversal/koreksi baris historis yang persis sama). Untuk
+    // pengecekan legacy, akun yang diizinkan diperlakukan seperti aktif agar
+    // 3001/3002 tetap ditolak.
+    const diizinkanNonaktif =
+      akunBaris !== undefined &&
+      !akunBaris.aktif &&
+      konteks.akunNonaktifDiizinkan?.has(kode) === true;
 
     if (!kode) errors.push(`Baris ${no}: akun belum dipilih.`);
     else if (!akunBaris) errors.push(`Baris ${no}: akun ${kode} tidak dikenal.`);
-    else if (!akunBaris.aktif) errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} sudah tidak aktif.`);
-    else if (!akunBolehDiposting(kode, akunBaris.aktif, { dikenal: true }))
+    else if (!akunBaris.aktif && !diizinkanNonaktif)
+      errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} sudah tidak aktif.`);
+    else if (
+      !akunBolehDiposting(kode, akunBaris.aktif || diizinkanNonaktif, { dikenal: true })
+    )
       errors.push(`Baris ${no}: akun ${labelAkun(akunBaris, kode)} ${PESAN_AKUN_LEGACY}`);
 
     if (akunBaris) {
@@ -149,8 +308,10 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
         );
     }
 
-    const debitOk = Number.isInteger(b.debit) && b.debit >= 0;
-    const kreditOk = Number.isInteger(b.kredit) && b.kredit >= 0;
+    const debit = item.debit;
+    const kredit = item.kredit;
+    const debitOk = Number.isSafeInteger(debit) && debit >= 0;
+    const kreditOk = Number.isSafeInteger(kredit) && kredit >= 0;
     if (!debitOk) errors.push(`Baris ${no}: debit harus bilangan bulat ≥ 0.`);
     if (!kreditOk) errors.push(`Baris ${no}: kredit harus bilangan bulat ≥ 0.`);
 
@@ -158,37 +319,37 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
       adaNominalSalah = true;
       return;
     }
-    if (b.debit > 0 && b.kredit > 0) {
+    if (debit > 0 && kredit > 0) {
       errors.push(`Baris ${no}: isi salah satu saja — debit ATAU kredit.`);
       adaNominalSalah = true;
       return;
     }
-    if (b.debit === 0 && b.kredit === 0) {
+    if (debit === 0 && kredit === 0) {
       errors.push(`Baris ${no}: nominal debit/kredit harus lebih dari 0.`);
       adaNominalSalah = true;
       return;
     }
 
-    totalDebit += b.debit;
-    totalKredit += b.kredit;
-    if (akunBaris && isAkunKas(kode))
-      deltaKas.set(kode, (deltaKas.get(kode) ?? 0) + b.debit - b.kredit);
+    totalDebit += debit;
+    totalKredit += kredit;
+    if (akunBaris && kasDi(kode))
+      deltaKas.set(kode, (deltaKas.get(kode) ?? 0) + debit - kredit);
+    if (kode === AKUN_HUTANG_USAHA) deltaHutangUsaha += kredit - debit;
   });
 
   // ---- 3. Jenis jurnal konsisten dengan akun yang dipakai ----
-  const jenis = String(header.jenis ?? 'UMUM') as JurnalJenis;
   if (!JENIS_JURNAL.includes(jenis)) {
     errors.push('Jenis jurnal tidak dikenal.');
   } else {
     const kodeSah = baris
-      .map((b) => String(b.akun_kode ?? '').trim())
+      .map((b) => String(b?.akun_kode ?? '').trim())
       .filter((kode) => petaAkun.has(kode));
 
     if (jenis === 'TRANSFER') {
-      const bukanKas = kodeSah.filter((kode) => !isAkunKas(kode));
+      const bukanKas = kodeSah.filter((kode) => !kasDi(kode));
       if (bukanKas.length > 0)
         errors.push('Jurnal Pindah Dana hanya boleh memakai akun kas/bank.');
-      const kasUnik = new Set(kodeSah.filter((kode) => isAkunKas(kode)));
+      const kasUnik = new Set(kodeSah.filter((kode) => kasDi(kode)));
       if (kasUnik.size < 2)
         errors.push('Pindah Dana harus memakai dua akun kas/bank yang berbeda.');
     }
@@ -196,8 +357,101 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
       errors.push('Jurnal Panjar wajib memakai akun 1040 UANG PANJAR (KAS DI MUKA).');
     if (jenis === 'PIUTANG' && !kodeSah.includes('1050'))
       errors.push('Jurnal Piutang wajib memakai akun 1050 PIUTANG LAIN LAIN.');
-    if (jenis === 'HUTANG' && !kodeSah.includes('2050'))
-      errors.push('Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN.');
+    if (jenis === 'HUTANG' && !kodeSah.includes(AKUN_HUTANG) && !kodeSah.includes(AKUN_HUTANG_USAHA)) {
+      // DB-16d: pembayaran angsuran bunga/denda (tanpa pokok) tidak menyentuh
+      // 2050, tetapi tetap jurnal HUTANG. Hanya service pinjaman yang boleh
+      // memakai penanda ini; jurnal manual tidak punya akses ke `konteks`.
+      if (input?.konteks !== 'PINJAMAN_BAYAR')
+        errors.push(
+          'Jurnal Hutang wajib memakai akun 2050 HUTANG LAIN-LAIN (pinjaman) atau 2060 HUTANG USAHA (utang usaha).',
+        );
+    }
+
+    // AUD2-04: akun kontrol subledger hanya boleh disentuh jalur internal yang
+    // menulis subledgernya. Jurnal manual UMUM dilarang agar saldo GL 1040/2050
+    // tidak bercabang dari daftar Panjar/Pinjaman. `koreksiSaldoAwal` adalah
+    // pengecualian karena service koreksi sudah memverifikasi grup pembukaan.
+    if (jenis === 'UMUM' && konteks.koreksiSaldoAwal !== true) {
+      if (kodeSah.includes(AKUN_PANJAR))
+        errors.push(PESAN_AKUN_KONTROL_PANJAR_UMUM);
+      if (kodeSah.includes(AKUN_HUTANG))
+        errors.push(PESAN_AKUN_KONTROL_PINJAMAN_UMUM);
+    }
+  }
+
+  // ---- 3a. Jurnal campuran 2050 + 2060 (AKT-20) ----
+  // Satu jurnal ber-kas tidak boleh memuat dua kelompok arus kas sekaligus.
+  // Jurnal reklasifikasi D 2050 / K 2060 tanpa kas tetap diperbolehkan.
+  if (jenis !== 'SALDO_AWAL' && konteks.koreksiSaldoAwal !== true) {
+    const kodeSah = baris
+      .map((b) => String(b?.akun_kode ?? '').trim())
+      .filter((kode) => petaAkun.has(kode));
+    const adaKas = kodeSah.some((kode) => kasDi(kode));
+    if (
+      adaKas &&
+      kodeSah.includes(AKUN_HUTANG) &&
+      kodeSah.includes(AKUN_HUTANG_USAHA)
+    )
+      errors.push(
+        'Satu jurnal tidak boleh memuat 2050 (pinjaman) dan 2060 (utang usaha) sekaligus bila ada kas. ' +
+          'Pisahkan pembayaran utang usaha dan pinjaman ke jurnal terpisah.',
+      );
+  }
+
+  // Satu bukti tidak boleh menggabungkan penerimaan dan penggunaan kas dari
+  // kategori berbeda; Arus Kas tidak dapat memasangkan nilainya dengan pasti.
+  // Tolak saat validasi supaya laporan tidak baru gagal setelah jurnal tersimpan.
+  if (
+    jenis !== 'SALDO_AWAL' &&
+    konteks.koreksiSaldoAwal !== true &&
+    jurnalKasMemilikiKomponenAmbigu(baris, daftarAkun, kasDi)
+  ) {
+    errors.push(PESAN_ARUS_KAS_AMBIGU);
+  }
+  // ---- 3a-2. Saldo awal/koreksi hanya akun neraca (T-A05) ----
+  // SALDO_AWAL dikecualikan dari larangan jurnal penutup di atas, jadi aturan
+  // ini wajib berdiri sendiri dan tidak boleh bergantung pada `koreksiSaldoAwal`
+  // saja: `postingSaldoAwal()` dan `simpanSaldoAwal()` sama-sama melewati
+  // validator ini, termasuk saat dipanggil langsung tanpa wizard. Koreksi
+  // saldo awal memakai jenis UMUM + `koreksiSaldoAwal`, sehingga tetap
+  // diperiksa oleh aturan yang sama (tanpa pesan ganda).
+  if (jenis === 'SALDO_AWAL' || konteks.koreksiSaldoAwal === true) {
+    const adaAkunLabaRugi = baris.some((b) => {
+      const tipe = petaAkun.get(String(b?.akun_kode ?? '').trim())?.tipe;
+      return tipe === 'PENDAPATAN' || tipe === 'BEBAN';
+    });
+    if (adaAkunLabaRugi) {
+      if (jenis === 'SALDO_AWAL') {
+        baris.forEach((b, i) => {
+          const kodeBaris = String(b?.akun_kode ?? '').trim();
+          const akunBaris = petaAkun.get(kodeBaris);
+          if (akunBaris?.tipe !== 'PENDAPATAN' && akunBaris?.tipe !== 'BEBAN')
+            return;
+          errors.push(
+            `Baris ${i + 1}: akun ${labelAkun(akunBaris, kodeBaris)} bertipe ${akunBaris.tipe} tidak boleh dipakai di saldo awal. ${PESAN_SALDO_AWAL_HANYA_NERACA}`,
+          );
+        });
+      } else {
+        errors.push(PESAN_KOREKSI_SALDO_AWAL_HANYA_NERACA);
+      }
+    }
+  }
+
+  // ---- 3b. Larangan jurnal penutup manual (AKT-16) ----
+  // P&L dan ekuitas dalam satu jurnal adalah bentuk penutup manual: laba tahun
+  // berjalan dan riwayat tutup buku menjadi 0 walau neraca tetap balance.
+  // SALDO_AWAL dikecualikan karena bukan operasi P&L (saldo awal ekuitas tetap
+  // sah). Bila nanti dibutuhkan alur penutup resmi, tambahkan jenis `PENUTUP`
+  // tersendiri — jangan melonggarkan aturan ini diam-diam.
+  if (jenis !== 'SALDO_AWAL') {
+    const tipeDipakai = new Set<CoaTipe>();
+    for (const b of baris) {
+      const akunBaris = petaAkun.get(String(b?.akun_kode ?? '').trim());
+      if (akunBaris) tipeDipakai.add(akunBaris.tipe);
+    }
+    const adaLabaRugi = tipeDipakai.has('PENDAPATAN') || tipeDipakai.has('BEBAN');
+    if (adaLabaRugi && tipeDipakai.has('EKUITAS'))
+      errors.push(PESAN_JURNAL_PENUTUP_MANUAL);
   }
 
   // ---- 4. Keseimbangan ----
@@ -210,22 +464,39 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   }
 
   // ---- 5. Kunci periode (longgar: alasan >= 5 karakter) ----
-  if (tanggalKalenderValid(header.tanggal)) {
-    const kunci = validasiSimpanLonggar(header.tanggal, ctx.tutupBuku ?? [], alasan);
+  if (tanggalKalenderValid(tanggal)) {
+    const kunci = validasiSimpanLonggar(tanggal, konteks.tutupBuku ?? [], alasan);
     if (!kunci.boleh && kunci.error) errors.push(kunci.error);
   }
 
   // ---- 6. Kas/bank minus: peringatan, bukan error ----
-  if (ctx.saldoKas) {
+  // AKT-04: yang dinilai adalah saldo TERBURUK, yaitu saldo pada tanggal jurnal
+  // ditambah minimum cumulative sum mutasi setelah tanggal itu. Dengan begitu
+  // jurnal backdate tetap diperingatkan bila membuat kas minus di tanggal
+  // berikutnya, dan hanya ada satu pesan per akun (nominal minus terburuk).
+  if (konteks.saldoKas) {
     for (const [kode, delta] of deltaKas) {
-      const saldoAwal = ctx.saldoKas[kode];
+      const saldoAwal = konteks.saldoKas[kode];
       if (saldoAwal === undefined || delta === 0) continue;
-      const saldoAkhir = saldoAwal + delta;
-      if (saldoAkhir < 0) {
+      const saldoTerburuk = saldoAwal + delta + (konteks.kasMinimumSetelah?.[kode] ?? 0);
+      if (saldoTerburuk < 0) {
         peringatan.push(
-          `Kas/Bank ${labelAkun(petaAkun.get(kode), kode)} akan minus ${formatRp(-saldoAkhir)}. Periksa kembali — boleh lanjut dengan konfirmasi.`,
+          `Kas/Bank ${labelAkun(petaAkun.get(kode), kode)} akan minus ${formatRp(-saldoTerburuk)}. Periksa kembali — boleh lanjut dengan konfirmasi.`,
         );
       }
+    }
+  }
+
+  // ---- 6b. Utang usaha minus: peringatan, bukan error (AUD2-10) ----
+  // Pembayaran utang usaha (D 2060) yang melebihi utang tercatat membuat
+  // kewajiban di Neraca negatif. Saldo awal berasal dari DB pada tanggal jurnal
+  // (belum termasuk jurnal ini), lalu ditambah delta kredit - debit 2060.
+  if (konteks.saldoHutangUsaha !== undefined && deltaHutangUsaha !== 0) {
+    const saldoAkhir = konteks.saldoHutangUsaha + deltaHutangUsaha;
+    if (saldoAkhir < 0) {
+      peringatan.push(
+        `Utang Usaha (2060) akan menjadi minus ${formatRp(-saldoAkhir)}. Pastikan utang sudah dicatat lewat Catat Utang Usaha sebelum dibayar.`,
+      );
     }
   }
 
@@ -233,7 +504,7 @@ export function validasiJurnal(input: JurnalInput, ctx: PostingContext): HasilVa
   const noBukti = String(header.no_bukti ?? '').trim();
   if (noBukti) {
     const dipakai = new Set(
-      (ctx.noBuktiTerpakai ?? []).map((n) => String(n).trim().toLowerCase()),
+      (konteks.noBuktiTerpakai ?? []).map((n) => String(n).trim().toLowerCase()),
     );
     if (dipakai.has(noBukti.toLowerCase()))
       errors.push(`Nomor bukti ${noBukti} sudah dipakai. Gunakan nomor bukti lain.`);

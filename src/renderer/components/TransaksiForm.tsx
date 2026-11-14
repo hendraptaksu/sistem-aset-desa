@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AKUN_MODAL, isAkunKas, type Coa } from '../../db/coa.js';
+import {
+  AKUN_HUTANG_USAHA,
+  AKUN_MODAL,
+  isAkunKasData,
+  type Coa,
+} from '../../db/coa.js';
 import {
   buatJurnalBayar,
+  buatJurnalBayarUtangUsaha,
+  buatJurnalCatatUtangUsaha,
   buatJurnalPindahDana,
   buatJurnalTerimaUang,
   type DasarFormJurnal,
@@ -10,6 +17,17 @@ import { tanggalKalenderValid, type JurnalInput } from '../../core/posting.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, isPerluAlasan, isPerluKonfirmasi } from '../lib/api.js';
+import {
+  PESAN_ALASAN_PERINGATAN_MIN,
+  alasanPeringatanCukup,
+  opsiPeringatanApi,
+  rapikanAlasanPeringatan,
+} from '../lib/peringatan.js';
+import {
+  adalahErrorSaldoAwal,
+  opsiSaldoAwal,
+  tandaiMulaiTanpaSaldoAwal,
+} from '../lib/saldoAwal.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
   Badge,
@@ -19,18 +37,27 @@ import {
   ErrorBox,
   Field,
   LockModal,
+  PeringatanModal,
   Select,
   TextInput,
 } from './ui.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
+import { PetunjukAkunKembar } from './PetunjukAkunKembar.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
 import {
+  PESAN_MUAT_GAGAL,
   PESAN_PROSES_GAGAL,
   PESAN_TANGGAL_TIDAK_VALID,
   pesanError,
 } from '../../utils/pesanError.js';
 
 /** Jenis transaksi yang sudah punya form terpandu. */
-export type JenisFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
+export type JenisFormTransaksi =
+  | 'TERIMA'
+  | 'BAYAR'
+  | 'PINDAH'
+  | 'CATAT_UTANG'
+  | 'BAYAR_UTANG';
 
 /** Kolom yang sama untuk Terima Uang & Bayar (kas + akun lawan). */
 type FormTransaksi = DasarFormJurnal & {
@@ -73,14 +100,29 @@ type KonfigurasiKasLawan = KonfigurasiDasar & {
   buat: (form: FormTransaksi) => JurnalInput;
   grupLawan: (coa: Coa[]) => GrupAkun[];
   akunLawanAwal: (coa: Coa[]) => string;
-  infoTambahan?: string;
 };
 
 type KonfigurasiPindah = KonfigurasiDasar & {
   mode: 'PINDAH';
 };
 
-type KonfigurasiForm = KonfigurasiKasLawan | KonfigurasiPindah;
+type KonfigurasiBebanUtang = KonfigurasiDasar & {
+  mode: 'BEBAN_UTANG';
+  labelBeban: string;
+  hintBeban: string;
+};
+
+type KonfigurasiBayarUtang = KonfigurasiDasar & {
+  mode: 'BAYAR_UTANG';
+  labelKas: string;
+  hintKas: string;
+};
+
+type KonfigurasiForm =
+  | KonfigurasiKasLawan
+  | KonfigurasiPindah
+  | KonfigurasiBebanUtang
+  | KonfigurasiBayarUtang;
 
 
 /** Pilihan awal akun lawan Bayar: 5010/5000, lalu beban pertama. */
@@ -89,6 +131,16 @@ function akunLawanAwalBayar(coa: Coa[]): string {
   return (
     beban.find((a) => a.kode === '5010')?.kode ??
     beban.find((a) => a.kode === '5000')?.kode ??
+    beban[0]?.kode ??
+    ''
+  );
+}
+
+/** Pilihan awal akun beban untuk Catat Utang Usaha: 5003, lalu beban pertama. */
+function akunBebanAwalUtang(coa: Coa[]): string {
+  const beban = coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false);
+  return (
+    beban.find((a) => a.kode === '5003')?.kode ??
     beban[0]?.kode ??
     ''
   );
@@ -131,7 +183,7 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     labelKas: 'Uang keluar dari',
     labelLawan: 'Untuk pembayaran',
     hintLawan:
-      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk piutang/hutang gunakan menu Piutang & Hutang.',
+      'Pilih akun beban untuk belanja/biaya. Untuk panjar gunakan menu Buku Panjar; untuk pinjaman/utang gunakan kartu Catat Utang / Bayar Utang.',
     placeholderKeterangan: 'cth: Bayar listrik bulan Oktober',
     keteranganPratinjau: 'Transaksi harian',
     labelTombol: 'Simpan Transaksi',
@@ -144,7 +196,6 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
       return beban.length > 0 ? [{ label: 'Beban', akun: beban }] : [];
     },
     akunLawanAwal: akunLawanAwalBayar,
-    infoTambahan: 'Pagu anggaran diatur di menu Anggaran.',
   },
   PINDAH: {
     mode: 'PINDAH',
@@ -155,20 +206,143 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     keteranganPratinjau: 'Pindah dana',
     labelTombol: 'Simpan Pindah Dana',
   },
+  CATAT_UTANG: {
+    mode: 'BEBAN_UTANG',
+    judul: 'Catat Utang Usaha',
+    deskripsi:
+      'Catat pembelian atau perbaikan yang dibayar belakangan. Beban langsung masuk Laba Rugi dan Utang Usaha (2060) bertambah; uang kas belum keluar.',
+    placeholderKeterangan: 'cth: Perbaikan gedung — utang ke Toko Bangunan Jaya',
+    keteranganPratinjau: 'Pembelian/perbaikan kredit',
+    labelTombol: 'Simpan Catat Utang Usaha',
+    labelBeban: 'Akun beban (untuk Laba Rugi)',
+    hintBeban:
+      'Pilih akun beban, mis. 5003 BAGA WEWANGUNAN. Tulis nama kreditur di Keterangan.',
+  },
+  BAYAR_UTANG: {
+    mode: 'BAYAR_UTANG',
+    judul: 'Bayar Utang Usaha',
+    deskripsi:
+      'Catat pembayaran utang usaha (2060). Kas/bank berkurang dan masuk kelompok Operasi di Arus Kas, bukan Pendanaan.',
+    placeholderKeterangan: 'cth: Bayar utang bahan ke Toko Bangunan Jaya',
+    keteranganPratinjau: 'Pembayaran utang usaha',
+    labelTombol: 'Simpan Bayar Utang Usaha',
+    labelKas: 'Uang keluar dari',
+    hintKas: 'Pilih kas/bank sumber. Tulis nama kreditur di Keterangan.',
+  },
 };
+
+export type StatusSisaUtang =
+  | { status: 'idle' }
+  | { status: 'memuat' }
+  | { status: 'sukses'; saldoAkhir: number }
+  | { status: 'gagal'; pesan: string };
+
+/** Nominal isian hanya untuk saldo utang positif; selain itu tidak ada isian. */
+export function nominalSisaUtang(saldoAkhir: number): number | null {
+  return Number.isInteger(saldoAkhir) && saldoAkhir > 0 ? saldoAkhir : null;
+}
+
+/** Saldo 2060 s/d tanggal transaksi (dalam sen, sesuai konvensi aplikasi). */
+export async function muatSisaUtangUsaha(tanggal: string): Promise<number> {
+  const hasil = await api.laporanBukuBesar({
+    akun_kode: AKUN_HUTANG_USAHA,
+    sampai: tanggal,
+  });
+  return hasil.saldoAkhir;
+}
+
+/**
+ * Pemuat yang hanya menerima hasil permintaan terbaru. Permintaan lama tetap
+ * berjalan, tetapi hasilnya menjadi `null` agar tidak menimpa tanggal baru.
+ */
+export function buatPemuatSisaUtang(
+  ambil: (tanggal: string) => Promise<number> = muatSisaUtangUsaha,
+): {
+  muat: (tanggal: string) => Promise<number | null>;
+  batalkan: () => void;
+} {
+  let nomorTerakhir = 0;
+  return {
+    async muat(tanggal: string): Promise<number | null> {
+      const nomor = ++nomorTerakhir;
+      const saldoAkhir = await ambil(tanggal);
+      return nomor === nomorTerakhir ? saldoAkhir : null;
+    },
+    batalkan(): void {
+      nomorTerakhir += 1;
+    },
+  };
+}
+
+/** Kotak info sisa Utang Usaha; dipisah agar mudah diuji tanpa IPC. */
+export function SisaUtangUsahaInfo({
+  status,
+  onIsi,
+}: {
+  status: StatusSisaUtang;
+  onIsi: (nominal: number) => void;
+}) {
+  return (
+    <div
+      data-testid="sisa-utang-usaha"
+      role="status"
+      className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[15px] text-amber-900"
+    >
+      {status.status === 'memuat' ? (
+        <p>Memuat sisa Utang Usaha (2060)…</p>
+      ) : status.status === 'gagal' ? (
+        <p>
+          Sisa Utang Usaha (2060) gagal dimuat. {status.pesan} Form tetap bisa
+          diisi manual.
+        </p>
+      ) : status.status === 'idle' ? (
+        <p>Isi tanggal yang valid untuk melihat sisa Utang Usaha (2060).</p>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold">
+              {`Sisa Utang Usaha (2060) saat ini: ${formatRp(status.saldoAkhir)}`}
+            </p>
+            {status.saldoAkhir <= 0 && (
+              <p className="mt-1 text-sm">
+                {status.saldoAkhir === 0
+                  ? 'Tidak ada sisa utang usaha (2060) per tanggal ini.'
+                  : 'Saldo (2060) tidak menunjukkan utang yang perlu dibayar.'}
+              </p>
+            )}
+          </div>
+          {status.saldoAkhir > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onIsi(status.saldoAkhir)}
+            >
+              Isi sesuai sisa utang
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function FormTransaksiTerpandu({
   jenis,
   coa,
   memuat = false,
+  onTersimpan,
 }: {
   jenis: JenisFormTransaksi;
   coa: Coa[];
   memuat?: boolean;
+  /** Dipanggil setelah transaksi tersimpan agar daftar terakhir ikut segar. */
+  onTersimpan?: () => void;
 }) {
   const konfigurasi = KONFIG[jenis];
   const pindah = konfigurasi.mode === 'PINDAH';
-  const kasAwal = coa.find((a) => isAkunKas(a.kode) && a.aktif !== false)?.kode ?? '';
+  const bebanUtang = konfigurasi.mode === 'BEBAN_UTANG';
+  const bayarUtang = konfigurasi.mode === 'BAYAR_UTANG';
+  const kasAwal = coa.find((a) => isAkunKasData(a) && a.aktif !== false)?.kode ?? '';
   const { setDirty } = useTabGuard();
 
   // UI-07: isian yang ditinggalkan hanya boleh menandai tab ini kotor. Saat
@@ -177,16 +351,21 @@ export function FormTransaksiTerpandu({
 
   const [tanggal, setTanggal] = useState(tanggalLokal());
   const [akunKas, setAkunKas] = useState(kasAwal);
-  const [akunLawan, setAkunLawan] = useState(() =>
-    konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.akunLawanAwal(coa) : '',
-  );
+  const [akunLawan, setAkunLawan] = useState(() => {
+    if (konfigurasi.mode === 'KAS_LAWAN') return konfigurasi.akunLawanAwal(coa);
+    if (konfigurasi.mode === 'BEBAN_UTANG') return akunBebanAwalUtang(coa);
+    return '';
+  });
   const [akunKe, setAkunKe] = useState(
     () =>
-      coa.find((a) => isAkunKas(a.kode) && a.aktif !== false && a.kode !== kasAwal)?.kode ?? '',
+      coa.find((a) => isAkunKasData(a) && a.aktif !== false && a.kode !== kasAwal)?.kode ?? '',
   );
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
   const [noBukti, setNoBukti] = useState('');
+  const [sisaUtang, setSisaUtang] = useState<StatusSisaUtang>({
+    status: 'memuat',
+  });
 
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -200,9 +379,23 @@ export function FormTransaksiTerpandu({
   } | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
   const nominalRef = useRef<HTMLDivElement | null>(null);
+  const pemuatSisaUtangRef = useRef<ReturnType<
+    typeof buatPemuatSisaUtang
+  > | null>(null);
+  if (pemuatSisaUtangRef.current === null) {
+    pemuatSisaUtangRef.current = buatPemuatSisaUtang();
+  }
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
+  const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
+  /** Alasan kunci periode dan alasan peringatan sengaja dipisah (AKT-07). */
+  const alasanPeriodeRef = useRef('');
+  const alasanPeringatanRef = useRef('');
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const saldoAwalPendingRef = useRef<{
+    konfirmasi?: boolean;
+  }>({});
 
   useEffect(
     () => () => {
@@ -221,10 +414,42 @@ export function FormTransaksiTerpandu({
     ringkasan.scrollIntoView({ block: 'center' });
   }, [err, errorSeq]);
 
+  // Sisa Utang Usaha (2060) s/d tanggal transaksi. Form tetap bisa dipakai
+  // manual bila pemuatan gagal; hasil tanggal lama tidak boleh menimpa baru.
+  useEffect(() => {
+    if (!bayarUtang) return;
+    const pemuat = pemuatSisaUtangRef.current;
+    if (!pemuat) return;
+    if (!tanggalKalenderValid(tanggal)) {
+      pemuat.batalkan();
+      setSisaUtang({ status: 'idle' });
+      return;
+    }
+    let aktif = true;
+    setSisaUtang({ status: 'memuat' });
+    pemuat
+      .muat(tanggal)
+      .then((saldoAkhir) => {
+        if (!aktif || saldoAkhir === null) return;
+        setSisaUtang({ status: 'sukses', saldoAkhir });
+      })
+      .catch((e) => {
+        if (!aktif) return;
+        setSisaUtang({
+          status: 'gagal',
+          pesan: pesanError(e, PESAN_MUAT_GAGAL),
+        });
+      });
+    return () => {
+      aktif = false;
+      pemuat.batalkan();
+    };
+  }, [bayarUtang, tanggal]);
+
   // COA dimuat async oleh TransaksiTab. Isi pilihan awal saat datanya tiba,
   // tanpa menimpa pilihan yang sudah dibuat operator.
   useEffect(() => {
-    const kasAktif = coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false);
+    const kasAktif = coa.filter((a) => isAkunKasData(a) && a.aktif !== false);
     const kasPertama = kasAktif[0]?.kode ?? '';
     setAkunKas((sebelum) =>
       kasAktif.some((a) => a.kode === sebelum) ? sebelum : kasPertama,
@@ -235,7 +460,13 @@ export function FormTransaksiTerpandu({
       setAkunLawan((sebelum) =>
         pilihan.some((a) => a.kode === sebelum) ? sebelum : lawanAwal,
       );
-    } else {
+    } else if (konfigurasi.mode === 'BEBAN_UTANG') {
+      const pilihan = coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false);
+      const lawanAwal = akunBebanAwalUtang(coa);
+      setAkunLawan((sebelum) =>
+        pilihan.some((a) => a.kode === sebelum) ? sebelum : lawanAwal,
+      );
+    } else if (konfigurasi.mode === 'PINDAH') {
       const tujuanAwal =
         kasAktif.find((a) => a.kode !== kasPertama)?.kode ?? '';
       setAkunKe((sebelum) =>
@@ -245,13 +476,20 @@ export function FormTransaksiTerpandu({
   }, [coa, konfigurasi]);
 
   const kasList = useMemo(
-    () => coa.filter((a) => isAkunKas(a.kode) && a.aktif !== false),
+    () => coa.filter((a) => isAkunKasData(a) && a.aktif !== false),
     [coa],
   );
-  const grupLawan = useMemo(
-    () => (konfigurasi.mode === 'KAS_LAWAN' ? konfigurasi.grupLawan(coa) : []),
-    [coa, konfigurasi],
-  );
+  const grupLawan = useMemo(() => {
+    if (konfigurasi.mode === 'KAS_LAWAN') return konfigurasi.grupLawan(coa);
+    if (konfigurasi.mode === 'BEBAN_UTANG')
+      return [
+        {
+          label: 'Beban',
+          akun: coa.filter((a) => a.tipe === 'BEBAN' && a.aktif !== false),
+        },
+      ];
+    return [];
+  }, [coa, konfigurasi]);
   const namaAkun = useMemo(
     () => new Map(coa.map((a) => [a.kode, `${a.kode} — ${a.nama}`])),
     [coa],
@@ -265,6 +503,28 @@ export function FormTransaksiTerpandu({
           tanggal: nilai.tanggal,
           dari: nilai.akunKas,
           ke: nilai.akunKe,
+          nominal: nilai.nominal,
+          keterangan: nilai.keterangan,
+          daftarAkun: coa,
+          ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
+          ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
+        });
+      }
+      if (konfigurasi.mode === 'BEBAN_UTANG') {
+        return buatJurnalCatatUtangUsaha({
+          tanggal: nilai.tanggal,
+          akunBeban: nilai.akunLawan,
+          nominal: nilai.nominal,
+          keterangan: nilai.keterangan,
+          daftarAkun: coa,
+          ...(nilai.noBukti ? { noBukti: nilai.noBukti } : {}),
+          ...(nilai.alasan ? { alasan: nilai.alasan } : {}),
+        });
+      }
+      if (konfigurasi.mode === 'BAYAR_UTANG') {
+        return buatJurnalBayarUtangUsaha({
+          tanggal: nilai.tanggal,
+          akunKas: nilai.akunKas,
           nominal: nilai.nominal,
           keterangan: nilai.keterangan,
           daftarAkun: coa,
@@ -293,6 +553,10 @@ export function FormTransaksiTerpandu({
     if (pindah) {
       if (!akunKas || !akunKe)
         return { input: null as JurnalInput | null, error: null };
+    } else if (bebanUtang) {
+      if (!akunLawan) return { input: null as JurnalInput | null, error: null };
+    } else if (bayarUtang) {
+      if (!akunKas) return { input: null as JurnalInput | null, error: null };
     } else if (!akunKas || !akunLawan) {
       return { input: null as JurnalInput | null, error: null };
     }
@@ -321,6 +585,8 @@ export function FormTransaksiTerpandu({
     akunKas,
     akunKe,
     akunLawan,
+    bayarUtang,
+    bebanUtang,
     keterangan,
     konfigurasi.keteranganPratinjau,
     nominal,
@@ -334,7 +600,11 @@ export function FormTransaksiTerpandu({
 
   const akunLengkap = pindah
     ? Boolean(akunKas && akunKe && akunKas !== akunKe)
-    : Boolean(akunKas && akunLawan);
+    : bebanUtang
+      ? Boolean(akunLawan)
+      : bayarUtang
+        ? Boolean(akunKas)
+        : Boolean(akunKas && akunLawan);
   const formSah =
     tanggalKalenderValid(tanggal) &&
     akunLengkap &&
@@ -347,6 +617,16 @@ export function FormTransaksiTerpandu({
       const tujuan = `Tujuan (masuk) — ${labelAkun(akunKe)}`;
       const asal = `Asal (keluar) — ${labelAkun(akunKas)}`;
       return i === 0 ? tujuan : asal;
+    }
+    if (konfigurasi.mode === 'BEBAN_UTANG') {
+      const beban = `Beban — ${labelAkun(akunLawan)} (bertambah)`;
+      const utang = 'Utang Usaha (2060) — bertambah';
+      return i === 0 ? beban : utang;
+    }
+    if (konfigurasi.mode === 'BAYAR_UTANG') {
+      const utang = 'Utang Usaha (2060) — berkurang';
+      const kas = `Kas/Bank — ${labelAkun(akunKas)} (berkurang)`;
+      return i === 0 ? utang : kas;
     }
     const kas = `${konfigurasi.labelKasBaris} — ${labelAkun(akunKas)}`;
     const lawan = `${konfigurasi.labelLawanBaris} — ${labelAkun(akunLawan)}`;
@@ -383,13 +663,24 @@ export function FormTransaksiTerpandu({
   }
 
   async function simpan(
-    opsi: { alasan?: string; konfirmasi?: boolean } = {},
+    opsi: {
+      alasan?: string;
+      alasanPeringatan?: string;
+      konfirmasi?: boolean;
+      konfirmasiTanpaSaldoAwal?: boolean;
+    } = {},
   ): Promise<void> {
     if (busyRef.current) return;
     setErr(null);
     setInfo(null);
-    setPesanKonfirmasi(null);
+    // Saat operator mengirim alasan dari modal, biarkan modal tetap terbuka
+    // sampai hasil backend diketahui agar penolakan bisa langsung diperbaiki.
+    if (opsi.konfirmasi !== true) {
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+    }
     setLockOpen(false);
+    setSaldoAwalOpen(false);
     setToast(null);
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -398,6 +689,23 @@ export function FormTransaksiTerpandu({
 
     if (!formSah) {
       tampilkanError('Lengkapi tanggal, akun, nominal, dan keterangan terlebih dahulu.');
+      return;
+    }
+
+    // Alasan kunci periode (`alasan`) dan alasan peringatan (`alasanPeringatan`)
+    // adalah dua hal berbeda; keduanya dipertahankan selama retry.
+    const alasanPeriode = rapikanAlasanPeringatan(
+      opsi.alasan ?? alasanPeriodeRef.current,
+    );
+    if (opsi.alasan) alasanPeriodeRef.current = opsi.alasan;
+    const alasanPeringatan = rapikanAlasanPeringatan(
+      opsi.alasanPeringatan ?? alasanPeringatanRef.current,
+    );
+    if (opsi.alasanPeringatan) alasanPeringatanRef.current = opsi.alasanPeringatan;
+
+    if (opsi.konfirmasi === true && !alasanPeringatanCukup(alasanPeringatan)) {
+      setPesanKonfirmasi((sebelum) => sebelum ?? PESAN_ALASAN_PERINGATAN_MIN);
+      setErrorKonfirmasi(PESAN_ALASAN_PERINGATAN_MIN);
       return;
     }
 
@@ -411,7 +719,7 @@ export function FormTransaksiTerpandu({
         nominal,
         keterangan: keterangan.trim(),
         noBukti: noBukti.trim(),
-        ...(opsi.alasan ? { alasan: opsi.alasan } : {}),
+        ...(alasanPeriode ? { alasan: alasanPeriode } : {}),
       });
     } catch (e) {
       tampilkanError(pesanError(e));
@@ -419,12 +727,26 @@ export function FormTransaksiTerpandu({
     }
 
     const nominalTersimpan = nominal;
+    saldoAwalPendingRef.current = {
+      ...(opsi.konfirmasi ? { konfirmasi: true } : {}),
+    };
     busyRef.current = true;
     setBusy(true);
     try {
-      const hasil = await api.jurnalPosting(input, {
+      const hasil = await api.transaksiPosting(input, {
         konfirmasiPeringatan: opsi.konfirmasi === true,
+        ...opsiPeringatanApi(
+          opsi.konfirmasi === true ? alasanPeringatan : undefined,
+        ),
+        ...opsiSaldoAwal(opsi.konfirmasiTanpaSaldoAwal === true),
       });
+      setPesanKonfirmasi(null);
+      setErrorKonfirmasi(null);
+      // Alasan kunci/peringatan hanya untuk percobaan ini; transaksi berikutnya
+      // pada tanggal yang sama harus meminta alasan baru bila perlu.
+      alasanPeriodeRef.current = '';
+      alasanPeringatanRef.current = '';
+      saldoAwalPendingRef.current = {};
       const nomorTersimpan = hasil.jurnal.no_bukti;
       setInfo(
         `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${nomorTersimpan ? ` (${nomorTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
@@ -439,6 +761,7 @@ export function FormTransaksiTerpandu({
       setNoBukti('');
       // UI-07: simpan sukses = tidak ada isian yang perlu diperingatkan.
       setDirty(false);
+      onTersimpan?.();
       // UI-13: fokuskan Nominal setelah reset ter-commit agar entri berikutnya
       // bisa langsung diketik. Dua rAF memberi ruang commit React + paint.
       requestAnimationFrame(() => {
@@ -447,17 +770,44 @@ export function FormTransaksiTerpandu({
         });
       });
     } catch (e) {
-      if (isPerluAlasan(e)) {
+      if (adalahErrorSaldoAwal(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
+        setSaldoAwalOpen(true);
+      } else if (isPerluAlasan(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         setLockOpen(true);
-      } else if (isPerluKonfirmasi(e) && !opsi.konfirmasi) {
-        setPesanKonfirmasi(pesanError(e));
+      } else if (isPerluKonfirmasi(e)) {
+        const pesan = pesanError(e);
+        setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
+        // Penolakan "alasan kurang" ditampilkan di dalam modal agar operator
+        // bisa langsung memperbaiki isian yang sama.
+        setErrorKonfirmasi(opsi.konfirmasi === true ? pesan : null);
       } else {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
         tampilkanError(pesanError(e));
       }
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  function mulaiTanpaSaldoAwal(): void {
+    tandaiMulaiTanpaSaldoAwal();
+    setSaldoAwalOpen(false);
+    void simpan({
+      ...saldoAwalPendingRef.current,
+      konfirmasiTanpaSaldoAwal: true,
+    });
+  }
+
+  function saldoAwalTersimpan(_pesan: string): void {
+    setSaldoAwalOpen(false);
+    // Saldo awal sudah tersimpan; ulangi penyimpanan transaksi yang tertunda.
+    void simpan(saldoAwalPendingRef.current);
   }
 
   return (
@@ -472,6 +822,7 @@ export function FormTransaksiTerpandu({
         <div className="flex flex-wrap gap-2">
           <Badge tone="green">Jurnal otomatis seimbang</Badge>
           {pindah && <Badge tone="amber">Total kas tetap</Badge>}
+          {bebanUtang && <Badge tone="amber">Kas belum keluar</Badge>}
         </div>
       </div>
 
@@ -491,6 +842,20 @@ export function FormTransaksiTerpandu({
         </div>
       )}
 
+      {bayarUtang && (
+        <div className="mt-3">
+          <SisaUtangUsahaInfo
+            status={sisaUtang}
+            onIsi={(saldoAkhir) => {
+              const nilai = nominalSisaUtang(saldoAkhir);
+              if (nilai === null) return;
+              setNominal(nilai);
+              setDirty(true);
+            }}
+          />
+        </div>
+      )}
+
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field label="Tanggal">
           <TextInput
@@ -499,6 +864,8 @@ export function FormTransaksiTerpandu({
             disabled={busy}
             onChange={(e) => {
               setTanggal(e.target.value);
+              // Alasan kunci periode terikat tanggal; tanggal baru = sesi baru.
+              alasanPeriodeRef.current = '';
               setDirty(true);
             }}
           />
@@ -554,6 +921,53 @@ export function FormTransaksiTerpandu({
               )}
             </Field>
           </>
+        ) : konfigurasi.mode === 'BEBAN_UTANG' ? (
+          <Field label={konfigurasi.labelBeban}>
+            <Select
+              value={akunLawan}
+              disabled={busy || memuat}
+              onChange={(e) => {
+                setAkunLawan(e.target.value);
+                setDirty(true);
+              }}
+            >
+              <option value="">— Pilih akun beban —</option>
+              {grupLawan.map((grup) => (
+                <optgroup key={grup.label} label={grup.label}>
+                  {grup.akun.map((a) => (
+                    <option key={a.kode} value={a.kode}>
+                      {a.kode} — {a.nama}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+            <PetunjukAkunKembar kode={akunLawan} />
+            <span className="mt-1 block text-helper text-stone-500">
+              {konfigurasi.hintBeban}
+            </span>
+          </Field>
+        ) : konfigurasi.mode === 'BAYAR_UTANG' ? (
+          <Field label={konfigurasi.labelKas}>
+            <Select
+              value={akunKas}
+              disabled={busy || memuat}
+              onChange={(e) => {
+                setAkunKas(e.target.value);
+                setDirty(true);
+              }}
+            >
+              <option value="">— Pilih kas / bank —</option>
+              {kasList.map((a) => (
+                <option key={a.kode} value={a.kode}>
+                  {a.kode} — {a.nama}
+                </option>
+              ))}
+            </Select>
+            <span className="mt-1 block text-helper text-stone-500">
+              {konfigurasi.hintKas}
+            </span>
+          </Field>
         ) : (
           <>
             <Field label={konfigurasi.labelKas}>
@@ -594,14 +1008,10 @@ export function FormTransaksiTerpandu({
                   </optgroup>
                 ))}
               </Select>
+              <PetunjukAkunKembar kode={akunLawan} />
               <span className="mt-1 block text-helper text-stone-500">
                 {konfigurasi.hintLawan}
               </span>
-              {konfigurasi.infoTambahan && (
-                <span className="mt-1 block text-helper text-stone-500">
-                  {konfigurasi.infoTambahan}
-                </span>
-              )}
             </Field>
           </>
         )}
@@ -662,6 +1072,18 @@ export function FormTransaksiTerpandu({
             Debit = dompet tujuan, kredit = dompet asal. Total kas tidak berubah.
           </p>
         )}
+        {bebanUtang && (
+          <p className="mt-1 text-sm text-stone-600">
+            Debit = akun beban, kredit = Utang Usaha (2060). Kas belum keluar dan
+            modal (3000) tidak berubah.
+          </p>
+        )}
+        {bayarUtang && (
+          <p className="mt-1 text-sm text-stone-600">
+            Debit = Utang Usaha (2060), kredit = kas/bank. Pembayaran ini masuk
+            Arus Kas Operasi.
+          </p>
+        )}
 
         {pratinjau.error ? (
           <p className="mt-2 text-sm text-red-700">{pratinjau.error}</p>
@@ -705,22 +1127,18 @@ export function FormTransaksiTerpandu({
       </div>
 
       {pesanKonfirmasi && (
-        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
-          <p className="text-[15px] font-semibold">Perlu konfirmasi</p>
-          <p className="mt-1 text-[15px]">{pesanKonfirmasi}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={() => void simpan({ konfirmasi: true })}>
-              Ya, tetap simpan
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setPesanKonfirmasi(null)}
-            >
-              Batal
-            </Button>
-          </div>
-        </div>
+        <PeringatanModal
+          pesan={pesanKonfirmasi}
+          pesanError={errorKonfirmasi}
+          sibuk={busy}
+          onCancel={() => {
+            setPesanKonfirmasi(null);
+            setErrorKonfirmasi(null);
+          }}
+          onSubmit={(alasan) => {
+            void simpan({ konfirmasi: true, alasanPeringatan: alasan });
+          }}
+        />
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -756,10 +1174,19 @@ export function FormTransaksiTerpandu({
           onCancel={() => setLockOpen(false)}
           onSubmit={(alasan) => {
             setLockOpen(false);
-            void simpan({ alasan });
+            void simpan({ ...saldoAwalPendingRef.current, alasan });
           }}
         />
       )}
+
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        coa={coa}
+        sibuk={busy}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={mulaiTanpaSaldoAwal}
+        onSaldoAwalTersimpan={saldoAwalTersimpan}
+      />
     </Card>
   );
 }

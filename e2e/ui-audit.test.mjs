@@ -1,9 +1,10 @@
 // UI-23 — Audit regresi UI otomatis memakai Electron asli (Playwright).
 //
 // Menjalankan hasil `npm run build` dengan profil & database sementara per
-// ukuran jendela, lalu memeriksa 18 tab: error console, overflow horizontal,
+// ukuran jendela, lalu memeriksa 13 tab: error console, overflow horizontal,
 // h1/header, sticky header, reset scroll antar tab, skip link, modal, guard
-// isian, simpan transaksi, filter Jurnal Umum, dan akses sidebar.
+// isian, simpan transaksi, filter Jurnal Umum, dan akses sidebar. Jurnal Umum
+// hanya muncul setelah Mode lanjutan diaktifkan, sesuai DB-26/DB-29.
 //
 // Jalankan: npm run test:ui-audit
 // Simpan folder data uji saat gagal: SMOKE_KEEP=1 npm run test:ui-audit
@@ -32,7 +33,7 @@ const UKURAN = [
   { nama: '1024x680', width: 1024, height: 680 },
 ];
 
-/** 18 tab sesuai urutan sidebar. */
+/** Daftar tab yang diaudit (mengikuti menu sidebar yang tersedia). */
 const TAB = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'transaksi', label: 'Transaksi' },
@@ -40,17 +41,12 @@ const TAB = [
   { id: 'jurnal', label: 'Jurnal Umum' },
   { id: 'buku-besar', label: 'Buku Besar' },
   { id: 'neraca-saldo', label: 'Neraca Saldo' },
-  { id: 'aset', label: 'Inventaris Aset' },
   { id: 'panjar', label: 'Buku Panjar' },
-  { id: 'pihak', label: 'Piutang & Hutang' },
-  { id: 'pembantu', label: 'Buku Pembantu' },
-  { id: 'realisasi', label: 'Anggaran' },
-  { id: 'rekonsiliasi', label: 'Rekonsiliasi Bank' },
-  { id: 'import', label: 'Import Excel' },
+  { id: 'pinjaman', label: 'Pinjaman LPD' },
   { id: 'laba-rugi', label: 'Laba Rugi' },
   { id: 'neraca', label: 'Neraca' },
   { id: 'arus-kas', label: 'Arus Kas' },
-  { id: 'tutup', label: 'Tutup Buku' },
+  { id: 'tutup', label: 'Kunci Periode' },
   { id: 'pengaturan', label: 'Pengaturan' },
 ];
 
@@ -60,10 +56,6 @@ const TAB_DI_GRUP_LAPORAN = new Set([
   'Laba Rugi',
   'Neraca',
   'Arus Kas',
-  'Anggaran',
-  'Rekonsiliasi Bank',
-  'Buku Pembantu',
-  'Inventaris Aset',
 ]);
 
 const pesan = (bagian, detail) => `${bagian}: ${detail}`;
@@ -177,6 +169,47 @@ async function aturUkuran(app, page, ukuran, t) {
   return metrik;
 }
 
+/**
+ * DB-26/DB-29: Jurnal Umum harus tersembunyi secara default, lalu muncul di
+ * grup Data & Sistem setelah Mode lanjutan diaktifkan. Label periode memakai
+ * "Kunci Periode", bukan "Tutup Buku".
+ */
+async function aktifkanModeLanjutan(page, t) {
+  const nav = page.getByRole('navigation', { name: 'Menu utama' });
+  const jurnal = nav.getByRole('button', { name: 'Jurnal Umum', exact: true });
+
+  assert.equal(
+    await jurnal.count(),
+    0,
+    'Jurnal Umum tampil sebelum Mode lanjutan diaktifkan',
+  );
+  assert.ok(
+    await nav.getByRole('button', { name: 'Kunci Periode', exact: true }).isVisible(),
+    'Menu Kunci Periode tidak terlihat di Data & Sistem',
+  );
+  assert.equal(
+    await nav.getByRole('button', { name: 'Tutup Buku', exact: true }).count(),
+    0,
+    'Label lama Tutup Buku masih tampil',
+  );
+
+  await page.evaluate(() => {
+    window.localStorage.setItem('pura.mode.lanjutan', 'true');
+  });
+  await page.reload();
+  await siapkanSesi(page, t);
+  await page.waitForTimeout(300);
+
+  assert.equal(
+    await jurnal.count(),
+    1,
+    'Jurnal Umum tidak muncul setelah Mode lanjutan diaktifkan',
+  );
+  t.diagnostic(
+    'Mode lanjutan OK: Jurnal Umum tersembunyi default, lalu muncul di Data & Sistem',
+  );
+}
+
 /** Cek sidebar: Pengaturan selalu terlihat; grup Laporan bisa dibuka. */
 async function cekSidebar(page, ukuran) {
   const pengaturan = tombolTab(page, 'Pengaturan');
@@ -214,14 +247,24 @@ async function cekSidebar(page, ukuran) {
         `Item laporan ${label} tidak terlihat setelah grup dibuka`,
       );
     }
-    // 17 item tab (tanpa Pengaturan) + 3 header grup.
+    // Jurnal Umum sudah terlihat karena Mode lanjutan aktif; pastikan bukan
+    // race setelah reload sebelum menghitung tombol.
+    assert.ok(
+      await nav.getByRole('button', { name: 'Jurnal Umum', exact: true }).isVisible(),
+      'Jurnal Umum tidak terlihat di sidebar setelah Mode lanjutan aktif',
+    );
+    // Isi nav saat sidebar terbuka = seluruh tab kecuali Pengaturan (dipin di
+    // footer di luar <nav>) + 3 tombol header grup (Harian/Laporan/Data).
+    // Jangan menulis angka mati: daftar TAB boleh berubah tanpa membuat audit
+    // gagal karena selisih satu.
+    const jumlahItemNav = TAB.length - 1;
     assert.equal(
       await nav.getByRole('button').count(),
-      20,
+      jumlahItemNav + 3,
       'Jumlah tombol nav tidak sesuai setelah grup Laporan dibuka',
     );
   } else {
-    // Sidebar lipat: semua 17 item tetap bisa diakses lewat aria-label.
+    // Sidebar lipat: semua 13 item tetap bisa diakses lewat aria-label.
     for (const tab of TAB) {
       if (tab.label === 'Pengaturan') continue;
       assert.ok(
@@ -504,6 +547,53 @@ async function cekSimpanTransaksi(page, folder, t) {
   return { keterangan, baris };
 }
 
+/**
+ * T3.8: konfirmasi aksi berisiko menjelaskan dampak, memfokuskan pilihan aman,
+ * dan bisa ditutup dengan Escape tanpa menjalankan aksi.
+ */
+async function cekKonfirmasiAksiBerisiko(page, t) {
+  const pemicu = page.getByRole('button', { name: 'Backup Lengkap (disarankan)' });
+  await pemicu.scrollIntoViewIfNeeded();
+  await pemicu.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Buat backup lengkap?' });
+  await dialog.waitFor({ timeout: 10_000 });
+  const teks = await dialog.innerText();
+  assert.match(teks, /Yang berubah:/, 'Konfirmasi backup tidak menyebut yang berubah');
+  assert.match(teks, /Yang tetap:/, 'Konfirmasi backup tidak menyebut yang tetap');
+  assert.match(teks, /tidak terenkripsi/i, 'Konfirmasi backup tidak menyebut enkripsi');
+
+  const fokus = await page.evaluate(() =>
+    (document.activeElement?.textContent ?? '').trim(),
+  );
+  assert.equal(fokus, 'Batal', 'Fokus awal konfirmasi bukan pilihan aman Batal');
+
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  await page.waitForFunction(
+    () => (document.activeElement?.textContent ?? '').includes('Backup Lengkap'),
+    null,
+    { timeout: 5_000 },
+  );
+
+  const restore = page.getByRole('button', { name: 'Restore Lengkap (disarankan)' });
+  await restore.click();
+  const dialogRestore = page.getByRole('dialog', {
+    name: 'Pulihkan database dari backup lengkap?',
+  });
+  await dialogRestore.waitFor({ timeout: 10_000 });
+  const teksRestore = await dialogRestore.innerText();
+  assert.match(teksRestore, /Yang tetap:/, 'Konfirmasi restore tidak menyebut yang tetap');
+  assert.match(teksRestore, /pre-restore/, 'Konfirmasi restore tidak menyebut cadangan');
+  assert.match(teksRestore, /manifest\.json/, 'Konfirmasi restore tidak menyebut manifest');
+  await page.keyboard.press('Escape');
+  await dialogRestore.waitFor({ state: 'detached' });
+
+  t.diagnostic(
+    'konfirmasi aksi berisiko OK: copy dampak, fokus Batal, Escape menutup tanpa aksi',
+  );
+}
+
 /** Modal Detail Jurnal: fokus masuk, Tab terkurung, Escape + restore fokus. */
 async function cekModalJurnal(page, baris, folder, t) {
   const dialog = page.getByRole('dialog', { name: 'Detail Jurnal' });
@@ -562,7 +652,7 @@ async function cekFilterJurnal(page, folder, t) {
     ['Cari', page.getByLabel('Cari', { exact: true })],
     ['Dari tanggal', page.getByLabel('Dari tanggal', { exact: true })],
     ['Sampai tanggal', page.getByLabel('Sampai tanggal', { exact: true })],
-    ['Jenis', page.getByRole('combobox', { name: /^Jenis\b/ })],
+    ['Filter jenis', page.getByRole('combobox', { name: /^Filter jenis\b/ })],
   ];
   for (const [label, kontrol] of kontrolFilter) {
     assert.ok(
@@ -727,14 +817,19 @@ async function jalankanAudit(ukuran, t) {
 
     ringkasan.viewport = await aturUkuran(app, page, ukuran, t);
 
-    // Sidebar diperiksa sebelum mengembara antar tab.
+    // Sidebar diperiksa setelah Mode lanjutan diaktifkan; default-nya Jurnal
+    // Umum disembunyikan (DB-26).
+    await aktifkanModeLanjutan(page, t);
     await cekSidebar(page, ukuran);
     t.diagnostic(`${ukuran.nama} sidebar: Pengaturan terlihat, grup Laporan dapat diakses`);
+
+    await cekKonfirmasiAksiBerisiko(page, t);
+    ringkasan.flow.konfirmasiBerisiko = 'lulus';
 
     await cekScrollAntarTab(page, t);
     ringkasan.flow.scrollAntarTab = 'lulus';
 
-    // 18 tab: verifikasi metrik, screenshot, sticky, dan reset scroll.
+    // 13 tab: verifikasi metrik, screenshot, sticky, dan reset scroll.
     for (let i = 0; i < TAB.length; i++) {
       const tab = TAB[i];
       await pindahTab(page, tab.label);

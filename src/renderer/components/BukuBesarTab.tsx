@@ -30,6 +30,27 @@ function SisiSaldoBadge({
   return <Badge tone={toneSisiSaldo(sisi)}>{labelSisiSaldo(sisi)}</Badge>;
 }
 
+/**
+ * AUD2-12: istilah Debit/Kredit tetap dipertahankan untuk akuntan, dengan
+ * sub-label arah yang memudahkan bendahara membaca efek mutasi pada akun.
+ */
+export function KepalaMutasi({ posisiNormal }: { posisiNormal: PosisiNormal }) {
+  const debit = posisiNormal === 'DEBIT' ? '+ / Masuk' : '- / Berkurang';
+  const kredit = posisiNormal === 'DEBIT' ? '- / Keluar' : '+ / Bertambah';
+  return (
+    <>
+      <th className="py-2 pr-3 text-right">
+        <span className="block">Debit</span>
+        <span className="block text-helper font-normal text-stone-500">({debit})</span>
+      </th>
+      <th className="py-2 pr-3 text-right">
+        <span className="block">Kredit</span>
+        <span className="block text-helper font-normal text-stone-500">({kredit})</span>
+      </th>
+    </>
+  );
+}
+
 export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
   const [coa, setCoa] = useState<Coa[] | null>(null);
   const [akun, setAkun] = useState(akunAwal ?? '');
@@ -321,8 +342,7 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
                     <th className="py-2 pr-3">Tanggal</th>
                     <th className="py-2 pr-3">No. Bukti</th>
                     <th className="py-2 pr-3">Keterangan</th>
-                    <th className="py-2 pr-3 text-right">Debit</th>
-                    <th className="py-2 pr-3 text-right">Kredit</th>
+                    <KepalaMutasi posisiNormal={data.posisi_normal} />
                     <th className="py-2 pr-3 text-right">Saldo</th>
                     <th className="py-2">Sisi</th>
                   </tr>

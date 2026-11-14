@@ -6,9 +6,19 @@
 // Path backup terakhir sengaja TIDAK dicari di sini; main menempelkannya lewat
 // `denganBackupTerakhir` karena hanya main yang tahu folder backup.
 
-import { COA, LPD_KODES, type Coa } from '../../db/coa.js';
-import { rentangTahunBuku } from '../../core/pengaturan.js';
+import {
+  COA,
+  LPD_KODES,
+  kodeKasDariDaftarAkun,
+  kodeLpdDariDaftarAkun,
+  type Coa,
+} from '../../db/coa.js';
+import {
+  catatanTahunPertamaParsial,
+  rentangTahunBuku,
+} from '../../core/pengaturan.js';
 import { formatTanggal } from '../../utils/format.js';
+import { tanggalLokal } from '../../utils/tanggal.js';
 import {
   labaRugi,
   namaAkun,
@@ -45,6 +55,8 @@ export type DashboardLabaRugi = {
   laba: number;
   defisit: boolean;
   badge: 'SURPLUS' | 'DEFISIT';
+  /** DB-38: catatan bila tahun berjalan adalah tahun pertama parsial. */
+  catatanTahunPertama?: string;
 };
 
 export type DashboardNeracaSaldo = {
@@ -59,7 +71,7 @@ export type DashboardPeriode = {
   tahunTerkunci: number[];
   /** Tahun terbesar yang boleh ditutup (tahun lalu menurut tanggal acuan). */
   batasTahun: number;
-  /** Tahun berjalan yang masih terbuka pada cut-off. */
+  /** Tahun berjalan yang masih terbuka menurut tahun acuan hari ini. */
   tahunBerjalan: number;
   /** cth. "2025 terkunci · 2026 terbuka". */
   status: string;
@@ -99,10 +111,17 @@ export type DashboardHasil = {
 export type DashboardOpsi = {
   /** Bulan awal tahun buku 1–12 (dari pengaturan pembukuan). */
   awalTahunBuku?: number;
-  /** Tanggal acuan batas tutup buku; default = cutoff (mudah diuji). */
+  /** Tanggal acuan status periode/tutup buku; default = hari ini (lokal). */
   sekarang?: string;
   /** Master akun dari DB (termasuk akun tambahan); default COA statis. */
   daftarAkun?: readonly Coa[];
+  /** DB-38: tanggal mulai pembukuan untuk label tahun pertama parsial. */
+  tanggalMulaiPembukuan?: string;
+  /**
+   * T-A00: cut-over eksplisit dari DB/pengaturan. Pemanggil main wajib
+   * mengisinya agar Laba Rugi/Neraca tahun pertama tidak memakai inferensi.
+   */
+  cutoverTanggal?: string | null;
 };
 
 function bulanDalamTahun(iso: string): number {
@@ -223,9 +242,17 @@ function susunPeriode(
   const tahunTerkunci = tahunTutupUnik(tutup);
   const tahunTerakhirDitutup =
     tahunTerkunci.length > 0 ? tahunTerkunci[tahunTerkunci.length - 1]! : null;
-  const tahunBerjalan = Number(cutoff.slice(0, 4));
-  const tahunAcuan = Number(sekarang.slice(0, 4));
-  const batasTahun = (Number.isInteger(tahunAcuan) ? tahunAcuan : tahunBerjalan) - 1;
+
+  // Status "terbuka" mengikuti tahun acuan hari ini, bukan tahun cut-off
+  // laporan. Cut-off historis yang sudah ditutup tidak boleh tampil sebagai
+  // "2025 terkunci · 2025 terbuka".
+  const tahunCutoff = Number(cutoff.slice(0, 4));
+  const tahunSekarang = Number(sekarang.slice(0, 4));
+  const tahunAcuan = Number.isInteger(tahunSekarang) ? tahunSekarang : tahunCutoff;
+  let tahunBerjalan = tahunAcuan;
+  while (tahunTerkunci.includes(tahunBerjalan)) tahunBerjalan += 1;
+
+  const batasTahun = tahunAcuan - 1;
   const status =
     tahunTerkunci.length === 0
       ? `Belum ada periode terkunci · ${tahunBerjalan} terbuka`
@@ -250,10 +277,14 @@ export function buildDashboardJurnal(
   opsi: DashboardOpsi = {},
 ): DashboardHasil {
   const coa = opsi.daftarAkun ?? COA;
+  // DB-14: daftar dompet/LPD mengikuti metadata master akun; COA statis tetap
+  // menjadi fallback lewat helper saat objek lama tidak punya `is_kas`.
+  const kasKodes = kodeKasDariDaftarAkun(coa);
+  const lpdKodes = kodeLpdDariDaftarAkun(coa);
   const kasTunai = saldoAkun(baris, '1001', cutoff, coa);
-  const lpd = saldoSemuaKas(baris, LPD_KODES, cutoff, coa);
+  const lpd = saldoSemuaKas(baris, lpdKodes, cutoff, coa);
   const totalLpd = Object.values(lpd).reduce((s, v) => s + v, 0);
-  const totalKasBank = totalKas(baris, undefined, cutoff, coa);
+  const totalKasBank = totalKas(baris, kasKodes, cutoff, coa);
   const rincian = rincianKas(baris, cutoff, coa);
   const kasBank: DashboardKasBank = {
     total: totalKasBank,
@@ -265,7 +296,19 @@ export function buildDashboardJurnal(
   };
 
   const rentang = rentangLabaBerjalan(cutoff, opsi.awalTahunBuku ?? 1);
-  const lr = labaRugi(baris, { mulai: rentang.mulai, sampai: rentang.sampai }, coa);
+  const lr = labaRugi(
+    baris,
+    { mulai: rentang.mulai, sampai: rentang.sampai },
+    coa,
+    opsi.cutoverTanggal,
+  );
+  const tanggalTahunPertama =
+    String(opsi.cutoverTanggal ?? '').trim() || opsi.tanggalMulaiPembukuan;
+  const catatanTahunPertama =
+    catatanTahunPertamaParsial(
+      tanggalTahunPertama,
+      rentang.tahunBuku,
+    ) ?? undefined;
   const labaRugiBerjalan: DashboardLabaRugi = {
     ...rentang,
     totalPendapatan: lr.totalPendapatan,
@@ -273,7 +316,13 @@ export function buildDashboardJurnal(
     laba: lr.laba,
     defisit: lr.defisit,
     badge: lr.defisit ? 'DEFISIT' : 'SURPLUS',
+    ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
   };
+
+  // T-A08: Neraca dihitung lebih dulu dan menjadi SATU-SATUNYA definisi
+  // balance. Trial balance hanya informasi tambahan; jurnal bisa seimbang
+  // sementara Neraca selisih (mis. P&L di luar cakupan cut-over).
+  const n = neraca(baris, { cutoff, tutup }, coa, opsi.cutoverTanggal);
 
   const ns = hitungNeracaSaldo(baris, cutoff, coa);
   const neracaSaldo: DashboardNeracaSaldo = {
@@ -283,8 +332,7 @@ export function buildDashboardJurnal(
     seimbang: ns.seimbang,
   };
 
-  const n = neraca(baris, { cutoff, tutup }, coa);
-  const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? cutoff);
+  const periode = susunPeriode(tutup, cutoff, opsi.sekarang ?? tanggalLokal());
 
   return {
     cutoff,
@@ -298,9 +346,10 @@ export function buildDashboardJurnal(
     rincianLpd: lpd,
     aktiva: n.totalAset,
     pasiva: n.totalPasiva,
-    selisih: ns.selisih,
-    balance: ns.seimbang,
-    badge: ns.seimbang ? 'BALANCE' : `SELISIH ${ns.selisih}`,
+    // T-A08: `selisih`/`balance`/`badge` mengikuti Neraca, bukan trial balance.
+    selisih: n.selisih,
+    balance: n.balance,
+    badge: n.balance ? 'BALANCE' : `SELISIH ${n.selisih}`,
   };
 }
 

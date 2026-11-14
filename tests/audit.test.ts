@@ -9,14 +9,11 @@ import { describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, openDb } from '../src/db/database.js';
 import {
   catatAudit,
-  deleteAset,
   hitungAuditLog,
-  insertAset,
   insertAuditLog,
-  insertJurnal,
+  insertJurnalTervalidasi,
   listAuditLog,
   listAuditLogPage,
-  updateAset,
 } from '../src/db/repository.js';
 import { postingJurnal, postingSaldoAwal } from '../src/db/posting.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../src/db/reversal.js';
@@ -31,7 +28,9 @@ import {
   ubahPin,
 } from '../src/main/kunci.js';
 import { buatAuditLog, jsonAuditAman } from '../src/core/audit.js';
-import type { Aset, AuditLog } from '../src/core/types.js';
+import { AKUN_MODAL } from '../src/db/coa.js';
+import { buatPinjaman, tautkanPembayaran } from '../src/db/pinjaman.js';
+import type { AuditLog } from '../src/core/types.js';
 
 function dbKosong(): Database.Database {
   return openDb(':memory:');
@@ -87,7 +86,7 @@ describe('T10 listAuditLog', () => {
     catatAudit(db, {
       id: 'audit-json',
       tanggal: '2026-03-01T00:00:00.000Z',
-      aksi: 'ASET-UPDATE a-1',
+      aksi: 'PANJAR-CREATE p-1',
       alasan: 'Ubah nama',
       lama: { nama: 'Lama' },
       baru: { nama: 'Baru' },
@@ -116,7 +115,7 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
       auditRow({ id: 'a1', tanggal: '2026-01-05T08:00:00.000Z', aksi: 'CREATE j-1' }),
       auditRow({ id: 'a2', tanggal: '2026-01-10T08:00:00.000Z', aksi: 'REVERSAL j-1' }),
       auditRow({ id: 'a3', tanggal: '2026-02-01T08:00:00.000Z', aksi: 'REVERSAL j-2' }),
-      auditRow({ id: 'a4', tanggal: '2026-02-15T08:00:00.000Z', aksi: 'ASET-CREATE a-1' }),
+      auditRow({ id: 'a4', tanggal: '2026-02-15T08:00:00.000Z', aksi: 'PANJAR-CREATE p-1' }),
       auditRow({ id: 'a5', tanggal: '2026-03-01T08:00:00.000Z', aksi: 'PENGATURAN-IDLE' }),
     ];
     for (const r of rows) insertAuditLog(db, r);
@@ -127,7 +126,7 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
     isi(db);
     expect(listAuditLog(db, { aksi: 'REVERSAL' }).map((r) => r.id)).toEqual(['a3', 'a2']);
     expect(listAuditLog(db, { aksi: 'REVERSAL j-1' }).map((r) => r.id)).toEqual(['a2']);
-    expect(listAuditLog(db, { aksi: 'ASET' }).map((r) => r.id)).toEqual(['a4']);
+    expect(listAuditLog(db, { aksi: 'PANJAR' }).map((r) => r.id)).toEqual(['a4']);
     db.close();
   });
 
@@ -191,42 +190,55 @@ describe('T10a filter audit: aksi, tanggal, limit, offset', () => {
   });
 });
 
-describe('T10b migrasi audit_log v2 → v3', () => {
-  it('menambah data_baru_json idempoten tanpa menghapus audit lama', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pura-audit-migrasi-'));
+describe('T10b audit_log skema v1 baru', () => {
+  it('langsung punya data_baru_json; audit lama utuh dan append-only', () => {
+    const db = dbKosong();
     try {
-      const path = join(dir, 'lama.db');
-      const lama = new Database(path);
-      lama.exec(`
-        CREATE TABLE audit_log (
-          id TEXT PRIMARY KEY,
-          tanggal TEXT NOT NULL,
-          aksi TEXT NOT NULL,
-          alasan TEXT NOT NULL,
-          data_lama_json TEXT NOT NULL DEFAULT ''
-        );
-        PRAGMA user_version = 2;
-      `);
-      lama
-        .prepare('INSERT INTO audit_log (id, tanggal, aksi, alasan, data_lama_json) VALUES (?, ?, ?, ?, ?)')
-        .run('audit-lama', '2026-01-01T00:00:00.000Z', 'CREATE j-lama', 'Lama', '{"x":1}');
-      lama.close();
+      expect(SCHEMA_VERSION).toBe(2);
+      expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
-      const db = openDb(path);
-      try {
-        const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map((k) => k.name);
-        expect(kolom).toContain('data_baru_json');
-        expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
-        expect(listAuditLog(db)[0]).toMatchObject({
+      const kolom = (db.pragma('table_info(audit_log)') as { name: string }[]).map((k) => k.name);
+      expect(kolom).toContain('data_baru_json');
+
+      // Audit lama (sebelum kolom baru terisi) tetap utuh; entri baru hanya
+      // ditambahkan, bukan menimpa riwayat.
+      insertAuditLog(
+        db,
+        auditRow({
           id: 'audit-lama',
+          tanggal: '2026-01-01T00:00:00.000Z',
+          aksi: 'CREATE j-lama',
+          alasan: 'Lama',
           data_lama_json: '{"x":1}',
-          data_baru_json: '',
-        });
-      } finally {
-        db.close();
-      }
+        }),
+      );
+      catatAudit(db, {
+        id: 'audit-baru',
+        tanggal: '2026-01-02T00:00:00.000Z',
+        aksi: 'CREATE j-baru',
+        alasan: 'Baru',
+        lama: { x: 1 },
+        baru: { x: 2 },
+      });
+
+      expect(listAuditLog(db)).toHaveLength(2);
+      expect(listAuditLog(db).find((a) => a.id === 'audit-lama')).toMatchObject({
+        id: 'audit-lama',
+        data_lama_json: '{"x":1}',
+        data_baru_json: '',
+      });
+      expect(listAuditLog(db).find((a) => a.id === 'audit-baru')?.data_baru_json).not.toBe('');
+
+      expect(() =>
+        db.prepare("UPDATE audit_log SET alasan = 'diubah' WHERE id = 'audit-lama'").run(),
+      ).toThrow(/tidak boleh diubah/i);
+      expect(() =>
+        db.prepare("DELETE FROM audit_log WHERE id = 'audit-lama'").run(),
+      ).toThrow(/tidak boleh dihapus/i);
+      expect(listAuditLog(db)).toHaveLength(2);
+      expect(listAuditLog(db).find((a) => a.id === 'audit-lama')?.alasan).toBe('Lama');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      db.close();
     }
   });
 });
@@ -284,12 +296,12 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
   it('reversal & koreksi isi ulang menyimpan data lama dan data baru', () => {
     const db = dbKosong();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-modal', tanggal: '2026-01-01', no_bukti: 'JU-MODAL', keterangan: 'Modal' },
         pasangan('1001', '3000', 1_000_000),
       );
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-parkir', tanggal: '2026-01-02', no_bukti: 'JU-PARKIR', keterangan: 'Parkir' },
         pasangan('1001', '4005', 100_000),
@@ -307,7 +319,7 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
         jurnal: { id: 'j-balik', reversal_of: 'j-parkir' },
       });
 
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-parkir-2', tanggal: '2026-01-05', no_bukti: 'JU-PARKIR-2', keterangan: 'Parkir 2' },
         pasangan('1001', '4005', 90_000),
@@ -346,7 +358,7 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
   it('tutup buku & tutup ulang menyimpan kondisi sebelum/sesudah', () => {
     const db = dbKosong();
     try {
-      insertJurnal(
+      insertJurnalTervalidasi(
         db,
         { id: 'j-2025', tanggal: '2025-12-01', keterangan: 'Pendapatan 2025' },
         pasangan('1001', '4005', 1_000_000),
@@ -370,51 +382,6 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
       expect(ulang.aksi).toBe('TUTUP-ULANG 2025');
       expect(JSON.parse(ulang.data_lama_json)).toMatchObject({ tahun: 2025, catatan: 'Pertama' });
       expect(JSON.parse(ulang.data_baru_json)).toMatchObject({ tahun: 2025, catatan: 'Kedua' });
-    } finally {
-      db.close();
-    }
-  });
-
-  it('CRUD aset menulis data lama & baru, atomik dengan operasinya', () => {
-    const db = dbKosong();
-    try {
-      const now = '2026-01-01T00:00:00.000Z';
-      const aset: Aset = {
-        id: 'a-1',
-        kode: 'AST-001',
-        nama: 'Tanah Lama',
-        jenis: 'TANAH',
-        luas_m2: 100,
-        lokasi: 'Pura',
-        status_hukum: 'druwe',
-        tahun_perolehan: 2010,
-        asal_usul: 'hibah',
-        kondisi: 'BAIK',
-        keterangan: '',
-        nilai_sen: null,
-        created_at: now,
-        updated_at: now,
-      };
-      insertAset(db, aset);
-      updateAset(db, { ...aset, nama: 'Tanah Baru', updated_at: '2026-01-02T00:00:00.000Z' });
-      deleteAset(db, aset.id);
-
-      const audit = listAuditLog(db);
-      expect(audit.map((a) => a.aksi.split(' ')[0])).toEqual([
-        'ASET-DELETE',
-        'ASET-UPDATE',
-        'ASET-CREATE',
-      ]);
-      const tambah = audit.find((a) => a.aksi.startsWith('ASET-CREATE'))!;
-      expect(tambah.data_lama_json).toBe('');
-      expect(JSON.parse(tambah.data_baru_json)).toMatchObject({ kode: 'AST-001', nama: 'Tanah Lama' });
-      const ubah = audit.find((a) => a.aksi.startsWith('ASET-UPDATE'))!;
-      expect(JSON.parse(ubah.data_lama_json)).toMatchObject({ nama: 'Tanah Lama' });
-      expect(JSON.parse(ubah.data_baru_json)).toMatchObject({ nama: 'Tanah Baru' });
-      const hapus = audit.find((a) => a.aksi.startsWith('ASET-DELETE'))!;
-      expect(JSON.parse(hapus.data_lama_json)).toMatchObject({ nama: 'Tanah Baru' });
-      // Tidak ada aset tersisa: audit tidak menghidupkan kembali baris.
-      expect(db.prepare('SELECT COUNT(*) AS c FROM aset').get()).toEqual({ c: 0 });
     } finally {
       db.close();
     }
@@ -479,6 +446,108 @@ describe('P0-9 — operasi wajib menghasilkan audit', () => {
     } finally {
       db.close();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('T-A09 — audit tautkan pembayaran pinjaman', () => {
+  it('mencatat ref_type/ref_id pinjaman_bayar serta rincian jurnal', () => {
+    const db = dbKosong();
+    try {
+      const rp = (n: number): number => n * 100;
+      const saldo = postingJurnal(db, {
+        header: {
+          id: 'awal-t-a09',
+          tanggal: '2026-01-01',
+          keterangan: 'Saldo awal uji T-A09',
+          jenis: 'SALDO_AWAL',
+        },
+        baris: [
+          { akun_kode: '1001', debit: rp(10_000_000), kredit: 0 },
+          { akun_kode: AKUN_MODAL, debit: 0, kredit: rp(10_000_000) },
+        ],
+      });
+      expect(saldo.tersimpan, saldo.errors.join(' ')).toBe(true);
+
+      const cair = postingJurnal(db, {
+        header: {
+          id: 'j-cair-t-a09',
+          tanggal: '2026-01-02',
+          keterangan: 'Pencairan uji T-A09',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '1001', debit: rp(1_000_000), kredit: 0 },
+          { akun_kode: '2050', debit: 0, kredit: rp(1_000_000) },
+        ],
+      });
+      expect(cair.tersimpan, cair.errors.join(' ')).toBe(true);
+
+      const buat = buatPinjaman(db, {
+        id: 'pjr-t-a09',
+        kreditur: 'LPD Uji',
+        akun_kas: '1001',
+        akun_bunga: '5063',
+        pokok_awal: rp(1_000_000),
+        sisa_pokok_awal: rp(1_000_000),
+        tanggal_mulai: '2026-01-02',
+        tenor_bulan: 1,
+        jurnal_pencairan_id: 'j-cair-t-a09',
+        angsuran: [
+          {
+            ke: 1,
+            jatuh_tempo: '2026-02-02',
+            pokok: rp(1_000_000),
+            bunga: 0,
+            catatan: 'Angsuran uji',
+          },
+        ],
+      });
+      expect(buat.tersimpan, buat.errors.join(' ')).toBe(true);
+
+      const bayar = postingJurnal(db, {
+        header: {
+          id: 'j-bayar-t-a09',
+          tanggal: '2026-03-01',
+          keterangan: 'Bayar uji T-A09',
+          jenis: 'HUTANG',
+        },
+        baris: [
+          { akun_kode: '2050', debit: rp(1_000_000), kredit: 0 },
+          { akun_kode: '1001', debit: 0, kredit: rp(1_000_000) },
+        ],
+      });
+      expect(bayar.tersimpan, bayar.errors.join(' ')).toBe(true);
+
+      const hasil = tautkanPembayaran(db, {
+        id: 'pby-t-a09',
+        pinjaman_id: 'pjr-t-a09',
+        jurnal_id: 'j-bayar-t-a09',
+        tanggal: '2026-03-01',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+      const audit = listAuditLog(db, {
+        ref_type: 'pinjaman_bayar',
+        ref_id: 'pby-t-a09',
+      });
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        aksi: 'PINJAMAN-BAYAR-LINK pjr-t-a09',
+        ref_type: 'pinjaman_bayar',
+        ref_id: 'pby-t-a09',
+      });
+      expect(JSON.parse(audit[0]!.data_baru_json)).toMatchObject({
+        pinjaman_id: 'pjr-t-a09',
+        angsuran_id: null,
+        jurnal_id: 'j-bayar-t-a09',
+        tanggal: '2026-03-01',
+        pokok: rp(1_000_000),
+        bunga: 0,
+        denda: 0,
+      });
+    } finally {
+      db.close();
     }
   });
 });

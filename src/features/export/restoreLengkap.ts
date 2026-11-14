@@ -1,25 +1,16 @@
-// AUD-12 — restore lengkap: DB + lampiran dari satu folder backup AUD-11.
+// AUD-12 / DB-37 — restore lengkap: database dari satu folder backup AUD-11.
+//
+// Sejak DB-37 backup lengkap hanya berisi `pura.db` + `manifest.json`. Restore
+// hanya mengganti database. Folder `attachments` pada backup lama (dibuat
+// sebelum DB-37) sengaja diabaikan dan tidak pernah disentuh.
 //
 // Urutan sengaja dibuat agar data lama tidak pernah hilang lebih dulu:
-//   1. validasi manifest, pura.db, folder attachments, dan kandidat DB;
+//   1. validasi manifest, `pura.db`, dan kandidat DB;
 //   2. cadangkan DB aktif via VACUUM INTO (`pre-restore-<stamp>.db`);
-//   3. pindahkan (rename) folder lampiran aktif ke
-//      `attachments-pre-restore-<stamp>/` — bukan menghapus;
-//   4. tutup DB, tukar file DB, buka ulang, pertahankan PIN aktif (AUD-14);
-//   5. salin lampiran backup ke folder lampiran aktif;
-//   6. bila langkah 4/5 gagal, DB dan lampiran lama dikembalikan.
-//
-// Restore hanya dianggap sukses setelah isi folder lampiran baru cocok dengan
-// daftar file di manifest, sehingga tidak ada lampiran yatim.
+//   3. tutup DB, tukar file DB, buka ulang, pertahankan PIN aktif (AUD-14);
+//   4. bila langkah 3 gagal, `restoreDbAman` mengembalikan DB lama.
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import type Database from 'better-sqlite3';
 import { SCHEMA_VERSION } from '../../db/database.js';
@@ -29,11 +20,7 @@ import {
   type HasilRestoreDb,
   validasiKandidatRestore,
 } from './export.js';
-import {
-  daftarFileRelatif,
-  salinIsiFolder,
-  type ManifestBackupLengkap,
-} from './backupLengkap.js';
+import type { ManifestBackupLengkap } from './backupLengkap.js';
 
 export type ValidasiBackupLengkap =
   | {
@@ -41,9 +28,6 @@ export type ValidasiBackupLengkap =
       manifest: ManifestBackupLengkap;
       /** Path `pura.db` di dalam folder backup. */
       dbPath: string;
-      /** Folder `attachments` di dalam folder backup. */
-      attachmentsDir: string;
-      jumlahLampiran: number;
     }
   | { valid: false; error: string };
 
@@ -52,8 +36,6 @@ export type OpsiRestoreLengkap = {
   db: Database.Database;
   /** Path DB aktif yang akan diganti. */
   dbPath: string;
-  /** Folder lampiran aktif yang akan diganti. */
-  attachmentsDir: string;
   /** Folder backup lengkap pilihan user (berisi manifest.json). */
   backupDir: string;
   /** Folder cadangan internal DB; default `<dir DB>/backups`. */
@@ -67,8 +49,6 @@ export type HasilRestoreLengkap =
       ok: true;
       db: Database.Database;
       preRestorePath: string;
-      preRestoreAttachmentsPath: string;
-      jumlahLampiran: number;
     }
   | { ok: false; error: string; db: Database.Database };
 
@@ -88,9 +68,13 @@ function diDalam(parent: string, child: string): boolean {
 
 /**
  * Validasi folder backup lengkap sebelum menyentuh data aktif:
- * manifest terbaca & bentuknya benar, semua file yang didaftar ada,
- * `pura.db` ada, `attachments/` ada, dan isi lampiran cocok dengan manifest.
- * Validasi SQLite kandidat dilakukan terpisah oleh `validasiKandidatRestore`.
+ * manifest terbaca & bentuknya benar, `pura.db` ada, dan file lain yang
+ * dicatat (selain lampiran legacy) tersedia.
+ *
+ * Manifest lama yang masih memuat `jumlahLampiran` atau entri
+ * `attachments/...` diterima; bagian lampiran diabaikan karena DB-37 hanya
+ * memulihkan database. Validasi SQLite kandidat dilakukan terpisah oleh
+ * `validasiKandidatRestore`.
  */
 export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap {
   const backupDir = resolve(String(dirBackup ?? '').trim() || '.');
@@ -129,12 +113,6 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
     return { valid: false, error: 'manifest.json memuat versi skema yang tidak valid.' };
   if (typeof m.dibuat !== 'string' || Number.isNaN(Date.parse(m.dibuat)))
     return { valid: false, error: 'manifest.json memuat waktu pembuatan yang tidak valid.' };
-  if (
-    typeof m.jumlahLampiran !== 'number' ||
-    !Number.isInteger(m.jumlahLampiran) ||
-    m.jumlahLampiran < 0
-  )
-    return { valid: false, error: 'manifest.json memuat jumlah lampiran yang tidak valid.' };
   if (typeof m.ukuranDb !== 'number' || !Number.isFinite(m.ukuranDb) || m.ukuranDb <= 0)
     return { valid: false, error: 'manifest.json memuat ukuran database yang tidak valid.' };
   if (
@@ -153,6 +131,8 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
   for (const entry of daftarFile) {
     if (!pathRelatifAman(entry))
       return { valid: false, error: 'manifest.json memuat path file yang tidak aman.' };
+    // Backup lama (sebelum DB-37) mencantumkan attachments/...; abaikan saja.
+    if (entry.startsWith('attachments/')) continue;
     const file = join(backupDir, ...entry.split('/'));
     if (!existsSync(file) || !statSync(file).isFile())
       return {
@@ -162,33 +142,13 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
   }
 
   const dbPath = join(backupDir, 'pura.db');
-  const attachmentsDir = join(backupDir, 'attachments');
-  if (!existsSync(attachmentsDir))
-    return {
-      valid: false,
-      error: 'Folder attachments tidak ditemukan di folder backup. Pilih backup lengkap.',
-    };
-  if (!statSync(attachmentsDir).isDirectory())
-    return { valid: false, error: 'Folder attachments di folder backup tidak valid.' };
+  if (!existsSync(dbPath) || !statSync(dbPath).isFile())
+    return { valid: false, error: 'File pura.db tidak ditemukan di folder backup.' };
 
-  const aktual = daftarFileRelatif(backupDir, attachmentsDir);
-  const tercatat = daftarFile
-    .filter((f) => f.startsWith('attachments/'))
-    .sort();
-  if (JSON.stringify(aktual) !== JSON.stringify(tercatat))
+  if (m.schemaVersion !== SCHEMA_VERSION)
     return {
       valid: false,
-      error: 'Isi folder attachments tidak cocok dengan manifest.json. Backup mungkin tidak lengkap.',
-    };
-  if (aktual.length !== m.jumlahLampiran)
-    return {
-      valid: false,
-      error: 'Jumlah lampiran tidak cocok dengan manifest.json. Backup mungkin tidak lengkap.',
-    };
-  if (m.schemaVersion > SCHEMA_VERSION)
-    return {
-      valid: false,
-      error: 'Backup dibuat oleh aplikasi versi lebih baru. Perbarui aplikasi dulu.',
+      error: `Manifest backup memakai skema v${m.schemaVersion}; aplikasi hanya mendukung skema v${SCHEMA_VERSION}. Pilih backup dari aplikasi versi ini.`,
     };
 
   return {
@@ -197,52 +157,28 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
       versiApp: m.versiApp,
       schemaVersion: m.schemaVersion,
       dibuat: m.dibuat,
-      jumlahLampiran: m.jumlahLampiran,
       ukuranDb: m.ukuranDb,
-      daftarFile,
+      daftarFile: ['pura.db'],
     },
     dbPath,
-    attachmentsDir,
-    jumlahLampiran: aktual.length,
   };
 }
 
-/** Pilih stamp yang belum dipakai cadangan DB maupun folder lampiran. */
-function pilihStamp(
-  stampDasar: string,
-  dirBackup: string,
-  dirLampiran: string,
-): { stamp: string; preAttachmentsPath: string } {
+/** Pilih stamp yang belum dipakai cadangan DB. */
+function pilihStamp(stampDasar: string, dirBackup: string): string {
   let stamp = stampDasar;
-  let preAttachmentsPath = join(dirLampiran, `attachments-pre-restore-${stamp}`);
   let urutan = 2;
-  while (
-    existsSync(preAttachmentsPath) ||
-    existsSync(join(dirBackup, `pre-restore-${stamp}.db`))
-  ) {
+  while (existsSync(join(dirBackup, `pre-restore-${stamp}.db`))) {
     stamp = `${stampDasar}-${urutan}`;
-    preAttachmentsPath = join(dirLampiran, `attachments-pre-restore-${stamp}`);
     urutan += 1;
   }
-  return { stamp, preAttachmentsPath };
-}
-
-/**
- * Kembalikan folder lampiran lama dari cadangan rename. Melempar bila gagal
- * agar pemanggil bisa melaporkan lokasi cadangan yang harus dipulihkan manual.
- */
-function kembalikanLampiranLama(
-  attachmentsDir: string,
-  preAttachmentsPath: string,
-): void {
-  if (!existsSync(preAttachmentsPath)) return;
-  if (existsSync(attachmentsDir)) rmSync(attachmentsDir, { recursive: true, force: true });
-  renameSync(preAttachmentsPath, attachmentsDir);
+  return stamp;
 }
 
 /**
  * Restore lengkap yang atomik. Pemanggil WAJIB memakai `hasil.db` sebagai
  * koneksi aktif, baik saat sukses maupun gagal (koneksi bisa sudah berganti).
+ * Folder lampiran legacy tidak disentuh sama sekali.
  */
 export function restoreLengkap(opsi: OpsiRestoreLengkap): HasilRestoreLengkap {
   const validasi = validasiBackupLengkap(opsi.backupDir);
@@ -252,7 +188,6 @@ export function restoreLengkap(opsi: OpsiRestoreLengkap): HasilRestoreLengkap {
   if (!validasiDb.valid) return { ok: false, error: validasiDb.error, db: opsi.db };
 
   const dbPath = resolve(opsi.dbPath);
-  const attachmentsDir = resolve(opsi.attachmentsDir);
   const backupDir = resolve(opsi.backupDir);
   if (validasi.dbPath === dbPath || diDalam(backupDir, dbPath))
     return {
@@ -260,24 +195,10 @@ export function restoreLengkap(opsi: OpsiRestoreLengkap): HasilRestoreLengkap {
       error: 'Folder backup tidak boleh berisi database yang sedang aktif. Pilih folder lain.',
       db: opsi.db,
     };
-  if (
-    validasi.attachmentsDir === attachmentsDir ||
-    diDalam(attachmentsDir, backupDir) ||
-    diDalam(backupDir, attachmentsDir)
-  )
-    return {
-      ok: false,
-      error: 'Folder backup tidak boleh berada di dalam folder lampiran aktif. Pilih folder lain.',
-      db: opsi.db,
-    };
 
   const dirBackup = resolve(opsi.dirBackup ?? join(dirname(dbPath), 'backups'));
   const stampDasar = opsi.stamp?.trim() || new Date().toISOString().replace(/[:.]/g, '-');
-  const { stamp, preAttachmentsPath } = pilihStamp(
-    stampDasar,
-    dirBackup,
-    dirname(attachmentsDir),
-  );
+  const stamp = pilihStamp(stampDasar, dirBackup);
   const preRestorePath = join(dirBackup, `pre-restore-${stamp}.db`);
 
   // 1. Cadangkan DB aktif lebih dulu; kegagalan di sini belum menyentuh apa pun.
@@ -292,100 +213,21 @@ export function restoreLengkap(opsi: OpsiRestoreLengkap): HasilRestoreLengkap {
     };
   }
 
-  // 2. Pindahkan folder lampiran lama (rename, bukan hapus). Bila folder belum
-  //    ada, buat folder kosong agar cadangan tetap punya path yang jelas.
-  try {
-    if (existsSync(attachmentsDir) && !statSync(attachmentsDir).isDirectory())
-      throw new Error('Folder lampiran aktif bukan folder.');
-    mkdirSync(attachmentsDir, { recursive: true });
-    renameSync(attachmentsDir, preAttachmentsPath);
-  } catch {
-    return {
-      ok: false,
-      error:
-        'Gagal menyiapkan cadangan lampiran lama. Database dan lampiran belum diubah. Coba lagi; bila tetap gagal, hubungi pendamping.',
-      db: opsi.db,
-    };
-  }
-
-  // 3. Tukar DB + buka ulang + pertahankan PIN aktif (AUD-14). restoreDbAman
+  // 2. Tukar DB + buka ulang + pertahankan PIN aktif (AUD-14). restoreDbAman
   //    memakai preRestorePath yang sudah dibuat sebagai sumber rollback.
-  let hasilDb: HasilRestoreDb;
-  try {
-    hasilDb = restoreDbAman(opsi.db, {
-      dbPath,
-      backupPath: validasi.dbPath,
-      dirBackup,
-      stamp,
-      preRestorePath,
-    });
-  } catch (e) {
-    // Kegagalan fatal saat rollback DB: lampiran lama tetap dikembalikan bila bisa.
-    try {
-      kembalikanLampiranLama(attachmentsDir, preAttachmentsPath);
-    } catch {
-      /* error utama lebih penting; jalur cadangan dilaporkan di pesan utama */
-    }
-    throw e;
-  }
+  const hasilDb: HasilRestoreDb = restoreDbAman(opsi.db, {
+    dbPath,
+    backupPath: validasi.dbPath,
+    dirBackup,
+    stamp,
+    preRestorePath,
+  });
 
-  if (!hasilDb.ok) {
-    let error = hasilDb.error;
-    try {
-      kembalikanLampiranLama(attachmentsDir, preAttachmentsPath);
-    } catch {
-      error += ` Lampiran lama tersimpan di ${preAttachmentsPath} dan perlu dikembalikan manual.`;
-    }
-    return { ok: false, error, db: hasilDb.db };
-  }
-
-  // 4. Salin lampiran baru dan pastikan isinya sama persis dengan manifest.
-  try {
-    mkdirSync(attachmentsDir, { recursive: true });
-    salinIsiFolder(validasi.attachmentsDir, attachmentsDir);
-    const aktual = daftarFileRelatif(attachmentsDir, attachmentsDir);
-    const harapan = validasi.manifest.daftarFile
-      .filter((f) => f.startsWith('attachments/'))
-      .map((f) => f.slice('attachments/'.length))
-      .sort();
-    if (JSON.stringify(aktual) !== JSON.stringify(harapan))
-      throw new Error('Daftar lampiran hasil salin tidak cocok dengan manifest.');
-  } catch {
-    // 5. Rollback lampiran lalu DB. Kegagalan rollback dilaporkan eksplisit.
-    let galatLampiran = '';
-    try {
-      kembalikanLampiranLama(attachmentsDir, preAttachmentsPath);
-    } catch {
-      galatLampiran = ` Lampiran lama tersimpan di ${preAttachmentsPath} dan perlu dikembalikan manual.`;
-    }
-
-    try {
-      const rollback = restoreDbAman(hasilDb.db, {
-        dbPath,
-        backupPath: preRestorePath,
-        dirBackup,
-        stamp: `${stamp}-rollback`,
-      });
-      if (!rollback.ok) throw new Error(rollback.error);
-      return {
-        ok: false,
-        error: `Restore lengkap gagal, data lama tetap dipakai.${galatLampiran}`,
-        db: rollback.db,
-      };
-    } catch (e) {
-      throw new Error(
-        `Restore lengkap gagal dan pemulihan otomatis juga gagal.${galatLampiran} ${
-          e instanceof Error ? e.message : ''
-        } Hubungi pendamping sebelum memakai aplikasi lagi.`,
-      );
-    }
-  }
+  if (!hasilDb.ok) return { ok: false, error: hasilDb.error, db: hasilDb.db };
 
   return {
     ok: true,
     db: hasilDb.db,
     preRestorePath: hasilDb.preRestorePath,
-    preRestoreAttachmentsPath: preAttachmentsPath,
-    jumlahLampiran: validasi.jumlahLampiran,
   };
 }

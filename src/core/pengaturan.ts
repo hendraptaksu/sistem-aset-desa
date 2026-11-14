@@ -17,6 +17,10 @@ export type PengaturanPembukuan = {
   /**
    * Bulan awal tahun buku. Sampai tahun buku fiskal didukung penuh, nilai
    * yang sah hanya Januari (1) — lihat AUD-20.
+   *
+   * @deprecated DB-28: bukan lagi field yang bisa dipilih/disimpan dari UI.
+   * Dipertahankan hanya untuk membaca DB lama dan perhitungan internal lama;
+   * kontrak renderer/API memakai `PengaturanPembukuanPublik`.
    */
   awalTahunBuku: number;
   /** Prefix nomor bukti, 1–8 huruf kapital/angka. */
@@ -24,6 +28,15 @@ export type PengaturanPembukuan = {
   /** Jumlah digit urutan nomor bukti (3–6). */
   paddingNomorBukti: number;
 };
+
+/**
+ * Kontrak pengaturan yang boleh dilihat/dikirim renderer (DB-28).
+ * `awalTahunBuku` sengaja tidak ada: nilai legacy hanya dibaca internal.
+ */
+export type PengaturanPembukuanPublik = Omit<
+  PengaturanPembukuan,
+  'awalTahunBuku'
+>;
 
 /** Kop ringkas untuk builder XLSX/print; `tambahan` boleh kosong. */
 export type KopOrganisasi = {
@@ -54,6 +67,9 @@ export const PESAN_AWAL_TAHUN_BUKU_FISKAL =
  * Peringatan untuk data lama yang masih menyimpan awal tahun buku selain
  * Januari (mis. 7). Tidak pernah mengubah data; UI meminta pengguna menyimpan
  * ulang ke Januari secara sadar.
+ *
+ * @deprecated DB-28: UI tidak lagi menampilkan field/peringatan ini. Helper
+ * dipertahankan untuk test/legacy dan tidak boleh dipakai kontrak publik baru.
  */
 export function peringatanAwalTahunBukuLama(
   awalTahunBuku: number,
@@ -241,6 +257,44 @@ export function rentangTahunBuku(
 }
 
 /**
+ * Label tahun pertama yang tidak penuh karena pembukuan dimulai di tengah
+ * tahun. Tahun buku tetap Januari–Desember; ini hanya penanda periode parsial.
+ */
+export const LABEL_TAHUN_PERTAMA_PARSIAL = 'tahun pertama (parsial)';
+
+/**
+ * Apakah `tahun` adalah tahun pertama pembukuan yang dimulai setelah 1 Januari?
+ * Contoh: tanggal mulai 2026-07-01 → true untuk 2026, false untuk 2027.
+ */
+export function tahunPertamaParsial(
+  tanggalMulai: string | null | undefined,
+  tahun: number,
+): boolean {
+  if (!Number.isInteger(tahun)) return false;
+  const teks = String(tanggalMulai ?? '').trim();
+  if (!tanggalKalenderValid(teks)) return false;
+  return Number(teks.slice(0, 4)) === tahun && teks > `${tahun}-01-01`;
+}
+
+/**
+ * Catatan siap tampil untuk laporan tahun pertama parsial; null bila tahun
+ * tersebut bukan tahun pertama atau pembukuan memang dimulai 1 Januari.
+ */
+export function catatanTahunPertamaParsial(
+  tanggalMulai: string | null | undefined,
+  tahun: number,
+): string | null {
+  if (!tahunPertamaParsial(tanggalMulai, tahun)) return null;
+  const tanggal = String(tanggalMulai).trim();
+  return (
+    `Ini ${LABEL_TAHUN_PERTAMA_PARSIAL}: pembukuan dimulai ${tanggal}, ` +
+    `sehingga laba tahun ${tahun} hanya mencakup transaksi sejak tanggal ` +
+    'tersebut. Laba sebelum cut-over sudah masuk saldo awal/ekuitas, bukan ' +
+    `Laba Rugi ${tahun}.`
+  );
+}
+
+/**
  * Tanggal mulai pembukuan yang dipakai sebagai batas bawah default filter/kop.
  * Bila belum diisi, pakai tanggal hari ini (bukan memaksa menolak jurnal lama).
  */
@@ -260,8 +314,18 @@ export function tanggalMulaiEfektif(
   return teks || hariIni;
 }
 
+/** Buang field legacy sebelum data dikirim ke renderer (DB-28). */
+export function pengaturanPublik(
+  p: PengaturanPembukuan,
+): PengaturanPembukuanPublik {
+  const { awalTahunBuku: _legacy, ...publik } = p;
+  return publik;
+}
+
 /** Model pengaturan → kop builder XLSX/print. */
-export function kopDariPengaturan(p: PengaturanPembukuan): KopOrganisasi {
+export function kopDariPengaturan(
+  p: Pick<PengaturanPembukuan, 'namaEntitas' | 'kopTambahan'>,
+): KopOrganisasi {
   const nama = p.namaEntitas.trim() || DEFAULT_PENGATURAN.namaEntitas;
   const tambahan = normalisasiKopTambahan(p.kopTambahan);
   return { nama, ...(tambahan ? { tambahan } : {}) };

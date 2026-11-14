@@ -37,6 +37,9 @@ export type OpsiAuditLog = {
   /** ID & tanggal eksplisit untuk test/determinisme; default otomatis. */
   id?: string;
   tanggal?: string;
+  /** DB-27: referensi objek terstruktur (default ''). */
+  ref_type?: string;
+  ref_id?: string;
 };
 
 /**
@@ -57,5 +60,7 @@ export function buatAuditLog(
     alasan,
     data_lama_json: jsonAuditAman(dataLama),
     data_baru_json: jsonAuditAman(dataBaru),
+    ref_type: opsi.ref_type ?? '',
+    ref_id: opsi.ref_id ?? '',
   };
 }

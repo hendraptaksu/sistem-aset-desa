@@ -3,7 +3,12 @@
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
-import { listTutupBuku } from '../src/db/repository.js';
+import {
+  getPengaturanPembukuan,
+  KUNCI_AKUNTANSI_AWAL_TAHUN,
+  listTutupBuku,
+  setPengaturan,
+} from '../src/db/repository.js';
 import {
   buildDashboardJurnal,
   denganBackupTerakhir,
@@ -11,6 +16,7 @@ import {
 } from '../src/features/dashboard/dashboard.js';
 import {
   labaRugi,
+  neraca,
   neracaSaldo,
   totalKas,
   type BarisJurnalSumber,
@@ -99,7 +105,7 @@ const TUTUP = [{ tahun: 2025 }];
 
 describe('P1-14 — dashboard akuntan dari jurnal', () => {
   it('kas/bank, laba berjalan, dan neraca saldo sama dengan mesin laporan', () => {
-    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
 
     // Manual: 1001 15,5jt + 1010 2jt + 1029 1jt = 18,5jt.
     expect(d.kasBank.total).toBe(RP(18_500_000));
@@ -133,18 +139,54 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
       seimbang: true,
     });
     expect(d.neracaSaldo.selisih).toBe(neracaSaldo(BARIS, CUTOFF).selisih);
-    expect(d.selisih).toBe(d.neracaSaldo.selisih);
+
+    // T-A08: balance/selisih dashboard mengikuti Neraca, bukan trial balance.
+    const n = neraca(BARIS, { cutoff: CUTOFF, tutup: TUTUP });
+    expect(d.balance).toBe(n.balance);
+    expect(d.selisih).toBe(n.selisih);
     expect(d.balance).toBe(true);
     expect(d.badge).toBe('BALANCE');
 
     // Field lama tetap konsisten dengan Neraca mesin laporan.
     expect(d.aktiva).toBe(RP(18_500_000));
+    expect(d.aktiva).toBe(n.totalAset);
     expect(d.pasiva).toBe(RP(18_500_000));
+    expect(d.pasiva).toBe(n.totalPasiva);
     expect(d.totalLpd).toBe(RP(2_000_000));
   });
 
+  it('Neraca selisih: badge bukan BALANCE walau trial balance seimbang', () => {
+    // Cut-over resmi 1 Mar 2026: P&L Jan–Feb 2026 berada di luar cakupan
+    // Neraca, sehingga aset tetap memuat kasnya tetapi laba/ekuitas tidak.
+    // Jurnalnya sendiri tetap double-entry, jadi Neraca Saldo seimbang.
+    const cutoverTanggal = '2026-03-01';
+    const ns = neracaSaldo(BARIS, CUTOFF);
+    const n = neraca(BARIS, { cutoff: CUTOFF, tutup: TUTUP }, undefined, cutoverTanggal);
+    expect(ns.seimbang).toBe(true);
+    expect(n.balance).toBe(false);
+    expect(n.selisih).not.toBe(0);
+
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, {
+      sekarang: CUTOFF,
+      cutoverTanggal,
+    });
+
+    expect(d.balance).toBe(n.balance);
+    expect(d.selisih).toBe(n.selisih);
+    expect(d.balance).toBe(false);
+    expect(d.selisih).not.toBe(0);
+    expect(d.badge).not.toBe('BALANCE');
+    expect(d.badge).toBe(`SELISIH ${n.selisih}`);
+    expect(d.aktiva).toBe(n.totalAset);
+    expect(d.pasiva).toBe(n.totalPasiva);
+
+    // Trial balance tetap dikirim apa adanya sebagai informasi terpisah.
+    expect(d.neracaSaldo.seimbang).toBe(true);
+    expect(d.neracaSaldo.selisih).toBe(0);
+  });
+
   it('periode menampilkan 2025 terkunci & 2026 terbuka', () => {
-    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
     expect(d.periode.tahunTerakhirDitutup).toBe(2025);
     expect(d.periode.tahunTerkunci).toEqual([2025]);
     expect(d.periode.tahunBerjalan).toBe(2026);
@@ -152,8 +194,26 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
     expect(d.periode.batasTahun).toBe(2025);
   });
 
+  it('cut-off historis yang terkunci tidak tampil terbuka pada tahun yang sama', () => {
+    const d = buildDashboardJurnal(BARIS, TUTUP, '2025-12-31', {
+      sekarang: '2026-10-29',
+    });
+    expect(d.periode.tahunBerjalan).toBe(2026);
+    expect(d.periode.status).toBe('2025 terkunci · 2026 terbuka');
+    expect(d.periode.status).not.toContain('2025 terbuka');
+    expect(d.periode.batasTahun).toBe(2025);
+  });
+
+  it('status terbuka melewati tahun acuan yang sudah terkunci', () => {
+    const d = buildDashboardJurnal(BARIS, [{ tahun: 2025 }, { tahun: 2026 }], CUTOFF, {
+      sekarang: '2026-10-29',
+    });
+    expect(d.periode.tahunBerjalan).toBe(2027);
+    expect(d.periode.status).toBe('2025, 2026 terkunci · 2027 terbuka');
+  });
+
   it('jurnal terakhir = tanggal terbaru; tanggal sama pakai input terakhir', () => {
-    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
     expect(d.jurnalTerakhir).toEqual({
       id: 'j-2026-05',
       tanggal: '2026-05-01',
@@ -216,8 +276,35 @@ describe('P1-14 — dashboard akuntan dari jurnal', () => {
     }
   });
 
+  it('DB legacy awal tahun buku 7 tetap memakai rentang Januari–cut-off', () => {
+    const db = openDb(':memory:');
+    try {
+      setPengaturan(db, KUNCI_AKUNTANSI_AWAL_TAHUN, '7');
+      const pengaturan = getPengaturanPembukuan(db);
+      // T2.6: adapter DB menormalkan nilai legacy ke Januari saat dibaca.
+      expect(pengaturan.awalTahunBuku).toBe(1);
+
+      const d = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, {
+        awalTahunBuku: pengaturan.awalTahunBuku,
+        sekarang: CUTOFF,
+      });
+      expect(d.labaRugiBerjalan.awalTahunBuku).toBe(1);
+      expect(d.labaRugiBerjalan.mulai).toBe('2026-01-01');
+      expect(d.labaRugiBerjalan.sampai).toBe(CUTOFF);
+      expect(d.labaRugiBerjalan.labelPeriode).toBe('1 Jan 2026 – 30 Jun 2026');
+      // Laba Jan–Jun 2026 (bukan Jul 2025–Jun 2026 seperti bila nilai 7 dipakai).
+      expect(d.labaRugiBerjalan.totalPendapatan).toBe(RP(5_000_000));
+      expect(d.labaRugiBerjalan.totalBeban).toBe(RP(1_500_000));
+      expect(d.labaRugiBerjalan.laba).toBe(RP(3_500_000));
+      // Nilai mentah 7 akan menghasilkan Jul 2025–Jun 2026; pastikan tidak dipakai.
+      expect(rentangLabaBerjalan(CUTOFF, 7).mulai).toBe('2025-07-01');
+    } finally {
+      db.close();
+    }
+  });
+
   it('path backup terakhir ditempelkan main tanpa mengubah hasil builder', () => {
-    const dasar = buildDashboardJurnal(BARIS, TUTUP, CUTOFF);
+    const dasar = buildDashboardJurnal(BARIS, TUTUP, CUTOFF, { sekarang: CUTOFF });
     const path = '/data/backups/auto-2026-10-23.db';
     const hasil = denganBackupTerakhir(dasar, path);
     expect(hasil.backupTerakhir).toBe(path);

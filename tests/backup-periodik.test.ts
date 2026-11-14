@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
 import { mulaiBackupPeriodik, sudahBackupUntukTanggal } from '../src/main/backupPeriodik.js';
-import { BannerBackupBasi } from '../src/renderer/components/DashboardTab.js';
+import { BannerBackupBasi, PeringatanBackupTidakTerenkripsi } from '../src/renderer/components/DashboardTab.js';
 import {
   BATAS_BACKUP_BASI_HARI,
   labelUsiaBackup,
@@ -62,6 +62,16 @@ describe('usiaBackupHari & pesan backup basi', () => {
     expect(basi).toContain('Backup terakhir 3 hari lalu — buat backup sekarang.');
     expect(renderToStaticMarkup(createElement(BannerBackupBasi, { usiaHari: 2 }))).toBe('');
     expect(renderToStaticMarkup(createElement(BannerBackupBasi, { usiaHari: null }))).toBe('');
+  });
+
+  it('menampilkan peringatan backup tidak terenkripsi secara terlihat (T3.3)', () => {
+    const html = renderToStaticMarkup(createElement(PeringatanBackupTidakTerenkripsi));
+    expect(html).toContain('data-testid="peringatan-backup-tidak-terenkripsi"');
+    expect(html).toContain('role="note"');
+    expect(html).toContain('File backup tidak terenkripsi.');
+    expect(html).toMatch(/PIN hanya melindungi aplikasi/i);
+    expect(html).toMatch(/media\/disk yang terenkripsi/i);
+    expect(html).toMatch(/jangan\s+unggah ke cloud publik/i);
   });
 });
 

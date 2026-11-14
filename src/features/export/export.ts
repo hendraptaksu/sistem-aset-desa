@@ -11,10 +11,13 @@ import {
   statSync,
   unlinkSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import type ExcelJS from 'exceljs';
-import { openDb, SCHEMA_VERSION } from '../../db/database.js';
+import { openDb, SCHEMA_VERSION, TABEL_AKTIF } from '../../db/database.js';
+import { auditIntegritas } from '../../db/integritas.js';
+import { auditSebelumBackup } from './auditBackup.js';
+import { pastikanBukanFileDbAktif } from './pathAman.js';
 import {
   KUNCI_PIN_HASH,
   KUNCI_PIN_SALT,
@@ -97,18 +100,199 @@ function buangFileDb(path: string): void {
   buangSidecarDb(path);
 }
 
+// ---- Retensi backup internal (T3.2) ----
+// Batas ini hanya berlaku untuk backup internal aplikasi di folder backup
+// (bukan folder pilihan pengguna untuk Backup Lengkap).
+export const RETENSI_AUTO = 7;
+export const RETENSI_PRE_RESTORE = 5;
+export const RETENSI_TUTUP_BUKU = 10;
+
+export type JenisBackupInternal = 'auto' | 'pre-restore' | 'tutup-buku';
+
+/**
+ * Pola nama persis per jenis backup internal. File lain (termasuk `.tmp-`,
+ * `.bak-`, sidecar `-wal`/`-shm`, dan DB aktif) tidak pernah disentuh.
+ */
+const POLA_BACKUP_INTERNAL: Record<JenisBackupInternal, RegExp> = {
+  auto: /^auto-.*\.db$/,
+  'pre-restore': /^pre-restore-.*\.db$/,
+  'tutup-buku': /^pura-\d{4}\.db$/,
+};
+
+/**
+ * T3.2 — rapikan backup internal sesuai batas retensi.
+ *
+ * Hanya file dengan pola nama persis milik `jenis` yang dipertimbangkan,
+ * diurutkan naik (nama = kronologis), lalu yang paling lama dihapus sampai
+ * tersisa `keep` file terbaru. Path di `lindungi` (dibandingkan lewat path
+ * resolve) tidak pernah dihapus — dipakai untuk menjaga backup yang baru
+ * dibuat atau yang sedang menjadi sumber rollback.
+ *
+ * Best-effort: kegagalan membaca folder langsung berhenti diam-diam, dan
+ * kegagalan menghapus satu file tidak menghentikan pembersihan file lain agar
+ * backup utama tidak pernah gagal karena retensi. Mengembalikan path yang
+ * benar-benar terhapus (untuk log/test).
+ */
+export function rapikanBackupInternal(
+  dir: string,
+  jenis: JenisBackupInternal,
+  keep: number,
+  lindungi: string[] = [],
+): string[] {
+  if (!Number.isFinite(keep)) return [];
+  const batas = Math.max(0, Math.trunc(keep));
+  let nama: string[];
+  try {
+    nama = readdirSync(dir)
+      .filter((f) => POLA_BACKUP_INTERNAL[jenis].test(f))
+      .sort();
+  } catch {
+    // Folder belum ada / tidak terbaca: tidak ada yang perlu dirapikan.
+    return [];
+  }
+
+  const terjaga = new Set(lindungi.map((p) => resolve(p)));
+  const dihapus: string[] = [];
+  for (const f of nama.slice(0, Math.max(0, nama.length - batas))) {
+    const path = join(dir, f);
+    if (terjaga.has(resolve(path))) continue;
+    try {
+      unlinkSync(path);
+      dihapus.push(path);
+    } catch {
+      // Best-effort: lanjut ke file lama berikutnya.
+    }
+  }
+  return dihapus;
+}
+
+/** Penanda error verifikasi backup; pesannya sudah siap tampil ke operator. */
+class BackupTidakValidError extends Error {}
+
+/** Error verifikasi berbahasa Indonesia yang menyebut tahap yang gagal. */
+function gagalVerifikasiBackup(tahap: string, rincian?: string): BackupTidakValidError {
+  const ekstra = rincian ? ` (${rincian})` : '';
+  return new BackupTidakValidError(
+    `Backup tidak valid: ${tahap} gagal${ekstra}. Backup lama tidak diganti.`,
+  );
+}
+
+/**
+ * Jalankan satu tahap verifikasi; error teknis SQLite diubah menjadi pesan
+ * Indonesia yang menyebut tahapnya, sedangkan error verifikasi diteruskan.
+ */
+function tahapVerifikasi<T>(nama: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof BackupTidakValidError) throw e;
+    throw gagalVerifikasiBackup(nama, pesanError(e, 'tidak bisa dibaca'));
+  }
+}
+
+/**
+ * T3.1 — verifikasi isi file backup sebelum menggantikan backup lama.
+ *
+ * Membuka file dengan koneksi readonly (`fileMustExist`) supaya tidak menulis
+ * WAL/DDL ke kandidat backup, lalu memeriksa:
+ * 1. `PRAGMA integrity_check` = `ok`;
+ * 2. `PRAGMA foreign_key_check` kosong (tidak ada baris yatim);
+ * 3. `user_version` = `SCHEMA_VERSION`;
+ * 4. seluruh `TABEL_AKTIF` ada sebagai tabel di `sqlite_master`.
+ *
+ * Melempar `Error` Indonesia yang menyebut backup tidak valid dan tahap yang
+ * gagal. Sengaja tidak memakai `openDb` karena fungsi itu bisa menulis WAL/DDL
+ * ke file backup.
+ */
+export function verifikasiFileBackup(path: string): void {
+  let db: Database.Database | null = null;
+  try {
+    db = tahapVerifikasi('membuka file backup', () =>
+      new Database(path, { readonly: true, fileMustExist: true }),
+    );
+    const koneksi = db;
+
+    tahapVerifikasi('integrity_check', () => {
+      const hasil = koneksi.pragma('integrity_check') as {
+        integrity_check: string;
+      }[];
+      const pesan = hasil.map((r) => String(r.integrity_check)).join('; ');
+      if (pesan.toLowerCase() !== 'ok')
+        throw gagalVerifikasiBackup('integrity_check', pesan || 'tidak ada hasil');
+    });
+
+    tahapVerifikasi('foreign_key_check', () => {
+      const pelanggaran = koneksi.pragma('foreign_key_check') as PelanggaranFk[];
+      if (pelanggaran.length > 0) {
+        const rincian = pelanggaran
+          .slice(0, 5)
+          .map((r) => `tabel ${r.table} baris ${r.rowid ?? '-'} -> ${r.parent}`)
+          .join(', ');
+        throw gagalVerifikasiBackup(
+          'foreign_key_check',
+          `${pelanggaran.length} baris yatim: ${rincian}`,
+        );
+      }
+    });
+
+    tahapVerifikasi('versi skema (user_version)', () => {
+      const versi = Number(koneksi.pragma('user_version', { simple: true }) ?? 0);
+      if (versi !== SCHEMA_VERSION)
+        throw gagalVerifikasiBackup(
+          'versi skema (user_version)',
+          `ditemukan v${versi}, seharusnya v${SCHEMA_VERSION}`,
+        );
+    });
+
+    tahapVerifikasi('tabel wajib', () => {
+      const tabel = new Set(
+        (
+          koneksi
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .all() as { name: string }[]
+        ).map((r) => r.name),
+      );
+      const kurang = TABEL_AKTIF.filter((t) => !tabel.has(t));
+      if (kurang.length > 0)
+        throw gagalVerifikasiBackup(
+          'tabel wajib',
+          `tabel ${kurang.join(', ')} tidak ditemukan`,
+        );
+    });
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* kandidat readonly; aman diabaikan */
+    }
+  }
+}
+
 /**
  * Backup aman dari koneksi yang sedang terbuka: `VACUUM INTO` menghasilkan
  * satu file konsisten (termasuk isi WAL), tanpa menghentikan aplikasi.
  *
  * Hasil VACUUM ditulis ke file sementara `<dest>.tmp-<pid>-<timestamp>` lebih
- * dulu. Setelah tmp valid, backup lama dipindahkan ke `<dest>.bak-<pid>` lalu
- * tmp di-rename menjadi `<dest>`. Dengan urutan ini kegagalan VACUUM atau
- * rename tidak menghapus backup lama. Bila rename gagal, backup lama
+ * dulu. T3.1: isi tmp diverifikasi (`verifikasiFileBackup`) sebelum menyentuh
+ * `dest`; bila verifikasi gagal, tmp dibuang dan backup lama tidak disentuh.
+ * Setelah tmp valid, backup lama dipindahkan ke `<dest>.bak-<pid>` lalu tmp
+ * di-rename menjadi `<dest>`. Dengan urutan ini kegagalan VACUUM, verifikasi,
+ * atau rename tidak menghapus backup lama. Bila rename gagal, backup lama
  * dikembalikan dan tmp dipertahankan untuk diagnosis. Path di-escape agar aman
  * untuk nama folder yang mengandung tanda kutip.
+ *
+ * Parameter `verifikasi` adalah seam test (T3.1); pemanggil produksi cukup
+ * memakai default `verifikasiFileBackup`.
  */
-export function backupVacuumInto(db: Database.Database, dest: string): string {
+export function backupVacuumInto(
+  db: Database.Database,
+  dest: string,
+  verifikasi: (path: string) => void = verifikasiFileBackup,
+): string {
+  // T1.1: jangan pernah menimpa DB aktif (atau sidecar WAL/SHM-nya). Koneksi
+  // SQLite tetap menulis ke inode lama, sehingga jurnal baru hilang saat dibuka
+  // ulang. Guard harus berjalan sebelum VACUUM INTO menyentuh apa pun.
+  pastikanBukanFileDbAktif(db.name, dest);
   mkdirSync(dirname(dest), { recursive: true });
   const tmp = `${dest}.tmp-${process.pid}-${Date.now()}`;
   const bak = `${dest}.bak-${process.pid}`;
@@ -117,8 +301,11 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
     db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
     if (!existsSync(tmp) || !statSync(tmp).isFile() || statSync(tmp).size === 0)
       throw new Error('VACUUM INTO tidak menghasilkan file backup yang valid.');
+    // T3.1: verifikasi isi tmp sebelum menimpa `dest`. Bila gagal, tmp dibuang
+    // dan backup lama tetap utuh (lihat catch di bawah).
+    verifikasi(tmp);
   } catch (e) {
-    // Jangan tinggalkan file sementara/parsial saat VACUUM gagal.
+    // Jangan tinggalkan file sementara/parsial saat VACUUM/verifikasi gagal.
     buangFileDb(tmp);
     throw e;
   }
@@ -156,23 +343,31 @@ export function backupVacuumInto(db: Database.Database, dest: string): string {
   return dest;
 }
 
-/** Tabel yang wajib ada agar file dianggap backup aplikasi ini (skema v2). */
-export const TABEL_WAJIB_RESTORE = [
-  'akun',
-  'jurnal',
-  'jurnal_baris',
-  'tutup_buku',
-  'pengaturan',
-  'audit_log',
-  'aset',
-] as const;
+/**
+ * Tabel wajib agar file dianggap backup aplikasi ini. Hanya skema v1 yang
+ * didukung, jadi daftarnya sama dengan 11 tabel aktif resmi.
+ */
+export const TABEL_WAJIB_RESTORE = TABEL_AKTIF;
+
+/** Tabel wajib restore selalu mengikuti skema v1 aktif. */
+export function tabelWajibRestore(): readonly string[] {
+  return TABEL_WAJIB_RESTORE;
+}
 
 export type ValidasiRestore = { valid: true } | { valid: false; error: string };
 
+type PelanggaranFk = {
+  table: string;
+  rowid: number | null;
+  parent: string;
+  fkid: number;
+};
+
 /**
  * Validasi kandidat restore SEBELUM menyentuh DB aktif:
- * file ada & berupa file, SQLite terbaca, `integrity_check` = ok, bukan dari
- * versi aplikasi yang lebih baru, dan semua tabel wajib ada.
+ * file ada & berupa file, SQLite terbaca, `user_version` = `SCHEMA_VERSION`,
+ * `integrity_check` = ok, semua tabel wajib skema v1 ada, tidak ada pelanggaran
+ * foreign key, dan audit integritas akuntansi tidak menemukan masalah.
  */
 export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
   let kandidat: Database.Database | null = null;
@@ -183,6 +378,13 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
     if (info.size === 0) return { valid: false, error: 'File backup kosong.' };
 
     kandidat = new Database(backupPath, { readonly: true, fileMustExist: true });
+    const versi = Number(kandidat.pragma('user_version', { simple: true }) ?? 0);
+    if (versi !== SCHEMA_VERSION)
+      return {
+        valid: false,
+        error: `File backup memakai skema v${versi}; aplikasi hanya mendukung skema v${SCHEMA_VERSION}. Pilih backup dari aplikasi versi ini.`,
+      };
+
     const hasilIntegritas = kandidat.pragma('integrity_check') as { integrity_check: string }[];
     const pesanIntegritas = hasilIntegritas.map((r) => r.integrity_check).join('; ');
     if (pesanIntegritas.toLowerCase() !== 'ok')
@@ -191,24 +393,51 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
         error: 'File backup rusak. Pilih file backup lain.',
       };
 
-    const versi = Number(kandidat.pragma('user_version', { simple: true }) ?? 0);
-    if (versi > SCHEMA_VERSION)
-      return {
-        valid: false,
-        error: 'File backup dibuat oleh aplikasi versi lebih baru. Perbarui aplikasi dulu.',
-      };
-
     const tabel = new Set(
       (kandidat.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
         name: string;
       }[]).map((r) => r.name),
     );
-    const kurang = TABEL_WAJIB_RESTORE.filter((t) => !tabel.has(t));
+    const kurang = tabelWajibRestore().filter((t) => !tabel.has(t));
     if (kurang.length > 0)
       return {
         valid: false,
         error: `File ini bukan backup aplikasi ini (tabel ${kurang.join(', ')} tidak ditemukan).`,
       };
+
+    // DB-08: `integrity_check` tidak memeriksa foreign key. Tolak kandidat yang
+    // punya baris yatim.
+    const pelanggaranFk = kandidat.pragma('foreign_key_check') as PelanggaranFk[];
+    if (pelanggaranFk.length > 0) {
+      const rincian = pelanggaranFk
+        .slice(0, 5)
+        .map((r) => `tabel ${r.table} baris ${r.rowid ?? '-'} -> ${r.parent}`)
+        .join(', ');
+      const sisa = pelanggaranFk.length > 5 ? ` (+${pelanggaranFk.length - 5} lainnya)` : '';
+      return {
+        valid: false,
+        error:
+          `File backup rusak: ada ${pelanggaranFk.length} pelanggaran foreign key ` +
+          `(${rincian}${sisa}). Pilih file backup lain.`,
+      };
+    }
+
+    // AKT-11: backup yang lolos SQLite belum tentu sehat secara akuntansi.
+    const audit = auditIntegritas(kandidat);
+    if (!audit.ok) {
+      const rincian = audit.temuan
+        .slice(0, 10)
+        .map((t) => `[${t.kode}] ${t.pesan}`)
+        .join(' ');
+      const sisa =
+        audit.temuan.length > 10 ? ` (+${audit.temuan.length - 10} temuan lain)` : '';
+      return {
+        valid: false,
+        error:
+          `Backup tidak lolos audit akuntansi. Pilih backup lain. ` +
+          `${audit.ringkasan}${sisa} ${rincian}`.trim(),
+      };
+    }
 
     return { valid: true };
   } catch {
@@ -306,7 +535,7 @@ function tulisKunciAktif(
  *    (bila pemanggil sudah membuat cadangan lewat `preRestorePath`, path itu
  *    yang dipakai);
  * 3. tutup koneksi, buang `-wal`/`-shm`, copy ke `.tmp`, rename (atomik);
- * 4. buka ulang + jalankan migrasi versi;
+ * 4. buka ulang dengan skema v1 (`openDb`);
  * 5. tulis kembali PIN + hash kode darurat DB aktif (AUD-14/AUD-19) dalam
  *    transaksi agar kunci backup lama tidak mengganti kunci instalasi ini.
  *
@@ -352,6 +581,12 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
     // Selalu jalankan: bila instalasi aktif belum punya kode darurat, pasangan
     // reset dari backup harus dibuang agar kode asing tidak menjadi berlaku.
     tulisKunciAktif(dbBaru, pinAktif, resetAktif);
+    // T3.2: retensi hanya setelah restore benar-benar sukses. Backup yang
+    // baru dipakai untuk rollback selalu dilindungi, begitu pula backup lain
+    // bila jumlahnya masih di bawah batas.
+    rapikanBackupInternal(dirBackup, 'pre-restore', RETENSI_PRE_RESTORE, [
+      preRestorePath,
+    ]);
     return { ok: true, db: dbBaru, preRestorePath };
   } catch {
     try {
@@ -382,53 +617,31 @@ export function restoreDbAman(db: Database.Database, opsi: OpsiRestoreDb): Hasil
   }
 }
 
-/**
- * Backup otomatis SEBELUM migrasi/reset skema (mis. DB v1 single-entry yang
- * tabel lamanya akan dibuang oleh `openDb`). Mengembalikan '' bila DB belum ada
- * atau sudah versi terbaru. Best-effort: pemanggil boleh mencatat kegagalan.
- */
-export function backupPraUpgrade(
-  dbPath: string,
-  dirBackup = join(dirname(dbPath), 'backups'),
-  stamp = new Date().toISOString().replace(/[:.]/g, '-'),
-): string {
-  if (!existsSync(dbPath)) return '';
-  let probe: Database.Database | null = null;
-  try {
-    probe = new Database(dbPath, { fileMustExist: true });
-    const versi = Number(probe.pragma('user_version', { simple: true }) ?? 0);
-    if (versi >= SCHEMA_VERSION) return '';
-    const adaTabelLama = Boolean(
-      probe
-        .prepare(
-          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name IN ('transaksi', 'panjar', 'coa') LIMIT 1",
-        )
-        .get(),
-    );
-    if (!adaTabelLama) return '';
-    return backupVacuumInto(probe, join(dirBackup, `pre-upgrade-${stamp}.db`));
-  } finally {
-    try {
-      probe?.close();
-    } catch {
-      /* koneksi probe sementara */
-    }
-  }
-}
-
 // ---- Auto-backup harian (1x sehari saat app dibuka, retensi N file) ----
 
-/** Backup harian aman saat DB terbuka (VACUUM INTO, bukan copy mentah WAL). Idempoten per stamp. */
+/**
+ * Backup harian aman saat DB terbuka (VACUUM INTO, bukan copy mentah WAL).
+ * Idempoten per stamp.
+ *
+ * DB-09: backup otomatis harian sengaja tetap satu file `.db`. Sejak DB-37
+ * aplikasi tidak lagi menyimpan folder/file bukti terpisah, jadi tidak ada
+ * muatan lain yang bisa tertinggal yatim. Backup ini adalah jaring pemulihan
+ * cepat, bukan pengganti Backup Lengkap (`pura.db` + `manifest.json`) yang
+ * dipakai untuk arsip dan pindah laptop.
+ */
 export function autoBackupHarian(
   db: Database.Database,
   dir: string,
-  keep = 7,
+  keep = RETENSI_AUTO,
   stamp = tanggalLokal(),
 ): string {
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, `auto-${stamp}.db`);
   let dibuat = false;
   if (!existsSync(dest)) {
+    // DB-12: audit hanya sebelum menulis backup baru. Backup yang sudah ada
+    // untuk hari ini tidak ditulis ulang dan tidak memicu audit/tulisan lain.
+    auditSebelumBackup(db);
     backupVacuumInto(db, dest);
     dibuat = true;
   }
@@ -440,17 +653,10 @@ export function autoBackupHarian(
       baru: { path: dest, jenis: 'harian', hari: stamp },
     });
   }
-  const files = readdirSync(dir)
-    .filter((f) => f.startsWith('auto-') && f.endsWith('.db'))
-    .sort();
-  while (files.length > keep) {
-    const old = files.shift()!;
-    try {
-      unlinkSync(join(dir, old));
-    } catch {
-      break;
-    }
-  }
+  // T3.2: retensi berjalan hanya setelah backup baru lolos verifikasi (atau
+  // file hari ini memang sudah ada). `dest` selalu dilindungi agar backup baru
+  // tidak pernah ikut terhapus.
+  rapikanBackupInternal(dir, 'auto', keep, [dest]);
   return dest;
 }
 

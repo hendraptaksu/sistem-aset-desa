@@ -18,14 +18,12 @@ import {
   neracaSaldoPeriode,
   type BarisJurnalSumber,
 } from '../src/core/reports.js';
-import { hitungRealisasiAnggaran } from '../src/core/anggaran.js';
 import type { Panjar } from '../src/core/types.js';
 import { pembantuDariBukuBesar } from '../src/features/reports/pembantu/pembantu.js';
 import {
   KOP_ORG_NAMA,
   NUMFMT_PERSEN,
   NUMFMT_RP,
-  anggaranToWorkbook,
   arusKasToHtml,
   arusKasToWorkbook,
   bukuBesarToHtml,
@@ -279,15 +277,6 @@ const lr = labaRugi(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
 const lrDefisit = labaRugi(baris, { mulai: '2026-02-01', sampai: '2026-02-28' });
 const n = neraca(baris, '2026-12-31');
 const ak = arusKas(baris, { mulai: '2026-01-01', sampai: '2026-12-31' });
-const anggaranHasil = hitungRealisasiAnggaran(
-  [
-    { tahun: 2026, akun_kode: '4005', nominal: RP(3_000_000) },
-    { tahun: 2026, akun_kode: '5010', nominal: RP(400_000) },
-    { tahun: 2026, akun_kode: '5003', nominal: RP(500_000) },
-  ],
-  baris,
-  { mulai: '2026-01-01', sampai: '2026-12-31' },
-);
 
 const jurnal: JurnalTampil[] = [
   {
@@ -334,6 +323,10 @@ const panjar: PanjarTampil[] = [
         kategori_baga: '5003',
         nominal: RP(600_000),
         jurnal_id: 'j-panjar-tutup',
+        nota_nomor: '',
+        nota_tanggal: '',
+        toko: '',
+        keterangan: '',
       },
     ],
   },
@@ -460,9 +453,27 @@ describe('P1-10 — builder XLSX numerik', () => {
     const total = cariBaris(ws, 1, 'TOTAL');
     expect(ws.getRow(total).getCell(4).value).toBe(ns.totalDebit / 100);
     expect(ws.getRow(total).getCell(5).value).toBe(ns.totalKredit / 100);
-    const status = cariBaris(ws, 1, 'STATUS');
+    // Kolom Saldo pada baris TOTAL tidak diisi 0 palsu.
+    expect(ws.getRow(total).getCell(6).value).toBeNull();
+    const status = cariBaris(ws, 1, 'SELISIH');
     expect(ws.getRow(status).getCell(2).value).toBe('Seimbang');
     expect(ws.getRow(status).getCell(6).value).toBe(0);
+  });
+
+  it('Neraca Saldo tidak seimbang: baris SELISIH memuat angka nyata', async () => {
+    const nsSelisih = { ...ns, selisih: RP(1_234), seimbang: false };
+    const wb = await neracaSaldoToWorkbook(nsSelisih);
+    const ws = wb.worksheets[0]!;
+    const total = cariBaris(ws, 1, 'TOTAL');
+    expect(ws.getRow(total).getCell(6).value).toBeNull();
+    const status = cariBaris(ws, 1, 'SELISIH');
+    expect(ws.getRow(status).getCell(2).value).toBe('Tidak seimbang');
+    expect(ws.getRow(status).getCell(6).value).toBe(1234);
+
+    const html = neracaSaldoToHtml(nsSelisih);
+    expect(html).toContain('SELISIH');
+    expect(html).toContain('Tidak seimbang');
+    expect(html).toContain('Rp 1.234');
   });
 
   it('Neraca Saldo mode tahun: periode tahun buku + baris laba ditahan', async () => {
@@ -484,7 +495,8 @@ describe('P1-10 — builder XLSX numerik', () => {
     const total = cariBaris(ws, 1, 'TOTAL');
     expect(ws.getRow(total).getCell(4).value).toBe(nsTahun.totalDebit / 100);
     expect(ws.getRow(total).getCell(5).value).toBe(nsTahun.totalKredit / 100);
-    const status = cariBaris(ws, 1, 'STATUS');
+    expect(ws.getRow(total).getCell(6).value).toBeNull();
+    const status = cariBaris(ws, 1, 'SELISIH');
     expect(ws.getRow(status).getCell(2).value).toBe('Seimbang');
 
     // Kontrak lama tanpa mode & tanpa cutoff tetap memakai label kumulatif.
@@ -555,6 +567,14 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(ws.getRow(total).getCell(6).value).toBe(ak.totalKeluar / 100);
     expect(cariBaris(ws, 1, 'Saldo akhir')).toBeGreaterThan(0);
     expect(cariBaris(ws, 8, 'Transfer')).toBeGreaterThan(0);
+
+    const wbDenganPenyesuaian = await arusKasToWorkbook({
+      ...ak,
+      penyesuaianSaldoAwal: RP(1_250),
+    });
+    const wsDenganPenyesuaian = wbDenganPenyesuaian.worksheets[0]!;
+    const barisPenyesuaian = cariBaris(wsDenganPenyesuaian, 1, 'Saldo pembukaan / penyesuaian');
+    expect(wsDenganPenyesuaian.getRow(barisPenyesuaian).getCell(4).value).toBe(1_250);
   });
 
   it('Panjar: daftar + rincian item, semua nominal number', async () => {
@@ -574,32 +594,20 @@ describe('P1-10 — builder XLSX numerik', () => {
     expect(cariBaris(ws, 2, 'Belum ada rincian pertanggungjawaban')).toBeGreaterThan(0);
   });
 
-  it('Anggaran: pagu/realisasi/sisa number, persen fraksi, total gabungan', async () => {
-    const wb = await anggaranToWorkbook(anggaranHasil);
-    const ws = wb.worksheets[0]!;
-    const header = cariBaris(ws, 1, 'Kode');
-    cekNominal(ws, [3, 4, 5], header + 1);
-    cekPersen(ws, 6, header + 1);
+  it('DB-24: workbook anggaran sudah dihapus dari export', async () => {
+    const mod = await import('../src/features/export/workbooks.js');
+    expect('anggaranToWorkbook' in mod).toBe(false);
+  });
 
-    const row = cariBaris(ws, 1, '4005');
-    expect(ws.getRow(row).getCell(3).value).toBe(3_000_000);
-    expect(ws.getRow(row).getCell(4).value).toBe(2_000_000);
-    expect(ws.getRow(row).getCell(5).value).toBe(1_000_000);
-    expect(ws.getRow(row).getCell(6).value).toBeCloseTo(2 / 3, 10);
-    expect(ws.getRow(row).getCell(7).value).toBe('Sesuai');
+  it('DB-25: modul import dihapus tetapi export XLSX tetap berjalan', async () => {
+    const mod = await import('../src/features/export/workbooks.js');
+    expect('parseImporExcel' in mod).toBe(false);
+    expect('buatTemplateImpor' in mod).toBe(false);
 
-    const lebih = cariBaris(ws, 1, '5010');
-    expect(ws.getRow(lebih).getCell(5).value).toBe(-100_000);
-    expect(ws.getRow(lebih).getCell(7).value).toBe('Lebih');
-
-    const total = cariBaris(ws, 2, 'TOTAL ANGGARAN & REALISASI');
-    expect(ws.getRow(total).getCell(3).value).toBe(anggaranHasil.total.anggaran / 100);
-    expect(ws.getRow(total).getCell(4).value).toBe(anggaranHasil.total.realisasi / 100);
-    expect(ws.getRow(total).getCell(5).value).toBe(anggaranHasil.total.sisa / 100);
-    expect(ws.getRow(total).getCell(6).value).toBeCloseTo(
-      anggaranHasil.total.persen / 100,
-      10,
-    );
+    // File .xlsx yang dihasilkan tetap berupa arsip ZIP (tanda PK).
+    const buffer = await workbookToBuffer(await jurnalToWorkbook(jurnal, COA));
+    expect(buffer.byteLength).toBeGreaterThan(0);
+    expect(Buffer.from(buffer).subarray(0, 2).toString('utf8')).toBe('PK');
   });
 
   it('semua workbook bisa dibaca ulang ExcelJS dan tetap numerik (round-trip)', async () => {
@@ -611,7 +619,6 @@ describe('P1-10 — builder XLSX numerik', () => {
       await neracaHasilToWorkbook(n),
       await arusKasToWorkbook(ak),
       await panjarToWorkbook(panjar, COA),
-      await anggaranToWorkbook(anggaranHasil),
     ];
     for (const wb of wbs) {
       const hasil = await roundTrip(wb);
@@ -676,17 +683,21 @@ describe('P1-10 — HTML print semua laporan', () => {
 
   it('HTML menampilkan total yang sama dengan core dan negatif dalam kurung', () => {
     expect(jurnalDaftarToHtml(jurnal, COA)).toContain('TOTAL KESELURUHAN');
-    expect(bukuBesarToHtml(bb)).toContain('107.900.000,00');
+    expect(bukuBesarToHtml(bb)).toContain('107.900.000');
     expect(neracaSaldoToHtml(ns)).toContain('Seimbang');
+    expect(neracaSaldoToHtml(ns)).toContain('SELISIH');
     expect(neracaSaldoToHtml(nsTahun)).toContain('Laba ditahan sebelum periode');
     expect(neracaSaldoToHtml(nsTanpaCutoff)).toContain('SEMUA PERIODE');
     expect(labaRugiToHtml(lr)).toContain('Total Pendapatan');
     expect(neracaHasilToHtml(n)).toContain('TOTAL PASIVA');
     expect(arusKasToHtml(ak)).toContain('TOTAL ARUS (tanpa transfer)');
+    expect(arusKasToHtml({ ...ak, penyesuaianSaldoAwal: RP(1_250) })).toContain(
+      'Saldo pembukaan / penyesuaian',
+    );
     expect(panjarToHtml(panjar, COA)).toContain('Subtotal');
 
     // Defisit: format Rupiah negatif wajib dalam kurung, bukan minus.
-    expect(labaRugiToHtml(lrDefisit)).toContain('(Rp 500.000,00)');
+    expect(labaRugiToHtml(lrDefisit)).toContain('(Rp 500.000)');
   });
 });
 

@@ -2,24 +2,20 @@
 //
 // Modul ini sengaja TIDAK mengimpor Electron runtime. Semua ketergantungan
 // main-process (koneksi DB yang bisa berganti setelah restore, dialog native,
-// tulis file, cetak PDF, buka file OS, folder lampiran) masuk lewat `IpcDeps`
+// tulis file, cetak PDF, buka file OS) masuk lewat `IpcDeps`
 // sehingga seluruh alur create → reverse → tutup → backup → restore bisa
 // diuji dengan vitest tanpa Electron.
 
 import type Database from 'better-sqlite3';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
   catatAudit,
-  deleteAset,
-  getAset,
-  getJurnal,
   getPengaturanPembukuan,
   guardPeriodeTerkunci,
   hapusAkun,
-  insertAset,
+  kodeKasDariDb,
   listAkun,
-  listAset,
   listAuditLogPage,
   listJurnalLengkap,
   listJurnalLengkapPage,
@@ -29,69 +25,56 @@ import {
   simpanPengaturanPembukuan,
   tambahAkun,
   ubahNamaAkun,
-  updateAset,
   type AuditFilter,
   type JurnalFilter,
 } from '../db/repository.js';
 import { koreksiDanIsiUlang, reverseJurnal } from '../db/reversal.js';
-import { postingJurnal, validasiJurnalDb } from '../db/posting.js';
-import { simpanSaldoAwal, statusSaldoAwal } from '../db/saldoAwal.js';
+import { getCutoverTanggal } from '../db/pembukaan.js';
 import {
+  PESAN_WAJIB_ALASAN_PERINGATAN,
+  postingJurnal,
+  validasiJurnalDb,
+} from '../db/posting.js';
+import {
+  koreksiSaldoAwal,
+  PESAN_ALASAN_KOREKSI_MIN,
+  PESAN_KOREKSI_TANPA_SALDO_AWAL,
+  saldoAwalSaatIni,
+  simpanSaldoAwal,
+  statusSaldoAwal,
+} from '../db/saldoAwal.js';
+import {
+  batalPanjarV2,
+  batalkanPanjarSaldoAwal,
+  batalkanPertanggungjawabanPanjar,
+  catatPanjarSaldoAwal,
   closePanjarV2,
   listPanjarItemsV2,
   listPanjarV2,
   serahkanPanjar,
 } from '../db/panjar.js';
-import {
-  createPihak,
-  daftarJurnalPihak,
-  deletePihak,
-  listPihak,
-  postingPihak,
-  rekonsiliasiPihakDb,
-  saldoPerPihak,
-  updatePihak,
-} from '../db/pihak.js';
-import { peringatanPihakTanpaMapping } from '../core/pihak.js';
 import { previewTutupBuku, tutupBuku } from '../db/tutup.js';
+import { bandingkanSnapshotTutup } from '../db/tutupSnapshot.js';
 import {
-  getAnggaranTahun,
-  laporanRealisasiAnggaran,
-  simpanAnggaran,
-} from '../db/anggaran.js';
+  bayarAngsuranPinjaman,
+  batalkanPembayaranPinjaman,
+  batalkanPinjaman,
+  getPinjaman,
+  listPinjamanBayar,
+  laporanMutasiPinjaman,
+  listPinjaman,
+  simpanPinjamanLpd,
+} from '../db/pinjaman.js';
 import {
-  buatRekonsiliasi,
-  getRekonsiliasiDetail,
-  listRekonsiliasi,
-  selesaikanRekonsiliasi,
-} from '../db/rekonsiliasi.js';
+  rekonsiliasiPinjaman,
+  rekonsiliasiSemuaPinjaman,
+} from '../db/pinjamanRekonsiliasi.js';
 import {
-  getLampiran,
-  hapusLampiran,
-  listLampiran,
-  tambahLampiran,
-} from '../db/lampiran.js';
-import {
-  dataUrlLampiran,
-  hapusFileLampiran,
-  pathFileLampiran,
-  simpanLampiranDenganMetadata,
-} from '../features/lampiran/lampiran.js';
-import { validasiLampiran } from '../core/lampiran.js';
-import {
-  parseImporExcel,
-  validasiBatasImpor,
-} from '../features/import/parser.js';
-import {
-  NAMA_FILE_TEMPLATE_IMPOR,
-  buatBufferTemplateImpor,
-} from '../features/import/template.js';
-import { imporJurnalDariExcel, validasiImporDariExcel } from '../db/impor.js';
-import { KAS_KODES } from '../db/coa.js';
-import {
-  labaTahun as labaTahunJurnal,
-  saldoSemuaKas as saldoSemuaKasJurnal,
-} from '../core/reports.js';
+  auditIntegritas,
+  type HasilAuditIntegritas,
+} from '../db/integritas.js';
+import { AKUN_PIUTANG } from '../db/coa.js';
+import { saldoSemuaKas as saldoSemuaKasJurnal } from '../core/reports.js';
 import {
   laporanArusKas,
   laporanBukuBesar,
@@ -104,8 +87,10 @@ import {
 } from '../db/laporan.js';
 import { buildDashboardJurnal, denganBackupTerakhir } from '../features/dashboard/dashboard.js';
 import {
+  RETENSI_TUTUP_BUKU,
   backupVacuumInto,
   lastAutoBackup,
+  rapikanBackupInternal,
   restoreDbAman,
 } from '../features/export/export.js';
 import {
@@ -113,10 +98,13 @@ import {
   stampBackupLokal,
 } from '../features/export/backupLengkap.js';
 import { restoreLengkap } from '../features/export/restoreLengkap.js';
-import type { Aset } from '../core/types.js';
+import { pastikanBukanFileDbAktif } from '../features/export/pathAman.js';
 import { tanggalKalenderValid, type JurnalInput } from '../core/posting.js';
+import {
+  catatanTahunPertamaParsial,
+  pengaturanPublik,
+} from '../core/pengaturan.js';
 import { buatJurnalSaldoAwal } from '../core/forms.js';
-import { rentangTahunBuku } from '../core/pengaturan.js';
 import {
   PESAN_SIMPAN_GAGAL,
   PESAN_TANGGAL_TIDAK_VALID,
@@ -126,33 +114,32 @@ import {
 import { tanggalLokal } from '../utils/tanggal.js';
 import {
   validasiBentukJurnalInput,
+  validasiBentukKoreksiInput,
+  validasiAlasanAkun,
   validasiBentukAkunBaru,
   validasiBentukAkunUbah,
   validasiKodeAkun,
-  validasiBentukAnggaranList,
-  validasiBentukAnggaranSimpan,
+  validasiStatusAkunAktif,
   validasiBentukPanjarClose,
+  validasiBentukPanjarSaldoAwal,
   validasiBentukPanjarSerah,
+  validasiBentukPembatalanPertanggungjawabanPanjar,
   validasiBentukPengaturanPembukuan,
-  validasiBentukPihak,
-  validasiBentukPostingPihak,
-  validasiBentukRekonsiliasiCreate,
-  validasiBentukRekonsiliasiList,
-  validasiBentukRekonsiliasiSelesai,
+  validasiBentukPinjamanBayar,
+  validasiBentukPembatalanPinjaman,
+  validasiBentukPinjamanMutasi,
+  validasiBentukPinjamanRekonsiliasi,
+  validasiBentukPinjamanSimpan,
   validasiBentukSaldoAwal,
+  validasiBentukTransaksiInput,
   validasiCutoffLaporan,
-  validasiFilterAnggaran,
   validasiFilterBukuBesar,
   validasiFilterJurnalCari,
   validasiFilterNeraca,
   validasiFilterNeracaSaldo,
   validasiIdJurnal,
-  validasiIdLampiran,
-  validasiIdRekonsiliasi,
   validasiRentangLaporan,
   validasiTanggalOpsional,
-  validateAsetInput,
-  type AsetInput,
 } from './validation.js';
 import {
   ambilKodeDaruratSekali,
@@ -160,6 +147,7 @@ import {
   bukaKunci,
   gantiKodeDarurat,
   kunciLagi,
+  muatStateBlokir,
   resetPaksa,
   sentuhAktivitas,
   sesi,
@@ -194,14 +182,19 @@ export type IpcDeps = {
   printPdf(html: string, filePath: string, landscape?: boolean): Promise<void>;
   /** `shell.openPath`; string kosong = berhasil, selain itu pesan galat OS. */
   openPath(path: string): Promise<string>;
-  lampiranDir(): string;
-  /** Lokasi data final (P2-8): folder data, DB, lampiran, backup. */
+  /** Lokasi data final (P2-8): folder data, DB, dan backup. */
   lokasiData(): LokasiData;
   /**
    * AUD-34: logger main untuk alur backup/restore. Opsional agar test IPC
    * tidak perlu menyiapkan file log.
    */
   log?: Pick<LoggerApp, 'info' | 'warn' | 'error'>;
+  /**
+   * T-A16: hasil audit integritas yang dijalankan saat startup/restore.
+   * Opsional agar test IPC lama tidak perlu menyiapkan audit; `null` berarti
+   * audit belum tersedia/gagal dibaca. Handler hanya membaca nilai ini.
+   */
+  auditAwal?(): HasilAuditIntegritas | null;
   /** Waktu acuan yang bisa dipatok di test; default `new Date()`. */
   now?(): Date;
   /**
@@ -211,9 +204,35 @@ export type IpcDeps = {
   pengirim: KonteksNavigasi;
 };
 
+/**
+ * T3.7 — batas aman `jurnal:list` (legacy). Nilai bukan angka kembali ke
+ * default; limit di-clamp ke 0..1000 dan offset minimal 0. Limit 0 berarti
+ * pemanggil meminta array kosong, bukan "tanpa batas".
+ */
+export function batasDaftarJurnal(
+  limit: unknown,
+  offset: unknown,
+): { limit: number; offset: number } {
+  const angka = (nilai: unknown, bawaan: number): number => {
+    if (nilai === undefined || nilai === null || nilai === '') return bawaan;
+    const n = Number(nilai);
+    if (!Number.isFinite(n)) return bawaan;
+    return Math.trunc(n);
+  };
+  return {
+    limit: Math.min(1000, Math.max(0, angka(limit, 500))),
+    offset: Math.max(0, angka(offset, 0)),
+  };
+}
+
 export function registerIpc(deps: IpcDeps): void {
   const sekarang = (): Date => deps.now?.() ?? new Date();
   const tanggalSekarang = (): string => tanggalLokal(sekarang());
+
+  // T2.8: muat lockout PIN yang dipersist sebelum renderer meminta lock:status.
+  // Dipilih di sini (bukan index.ts) karena registerIpc selalu berjalan setelah
+  // DB dibuka dan menjadi satu-satunya jalur startup yang juga dipakai test IPC.
+  muatStateBlokir(deps.db());
 
   const ok = <T>(data: T) => ({ ok: true as const, data });
   const fail = (error: string, perluAlasan = false, perluKonfirmasi = false) => ({
@@ -222,7 +241,29 @@ export function registerIpc(deps: IpcDeps): void {
     perluAlasan,
     perluKonfirmasi,
   });
-  const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+  /** AKT-02: hanya `true` eksplisit dari renderer yang dianggap konfirmasi. */
+  const bacaKonfirmasiTanpaSaldoAwal = (opsi: unknown): boolean =>
+    typeof opsi === 'object' &&
+    opsi !== null &&
+    !Array.isArray(opsi) &&
+    (opsi as { konfirmasiTanpaSaldoAwal?: unknown }).konfirmasiTanpaSaldoAwal === true;
+  /**
+   * DB-09: restore `.db` adalah jalur lanjutan yang hanya mengganti database.
+   * Renderer wajib mengirim `true` eksplisit setelah dua peringatan; panggilan
+   * langsung tanpa konfirmasi ditolak sebelum dialog file dibuka.
+   */
+  const bacaKonfirmasiRestoreDb = (opsi: unknown): boolean =>
+    typeof opsi === 'object' &&
+    opsi !== null &&
+    !Array.isArray(opsi) &&
+    (opsi as { konfirmasiRestoreDb?: unknown }).konfirmasiRestoreDb === true;
+  /** AKT-06: hanya string dari renderer yang diteruskan sebagai alasan. */
+  const bacaTeksOpsi = (opsi: unknown, kunci: string): string | undefined => {
+    if (typeof opsi !== 'object' || opsi === null || Array.isArray(opsi)) return undefined;
+    const nilai = (opsi as Record<string, unknown>)[kunci];
+    return typeof nilai === 'string' ? nilai : undefined;
+  };
 
   // AUD-17: setiap handler hanya boleh dipanggil frame renderer aplikasi.
   // Event tanpa senderFrame (frame hancur) atau dari iframe/halaman asing
@@ -273,66 +314,29 @@ export function registerIpc(deps: IpcDeps): void {
     'Terjadi kesalahan saat memuat data. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_KOREKSI =
     'Terjadi kesalahan saat menyimpan koreksi. Jurnal asli tidak diubah; coba lagi atau hubungi pendamping.';
-  const GAGAL_PIHAK =
-    'Terjadi kesalahan saat menyimpan data pihak. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_PANJAR =
     'Terjadi kesalahan saat menyimpan panjar. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_ASET =
-    'Terjadi kesalahan saat menyimpan data aset. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_ANGGARAN =
-    'Terjadi kesalahan saat menyimpan pagu anggaran. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_REKONSILIASI =
-    'Terjadi kesalahan saat memproses rekonsiliasi bank. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_LAMPIRAN =
-    'Terjadi kesalahan saat memproses lampiran. Coba lagi; bila tetap gagal, hubungi pendamping.';
+  const GAGAL_PINJAMAN =
+    'Terjadi kesalahan saat menyimpan pinjaman LPD. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_TUTUP =
-    'Terjadi kesalahan saat memproses tutup buku. Coba lagi; bila tetap gagal, hubungi pendamping.';
+    'Terjadi kesalahan saat memproses kunci periode. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_BACKUP = 'Gagal membuat cadangan. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_RESTORE =
     'Gagal memulihkan data. Data lama tetap dipakai; coba lagi atau hubungi pendamping.';
-  const GAGAL_IMPOR =
-    'Gagal memproses impor Excel. Periksa file, lalu coba lagi atau hubungi pendamping.';
+  // T1.2: pesan simpan sengaja tidak memuat kata teknis (mis. "database")
+  // agar tidak diganti pesan generik oleh `pesanError`. Guard berlaku untuk
+  // semua kanal simpan, bukan hanya backup.
+  const PESAN_SIMPAN_KE_DB_AKTIF =
+    'File DB yang sedang aktif tidak boleh menjadi tujuan simpan. Pilih nama file lain.';
 
-  // ---- Import Excel (P2-9) ----
-  // Renderer hanya boleh mengirim path hasil dialog/preview. Path divalidasi
-  // ulang (ekstensi .xlsx, file nyata, batas 10 MB) sebelum dibaca di main.
-  type FileImpor = { buffer: Buffer; namaFile: string } | { error: string };
-
-  const bacaFileImpor = (filePath: string): FileImpor => {
-    const path = String(filePath ?? '').trim();
-    if (!path) return { error: 'File impor belum dipilih.' };
-    if (!/\.xlsx$/i.test(path))
-      return { error: 'File impor harus berformat .xlsx (Excel).' };
-    let info: ReturnType<typeof statSync>;
+  /** Tolak tujuan simpan yang menunjuk DB aktif atau sidecar `-wal`/`-shm`. */
+  const pastikanTujuanBukanDbAktif = (filePath: string): void => {
     try {
-      info = statSync(path);
+      pastikanBukanFileDbAktif(deps.dbPath(), filePath);
     } catch {
-      return { error: 'File impor tidak ditemukan. Pilih file .xlsx yang masih ada.' };
+      throw new Error(PESAN_SIMPAN_KE_DB_AKTIF);
     }
-    if (!info.isFile()) return { error: 'Yang dipilih bukan file Excel.' };
-    const batas = validasiBatasImpor({ ukuran: info.size });
-    if (batas) return { error: batas };
-    try {
-      return { buffer: readFileSync(path), namaFile: basename(path) };
-    } catch {
-      return { error: 'File impor tidak bisa dibaca. Tutup file di Excel, lalu coba lagi.' };
-    }
-  };
-
-  /** Baca + parse + validasi DB tanpa menulis. */
-  const pratinjauFileImpor = async (filePath: string) => {
-    const file = bacaFileImpor(filePath);
-    if ('error' in file) return file;
-    const hasil = await parseImporExcel(file.buffer, {
-      akun: listAkun(deps.db()),
-      namaFile: file.namaFile,
-    });
-    return {
-      filePath,
-      namaFile: file.namaFile,
-      hasil: validasiImporDariExcel(deps.db(), hasil),
-    };
   };
 
   daftarkan('coa:list', () => ok(listAkun(deps.db())));
@@ -358,15 +362,24 @@ export function registerIpc(deps: IpcDeps): void {
       return fail(pesanError(e, 'Gagal mengubah nama akun.'));
     }
   });
-  daftarkan('akun:set-aktif', (_e, kode: unknown, aktif: unknown) => {
+  daftarkan('akun:set-aktif', (_e, kode: unknown, aktif: unknown, alasan: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const bentuk = validasiKodeAkun(kode);
-      if (!bentuk.ok) return fail(bentuk.error);
-      if (typeof aktif !== 'boolean')
-        return fail('Status aktif akun harus true/false.');
-      return ok(setAkunAktif(deps.db(), bentuk.input, aktif));
+      const bentukKode = validasiKodeAkun(kode);
+      if (!bentukKode.ok) return fail(bentukKode.error);
+      const bentukAktif = validasiStatusAkunAktif(aktif);
+      if (!bentukAktif.ok) return fail(bentukAktif.error);
+      const bentukAlasan = validasiAlasanAkun(alasan);
+      if (!bentukAlasan.ok) return fail(bentukAlasan.error);
+      return ok(
+        setAkunAktif(
+          deps.db(),
+          bentukKode.input,
+          bentukAktif.input,
+          bentukAlasan.input,
+        ),
+      );
     } catch (e) {
       return fail(pesanError(e, 'Gagal mengubah status akun.'));
     }
@@ -436,13 +449,12 @@ export function registerIpc(deps: IpcDeps): void {
   };
 
   // ---- Lokasi data & folder (P2-8) ----
-  // Renderer hanya boleh meminta tiga nama folder tetap; TIDAK PERNAH path.
-  const JENIS_FOLDER_LOKASI = ['data', 'backups', 'attachments'] as const;
+  // Renderer hanya boleh meminta dua nama folder tetap; TIDAK PERNAH path.
+  const JENIS_FOLDER_LOKASI = ['data', 'backups'] as const;
   type JenisFolderLokasi = (typeof JENIS_FOLDER_LOKASI)[number];
   const folderLokasi = (lokasi: LokasiData, jenis: JenisFolderLokasi): string => {
     if (jenis === 'data') return lokasi.dataDir;
-    if (jenis === 'backups') return lokasi.backupsDir;
-    return lokasi.attachmentsDir;
+    return lokasi.backupsDir;
   };
 
   daftarkan('app:info-lokasi', () => {
@@ -467,7 +479,7 @@ export function registerIpc(deps: IpcDeps): void {
       }
       const lokasi = deps.lokasiData();
       const folder = folderLokasi(lokasi, jenis as JenisFolderLokasi);
-      // Folder backup/lampiran mungkin belum ada pada pemakaian pertama.
+      // Folder backup mungkin belum ada pada pemakaian pertama.
       mkdirSync(folder, { recursive: true });
       const galat = await deps.openPath(folder);
       if (galat) return fail('Folder tidak bisa dibuka. Coba lagi atau hubungi pendamping.');
@@ -484,7 +496,9 @@ export function registerIpc(deps: IpcDeps): void {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      return ok(getPengaturanPembukuan(deps.db()));
+      // DB-28: `awalTahunBuku` tetap dibaca internal untuk data lama, tetapi
+      // tidak pernah diekspos ke kontrak renderer.
+      return ok(pengaturanPublik(getPengaturanPembukuan(deps.db())));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }
@@ -496,7 +510,9 @@ export function registerIpc(deps: IpcDeps): void {
       if (k) return fail(k);
       const bentuk = validasiBentukPengaturanPembukuan(input);
       if (!bentuk.ok) return fail(bentuk.error);
-      return ok(simpanPengaturanPembukuan(deps.db(), bentuk.input));
+      return ok(
+        pengaturanPublik(simpanPengaturanPembukuan(deps.db(), bentuk.input)),
+      );
     } catch (e) {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
@@ -505,6 +521,8 @@ export function registerIpc(deps: IpcDeps): void {
   // ---- Jurnal Umum & koreksi (P0-6) ----
   // Bentuk lama dipertahankan: mengembalikan array tanpa total. Layar baru
   // memakai `jurnal:cari` agar pagination memakai total dari server (P1-11).
+  // T3.7: array legacy tetap ada, tetapi SELALU terpotong (default 500, maks
+  // 1000) agar pemanggil lama tidak pernah memuat seluruh riwayat tanpa batas.
   daftarkan('jurnal:list', (_e, f: JurnalFilter = {}) => {
     const k = perluBuka();
     if (k) return fail(k);
@@ -514,6 +532,7 @@ export function registerIpc(deps: IpcDeps): void {
     if (!sampai.ok) return fail(sampai.error);
     if (mulai.input && sampai.input && mulai.input > sampai.input)
       return fail('Tanggal mulai tidak boleh setelah tanggal sampai.');
+    const { limit, offset } = batasDaftarJurnal(f?.limit, f?.offset);
     const filter: JurnalFilter = {
       mulai: mulai.input || undefined,
       sampai: sampai.input || undefined,
@@ -523,8 +542,8 @@ export function registerIpc(deps: IpcDeps): void {
         typeof f?.cari === 'string' && f.cari.trim()
           ? f.cari.trim().slice(0, 200)
           : undefined,
-      limit: Number.isFinite(f?.limit) ? Number(f.limit) : undefined,
-      offset: Number.isFinite(f?.offset) ? Number(f.offset) : undefined,
+      limit,
+      offset,
     };
     return ok(listJurnalLengkap(deps.db(), filter));
   });
@@ -543,7 +562,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // Saran nomor untuk pratinjau form; penomoran final tetap di insertJurnal.
+  // Saran nomor untuk pratinjau form; penomoran final tetap di postingJurnal.
   daftarkan('jurnal:nomor-berikutnya', (_e, tanggal: unknown) => {
     try {
       const k = perluBuka();
@@ -665,137 +684,21 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // ---- Pagu anggaran & realisasi (P2-1) ----
-  // Hanya pagu yang disimpan. Realisasi dihitung ulang dari baris jurnal oleh
-  // core/anggaran.ts → labaRugi(); tidak ada angka realisasi tersimpan.
-  daftarkan('anggaran:list', (_e, f: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukAnggaranList(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const ringkas = getAnggaranTahun(deps.db(), bentuk.input.tahun);
-      const akun = listAkun(deps.db()).filter(
-        (a) => a.tipe === 'PENDAPATAN' || a.tipe === 'BEBAN',
-      );
-      return ok({ ...ringkas, akun });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('anggaran:simpan', (_e, f: unknown = {}, opsi: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukAnggaranSimpan(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const alasan =
-        typeof opsi === 'object' && opsi !== null && !Array.isArray(opsi)
-          ? String((opsi as { alasan?: unknown }).alasan ?? '').trim().slice(0, 500)
-          : '';
-      const baris = simpanAnggaran(deps.db(), bentuk.input.tahun, bentuk.input.baris, {
-        alasan,
-      });
-      return ok({
-        tahun: bentuk.input.tahun,
-        baris,
-        total: baris.reduce((s, b) => s + b.nominal, 0),
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_ANGGARAN));
-    }
-  });
-
-  // Default periode mengikuti awal tahun buku (P1-13). Dengan pengaturan
-  // bawaan Januari hasilnya tetap 1 Jan–31 Des seperti tiket; bila awal tahun
-  // buku diubah (mis. Juli), laporan memakai tahun buku yang sama dengan
-  // dashboard agar pagu & realisasi tidak terpotong di tengah periode.
-  daftarkan('laporan:anggaran', (_e, f: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiFilterAnggaran(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const { awalTahunBuku } = getPengaturanPembukuan(deps.db());
-      const bawaan = rentangTahunBuku(bentuk.input.tahun, awalTahunBuku);
-      return ok(
-        laporanRealisasiAnggaran(deps.db(), {
-          tahun: bentuk.input.tahun,
-          mulai: bentuk.input.mulai ?? bawaan.mulai,
-          sampai: bentuk.input.sampai ?? bawaan.sampai,
-        }),
-      );
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  // ---- Rekonsiliasi bank (P2-2) ----
-  // Hanya saldo menurut rekening koran yang disimpan. Saldo buku, selisih,
-  // status cocok, dan daftar mutasi selalu dihitung ulang dari jurnal oleh
-  // core/rekonsiliasi.ts + core/reports.ts.
-  daftarkan('rekonsiliasi:list', (_e, f: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukRekonsiliasiList(f);
-      if (!bentuk.ok) return fail(bentuk.error);
-      return ok(listRekonsiliasi(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('rekonsiliasi:detail', (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdRekonsiliasi(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const detail = getRekonsiliasiDetail(deps.db(), bentuk.input);
-      if (!detail) return fail('Rekonsiliasi tidak ditemukan.');
-      return ok(detail);
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('rekonsiliasi:create', (_e, input: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukRekonsiliasiCreate(input);
-      if (!bentuk.ok) return fail(bentuk.error);
-      return ok(buatRekonsiliasi(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_REKONSILIASI));
-    }
-  });
-
-  daftarkan('rekonsiliasi:selesai', (_e, id: unknown, opsi: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentukId = validasiIdRekonsiliasi(id);
-      if (!bentukId.ok) return fail(bentukId.error);
-      const bentukOpsi = validasiBentukRekonsiliasiSelesai(opsi);
-      if (!bentukOpsi.ok) return fail(bentukOpsi.error);
-      return ok(selesaikanRekonsiliasi(deps.db(), bentukId.input, bentukOpsi.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_REKONSILIASI));
-    }
-  });
-
-  // ---- Simpan jurnal dari form terpandu (P1-1) ----
-  // Satu-satunya jalur simpan jurnal baru di luar koreksi. Semua aturan bisnis
-  // tetap di posting layer; handler hanya memeriksa bentuk input dari renderer.
-  daftarkan('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) => {
+  // ---- Simpan jurnal baru: dua pintu terpisah (DB-03) ----
+  // `transaksi:posting` khusus form terpandu (TERIMA/BAYAR/TRANSFER/HUTANG),
+  // sedangkan `jurnal:posting` khusus jurnal manual berjenis UMUM. Keduanya
+  // memakai alur simpan yang sama agar nomor bukti, validasi, audit, dan bentuk
+  // respons tidak berbeda. Semua aturan bisnis tetap di posting layer.
+  const simpanJurnalBaru = (
+    input: unknown,
+    opsi: unknown,
+    validasiBentuk: (nilai: unknown) => ReturnType<typeof validasiBentukJurnalInput>,
+  ): unknown => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
 
-      const bentuk = validasiBentukJurnalInput(input);
+      const bentuk = validasiBentuk(input);
       if (!bentuk.ok) return fail(bentuk.error);
 
       const konfirmasiPeringatan =
@@ -803,24 +706,44 @@ export function registerIpc(deps: IpcDeps): void {
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+      const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
-      // AUD-09: Jurnal Umum tidak punya metadata pihak. Beri peringatan (bukan
-      // error) agar akuntan sadar jurnal 1050/2050 akan tampil belum teralokasi.
+      // DB-23a/DB-23b: akun 1050 hanya dipertahankan untuk data lama. Jurnal
+      // baru yang menyentuhnya minta konfirmasi (bukan error) agar tidak menjadi
+      // pintu input piutang. Peringatan ini hanya untuk 1050; akun 2050/2060
+      // kini dipakai form utang sederhana tanpa master pihak.
       // Hanya dicek saat belum dikonfirmasi dan tidak ada error lain, sehingga
       // pesan validasi asli tetap diutamakan.
-      const peringatanPihak = peringatanPihakTanpaMapping(bentuk.input);
-      if (!konfirmasiPeringatan && peringatanPihak.length > 0) {
+      const peringatanAkunLama = bentuk.input.baris.some(
+        (b) => String(b.akun_kode ?? '').trim() === AKUN_PIUTANG,
+      )
+        ? [
+            'Jurnal memakai akun 1050 PIUTANG LAIN LAIN yang hanya dipertahankan ' +
+              'untuk data lama; alur piutang sudah dihapus.',
+          ]
+        : [];
+      if (!konfirmasiPeringatan && peringatanAkunLama.length > 0) {
         const validasi = validasiJurnalDb(deps.db(), bentuk.input);
         if (validasi.errors.length === 0) {
           return fail(
-            pesanValidasi([...validasi.peringatan, ...peringatanPihak]),
+            pesanValidasi([...validasi.peringatan, ...peringatanAkunLama]),
             false,
             true,
           );
         }
       }
 
-      const hasil = postingJurnal(deps.db(), bentuk.input, { konfirmasiPeringatan });
+      const hasil = postingJurnal(deps.db(), bentuk.input, {
+        konfirmasiPeringatan,
+        // AKT-06: jurnal yang tetap disimpan meski ada peringatan wajib
+        // menyertakan alasan; diteruskan ke audit data_baru_json.
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        wajibAlasanPeringatan: true,
+        // AKT-01: form transaksi/jurnal umum wajib punya saldo awal, kecuali
+        // operator sudah menekan "mulai tanpa saldo awal" (diteruskan UI AKT-02).
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal,
+      });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
           pesanValidasi(hasil.errors) ||
@@ -828,24 +751,48 @@ export function registerIpc(deps: IpcDeps): void {
           'Jurnal gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
         // Konfirmasi hanya untuk peringatan murni (mis. kas minus), bukan saat
-        // masih ada error yang harus diperbaiki.
-        const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        // masih ada error yang harus diperbaiki. AKT-06: alasan peringatan yang
+        // kurang tetap minta konfirmasi ulang.
+        const perluKonfirmasi =
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) => m === PESAN_WAJIB_ALASAN_PERINGATAN));
         return fail(pesan, perluAlasan, perluKonfirmasi);
       }
       return ok({ jurnal: hasil.jurnal });
     } catch (e) {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
-  });
+  };
+
+  daftarkan('jurnal:posting', (_e, input: unknown, opsi: unknown = {}) =>
+    simpanJurnalBaru(input, opsi, validasiBentukJurnalInput),
+  );
+
+  daftarkan('transaksi:posting', (_e, input: unknown, opsi: unknown = {}) =>
+    simpanJurnalBaru(input, opsi, validasiBentukTransaksiInput),
+  );
 
   // ---- Wizard Saldo Awal (P1-6) ----
-  // Hanya sekali, saat tabel jurnal masih kosong. Renderer mengirim form mentah
-  // (tanggal + saldo per akun); main menyusun jurnal lewat builder murni yang
-  // sama dengan pratinjau UI, lalu adapter DB memeriksa "masih kosong" secara
-  // atomik sebelum menulis jurnal + audit SALDO-AWAL.
+  // Hanya sekali; setelah ada jurnal harian pun masih boleh disusulkan selama
+  // tanggal saldo awal tidak setelah jurnal paling awal (AUD2-02). Renderer
+  // mengirim form mentah (tanggal + saldo per akun); main menyusun jurnal lewat
+  // builder murni yang sama dengan pratinjau UI, lalu adapter DB memeriksa
+  // eksistensi SALDO_AWAL + batas tanggal secara atomik sebelum menulis jurnal
+  // + audit SALDO-AWAL.
   daftarkan('saldo-awal:status', () => {
     const k = perluBuka();
     return k ? fail(k) : ok(statusSaldoAwal(deps.db()));
+  });
+
+  // T1.8: data prefill untuk Wizard mode koreksi. Dibaca dari jurnal grup
+  // pembukaan aktif (bukan tabel saldo), sehingga tetap benar setelah koreksi
+  // berulang dan tidak pernah menampilkan 3000 MODAL sebagai isian.
+  daftarkan('saldo-awal:saat-ini', () => {
+    const k = perluBuka();
+    if (k) return fail(k);
+    const saatIni = saldoAwalSaatIni(deps.db());
+    return saatIni ? ok(saatIni) : fail(PESAN_KOREKSI_TANPA_SALDO_AWAL);
   });
 
   daftarkan('saldo-awal:posting', (_e, input: unknown, opsi: unknown = {}) => {
@@ -856,21 +803,37 @@ export function registerIpc(deps: IpcDeps): void {
       const bentuk = validasiBentukSaldoAwal(input);
       if (!bentuk.ok) return fail(bentuk.error);
 
-      const jurnalInput = buatJurnalSaldoAwal(bentuk.input).input;
+      const jurnalInput = buatJurnalSaldoAwal({
+        ...bentuk.input,
+        daftarAkun: listAkun(deps.db()),
+      }).input;
       const konfirmasiPeringatan =
         typeof opsi === 'object' &&
         opsi !== null &&
         !Array.isArray(opsi) &&
         (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+      const konfirmasiTanpaSaldoAwal = bacaKonfirmasiTanpaSaldoAwal(opsi);
 
-      const hasil = simpanSaldoAwal(deps.db(), jurnalInput, { konfirmasiPeringatan });
+      const hasil = simpanSaldoAwal(deps.db(), jurnalInput, {
+        konfirmasiPeringatan,
+        // AKT-06: alasan konfirmasi peringatan ikut melewati adapter saldo awal.
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        wajibAlasanPeringatan: true,
+        // AKT-02: opsi diteruskan konsisten; jenis SALDO_AWAL selalu dikecualikan
+        // dari guard sehingga wizard tetap bisa menjadi jurnal pertama.
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal,
+      });
       if (!hasil.tersimpan || !hasil.jurnal) {
         const pesan =
           pesanValidasi(hasil.errors) ||
           pesanValidasi(hasil.peringatan) ||
           'Saldo awal gagal disimpan.';
         const perluAlasan = hasil.errors.some((m) => m.includes('Periode sudah ditutup'));
-        const perluKonfirmasi = hasil.errors.length === 0 && hasil.perluKonfirmasi;
+        const perluKonfirmasi =
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) => m === PESAN_WAJIB_ALASAN_PERINGATAN));
         return fail(pesan, perluAlasan, perluKonfirmasi);
       }
       return ok({ jurnal: hasil.jurnal });
@@ -878,6 +841,84 @@ export function registerIpc(deps: IpcDeps): void {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
     }
   });
+
+  // T1.7: koreksi saldo awal (Opsi A) — reversal jurnal pembukaan aktif +
+  // jurnal penyesuaian UMUM baru + audit, atomik di adapter DB. Renderer
+  // mengirim form yang sama dengan wizard; builder/validator yang sama dipakai
+  // agar aturan akun dan modal otomatis tidak bercabang.
+  daftarkan(
+    'saldo-awal:koreksi',
+    (
+      _e,
+      input: unknown,
+      alasanMentah: unknown = '',
+      opsiMentah: unknown = {},
+    ) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+
+        const bentuk = validasiBentukSaldoAwal(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+
+        // Dukung dua gaya pemanggilan: (input, alasan, opsi) dan
+        // (input, opsi) dengan `alasan` di dalam input/opsi. `alasan` dari
+        // argumen eksplisit tetap menang.
+        const opsi =
+          alasanMentah !== null &&
+          typeof alasanMentah === 'object' &&
+          !Array.isArray(alasanMentah)
+            ? alasanMentah
+            : opsiMentah;
+        const alasan = String(
+          (typeof alasanMentah === 'string' ? alasanMentah : '') ||
+            bentuk.input.alasan ||
+            bacaTeksOpsi(opsi, 'alasan') ||
+            '',
+        ).trim();
+        if (alasan.length < 5) return fail(PESAN_ALASAN_KOREKSI_MIN);
+
+        const jurnalInput = buatJurnalSaldoAwal({
+          ...bentuk.input,
+          alasan,
+          daftarAkun: listAkun(deps.db()),
+        }).input;
+        const konfirmasiPeringatan =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan ===
+            true;
+
+        const hasil = koreksiSaldoAwal(deps.db(), jurnalInput, {
+          alasan,
+          konfirmasiPeringatan,
+          alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+          wajibAlasanPeringatan: true,
+          sekarang: tanggalSekarang(),
+        });
+        if (!hasil.tersimpan || !hasil.jurnal) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Koreksi saldo awal gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          const perluKonfirmasi =
+            hasil.perluKonfirmasi &&
+            (hasil.errors.length === 0 ||
+              hasil.errors.every(
+                (m) => m === PESAN_WAJIB_ALASAN_PERINGATAN,
+              ));
+          return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
+        return ok({ jurnal: hasil.jurnal, reversal: hasil.reversal });
+      } catch (e) {
+        return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
+      }
+    },
+  );
 
   daftarkan(
     'jurnal:reverse',
@@ -925,18 +966,23 @@ export function registerIpc(deps: IpcDeps): void {
       try {
         const k = perluBuka();
         if (k) return fail(k);
-        if (!input || !input.header || !Array.isArray(input.baris))
-          return fail('Data jurnal pengganti tidak lengkap.');
-        const tanggalJurnal = validasiTanggalOpsional(input.header.tanggal);
+        const bentukId = validasiIdJurnal(id);
+        if (!bentukId.ok) return fail(bentukId.error);
+        // AKT-22: jangan percaya objek mentah. Validator bentuk yang sama
+        // dengan jurnal biasa menolak ID/keterangan/no bukti kepanjangan,
+        // field wajib kosong, REVERSAL, dan baris yang tidak valid.
+        const bentuk = validasiBentukKoreksiInput(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const tanggalJurnal = validasiTanggalOpsional(bentuk.input.header.tanggal);
         if (!tanggalJurnal.ok || !tanggalJurnal.input)
           return fail(PESAN_TANGGAL_TIDAK_VALID);
         const tanggal = validasiTanggalOpsional(opsi?.tanggal);
         if (!tanggal.ok) return fail(tanggal.error);
         const hasil = koreksiDanIsiUlang(
           deps.db(),
-          String(id ?? ''),
+          bentukId.input,
           String(alasan ?? ''),
-          input,
+          bentuk.input,
           {
             id: typeof opsi?.id === 'string' ? opsi.id : undefined,
             tanggal: tanggal.input || undefined,
@@ -959,265 +1005,17 @@ export function registerIpc(deps: IpcDeps): void {
     },
   );
 
-  // ---- Lampiran bukti jurnal (P2-4) ----
-  // Renderer hanya mengirim ID jurnal/lampiran, TIDAK PERNAH path absolut.
-  // File fisik disimpan di `<userData>/attachments`; DB hanya metadata.
-  daftarkan('lampiran:list', (_e, jurnalId: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdJurnal(jurnalId);
-      if (!bentuk.ok) return fail(bentuk.error);
-      return ok(listLampiran(deps.db(), bentuk.input));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
+  // ---- Utang usaha sederhana (DB-23b) ----
+  // Form Catat/Bayar Utang Usaha memakai `transaksi:posting` dengan jenis
+  // HUTANG; tidak ada lagi IPC master pihak / pemetaan `jurnal_pihak`.
 
-  daftarkan('lampiran:upload', async (_e, jurnalId: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdJurnal(jurnalId);
-      if (!bentuk.ok) return fail(bentuk.error);
-      if (!getJurnal(deps.db(), bentuk.input)) return fail('Jurnal tidak ditemukan.');
-
-      const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-        title: 'Pilih lampiran bukti jurnal',
-        filters: [
-          { name: 'Foto atau PDF', extensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'] },
-        ],
-        properties: ['openFile'],
-      });
-      if (canceled || filePaths.length === 0) return ok({ saved: false });
-
-      const sumber = filePaths[0]!;
-      const namaAsli = basename(sumber);
-      let ukuran = 0;
-      try {
-        ukuran = statSync(sumber).size;
-      } catch {
-        return fail('File lampiran tidak bisa dibaca. Coba pilih file lain.');
-      }
-      // Validasi awal sebelum menyalin file besar ke folder aplikasi.
-      const cek = validasiLampiran({ namaAsli, ukuran });
-      if (!cek.ok) return fail(cek.error);
-
-      const id = uid('lamp');
-      const dir = deps.lampiranDir();
-      const meta = simpanLampiranDenganMetadata(
-        dir,
-        sumber,
-        namaAsli,
-        id,
-        (file) =>
-          tambahLampiran(deps.db(), {
-            id,
-            jurnal_id: bentuk.input,
-            nama_asli: file.namaAsli,
-            nama_simpan: file.namaSimpan,
-            mime: file.mime,
-            ukuran: file.ukuran,
-          }),
-      );
-      return ok({ saved: true, lampiran: meta });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  daftarkan('lampiran:preview', (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdLampiran(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const meta = getLampiran(deps.db(), bentuk.input);
-      if (!meta) return fail('Lampiran tidak ditemukan.');
-
-      // PDF tidak di-inline; renderer memakai tombol Buka (aplikasi OS).
-      if (!meta.mime.startsWith('image/')) {
-        return ok({ mime: meta.mime, namaAsli: meta.nama_asli });
-      }
-      let dataUrl: string | null = null;
-      try {
-        dataUrl = dataUrlLampiran(deps.lampiranDir(), meta.nama_simpan, meta.mime);
-      } catch (e) {
-        return fail(pesanError(e, 'File lampiran tidak ditemukan di folder aplikasi.'));
-      }
-      return ok({
-        mime: meta.mime,
-        namaAsli: meta.nama_asli,
-        ...(dataUrl ? { dataUrl } : {}),
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  daftarkan('lampiran:open', async (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdLampiran(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const meta = getLampiran(deps.db(), bentuk.input);
-      if (!meta) return fail('Lampiran tidak ditemukan.');
-
-      // pathFileLampiran memvalidasi nama relatif & memastikan file ada di
-      // dalam folder attachments sebelum dibuka.
-      const path = pathFileLampiran(deps.lampiranDir(), meta.nama_simpan);
-      const galat = await deps.openPath(path);
-      if (galat) {
-        return fail('File lampiran tidak bisa dibuka. Pastikan aplikasi pembukanya tersedia.');
-      }
-      return ok({ opened: true });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  daftarkan('lampiran:delete', (_e, id: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiIdLampiran(id);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const meta = hapusLampiran(deps.db(), bentuk.input);
-      if (!meta) return fail('Lampiran tidak ditemukan.');
-      // Metadata + audit sudah terhapus atomik; file dihapus best-effort.
-      hapusFileLampiran(deps.lampiranDir(), meta.nama_simpan);
-      return ok({ deleted: true, id: meta.id });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_LAMPIRAN));
-    }
-  });
-
-  // ---- Piutang & Hutang + master pihak (P1-5) ----
-  // Renderer tidak dipercaya: bentuk input dinormalisasi dulu, lalu adapter DB
-  // memvalidasi lima alur baku + menyimpan jurnal/pemetaan pihak/audit atomik.
-  daftarkan('pihak:list', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listPihak(deps.db()));
-  });
-
-  daftarkan('pihak:saldo', () => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(saldoPerPihak(deps.db()));
-  });
-
-  // Rekonsiliasi saldo akun 1050/2050 vs jurnal yang punya pihak. Cutoff
-  // opsional (YYYY-MM-DD) dan tidak menyimpan angka apa pun.
-  daftarkan('pihak:rekon', (_e, sampai: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const tanggal = validasiTanggalOpsional(sampai);
-      if (!tanggal.ok) return fail(tanggal.error);
-      return ok(rekonsiliasiPihakDb(deps.db(), tanggal.input || undefined));
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  daftarkan('pihak:jurnal', (_e, id: string) => {
+  daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED' | 'DIBATALKAN') => {
     const k = perluBuka();
     if (k) return fail(k);
-    const pihakId = String(id ?? '').trim();
-    if (!pihakId) return fail('Pihak wajib dipilih.');
-    return ok(daftarJurnalPihak(deps.db(), pihakId));
-  });
-
-  daftarkan('pihak:create', (_e, input: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const bentuk = validasiBentukPihak(input);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const pihak = createPihak(deps.db(), bentuk.input);
-      return ok({ id: pihak.id, pihak });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('pihak:update', (_e, id: string, input: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const pihakId = String(id ?? '').trim();
-      if (!pihakId) return fail('Pihak yang akan diubah belum dipilih.');
-      const bentuk = validasiBentukPihak(input);
-      if (!bentuk.ok) return fail(bentuk.error);
-      const pihak = updatePihak(deps.db(), pihakId, bentuk.input);
-      return ok({ id: pihak.id, pihak });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('pihak:delete', (_e, id: string) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const pihakId = String(id ?? '').trim();
-      if (!pihakId) return fail('Pihak yang akan dihapus belum dipilih.');
-      deletePihak(deps.db(), pihakId);
-      return ok({ id: pihakId });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('pihak:posting', (_e, req: unknown, opsi: unknown = {}) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-
-      const bentuk = validasiBentukPostingPihak(req);
-      if (!bentuk.ok) return fail(bentuk.error);
-
-      const opts = typeof opsi === 'object' && opsi !== null ? opsi : {};
-      const hasil = postingPihak(deps.db(), {
-        pihakId: bentuk.input.pihakId,
-        input: bentuk.input.input,
-        konfirmasiPeringatan:
-          (opts as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
-        konfirmasiSaldo:
-          (opts as { konfirmasiSaldo?: unknown }).konfirmasiSaldo === true ||
-          (opts as { konfirmasi?: unknown }).konfirmasi === true,
-      });
-
-      if (!hasil.tersimpan || !hasil.jurnal) {
-        const pesan =
-          pesanValidasi(hasil.errors) ||
-          pesanValidasi(hasil.peringatan) ||
-          'Transaksi piutang/hutang gagal disimpan.';
-        const perluAlasan = hasil.errors.some((m) =>
-          m.includes('Periode sudah ditutup'),
-        );
-        const perluKonfirmasi =
-          hasil.errors.length === 0 && hasil.perluKonfirmasi;
-        return fail(pesan, perluAlasan, perluKonfirmasi);
-      }
-
-      return ok({
-        jurnal: hasil.jurnal,
-        pihak: hasil.pihak,
-        alur: hasil.alur,
-        akunPihak: hasil.akunPihak,
-        saldoSebelum: hasil.saldoSebelum,
-        saldoSesudah: hasil.saldoSesudah,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_PIHAK));
-    }
-  });
-
-  daftarkan('panjar:list', (_e, status?: 'OPEN' | 'CLOSED') => {
-    const k = perluBuka();
-    if (k) return fail(k);
-    const filter = status === 'OPEN' || status === 'CLOSED' ? status : undefined;
+    const filter =
+      status === 'OPEN' || status === 'CLOSED' || status === 'DIBATALKAN'
+        ? status
+        : undefined;
     return ok(listPanjarV2(deps.db(), filter));
   });
 
@@ -1248,6 +1046,10 @@ export function registerIpc(deps: IpcDeps): void {
           ...bentuk.input,
           ...(alasanTeks ? { alasan: alasanTeks } : {}),
           konfirmasiPeringatan: konfirmasi,
+          alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+          // AKT-02: serah panjar ikut mewajibkan saldo awal pertama.
+          wajibSaldoAwal: true,
+          konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
         });
         if (!hasil.tersimpan || !hasil.panjar) {
           const pesan =
@@ -1258,7 +1060,11 @@ export function registerIpc(deps: IpcDeps): void {
             m.includes('Periode sudah ditutup'),
           );
           const perluKonfirmasi =
-            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+            hasil.perluKonfirmasi &&
+            (hasil.errors.length === 0 ||
+              hasil.errors.every((m) =>
+                m.includes('wajib disertai alasan minimal 5 karakter'),
+              ));
           return fail(pesan, perluAlasan, perluKonfirmasi);
         }
         return ok({
@@ -1266,6 +1072,148 @@ export function registerIpc(deps: IpcDeps): void {
           panjar: hasil.panjar,
           jurnal: hasil.jurnal,
         });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:saldo-awal',
+    (_e, input: unknown, alasan?: unknown) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+
+        const bentuk = validasiBentukPanjarSaldoAwal(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const alasanTeks = typeof alasan === 'string' ? alasan.trim() : '';
+
+        const hasil = catatPanjarSaldoAwal(deps.db(), {
+          ...bentuk.input,
+          ...(alasanTeks ? { alasan: alasanTeks } : {}),
+        });
+        if (!hasil.tersimpan || !hasil.panjar) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Panjar saldo awal gagal disimpan.';
+          return fail(pesan);
+        }
+        return ok({ panjar: hasil.panjar });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:batal-saldo-awal',
+    (_e, id: unknown, alasan: unknown) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        if (typeof id !== 'string' || !id.trim())
+          return fail('ID panjar saldo awal yang akan dibatalkan wajib diisi.');
+        const alasanTeks = typeof alasan === 'string' ? alasan.trim() : '';
+        if (alasanTeks.length < 5)
+          return fail(
+            'Alasan pembatalan panjar saldo awal wajib diisi minimal 5 karakter.',
+          );
+
+        const hasil = batalkanPanjarSaldoAwal(
+          deps.db(),
+          id.trim(),
+          alasanTeks,
+        );
+        if (!hasil.tersimpan || !hasil.id) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Pembatalan panjar saldo awal gagal disimpan.';
+          return fail(pesan);
+        }
+        return ok({ id: hasil.id });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:batal',
+    (_e, id: unknown, alasan: unknown, opsi?: unknown) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        if (typeof id !== 'string' || !id.trim())
+          return fail('ID panjar yang akan dibatalkan wajib diisi.');
+        const alasanTeks = typeof alasan === 'string' ? alasan.trim() : '';
+        if (alasanTeks.length < 5)
+          return fail('Alasan pembatalan panjar wajib diisi minimal 5 karakter.');
+        const konfirmasi =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+        const hasil = batalPanjarV2(deps.db(), {
+          id: id.trim(),
+          alasan: alasanTeks,
+          ...(bacaTeksOpsi(opsi, 'tanggalBatal')
+            ? { tanggalBatal: bacaTeksOpsi(opsi, 'tanggalBatal')! }
+            : {}),
+          konfirmasiPeringatan: konfirmasi,
+        });
+        if (!hasil.tersimpan || !hasil.panjar) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Pembatalan panjar gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          const perluKonfirmasi =
+            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+          return fail(pesan, perluAlasan, perluKonfirmasi);
+        }
+        return ok({ panjar: hasil.panjar, jurnal: hasil.jurnal });
+      } catch (e) {
+        return fail(pesanError(e, GAGAL_PANJAR));
+      }
+    },
+  );
+
+  daftarkan(
+    'panjar:batal-close',
+    (_e, input: unknown, opsi: unknown = {}) => {
+      try {
+        const k = perluBuka();
+        if (k) return fail(k);
+        const bentuk = validasiBentukPembatalanPertanggungjawabanPanjar(input);
+        if (!bentuk.ok) return fail(bentuk.error);
+        const konfirmasi =
+          typeof opsi === 'object' &&
+          opsi !== null &&
+          !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+        const hasil = batalkanPertanggungjawabanPanjar(deps.db(), {
+          ...bentuk.input,
+          konfirmasiPeringatan: konfirmasi,
+          alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        });
+        if (!hasil.tersimpan || !hasil.panjar || !hasil.jurnal) {
+          const pesan =
+            pesanValidasi(hasil.errors) ||
+            pesanValidasi(hasil.peringatan) ||
+            'Koreksi pertanggungjawaban panjar gagal disimpan.';
+          const perluAlasan = hasil.errors.some((m) =>
+            m.includes('Periode sudah ditutup'),
+          );
+          return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+        }
+        return ok({ panjar: hasil.panjar, jurnal: hasil.jurnal });
       } catch (e) {
         return fail(pesanError(e, GAGAL_PANJAR));
       }
@@ -1285,6 +1233,8 @@ export function registerIpc(deps: IpcDeps): void {
         const opsi = req as {
           konfirmasiKurang?: unknown;
           konfirmasiPeringatan?: unknown;
+          alasanKurang?: unknown;
+          alasanPeringatan?: unknown;
         };
 
         const hasil = closePanjarV2(deps.db(), {
@@ -1294,6 +1244,12 @@ export function registerIpc(deps: IpcDeps): void {
           ...(alasanTeks ? { alasan: alasanTeks } : {}),
           konfirmasiKurang: opsi.konfirmasiKurang === true,
           konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
+          // AKT-08: alasan overrun dan peringatan kas diteruskan ke adapter.
+          alasanKurang: bacaTeksOpsi(req, 'alasanKurang'),
+          alasanPeringatan: bacaTeksOpsi(req, 'alasanPeringatan'),
+          // AKT-02: pertanggungjawaban panjar juga menerima flag sesi yang sama.
+          wajibSaldoAwal: true,
+          konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(req),
         });
         if (!hasil.tersimpan || !hasil.panjar) {
           const pesan =
@@ -1303,8 +1259,13 @@ export function registerIpc(deps: IpcDeps): void {
           const perluAlasan = hasil.errors.some((m) =>
             m.includes('Periode sudah ditutup'),
           );
+          // AKT-08: alasan overrun yang kurang tetap meminta konfirmasi ulang.
           const perluKonfirmasi =
-            hasil.errors.length === 0 && hasil.perluKonfirmasi;
+            hasil.perluKonfirmasi &&
+            (hasil.errors.length === 0 ||
+              hasil.errors.every((m) =>
+                m.includes('wajib disertai alasan minimal 5 karakter'),
+              ));
           return fail(pesan, perluAlasan, perluKonfirmasi);
         }
         return ok({
@@ -1320,94 +1281,268 @@ export function registerIpc(deps: IpcDeps): void {
     },
   );
 
-  // ---- Inventaris Aset (non-keuangan, TIDAK kena kunci tutup buku) ----
-  daftarkan('aset:list', (_e, f: { jenis?: string; cari?: string } = {}) => {
-    const k = perluBuka();
-    return k ? fail(k) : ok(listAset(deps.db(), f));
-  });
-
-  daftarkan('aset:create', (_e, input: AsetInput) => {
+  // ---- Pinjaman LPD (DB-16c) ----
+  daftarkan('pinjaman:list', () => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const errs = validateAsetInput(input);
-      if (errs.length) return fail(pesanValidasi(errs));
-      const now = new Date().toISOString();
-      const row: Aset = {
-        id: uid('a'),
-        kode: input.kode.trim(),
-        nama: input.nama.trim(),
-        jenis: input.jenis as Aset['jenis'],
-        luas_m2: input.luas_m2,
-        lokasi: input.lokasi.trim(),
-        status_hukum: input.status_hukum.trim(),
-        tahun_perolehan: input.tahun_perolehan,
-        asal_usul: input.asal_usul.trim(),
-        kondisi: input.kondisi as Aset['kondisi'],
-        keterangan: input.keterangan.trim(),
-        nilai_sen: input.nilai_sen,
-        created_at: now,
-        updated_at: now,
-      };
-      insertAset(deps.db(), row);
-      return ok({ id: row.id });
+      return ok(listPinjaman(deps.db()));
     } catch (e) {
-      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(pesanError(e, GAGAL_ASET));
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
-  daftarkan('aset:update', (_e, id: string, input: AsetInput) => {
+  daftarkan('pinjaman:detail', (_e, id: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      const errs = validateAsetInput(input);
-      if (errs.length) return fail(pesanValidasi(errs));
-      const lama = getAset(deps.db(), String(id));
-      if (!lama) return fail('Aset tidak ditemukan.');
-      updateAset(deps.db(), {
-        ...lama,
-        kode: input.kode.trim(),
-        nama: input.nama.trim(),
-        jenis: input.jenis as Aset['jenis'],
-        luas_m2: input.luas_m2,
-        lokasi: input.lokasi.trim(),
-        status_hukum: input.status_hukum.trim(),
-        tahun_perolehan: input.tahun_perolehan,
-        asal_usul: input.asal_usul.trim(),
-        kondisi: input.kondisi as Aset['kondisi'],
-        keterangan: input.keterangan.trim(),
-        nilai_sen: input.nilai_sen,
-        updated_at: new Date().toISOString(),
+      if (typeof id !== 'string' || !id.trim())
+        return fail('ID pinjaman wajib diisi.');
+      if (id.trim().length > 200) return fail('ID pinjaman terlalu panjang.');
+      const pinjaman = getPinjaman(deps.db(), id.trim());
+      if (!pinjaman) return fail('Pinjaman tidak ditemukan.');
+      return ok(pinjaman);
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:simpan', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanSimpan(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const konfirmasi =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+      const hasil = simpanPinjamanLpd(deps.db(), bentuk.input, {
+        konfirmasiPeringatan: konfirmasi,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        // Pinjaman pencairan adalah transaksi baru; ikuti pintu input lain
+        // yang mewajibkan saldo awal, kecuali operator sudah mengonfirmasi.
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
       });
-      return ok({ id });
+      if (!hasil.tersimpan || !hasil.pinjaman) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pinjaman gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        const perluKonfirmasi =
+          hasil.perluKonfirmasi &&
+          (hasil.errors.length === 0 ||
+            hasil.errors.every((m) =>
+              m.includes('wajib disertai alasan minimal 5 karakter'),
+            ));
+        return fail(pesan, perluAlasan, perluKonfirmasi);
+      }
+      return ok({
+        mode: hasil.mode,
+        pinjaman: hasil.pinjaman,
+        jurnal: hasil.jurnal ?? null,
+      });
     } catch (e) {
-      if (String(e).includes('UNIQUE constraint failed: aset.kode')) return fail('Kode aset sudah dipakai.');
-      return fail(pesanError(e, GAGAL_ASET));
+      return fail(pesanError(e, GAGAL_PINJAMAN));
     }
   });
 
-  daftarkan('aset:delete', (_e, id: string) => {
+  daftarkan('pinjaman:bayar', (_e, input: unknown, opsi: unknown = {}) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
-      deleteAset(deps.db(), String(id));
-      return ok({ id });
+      const bentuk = validasiBentukPinjamanBayar(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      const konfirmasiSelisih =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiSelisih?: unknown }).konfirmasiSelisih === true;
+      const konfirmasiPeringatan =
+        typeof opsi === 'object' &&
+        opsi !== null &&
+        !Array.isArray(opsi) &&
+        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
+
+      const hasil = bayarAngsuranPinjaman(deps.db(), bentuk.input, {
+        konfirmasiSelisih,
+        alasanSelisih: bacaTeksOpsi(opsi, 'alasanSelisih'),
+        konfirmasiPeringatan,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+        wajibSaldoAwal: true,
+        konfirmasiTanpaSaldoAwal: bacaKonfirmasiTanpaSaldoAwal(opsi),
+      });
+      if (!hasil.tersimpan || !hasil.pembayaran || !hasil.jurnal) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pembayaran angsuran gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+      }
+      return ok({
+        pembayaran: hasil.pembayaran,
+        jurnal: hasil.jurnal,
+        rincian: hasil.rincian,
+        selisih: hasil.selisih,
+        pinjaman:
+          getPinjaman(deps.db(), hasil.pembayaran.pinjaman_id) ?? null,
+      });
     } catch (e) {
-      return fail(pesanError(e, GAGAL_ASET));
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:pembayaran', (_e, id: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      if (typeof id !== 'string' || !id.trim())
+        return fail('ID pinjaman wajib diisi.');
+      if (id.trim().length > 200) return fail('ID pinjaman terlalu panjang.');
+      if (!getPinjaman(deps.db(), id.trim())) return fail('Pinjaman tidak ditemukan.');
+      return ok(listPinjamanBayar(deps.db(), id.trim()));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:bayar-batal', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPembatalanPinjaman(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const hasil = batalkanPembayaranPinjaman(deps.db(), bentuk.input, {
+        konfirmasiPeringatan:
+          typeof opsi === 'object' && opsi !== null && !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+      });
+      if (!hasil.tersimpan || !hasil.pembayaran || !hasil.jurnal) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pembatalan catatan pembayaran gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+      }
+      return ok({
+        pembayaran: hasil.pembayaran,
+        jurnal: hasil.jurnal,
+        pinjaman: getPinjaman(deps.db(), hasil.pembayaran.pinjaman_id) ?? null,
+      });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:batal', (_e, input: unknown, opsi: unknown = {}) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPembatalanPinjaman(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      const hasil = batalkanPinjaman(deps.db(), bentuk.input, {
+        konfirmasiPeringatan:
+          typeof opsi === 'object' && opsi !== null && !Array.isArray(opsi) &&
+          (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true,
+        alasanPeringatan: bacaTeksOpsi(opsi, 'alasanPeringatan'),
+      });
+      if (!hasil.tersimpan || !hasil.pinjaman || !hasil.jurnal) {
+        const pesan =
+          pesanValidasi(hasil.errors) ||
+          pesanValidasi(hasil.peringatan) ||
+          'Pembatalan catatan pencairan gagal disimpan.';
+        const perluAlasan = hasil.errors.some((m) =>
+          m.includes('Periode sudah ditutup'),
+        );
+        return fail(pesan, perluAlasan, hasil.perluKonfirmasi === true);
+      }
+      return ok({ pinjaman: hasil.pinjaman, jurnal: hasil.jurnal });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_PINJAMAN));
+    }
+  });
+
+  daftarkan('pinjaman:mutasi', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanMutasi(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+      if (!getPinjaman(deps.db(), bentuk.input.pinjamanId))
+        return fail('Pinjaman tidak ditemukan.');
+      return ok(
+        laporanMutasiPinjaman(deps.db(), bentuk.input.pinjamanId, {
+          ...(bentuk.input.periode ? { periode: bentuk.input.periode } : {}),
+          ...(bentuk.input.mulai ? { mulai: bentuk.input.mulai } : {}),
+          ...(bentuk.input.sampai ? { sampai: bentuk.input.sampai } : {}),
+          sekarang: tanggalSekarang(),
+        }),
+      );
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+
+  daftarkan('pinjaman:rekonsiliasi', (_e, input: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const bentuk = validasiBentukPinjamanRekonsiliasi(input);
+      if (!bentuk.ok) return fail(bentuk.error);
+
+      if (bentuk.input.pinjamanId) {
+        const hasil = rekonsiliasiPinjaman(deps.db(), bentuk.input.pinjamanId);
+        if (!hasil) return fail('Pinjaman tidak ditemukan.');
+        return ok(hasil);
+      }
+
+      // Tanpa ID: status seluruh pinjaman untuk tabel rekonsiliasi di UI.
+      return ok(rekonsiliasiSemuaPinjaman(deps.db()));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
     }
   });
 
   daftarkan('tutup:list', () => {
     const k = perluBuka();
     if (k) return fail(k);
-    // Laba pada riwayat dihitung ulang dari jurnal, bukan angka tersimpan.
-    const baris = listBarisJurnal(deps.db());
+    // T-A06: laba riwayat diambil dari snapshot yang disahkan saat tutup.
+    // Angka live + hash tetap dibandingkan agar UI bisa memperingatkan bahwa
+    // data jurnal sudah berubah setelah periode dikunci.
+    const cutover = getCutoverTanggal(deps.db());
     return ok(
-      listTutupBuku(deps.db()).map((t) => ({
-        ...t,
-        laba: labaTahunJurnal(baris, Number(t.tahun)),
-      })),
+      listTutupBuku(deps.db()).map((t) => {
+        const tahun = Number(t.tahun);
+        const catatanTahunPertama =
+          catatanTahunPertamaParsial(cutover, tahun) ?? undefined;
+        const beda = bandingkanSnapshotTutup(deps.db(), tahun);
+        return {
+          ...t,
+          // `laba` tetap field utama; snapshot lebih diutamakan bila ada.
+          laba: beda.snapshot ? beda.snapshot.laba : beda.live.laba,
+          labaSnapshot: beda.snapshot ? beda.snapshot.laba : null,
+          labaLive: beda.live.laba,
+          snapshotTerbaru: beda.snapshot,
+          snapshotBerubah: beda.berubah,
+          perbedaanSnapshot: beda.perbedaan,
+          ...(catatanTahunPertama ? { catatanTahunPertama } : {}),
+        };
+      }),
     );
   });
   // P0-9: riwayat audit lengkap + filter tervalidasi (aksi/tanggal/pagination).
@@ -1431,6 +1566,15 @@ export function registerIpc(deps: IpcDeps): void {
         typeof f?.aksi === 'string' && f.aksi.trim()
           ? f.aksi.trim().slice(0, 120)
           : undefined;
+      // DB-27: referensi terstruktur; nilai kosong berarti tidak memfilter.
+      const ref_type =
+        typeof f?.ref_type === 'string' && f.ref_type.trim()
+          ? f.ref_type.trim().slice(0, 40)
+          : undefined;
+      const ref_id =
+        typeof f?.ref_id === 'string' && f.ref_id.trim()
+          ? f.ref_id.trim().slice(0, 120)
+          : undefined;
       const angka = (v: unknown, bawaan: number): number => {
         if (v === undefined || v === null || v === '') return bawaan;
         const n = Number(v);
@@ -1438,7 +1582,40 @@ export function registerIpc(deps: IpcDeps): void {
       };
       const limit = Math.min(500, Math.max(1, Math.trunc(angka(f?.limit, 50))));
       const offset = Math.max(0, Math.trunc(angka(f?.offset, 0)));
-      return ok(listAuditLogPage(deps.db(), { aksi, mulai, sampai, limit, offset }));
+      return ok(
+        listAuditLogPage(deps.db(), {
+          aksi,
+          ref_type,
+          ref_id,
+          mulai,
+          sampai,
+          limit,
+          offset,
+        }),
+      );
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+  // DB-12: audit integritas read-only untuk layar/pesan. Handler ini hanya
+  // membaca; tidak ada catatAudit, perbaikan, atau penulisan apa pun.
+  daftarkan('audit:integritas', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(auditIntegritas(deps.db()));
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_MUAT));
+    }
+  });
+  // T-A16: hasil audit yang sudah dijalankan saat startup (atau setelah
+  // restore). Handler ini hanya membaca state memori main; tidak menjalankan
+  // audit ulang dan tidak menulis DB.
+  daftarkan('audit:awal', () => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      return ok(deps.auditAwal?.() ?? null);
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
     }
@@ -1461,22 +1638,18 @@ export function registerIpc(deps: IpcDeps): void {
         | {
             tahun: number;
             catatan?: string;
-            backupPath?: string;
             konfirmasiTimpak?: boolean;
           },
-      backupPathLama = '',
     ) => {
       try {
         const k = perluBuka();
         if (k) return fail(k);
-        // Dukungan bentuk lama (tahun, backupPath) + bentuk baru (objek).
+        // Bentuk angka lama tetap diterima; `backupPath` lama diabaikan
+        // (DB-28: path backup tidak lagi disimpan/diekspos).
         const input =
-          typeof req === 'number'
-            ? { tahun: req, backupPath: String(backupPathLama ?? '') }
-            : (req ?? {});
+          typeof req === 'number' ? { tahun: req } : (req ?? {});
         const hasil = tutupBuku(deps.db(), Number(input.tahun), {
           catatan: typeof input.catatan === 'string' ? input.catatan : '',
-          backupPath: typeof input.backupPath === 'string' ? input.backupPath : '',
           konfirmasiTimpak: input.konfirmasiTimpak === true,
           // Tanggal acuan K2 dapat dipatok test; default tetap hari ini.
           sekarang: tanggalSekarang(),
@@ -1485,7 +1658,7 @@ export function registerIpc(deps: IpcDeps): void {
           return fail(
             pesanValidasi(hasil.errors) ||
               pesanValidasi(hasil.peringatan) ||
-              'Tutup buku gagal disimpan.',
+              'Kunci periode gagal disimpan.',
             false,
             hasil.perluKonfirmasi,
           );
@@ -1495,6 +1668,9 @@ export function registerIpc(deps: IpcDeps): void {
           labaDitahan: hasil.labaDitahan,
           aksi: hasil.aksi,
           data: hasil.data,
+          snapshot: hasil.snapshot ?? null,
+          snapshotBerubah: hasil.snapshotBerubah ?? false,
+          perbedaanSnapshot: hasil.perbedaanSnapshot ?? [],
         });
       } catch (e) {
         return fail(pesanError(e, GAGAL_TUTUP));
@@ -1509,8 +1685,9 @@ export function registerIpc(deps: IpcDeps): void {
     if (!tanggal.ok) return fail(tanggal.error);
     const perKas = saldoSemuaKasJurnal(
       listBarisJurnal(deps.db()),
-      KAS_KODES,
+      kodeKasDariDb(deps.db()),
       tanggal.input || undefined,
+      listAkun(deps.db()),
     );
     return ok({ perKas, total: Object.values(perKas).reduce((s, v) => s + v, 0) });
   });
@@ -1522,6 +1699,8 @@ export function registerIpc(deps: IpcDeps): void {
       // Cut-off wajib tanggal kalender nyata (P1-12/P1-14).
       const bentuk = validasiCutoffLaporan(cutoff);
       if (!bentuk.ok) return fail(bentuk.error);
+      // T2.6: getPengaturanPembukuan sudah menormalkan awal tahun buku legacy
+      // (mis. 7) ke Januari, jadi rentang laba berjalan selalu Jan–cut-off.
       const pengaturan = getPengaturanPembukuan(deps.db());
       const d = buildDashboardJurnal(
         listBarisJurnal(deps.db()),
@@ -1532,124 +1711,14 @@ export function registerIpc(deps: IpcDeps): void {
           // Batas tutup buku mengikuti hari ini, bukan cut-off pelaporan.
           sekarang: tanggalSekarang(),
           daftarAkun: listAkun(deps.db()),
+          tanggalMulaiPembukuan: pengaturan.tanggalMulaiPembukuan,
+          cutoverTanggal: getCutoverTanggal(deps.db()),
         },
       );
       const dirBackup = deps.lokasiData().backupsDir;
       return ok(denganBackupTerakhir(d, lastAutoBackup(dirBackup)));
     } catch (e) {
       return fail(pesanError(e, GAGAL_MUAT));
-    }
-  });
-
-  // ---- Import jurnal massal dari Excel (P2-9) ----
-  // Template dibangun murni di main (renderer-safe) lalu ditulis lewat dialog.
-  daftarkan('import:template', async () => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-      const { canceled, filePath } = await deps.dialog.showSaveDialog({
-        title: 'Simpan template import jurnal',
-        defaultPath: NAMA_FILE_TEMPLATE_IMPOR,
-        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-      });
-      if (canceled || !filePath) return ok({ saved: false, path: '' });
-      const buffer = await buatBufferTemplateImpor(listAkun(deps.db(), { aktif: true }));
-      deps.writeFile(filePath, Buffer.from(buffer));
-      return ok({ saved: true, path: filePath });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_FILE));
-    }
-  });
-
-  // Pratinjau: baca file (opsional path dari pratinjau sebelumnya agar tombol
-  // "Muat ulang" tidak membuka dialog lagi), parse, lalu validasi DB.
-  // TIDAK menulis jurnal apa pun.
-  daftarkan('import:preview', async (_e, filePath?: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-
-      let sumber: string;
-      if (filePath !== undefined && filePath !== null) {
-        if (typeof filePath !== 'string' || !filePath.trim())
-          return fail('File impor tidak valid. Pilih file .xlsx lagi.');
-        sumber = filePath.trim();
-      } else {
-        const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-          title: 'Pilih file Excel untuk pratinjau impor',
-          filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-          properties: ['openFile'],
-        });
-        if (canceled || filePaths.length === 0)
-          return ok({ diproses: false, filePath: '', namaFile: '' });
-        sumber = filePaths[0]!;
-      }
-
-      const preview = await pratinjauFileImpor(sumber);
-      if ('error' in preview) return fail(preview.error);
-      return ok({
-        diproses: true,
-        filePath: preview.filePath,
-        namaFile: preview.namaFile,
-        hasil: preview.hasil,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_IMPOR));
-    }
-  });
-
-  // Proses: pakai path dari pratinjau bila ada, atau buka dialog lagi. File
-  // diparse ULANG (jangan percaya hasil preview di renderer), lalu semua grup
-  // valid disimpan lewat postingJurnal di adapter DB.
-  daftarkan('import:proses', async (_e, filePath?: unknown, opsi?: unknown) => {
-    try {
-      const k = perluBuka();
-      if (k) return fail(k);
-
-      let sumber: string;
-      if (filePath !== undefined && filePath !== null) {
-        if (typeof filePath !== 'string' || !filePath.trim())
-          return fail('File impor tidak valid. Pilih file .xlsx lagi.');
-        sumber = filePath.trim();
-      } else {
-        const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-          title: 'Pilih file Excel untuk diimpor',
-          filters: [{ name: 'Excel', extensions: ['xlsx'] }],
-          properties: ['openFile'],
-        });
-        if (canceled || filePaths.length === 0)
-          return ok({ diproses: false, filePath: '', namaFile: '' });
-        sumber = filePaths[0]!;
-      }
-
-      const konfirmasiPeringatan =
-        typeof opsi === 'object' &&
-        opsi !== null &&
-        !Array.isArray(opsi) &&
-        (opsi as { konfirmasiPeringatan?: unknown }).konfirmasiPeringatan === true;
-
-      const file = bacaFileImpor(sumber);
-      if ('error' in file) return fail(file.error);
-
-      // Validasi DB dulu agar alasan per baris konsisten dengan pratinjau.
-      const parsed = await parseImporExcel(file.buffer, {
-        akun: listAkun(deps.db()),
-        namaFile: file.namaFile,
-      });
-      const divalidasi = validasiImporDariExcel(deps.db(), parsed);
-      const hasil = imporJurnalDariExcel(deps.db(), divalidasi, {
-        konfirmasiPeringatan,
-        namaFile: file.namaFile,
-      });
-
-      return ok({
-        diproses: true,
-        filePath: sumber,
-        namaFile: file.namaFile,
-        hasil,
-      });
-    } catch (e) {
-      return fail(pesanError(e, GAGAL_IMPOR));
     }
   });
 
@@ -1666,6 +1735,7 @@ export function registerIpc(deps: IpcDeps): void {
           filters: req.filters,
         });
         if (canceled || !filePath) return ok({ saved: false, path: '' });
+        pastikanTujuanBukanDbAktif(filePath);
         deps.writeFile(filePath, Buffer.from(req.bufferB64, 'base64'));
         return ok({ saved: true, path: filePath });
       } catch (e) {
@@ -1690,6 +1760,7 @@ export function registerIpc(deps: IpcDeps): void {
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
         });
         if (canceled || !filePath) return ok({ saved: false, path: '' });
+        pastikanTujuanBukanDbAktif(filePath);
         await deps.printPdf(html, filePath, req.landscape === true);
         return ok({ saved: true, path: filePath });
       } catch (e) {
@@ -1709,6 +1780,7 @@ export function registerIpc(deps: IpcDeps): void {
         filters: [{ name: 'SQLite DB', extensions: ['db'] }],
       });
       if (canceled || !filePath) return ok({ saved: false, path: '' });
+      pastikanTujuanBukanDbAktif(filePath);
       backupVacuumInto(deps.db(), filePath);
       catatAudit(deps.db(), {
         aksi: 'BACKUP-EXPORT',
@@ -1723,8 +1795,8 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // Backup lengkap: satu folder berisi DB (VACUUM INTO) + semua lampiran +
-  // manifest. Folder induk dipilih user; subfolder memakai waktu lokal WITA.
+  // Backup lengkap: satu folder berisi DB (VACUUM INTO) + manifest.
+  // Folder induk dipilih user; subfolder memakai waktu lokal WITA.
   daftarkan('backup:lengkap', async () => {
     try {
       const k = perluBuka();
@@ -1733,8 +1805,7 @@ export function registerIpc(deps: IpcDeps): void {
         properties: ['openDirectory', 'createDirectory'],
         title: 'Pilih folder induk untuk backup lengkap',
       });
-      if (canceled || !filePaths?.[0])
-        return ok({ saved: false, path: '', jumlahLampiran: 0 });
+      if (canceled || !filePaths?.[0]) return ok({ saved: false, path: '' });
 
       const stamp = stampBackupLokal(sekarang());
       let destDir = join(filePaths[0], `pura-backup-${stamp}`);
@@ -1747,7 +1818,6 @@ export function registerIpc(deps: IpcDeps): void {
       const hasil = buatBackupLengkap({
         db: deps.db(),
         dbPath: deps.dbPath(),
-        attachmentsDir: deps.lampiranDir(),
         destDir,
       });
       catatAudit(deps.db(), {
@@ -1755,17 +1825,13 @@ export function registerIpc(deps: IpcDeps): void {
         alasan: `Backup lengkap ke ${basename(hasil.destDir)}`,
         baru: {
           path: hasil.destDir,
-          jumlahLampiran: hasil.manifest.jumlahLampiran,
           ukuranDb: hasil.manifest.ukuranDb,
         },
       });
-      deps.log?.info(
-        `Backup lengkap dibuat: ${basename(hasil.destDir)} (${hasil.manifest.jumlahLampiran} lampiran)`,
-      );
+      deps.log?.info(`Backup lengkap dibuat: ${basename(hasil.destDir)}`);
       return ok({
         saved: true,
         path: hasil.destDir,
-        jumlahLampiran: hasil.manifest.jumlahLampiran,
       });
     } catch (e) {
       deps.log?.error('Backup lengkap gagal', e);
@@ -1790,9 +1856,12 @@ export function registerIpc(deps: IpcDeps): void {
       backupVacuumInto(deps.db(), dest);
       catatAudit(deps.db(), {
         aksi: 'BACKUP-AUTO',
-        alasan: `Backup otomatis sebelum tutup buku ${n}`,
+        alasan: `Backup otomatis sebelum kunci periode ${n}`,
         baru: { path: dest, jenis: 'tutup-buku', tahun: n },
       });
+      // T3.2: backup tutup buku juga dibatasi; `dest` yang baru dibuat selalu
+      // dilindungi agar tidak ikut terhapus.
+      rapikanBackupInternal(dir, 'tutup-buku', RETENSI_TUTUP_BUKU, [dest]);
       deps.log?.info(`Backup otomatis tutup buku ${n} dibuat: ${basename(dest)}`);
       return ok({ path: dest });
     } catch (e) {
@@ -1815,10 +1884,20 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Restore .db via open dialog: validasi kandidat → cadangkan DB aktif →
   // tukar file atomik → buka ulang → audit. Kegagalan tidak merusak DB lama.
-  daftarkan('backup:import', async () => {
+  // DB-09: jalur ini sengaja dipertahankan sebagai alternatif lanjutan. Ia
+  // hanya memulihkan database dan tidak memvalidasi `manifest.json` seperti
+  // Restore Lengkap, jadi renderer wajib mengirim konfirmasi eksplisit.
+  daftarkan('backup:import', async (_e, opsi: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
+      if (!bacaKonfirmasiRestoreDb(opsi)) {
+        return fail(
+          'Restore .db adalah jalur lanjutan dan berisiko: hanya memulihkan database, tanpa validasi manifest.json. Gunakan Restore Lengkap bila tersedia. Konfirmasi peringatan terlebih dahulu.',
+          false,
+          true,
+        );
+      }
       const { canceled, filePaths } = await deps.dialog.showOpenDialog({
         filters: [{ name: 'SQLite DB', extensions: ['db'] }],
         properties: ['openFile'],
@@ -1849,6 +1928,8 @@ export function registerIpc(deps: IpcDeps): void {
         deps.log?.warn('[restore] gagal menulis audit', e);
       }
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
+      // T2.8: lockout mengikuti DB hasil restore, bukan state DB lama.
+      muatStateBlokir(deps.db());
       kunciLagi();
       deps.log?.info(
         `Restore berhasil dari ${basename(src)}; cadangan pra-restore: ${basename(hasil.preRestorePath)}`,
@@ -1860,9 +1941,9 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  // AUD-12: restore satu folder backup lengkap (DB + lampiran + manifest).
-  // Cadangan DB & folder lampiran lama dibuat sebelum ada yang ditimpa;
-  // restoreLengkap mengembalikan keduanya bila salah satu tahap gagal.
+  // AUD-12 / DB-37: restore satu folder backup lengkap (DB + manifest).
+  // Folder `attachments` dari backup lama diabaikan; hanya database yang
+  // dipulihkan. restoreLengkap mengembalikan DB lama bila penukaran gagal.
   daftarkan('backup:restore-lengkap', async () => {
     try {
       const k = perluBuka();
@@ -1871,14 +1952,12 @@ export function registerIpc(deps: IpcDeps): void {
         properties: ['openDirectory'],
         title: 'Pilih folder backup lengkap (berisi manifest.json)',
       });
-      if (canceled || !filePaths?.[0])
-        return ok({ restored: false, path: '', jumlahLampiran: 0 });
+      if (canceled || !filePaths?.[0]) return ok({ restored: false, path: '' });
 
       const sumber = filePaths[0]!;
       const hasil = restoreLengkap({
         db: deps.db(),
         dbPath: deps.dbPath(),
-        attachmentsDir: deps.lampiranDir(),
         backupDir: sumber,
         dirBackup: deps.lokasiData().backupsDir,
         stamp: stampBackupLokal(sekarang()),
@@ -1896,24 +1975,22 @@ export function registerIpc(deps: IpcDeps): void {
           baru: {
             sumber,
             pre_restore_db: hasil.preRestorePath,
-            pre_restore_attachments: hasil.preRestoreAttachmentsPath,
-            jumlahLampiran: hasil.jumlahLampiran,
           },
         });
       } catch (e) {
         deps.log?.warn('[restore-lengkap] gagal menulis audit', e);
       }
       // AUD-14: sesi lama tidak boleh tetap terbuka setelah data berganti.
+      // T2.8: lockout mengikuti DB hasil restore, bukan state DB lama.
+      muatStateBlokir(deps.db());
       kunciLagi();
       deps.log?.info(
-        `Restore lengkap berhasil dari ${basename(sumber)}; ${hasil.jumlahLampiran} lampiran dipulihkan`,
+        `Restore lengkap berhasil dari ${basename(sumber)}; cadangan pra-restore: ${basename(hasil.preRestorePath)}`,
       );
       return ok({
         restored: true,
         path: deps.dbPath(),
         preRestorePath: hasil.preRestorePath,
-        preRestoreAttachmentsPath: hasil.preRestoreAttachmentsPath,
-        jumlahLampiran: hasil.jumlahLampiran,
       });
     } catch (e) {
       deps.log?.error('Restore lengkap gagal', e);

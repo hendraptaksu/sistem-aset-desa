@@ -6,6 +6,7 @@ import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
 import { useAksiSibuk } from '../lib/aksiSibuk.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   Card,
@@ -20,12 +21,32 @@ import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pe
 export type DashboardTabTujuan =
   | 'transaksi'
   | 'panjar'
-  | 'pihak'
   | 'tutup'
   | 'jurnal';
 
 /** Form terpandu yang langsung dipilih saat membuka tab Transaksi. */
-export type DashboardFormTransaksi = 'TERIMA' | 'BAYAR' | 'PINDAH';
+export type DashboardFormTransaksi =
+  | 'TERIMA'
+  | 'BAYAR'
+  | 'PINDAH'
+  | 'CATAT_UTANG'
+  | 'BAYAR_UTANG';
+
+/** Jenis jalur restore yang dipakai untuk menyusun pesan sukses. */
+export type JenisRestore = 'db' | 'lengkap';
+
+/**
+ * T2.7: pesan sukses restore yang dibawa ke layar kunci. Main sudah memanggil
+ * `kunciLagi()` setelah restore, jadi renderer tidak boleh memuat dashboard
+ * lagi; pesan ini memastikan pengguna tahu data lama sudah dicadangkan.
+ */
+export function pesanRestoreSukses(
+  jenis: JenisRestore,
+  preRestorePath?: string | null,
+): string {
+  const label = jenis === 'lengkap' ? 'Restore lengkap' : 'Restore';
+  return `${label} OK. Cadangan data lama: ${preRestorePath ?? '-'}. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.`;
+}
 
 /** Banner amber AUD-13: backup lebih tua dari 2 hari. Null = tidak tampil. */
 export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
@@ -38,16 +59,193 @@ export function BannerBackupBasi({ usiaHari }: { usiaHari: number | null }) {
     >
       <p className="font-semibold">{pesan}</p>
       <p className="mt-1 text-sm">
-        Gunakan tombol Backup Export .db atau Backup Lengkap di bawah.
+        Gunakan tombol <b>Backup Lengkap</b> (disarankan), atau Backup Export .db
+        untuk kebutuhan lanjutan.
       </p>
     </div>
   );
 }
 
+/**
+ * T3.3: peringatan permanen di kartu Backup / Restore. File `.db` (termasuk
+ * hasil Backup Lengkap) tidak dienkripsi; PIN hanya melindungi UI aplikasi.
+ * Ditampilkan sebagai teks terlihat, bukan tooltip, agar tidak terlewat.
+ */
+export function PeringatanBackupTidakTerenkripsi() {
+  return (
+    <div
+      role="note"
+      data-testid="peringatan-backup-tidak-terenkripsi"
+      className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+    >
+      <p className="font-bold">File backup tidak terenkripsi.</p>
+      <p className="mt-1">
+        PIN hanya melindungi aplikasi, bukan isi file. Siapa pun yang memegang
+        file <code>.db</code> atau folder backup dapat membacanya tanpa PIN.
+        Simpan backup di laptop sendiri atau media/disk yang terenkripsi, jangan
+        unggah ke cloud publik, dan hapus salinan lama yang tidak diperlukan.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * T3.8: konfirmasi backup yang menjelaskan apa yang berubah dan apa yang tetap.
+ * Backup tidak menimpa data aktif, jadi nadanya informatif (bukan peringatan
+ * merah) dan pilihan aman tetap fokus awal.
+ */
+export function KonfirmasiBackup({
+  jenis,
+  sibuk = false,
+  onBatal,
+  onKonfirmasi,
+}: {
+  jenis: 'lengkap' | 'db';
+  sibuk?: boolean;
+  onBatal: () => void;
+  onKonfirmasi: () => void;
+}) {
+  const lengkap = jenis === 'lengkap';
+  return (
+    <KonfirmasiModal
+      judul={lengkap ? 'Buat backup lengkap?' : 'Buat backup Export .db?'}
+      deskripsi={
+        <>
+          <p>
+            {lengkap ? (
+              <>
+                <b>Backup Lengkap</b> membuat folder baru berisi{' '}
+                <code>pura.db</code> dan <code>manifest.json</code> di lokasi
+                yang Anda pilih.
+              </>
+            ) : (
+              <>
+                <b>Backup Export .db</b> membuat satu file database tanpa{' '}
+                <code>manifest.json</code> di lokasi yang Anda pilih.
+              </>
+            )}
+          </p>
+          <p>
+            <b>Yang berubah:</b> hanya salinan backup baru di folder tujuan.{' '}
+            <b>Yang tetap:</b> data aktif, jurnal, dan pengaturan tidak
+            disentuh; backup lama tidak dihapus.
+          </p>
+          <p className="text-sm text-stone-600">
+            File backup tidak terenkripsi — simpan di media yang aman. Bila
+            dialog dibatalkan, tidak ada file yang dibuat. Gunakan{' '}
+            <b>Backup Lengkap</b> untuk arsip/pindah laptop; jalur .db hanya
+            untuk kebutuhan lanjutan.
+          </p>
+        </>
+      }
+      labelYa={lengkap ? 'Pilih folder & buat backup' : 'Pilih file & buat backup'}
+      variant="primary"
+      sibuk={sibuk}
+      onBatal={onBatal}
+      onKonfirmasi={onKonfirmasi}
+    />
+  );
+}
+
+/** T3.8: konfirmasi restore .db (jalur lanjutan tanpa validasi manifest). */
+export function KonfirmasiRestoreDb({
+  sibuk = false,
+  onBatal,
+  onKonfirmasi,
+}: {
+  sibuk?: boolean;
+  onBatal: () => void;
+  onKonfirmasi: () => void;
+}) {
+  return (
+    <KonfirmasiModal
+      judul="Konfirmasi terakhir: pulihkan dari file .db?"
+      deskripsi={
+        <>
+          <p>
+            Data yang sekarang aktif akan <b>diganti</b> dengan isi file .db
+            yang Anda pilih. Jurnal, saldo awal, pengaturan, dan audit mengikuti
+            file tersebut. <b>Hanya database yang dipulihkan</b>;{' '}
+            <code>manifest.json</code> tidak divalidasi.
+          </p>
+          <p>
+            <b>Yang tetap:</b> PIN aplikasi dipertahankan, file backup sumber
+            tidak diubah, dan data saat ini dicadangkan otomatis sebagai{' '}
+            <code>pre-restore-&lt;waktu&gt;.db</code> sebelum diganti. Setelah
+            selesai, aplikasi dikunci dan Anda perlu memasukkan PIN.
+          </p>
+          <p className="text-sm text-stone-600">
+            Bila hasil restore tidak sesuai, pulihkan cadangan pre-restore lewat
+            jalur yang sama. Pastikan file .db berasal dari aplikasi ini dan Anda
+            memang ingin memakai jalur lanjutan ini.
+          </p>
+        </>
+      }
+      labelYa="Pilih file .db & pulihkan"
+      sibuk={sibuk}
+      onBatal={onBatal}
+      onKonfirmasi={onKonfirmasi}
+    />
+  );
+}
+
+/** T3.8: konfirmasi restore lengkap (DB + validasi manifest). */
+export function KonfirmasiRestoreLengkap({
+  sibuk = false,
+  onBatal,
+  onKonfirmasi,
+}: {
+  sibuk?: boolean;
+  onBatal: () => void;
+  onKonfirmasi: () => void;
+}) {
+  return (
+    <KonfirmasiModal
+      judul="Pulihkan database dari backup lengkap?"
+      deskripsi={
+        <>
+          <p>
+            Database yang sekarang aktif akan <b>diganti</b> dengan{' '}
+            <code>pura.db</code> dari folder backup lengkap yang Anda pilih.
+            Jurnal, saldo awal, pengaturan, dan audit mengikuti file backup. Ini
+            jalur yang <b>disarankan</b>.
+          </p>
+          <p>
+            <b>Yang tetap:</b> PIN aplikasi dipertahankan, file backup sumber
+            tidak diubah, dan data saat ini dicadangkan otomatis sebagai{' '}
+            <code>pre-restore-&lt;waktu&gt;.db</code>. Sistem memeriksa{' '}
+            <code>manifest.json</code> sebelum memulihkan. Setelah selesai,
+            aplikasi dikunci dan Anda perlu memasukkan PIN.
+          </p>
+          <p className="text-sm text-stone-600">
+            Bila hasil restore tidak sesuai, pulihkan cadangan pre-restore.
+            Pastikan folder berisi <code>manifest.json</code> dan{' '}
+            <code>pura.db</code> dari aplikasi versi ini.
+          </p>
+        </>
+      }
+      labelYa="Pilih folder & pulihkan"
+      sibuk={sibuk}
+      onBatal={onBatal}
+      onKonfirmasi={onKonfirmasi}
+    />
+  );
+}
+
+
 export function DashboardTab({
   onBukaTab,
+  modeLanjutan = false,
+  onRestoreSelesai,
 }: {
   onBukaTab: (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => void;
+  /** DB-26: pintasan Jurnal Umum hanya tersedia setelah Mode lanjutan aktif. */
+  modeLanjutan?: boolean;
+  /**
+   * T2.7: dipanggil tepat setelah restore sukses agar App langsung memuat
+   * ulang status kunci dan menampilkan layar PIN tanpa menunggu polling.
+   */
+  onRestoreSelesai?: (pesan: string) => void;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<DashboardHasil | null>(null);
@@ -57,7 +255,9 @@ export function DashboardTab({
     null | 'muat' | 'backup' | 'backup-lengkap' | 'restore' | 'restore-lengkap'
   >(null);
   const [konfirmasiRestore, setKonfirmasiRestore] = useState(false);
+  const [konfirmasiRestoreFinal, setKonfirmasiRestoreFinal] = useState(false);
   const [konfirmasiRestoreLengkap, setKonfirmasiRestoreLengkap] = useState(false);
+  const [konfirmasiBackup, setKonfirmasiBackup] = useState<null | 'lengkap' | 'db'>(null);
   const { sibuk, jalankan } = useAksiSibuk();
 
   // Data backup bisa tidak tersedia/berformat asing; helper mengembalikan null
@@ -99,7 +299,11 @@ export function DashboardTab({
       setJenisSibuk('backup');
       try {
         const r = await api.backupExport();
-        if (r.saved) setInfo(`Backup tersimpan: ${r.path}`);
+        if (r.saved) {
+          setInfo(
+            `Backup tersimpan: ${r.path}. Data aktif tidak berubah; simpan cadangan ini di media yang aman.`,
+          );
+        }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
       } finally {
@@ -117,7 +321,7 @@ export function DashboardTab({
         const r = await api.backupLengkap();
         if (r.saved) {
           setInfo(
-            `Backup lengkap tersimpan: ${r.path} (${r.jumlahLampiran} lampiran)`,
+            `Backup lengkap tersimpan: ${r.path}. Data aktif tidak berubah; simpan folder ini di media yang aman.`,
           );
         }
       } catch (e) {
@@ -134,13 +338,17 @@ export function DashboardTab({
       setInfo(null);
       setJenisSibuk('restore');
       setKonfirmasiRestore(false);
+      setKonfirmasiRestoreFinal(false);
       try {
-        const r = await api.backupImport();
+        // DB-09: konfirmasi eksplisit wajib; main menolak tanpa ini.
+        const r = await api.backupImport(true);
         if (r.restored) {
-          setInfo(
-            `Restore OK. Cadangan data lama: ${r.preRestorePath ?? '-'}. Data dimuat ulang…`,
-          );
-          await muatData(cutoff);
+          // T2.7: main sudah mengunci sesi. Jangan memuat dashboard lagi
+          // (permintaan akan ditolak atau menampilkan data stale); langsung
+          // serahkan pesan ke App agar layar kunci muncul.
+          const pesan = pesanRestoreSukses('db', r.preRestorePath);
+          setInfo(pesan);
+          onRestoreSelesai?.(pesan);
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -159,12 +367,11 @@ export function DashboardTab({
       try {
         const r = await api.backupRestoreLengkap();
         if (r.restored) {
-          setInfo(
-            `Restore lengkap OK (${r.jumlahLampiran} lampiran). Cadangan data lama: ${
-              r.preRestorePath ?? '-'
-            }; lampiran lama: ${r.preRestoreAttachmentsPath ?? '-'}. Data dimuat ulang…`,
-          );
-          await muatData(cutoff);
+          // T2.7: sama seperti restore .db — sesi dikunci main, jadi jangan
+          // panggil `muatData`; App akan segera menampilkan layar kunci.
+          const pesan = pesanRestoreSukses('lengkap', r.preRestorePath);
+          setInfo(pesan);
+          onRestoreSelesai?.(pesan);
         }
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -182,8 +389,8 @@ export function DashboardTab({
             <h2 className="text-lg font-bold">
               Dashboard Akuntan{' '}
               {data && (
-                <Badge tone={data.neracaSaldo.seimbang ? 'green' : 'red'}>
-                  {data.neracaSaldo.seimbang ? 'Seimbang' : 'Selisih'}
+                <Badge tone={data.balance ? 'green' : 'red'}>
+                  {data.balance ? 'Neraca seimbang' : 'Neraca selisih'}
                 </Badge>
               )}
             </h2>
@@ -200,7 +407,7 @@ export function DashboardTab({
                 onChange={(e) => setCutoff(e.target.value)}
               />
             </Field>
-            <Button disabled={sibuk} onClick={() => void muat()}>
+            <Button disabled={sibuk} title={sibuk ? ALASAN_SIBUK : undefined} onClick={() => void muat()}>
               {jenisSibuk === 'muat' ? 'Menampilkan…' : 'Tampilkan'}
             </Button>
           </div>
@@ -209,7 +416,11 @@ export function DashboardTab({
           <ErrorBox msg={err} />
         </div>
         {info && (
-          <div className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800"
+          >
             {info}
           </div>
         )}
@@ -247,14 +458,19 @@ export function DashboardTab({
               <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('panjar')}>
                 Panjar
               </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('pihak')}>
-                Piutang &amp; Hutang
+              <Button
+                disabled={sibuk}
+                variant="ghost"
+                onClick={() => onBukaTab('transaksi', 'CATAT_UTANG')}
+              >
+                Catat Utang
               </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('tutup')}>
-                Tutup Buku
-              </Button>
-              <Button disabled={sibuk} variant="ghost" onClick={() => onBukaTab('jurnal')}>
-                Jurnal Umum
+              <Button
+                disabled={sibuk}
+                variant="ghost"
+                onClick={() => onBukaTab('transaksi', 'BAYAR_UTANG')}
+              >
+                Bayar Utang
               </Button>
             </div>
           </Card>
@@ -305,6 +521,14 @@ export function DashboardTab({
                   {data.labaRugiBerjalan.badge}
                 </Badge>
               </div>
+              {data.labaRugiBerjalan.catatanTahunPertama && (
+                <p
+                  className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                  data-testid="catatan-tahun-pertama-dashboard"
+                >
+                  {data.labaRugiBerjalan.catatanTahunPertama}
+                </p>
+              )}
               <p
                 className={
                   data.labaRugiBerjalan.defisit
@@ -357,8 +581,22 @@ export function DashboardTab({
                   </div>
                 )}
               </dl>
+              {data.neracaSaldo.seimbang && !data.balance && (
+                <div
+                  role="alert"
+                  data-testid="peringatan-neraca-tidak-balance"
+                  className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900"
+                >
+                  <p className="font-bold">Neraca tidak balance.</p>
+                  <p className="mt-1">
+                    Neraca Saldo seimbang, tetapi Neraca selisih{' '}
+                    {formatRp(data.selisih)}. Jangan kunci periode; periksa
+                    cut-over/pembukaan dan Jurnal Umum.
+                  </p>
+                </div>
+              )}
               <p className="mt-2 text-sm text-stone-600">
-                Bila selisih, jangan tutup buku. Periksa Jurnal Umum terlebih dahulu.
+                Bila selisih, jangan kunci periode. Periksa Jurnal Umum terlebih dahulu.
               </p>
             </Card>
 
@@ -370,13 +608,13 @@ export function DashboardTab({
                 </div>
                 <Badge tone={data.periode.tahunTerakhirDitutup ? 'amber' : 'stone'}>
                   {data.periode.tahunTerakhirDitutup
-                    ? `Tutup ${data.periode.tahunTerakhirDitutup}`
-                    : 'Belum tutup'}
+                    ? `Tahun ${data.periode.tahunTerakhirDitutup} terkunci`
+                    : 'Belum dikunci'}
                 </Badge>
               </div>
               <dl className="mt-3 space-y-2 text-[15px]">
                 <div className="flex justify-between gap-3 border-b pb-2">
-                  <dt className="text-stone-600">Tahun terakhir ditutup</dt>
+                  <dt className="text-stone-600">Tahun terakhir dikunci</dt>
                   <dd className="font-semibold">
                     {data.periode.tahunTerakhirDitutup ?? 'Belum ada'}
                   </dd>
@@ -390,7 +628,7 @@ export function DashboardTab({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-stone-600">Boleh ditutup s/d</dt>
+                  <dt className="text-stone-600">Boleh dikunci s/d</dt>
                   <dd className="font-semibold">{data.periode.batasTahun}</dd>
                 </div>
               </dl>
@@ -400,7 +638,7 @@ export function DashboardTab({
                   disabled={sibuk}
                   onClick={() => onBukaTab('tutup')}
                 >
-                  Buka Tutup Buku
+                  Buka Kunci Periode
                 </Button>
               </div>
             </Card>
@@ -431,22 +669,26 @@ export function DashboardTab({
               ) : (
                 <p className="mt-3 text-stone-500">Belum ada jurnal s/d tanggal laporan.</p>
               )}
-              <div className="mt-3">
-                <Button
-                  variant="ghost"
-                  disabled={sibuk}
-                  onClick={() => onBukaTab('jurnal')}
-                >
-                  Buka Jurnal Umum
-                </Button>
-              </div>
+              {modeLanjutan && (
+                <div className="mt-3">
+                  <Button
+                    variant="ghost"
+                    disabled={sibuk}
+                    onClick={() => onBukaTab('jurnal')}
+                  >
+                    Buka Jurnal Umum
+                  </Button>
+                </div>
+              )}
             </Card>
 
             <Card className="min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-base font-bold">Backup Terakhir</h3>
-                  <p className="text-sm text-stone-600">Cadangan otomatis harian</p>
+                  <p className="text-sm text-stone-600">
+                    Cadangan otomatis harian (satu file .db)
+                  </p>
                 </div>
                 <Badge tone={ringkasan.tone}>
                   {!data.backupTerakhir
@@ -488,9 +730,11 @@ export function DashboardTab({
       <Card>
         <h3 className="text-base font-bold">Backup / Restore</h3>
         <p className="mt-1 text-sm text-stone-600">
-          Backup menyalin data tanpa mengubah data aktif. Pulihkan mengganti data
-          yang sedang dipakai.
+          Backup hanya menambah salinan baru dan tidak mengubah data aktif.
+          Restore mengganti seluruh isi database aktif dengan isi backup; data
+          lama selalu dicadangkan lebih dulu.
         </p>
+        <PeringatanBackupTidakTerenkripsi />
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <section
             aria-labelledby="judul-backup"
@@ -500,26 +744,33 @@ export function DashboardTab({
               Backup
             </h4>
             <p className="mt-1 text-sm text-stone-600">
-              Menyimpan salinan aman; data aktif tidak berubah.
+              Membuat salinan baru di lokasi pilihan Anda. Data aktif, jurnal,
+              dan pengaturan tidak berubah.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="ghost" disabled={sibuk} onClick={() => void backup()}>
-                {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db'}
+              <Button
+                disabled={sibuk}
+                title={sibuk ? ALASAN_SIBUK : undefined}
+                onClick={() => setKonfirmasiBackup('lengkap')}
+              >
+                {jenisSibuk === 'backup-lengkap'
+                  ? 'Membuat backup lengkap…'
+                  : 'Backup Lengkap (disarankan)'}
               </Button>
               <Button
                 variant="ghost"
                 disabled={sibuk}
-                onClick={() => void backupLengkap()}
+                title={sibuk ? ALASAN_SIBUK : undefined}
+                onClick={() => setKonfirmasiBackup('db')}
               >
-                {jenisSibuk === 'backup-lengkap'
-                  ? 'Membuat backup lengkap…'
-                  : 'Backup Lengkap (DB + lampiran)'}
+                {jenisSibuk === 'backup' ? 'Menyimpan backup…' : 'Backup Export .db (lanjutan)'}
               </Button>
             </div>
             <p className="mt-3 text-sm text-stone-600">
-              Backup lengkap menyimpan satu folder berisi <code>pura.db</code>, semua
-              lampiran bukti, dan <code>manifest.json</code> — pakai ini untuk arsip
-              atau pindah laptop. Backup Export .db hanya berisi database.
+              <b>Backup Lengkap</b> adalah jalur yang disarankan: satu folder
+              berisi <code>pura.db</code> dan <code>manifest.json</code> untuk
+              arsip atau pindah laptop. <b>Backup Export .db</b> hanya berisi
+              database dan tidak punya manifest.
             </p>
           </section>
 
@@ -534,31 +785,39 @@ export function DashboardTab({
               <Badge tone="red">Menimpa data aktif</Badge>
             </div>
             <p className="mt-1 text-sm font-semibold text-red-900">
-              Pilih hanya file atau folder backup yang Anda percaya.
+              Pilih hanya file atau folder backup yang Anda percaya. Restore
+              mengganti data aktif; cadangan pre-restore dibuat otomatis.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
-                variant="danger-outline"
+                variant="danger"
                 disabled={sibuk}
-                onClick={() => setKonfirmasiRestore(true)}
-              >
-                {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db'}
-              </Button>
-              <Button
-                variant="danger-outline"
-                disabled={sibuk}
+                title={sibuk ? ALASAN_SIBUK : undefined}
                 onClick={() => setKonfirmasiRestoreLengkap(true)}
               >
                 {jenisSibuk === 'restore-lengkap'
                   ? 'Memulihkan lengkap…'
-                  : 'Restore Lengkap (DB + lampiran)'}
+                  : 'Restore Lengkap (disarankan)'}
+              </Button>
+              <Button
+                variant="danger-outline"
+                disabled={sibuk}
+                title={sibuk ? ALASAN_SIBUK : undefined}
+                onClick={() => setKonfirmasiRestore(true)}
+              >
+                {jenisSibuk === 'restore' ? 'Memulihkan…' : 'Restore Import .db (lanjutan)'}
               </Button>
             </div>
             <p className="mt-3 text-sm text-stone-700">
-              Restore Import .db memulihkan database saja; lampiran tetap di folder
-              aplikasi. Restore Lengkap memulihkan database <b>dan</b> lampiran dari
-              folder hasil Backup Lengkap; data lama disimpan sebagai cadangan lebih
-              dulu.
+              <b>Restore Lengkap</b> adalah jalur yang disarankan: memulihkan
+              database dari folder hasil Backup Lengkap dan memeriksa{' '}
+              <code>manifest.json</code>. <b>Restore Import .db</b> adalah jalur
+              lanjutan yang <b>hanya memulihkan database</b> dari satu file,
+              tanpa validasi manifest.
+            </p>
+            <p className="mt-2 text-sm font-semibold text-red-900">
+              Data lama selalu dicadangkan lebih dulu sebagai{' '}
+              <code>pre-restore-&lt;waktu&gt;.db</code>.
             </p>
           </section>
         </div>
@@ -574,57 +833,66 @@ export function DashboardTab({
             {jenisSibuk === 'backup'
               ? 'Sedang membuat backup…'
               : jenisSibuk === 'backup-lengkap'
-                ? 'Sedang menyalin database dan lampiran…'
+                ? 'Sedang menyalin database…'
                 : jenisSibuk === 'restore'
                   ? 'Sedang memulihkan data…'
                   : jenisSibuk === 'restore-lengkap'
-                    ? 'Sedang memulihkan database dan lampiran…'
+                    ? 'Sedang memulihkan database…'
                     : 'Sedang memuat data…'}
           </p>
         )}
       </Card>
 
+      {konfirmasiBackup && (
+        <KonfirmasiBackup
+          jenis={konfirmasiBackup}
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiBackup(null)}
+          onKonfirmasi={() => {
+            const jenis = konfirmasiBackup;
+            setKonfirmasiBackup(null);
+            if (jenis === 'lengkap') void backupLengkap();
+            else void backup();
+          }}
+        />
+      )}
+
       {konfirmasiRestore && (
         <KonfirmasiModal
-          judul="Pulihkan data dari backup?"
+          judul="Peringatan: Restore .db adalah jalur lanjutan"
           deskripsi={
             <>
               <p>
-                Data yang sekarang aktif akan <b>diganti</b> dengan isi file backup
-                yang Anda pilih.
+                <b>Restore Import .db hanya memulihkan database</b> dari satu file.
+                Jalur ini <b>tidak memeriksa manifest.json</b> dan tidak memastikan
+                Anda memilih folder hasil Backup Lengkap.
               </p>
               <p className="text-sm text-stone-600">
-                Sistem membuat cadangan otomatis data saat ini lebih dulu. Setelah
-                restore selesai, layar dimuat ulang. Pastikan file .db berasal dari
-                aplikasi ini.
+                Gunakan <b>Restore Lengkap</b> bila folder backup masih tersedia.
+                Jalur .db sebaiknya dipakai hanya bila diminta pendamping.
               </p>
             </>
           }
-          labelYa="Pilih file & pulihkan"
+          labelYa="Saya mengerti, lanjut"
           sibuk={sibuk}
           onBatal={() => setKonfirmasiRestore(false)}
+          onKonfirmasi={() => {
+            setKonfirmasiRestore(false);
+            setKonfirmasiRestoreFinal(true);
+          }}
+        />
+      )}
+
+      {konfirmasiRestoreFinal && (
+        <KonfirmasiRestoreDb
+          sibuk={sibuk}
+          onBatal={() => setKonfirmasiRestoreFinal(false)}
           onKonfirmasi={() => void restore()}
         />
       )}
 
       {konfirmasiRestoreLengkap && (
-        <KonfirmasiModal
-          judul="Pulihkan database dan lampiran?"
-          deskripsi={
-            <>
-              <p>
-                Database <b>dan seluruh lampiran</b> yang sekarang aktif akan diganti
-                dengan isi folder backup lengkap yang Anda pilih.
-              </p>
-              <p className="text-sm text-stone-600">
-                Sistem mencadangkan database dan folder lampiran saat ini lebih dulu.
-                Setelah restore selesai, layar dimuat ulang dan aplikasi terkunci
-                kembali. Pastikan folder berisi <code>manifest.json</code>,{' '}
-                <code>pura.db</code>, dan folder <code>attachments</code>.
-              </p>
-            </>
-          }
-          labelYa="Pilih folder & pulihkan"
+        <KonfirmasiRestoreLengkap
           sibuk={sibuk}
           onBatal={() => setKonfirmasiRestoreLengkap(false)}
           onKonfirmasi={() => void restoreLengkap()}
