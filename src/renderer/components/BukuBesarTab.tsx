@@ -51,11 +51,27 @@ export function KepalaMutasi({ posisiNormal }: { posisiNormal: PosisiNormal }) {
   );
 }
 
-export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
+/**
+ * UI-A03: periode sumber drill-down dari laporan yang diklik (Neraca / Neraca
+ * Saldo). String kosong berarti tanpa batas, sama dengan filter Buku Besar.
+ */
+export type PeriodeBukuBesar = { mulai: string; sampai: string };
+
+export function BukuBesarTab({
+  akunAwal,
+  periodeAwal,
+}: {
+  akunAwal?: string;
+  /**
+   * UI-A03: periode sumber drill-down; hanya nilai awal — rentang yang sudah
+   * diubah operator tidak ditimpa selama drill-down berikutnya sama.
+   */
+  periodeAwal?: PeriodeBukuBesar;
+}) {
   const [coa, setCoa] = useState<Coa[] | null>(null);
   const [akun, setAkun] = useState(akunAwal ?? '');
-  const [mulai, setMulai] = useState('');
-  const [sampai, setSampai] = useState('');
+  const [mulai, setMulai] = useState(periodeAwal?.mulai ?? '');
+  const [sampai, setSampai] = useState(periodeAwal?.sampai ?? '');
   const [data, setData] = useState<BukuBesarHasil | null>(null);
   const [detail, setDetail] = useState<JurnalLengkap | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -94,6 +110,19 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
   useEffect(() => {
     if (akunAwal) setAkun(akunAwal);
   }, [akunAwal]);
+
+  // UI-A03: drill-down juga membawa periode sumber (cut-off Neraca/Neraca
+  // Saldo) agar saldo akhir dihitung dengan cut-off yang sama dengan angka
+  // yang diklik. Nilai hanya awal: memakai string turunan sebagai dependensi
+  // sehingga rentang yang sudah diubah operator tidak ditimpa tanpa alasan.
+  const mulaiAwal = periodeAwal?.mulai ?? '';
+  const sampaiAwal = periodeAwal?.sampai ?? '';
+  useEffect(() => {
+    setMulai(mulaiAwal);
+  }, [mulaiAwal]);
+  useEffect(() => {
+    setSampai(sampaiAwal);
+  }, [sampaiAwal]);
 
   // UI-11: rentang "dari" > "sampai" tidak boleh dikirim ke API. Bandingkan
   // string ISO (YYYY-MM-DD) agar urutannya sama dengan urutan tanggal.
@@ -155,6 +184,8 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
 
   const akunTerpilih = coa?.find((a) => a.kode === akun) ?? null;
   const adaMutasi = (data?.rows.length ?? 0) > 0;
+  // UI-A03: drill-down aktif berarti ada cut-off sumber yang diteruskan.
+  const drilldownAktif = Boolean(sampaiAwal);
 
   return (
     <div className="space-y-4">
@@ -288,7 +319,13 @@ export function BukuBesarTab({ akunAwal }: { akunAwal?: string }) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-stone-600">Saldo akhir:</span>
+                {/* UI-A03: saat drill-down, sebutkan cut-off sumber agar
+                    angka ini jelas cocok dengan laporan asalnya. */}
+                <span className="text-sm text-stone-600">
+                  {drilldownAktif && data.sampai
+                    ? `Saldo akhir (per ${formatTanggal(data.sampai)}):`
+                    : 'Saldo akhir:'}
+                </span>
                 <span className="text-xl font-bold">{formatRp(data.saldoAkhir)}</span>
                 <SisiSaldoBadge saldo={data.saldoAkhir} posisiNormal={data.posisi_normal} />
               </div>

@@ -13,6 +13,7 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
 import { LABEL_TIPE_AKUN } from '../lib/tampilanLaporan.js';
+import type { PeriodeBukuBesar } from './BukuBesarTab.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -31,7 +32,9 @@ function barisSintetis(
 export function NeracaSaldoTab({
   onBukaBukuBesar,
 }: {
-  onBukaBukuBesar: (akunKode: string) => void;
+  // UI-A03: callback juga membawa periode sumber agar Buku Besar menghitung
+  // saldo dengan cut-off/awal tahun buku yang sama dengan angka yang diklik.
+  onBukaBukuBesar: (akunKode: string, periode: PeriodeBukuBesar) => void;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [mode, setMode] = useState<ModeNeracaSaldo>('tahun');
@@ -68,6 +71,16 @@ export function NeracaSaldoTab({
 
   const belumAdaMutasi = Boolean(data && data.rows.every((r) => !r.adaMutasi));
   const adaLabaDitahan = Boolean(data?.rows.some(barisSintetis));
+
+  // UI-A03: periode sumber diteruskan ke Buku Besar agar cut-off sama dengan
+  // angka yang diklik. Mode tahun memakai awal tahun buku dari hasil laporan
+  // (1 Januari tahun cut-off; laporan memakai util tahun buku di core); mode
+  // kumulatif hanya dipotong di cut-off tanpa batas awal.
+  const periodeSumber: PeriodeBukuBesar = !data
+    ? { mulai: '', sampai: cutoff }
+    : data.mode === 'tahun'
+      ? { mulai: data.mulai, sampai: data.sampai }
+      : { mulai: '', sampai: data.cutoff ?? cutoff };
 
   const judulPeriode = data
     ? data.mode === 'tahun'
@@ -231,14 +244,16 @@ export function NeracaSaldoTab({
                           ? 'Laba bersih sebelum periode; bukan akun COA'
                           : `Buka Buku Besar ${r.kode} — ${r.nama}`
                       }
-                      onClick={sintetis ? undefined : () => onBukaBukuBesar(r.kode)}
+                      onClick={
+                        sintetis ? undefined : () => onBukaBukuBesar(r.kode, periodeSumber)
+                      }
                       onKeyDown={
                         sintetis
                           ? undefined
                           : (e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
-                                onBukaBukuBesar(r.kode);
+                                onBukaBukuBesar(r.kode, periodeSumber);
                               }
                             }
                       }

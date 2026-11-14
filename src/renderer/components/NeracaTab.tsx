@@ -6,6 +6,7 @@ import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, type NeracaHasil, type NeracaSaldoModeHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
+import type { PeriodeBukuBesar } from './BukuBesarTab.js';
 import { Badge, Button, Card, ErrorBox, Field, TextInput } from './ui.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -18,7 +19,9 @@ import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 export function NeracaTab({
   onBukaBukuBesar,
 }: {
-  onBukaBukuBesar?: (akunKode: string) => void;
+  // UI-A03: callback juga membawa periode sumber (cut-off Neraca) agar Buku
+  // Besar menghitung saldo dengan cut-off yang sama dengan angka yang diklik.
+  onBukaBukuBesar?: (akunKode: string, periode: PeriodeBukuBesar) => void;
 }) {
   const [cutoff, setCutoff] = useState(tanggalLokal());
   const [data, setData] = useState<NeracaHasil | null>(null);
@@ -64,6 +67,12 @@ export function NeracaTab({
   const kewajiban = data?.kewajiban.filter((a) => a.saldo !== 0) ?? [];
   const ekuitas = data?.ekuitas.filter((a) => a.saldo !== 0) ?? [];
 
+  // UI-A03: saldo Neraca kumulatif s/d cut-off, jadi Buku Besar dipotong di
+  // cut-off tanpa batas awal agar saldo akhirnya sama dengan angka di sini.
+  function periodeSumber(): PeriodeBukuBesar {
+    return { mulai: '', sampai: cutoff };
+  }
+
   function barisAkun(a: { kode: string; nama: string; saldo: number }) {
     return (
       <tr
@@ -75,12 +84,12 @@ export function NeracaTab({
         }
         tabIndex={onBukaBukuBesar ? 0 : undefined}
         title={onBukaBukuBesar ? `Buka Buku Besar ${a.kode} — ${a.nama}` : undefined}
-        onClick={() => onBukaBukuBesar?.(a.kode)}
+        onClick={() => onBukaBukuBesar?.(a.kode, periodeSumber())}
         onKeyDown={(e) => {
           if (!onBukaBukuBesar) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            onBukaBukuBesar(a.kode);
+            onBukaBukuBesar(a.kode, periodeSumber());
           }
         }}
       >

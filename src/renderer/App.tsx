@@ -22,7 +22,7 @@ import {
 import { TransaksiTab } from './components/TransaksiTab.js';
 import { AkunTab } from './components/AkunTab.js';
 import { JurnalTab } from './components/JurnalTab.js';
-import { BukuBesarTab } from './components/BukuBesarTab.js';
+import { BukuBesarTab, type PeriodeBukuBesar } from './components/BukuBesarTab.js';
 import { NeracaSaldoTab } from './components/NeracaSaldoTab.js';
 import { PanjarTab } from './components/PanjarTab.js';
 import { PinjamanTab } from './components/PinjamanTab.js';
@@ -194,6 +194,10 @@ function AppShell() {
   const { sibuk: mengunci, jalankan: jalankanKunci } = useAksiSibuk();
   // Drill-down Neraca Saldo → Buku Besar akun yang diklik (P1-8).
   const [akunBukuBesar, setAkunBukuBesar] = useState<string | undefined>();
+  // UI-A03: periode sumber drill-down (cut-off Neraca/Neraca Saldo, termasuk
+  // awal tahun buku untuk mode tahun) agar Buku Besar menghitung saldo dengan
+  // cut-off yang sama dengan angka yang diklik, bukan sampai hari ini.
+  const [periodeBukuBesar, setPeriodeBukuBesar] = useState<PeriodeBukuBesar | undefined>();
   // Pintasan dashboard → form terpandu yang langsung dipilih (P1-14).
   const [jenisTransaksiAwal, setJenisTransaksiAwal] =
     useState<DashboardFormTransaksi>('TERIMA');
@@ -714,11 +718,14 @@ function AppShell() {
             )}
             {tab === 'akun' && <AkunTab />}
             {tab === 'jurnal' && modeLanjutan && <JurnalTab />}
-            {tab === 'buku-besar' && <BukuBesarTab akunAwal={akunBukuBesar} />}
+            {tab === 'buku-besar' && (
+              <BukuBesarTab akunAwal={akunBukuBesar} periodeAwal={periodeBukuBesar} />
+            )}
             {tab === 'neraca-saldo' && (
               <NeracaSaldoTab
-                onBukaBukuBesar={(kode) => {
+                onBukaBukuBesar={(kode, periode) => {
                   setAkunBukuBesar(kode);
+                  setPeriodeBukuBesar(periode);
                   pindahTab('buku-besar');
                 }}
               />
@@ -728,8 +735,9 @@ function AppShell() {
             {tab === 'laba-rugi' && <LabaRugiTab />}
             {tab === 'neraca' && (
               <NeracaTab
-                onBukaBukuBesar={(kode) => {
+                onBukaBukuBesar={(kode, periode) => {
                   setAkunBukuBesar(kode);
+                  setPeriodeBukuBesar(periode);
                   pindahTab('buku-besar');
                 }}
               />
