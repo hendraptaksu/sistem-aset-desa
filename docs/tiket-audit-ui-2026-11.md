@@ -15,7 +15,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 | UI-A04 | P1 | Pengaturan: race + spam request filter Riwayat Audit | S | ✅ |
 | UI-A05 | P1 | Pengaturan: form Pembukuan bisa menimpa setting dengan default setelah gagal muat | S | ✅ |
 | UI-A06 | P1 | Pinjaman: feedback aksi di bawah halaman tak terlihat | M | ✅ |
-| UI-A07 | P1 | Pinjaman: tombol "Kartu hutang" tanpa efek terlihat | S | ⬜ |
+| UI-A07 | P1 | Pinjaman: tombol "Kartu hutang" tanpa efek terlihat | S | ✅ |
 | UI-A08 | P1 | Temuan audit integritas tidak bisa dilihat ulang; banner menunjuk layar yang salah | M | ⬜ |
 | UI-A09 | P1 | ui.tsx: LockModal — alasan di closure, tombol bisa diam tanpa reaksi | S | ⬜ |
 | UI-A10 | P2 | Komponen KontrolPeriode bersama untuk semua laporan | L | ⬜ |
