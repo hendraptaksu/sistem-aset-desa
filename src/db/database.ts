@@ -546,6 +546,16 @@ export const PESAN_REVERSAL_JURNAL_DB =
   'Jurnal REVERSAL wajib menunjuk jurnal asli melalui reversal_of; ' +
   'reversal_of hanya boleh diisi untuk jurnal berjenis REVERSAL.';
 
+/**
+ * T-B12: pesan trigger saat jurnal balik REVERSAL bertanggal sebelum tanggal
+ * jurnal aslinya. Backstop DB (penjaga terakhir) untuk aturan yang sudah
+ * ditegakkan lapisan aplikasi lewat `cekTanggalTidakMundur`.
+ */
+export const PESAN_REVERSAL_TANGGAL_MUNDUR_DB =
+  'Tanggal jurnal balik (reversal) tidak boleh sebelum tanggal jurnal asli. ' +
+  'Gunakan tanggal jurnal asli atau tanggal lebih baru; koreksi yang perlu ' +
+  'memindahkan tanggal lebih awal hanya bisa lewat Wizard Koreksi Saldo Awal.';
+
 /** Daftar jenis jurnal resmi, disinkronkan langsung dari posting layer. */
 const JENIS_JURNAL_SQL = JENIS_JURNAL.map((jenis) => `'${jenis}'`).join(', ');
 
@@ -702,6 +712,14 @@ BEGIN
   SELECT RAISE(ABORT, '${PESAN_REVERSAL_JURNAL_DB}')
   WHERE NEW.jenis = 'REVERSAL'
     AND (NEW.reversal_of IS NULL OR NEW.reversal_of = '');
+  -- T-B12: backstop tanggal — jurnal balik tidak boleh bertanggal sebelum
+  -- jurnal aslinya. Bila jurnal aslinya tidak ada, subquery bernilai NULL dan
+  -- batal menolak (keberadaan aslinya dijaga FK + lapisan aplikasi).
+  SELECT RAISE(ABORT, '${PESAN_REVERSAL_TANGGAL_MUNDUR_DB}')
+  WHERE NEW.jenis = 'REVERSAL'
+    AND NEW.reversal_of IS NOT NULL
+    AND NEW.reversal_of <> ''
+    AND NEW.tanggal < (SELECT a.tanggal FROM jurnal a WHERE a.id = NEW.reversal_of);
   SELECT RAISE(ABORT, '${PESAN_PERAN_JURNAL_DB}')
   WHERE NEW.peran IS NULL OR NEW.peran NOT IN (${PERAN_JURNAL_SQL});
   SELECT RAISE(ABORT, '${PESAN_OPENING_JURNAL_DB}')

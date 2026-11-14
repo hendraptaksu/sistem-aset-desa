@@ -6,6 +6,8 @@
 // - Trigger yang dihapus dipulihkan oleh `siapkanSkema(db)` maupun `openDb`
 //   berikutnya.
 // - Aturan integritas jurnal, audit log, dan tutup buku tetap ditegakkan.
+// - Backstop DB (T-B12): jurnal balik REVERSAL lewat SQL langsung tidak boleh
+//   bertanggal sebelum tanggal jurnal aslinya (`reversal_of`).
 // - Sumber `src/db/database.ts` memakai `DROP TRIGGER IF EXISTS` + `CREATE
 //   TRIGGER`, bukan `CREATE TRIGGER IF NOT EXISTS`.
 
@@ -232,6 +234,104 @@ describe('DB-07 — aturan integritas', () => {
       expect(() =>
         db.prepare('DELETE FROM tutup_buku WHERE tahun = 2025').run(),
       ).toThrow(/Tutup buku tidak boleh dihapus/);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('DB-07 — backstop tanggal reversal (T-B12)', () => {
+  /** Kepala jurnal dengan tanggal/jenis/peran eksplisit, untuk SQL langsung. */
+  function insJurnal(
+    db: Database.Database,
+    id: string,
+    opsi: { tanggal?: string; jenis?: string; peran?: string; reversalOf?: string | null; replacesId?: string | null } = {},
+  ): void {
+    db.prepare(
+      `INSERT INTO jurnal
+         (id, tanggal, no_bukti, keterangan, jenis, peran, grup_id, reversal_of, replaces_id, created_at)
+       VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      opsi.tanggal ?? '2026-01-05',
+      `Uji ${id}`,
+      opsi.jenis ?? 'UMUM',
+      opsi.peran ?? 'NORMAL',
+      id,
+      opsi.reversalOf ?? null,
+      opsi.replacesId ?? null,
+      WAKTU,
+    );
+  }
+
+  it('menolak REVERSAL lewat SQL langsung yang tanggalnya sebelum jurnal asli', () => {
+    const db = openDb(':memory:');
+    try {
+      insJurnal(db, 'j-asli-tb12', { tanggal: '2026-01-05' });
+
+      expect(() =>
+        insJurnal(db, 'j-mundur-tb12', {
+          tanggal: '2026-01-04',
+          jenis: 'REVERSAL',
+          reversalOf: 'j-asli-tb12',
+        }),
+      ).toThrow(/tidak boleh sebelum tanggal jurnal asli/i);
+
+      // Jurnal mundur tidak tertulis; jurnal asli tetap utuh.
+      expect(
+        db.prepare("SELECT COUNT(*) AS n FROM jurnal WHERE jenis = 'REVERSAL'").get(),
+      ).toEqual({ n: 0 });
+      expect(db.prepare("SELECT 1 AS ada FROM jurnal WHERE id = 'j-asli-tb12'").get()).toEqual({
+        ada: 1,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('REVERSAL dengan tanggal sama atau lebih maju dari jurnal asli tetap lolos', () => {
+    const db = openDb(':memory:');
+    try {
+      insJurnal(db, 'j-asli-sama', { tanggal: '2026-01-05' });
+      insJurnal(db, 'j-balik-sama', {
+        tanggal: '2026-01-05',
+        jenis: 'REVERSAL',
+        reversalOf: 'j-asli-sama',
+      });
+
+      insJurnal(db, 'j-asli-maju', { tanggal: '2026-01-05' });
+      insJurnal(db, 'j-balik-maju', {
+        tanggal: '2026-01-06',
+        jenis: 'REVERSAL',
+        reversalOf: 'j-asli-maju',
+      });
+
+      expect(
+        db.prepare("SELECT COUNT(*) AS n FROM jurnal WHERE jenis = 'REVERSAL'").get(),
+      ).toEqual({ n: 2 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('koreksi saldo awal (pengganti UMUM OPENING_REPLACEMENT) tidak terpengaruh backstop reversal', () => {
+    const db = openDb(':memory:');
+    try {
+      // Jurnal pembukaan saldo awal, tanggal cut-over.
+      insJurnal(db, 'j-sa-tb12', { tanggal: '2026-06-30', jenis: 'SALDO_AWAL', peran: 'OPENING' });
+      // Pengganti koreksi saldo awal berjenis UMUM (bukan REVERSAL), bahkan
+      // dengan tanggal sebelum pembukaan sekalipun tidak disentuh backstop
+      // ini — aturan tanggalnya tetap dijaga lapisan aplikasi.
+      insJurnal(db, 'j-ganti-tb12', {
+        tanggal: '2026-06-30',
+        jenis: 'UMUM',
+        peran: 'OPENING_REPLACEMENT',
+        replacesId: 'j-sa-tb12',
+      });
+
+      expect(db.prepare("SELECT 1 AS ada FROM jurnal WHERE id = 'j-ganti-tb12'").get()).toEqual({
+        ada: 1,
+      });
     } finally {
       db.close();
     }

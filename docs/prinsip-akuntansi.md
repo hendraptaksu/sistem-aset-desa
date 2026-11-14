@@ -377,7 +377,11 @@ berpindah ke pengganti terakhir.
 - **Tanggal reversal/pengganti generik tidak boleh mundur** dari tanggal jurnal
   asli. Tanpa tanggal eksplisit, reversal memakai tanggal asli. Koreksi yang
   perlu memindahkan tanggal lebih awal hanya bisa lewat Wizard Koreksi Saldo
-  Awal (cut-over ikut disesuaikan).
+  Awal (cut-over ikut disesuaikan). Aturan ini dijaga lapisan aplikasi lewat
+  `cekTanggalTidakMundur` dan di-backstop DB (penjaga terakhir, T-B12):
+  trigger `trg_jurnal_validasi_insert` menolak insert jurnal `REVERSAL` yang
+  tanggalnya sebelum tanggal jurnal aslinya (`reversal_of`) meski ditulis lewat
+  SQL langsung.
 - Koreksi saldo awal hanya boleh memakai akun aset, kewajiban, dan ekuitas;
   akun PENDAPATAN/BEBAN ditolak. Akun kontrol `1040`/`2050` hanya boleh
   disentuh lewat konteks koreksi ini, bukan Jurnal Umum biasa.

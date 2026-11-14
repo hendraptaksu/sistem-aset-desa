@@ -194,7 +194,8 @@ tidak kosong), `ux_jurnal_saldo_awal` (UNIQUE partial, hanya satu
 `SALDO_AWAL`), `ux_jurnal_reversal` (UNIQUE partial, satu reversal per jurnal),
 `ux_jurnal_replaces` (UNIQUE partial, satu jurnal hanya digantikan sekali).
 **Trigger:** `trg_jurnal_validasi_insert` (jenis/tanggal/reversal + backstop
-peran/`replaces_id`), `trg_jurnal_immutable_update`,
+tanggal reversal ≥ tanggal jurnal asli + backstop peran/`replaces_id`),
+`trg_jurnal_immutable_update`,
 `trg_jurnal_immutable_delete`.
 **Relasi:** induk `jurnal_baris`, `panjar` (open/close/batal), `panjar_item`,
 `pinjaman` (pencairan), `pinjaman_bayar`; self-reference `reversal_of` dan
@@ -473,7 +474,7 @@ Autoindex tambahan dibuat SQLite untuk PRIMARY KEY dan constraint UNIQUE inline:
 | 4 | `trg_jurnal_immutable_delete` | `jurnal` BEFORE DELETE | menolak penghapusan jurnal tersimpan |
 | 5 | `trg_jurnal_baris_immutable_update` | `jurnal_baris` BEFORE UPDATE | menolak perubahan baris jurnal |
 | 6 | `trg_jurnal_baris_immutable_delete` | `jurnal_baris` BEFORE DELETE | menolak penghapusan baris jurnal |
-| 7 | `trg_jurnal_validasi_insert` | `jurnal` BEFORE INSERT | validasi jenis resmi, tanggal `YYYY-MM-DD` + kalender nyata, konsistensi `REVERSAL`/`reversal_of`, serta backstop `peran`/`replaces_id` |
+| 7 | `trg_jurnal_validasi_insert` | `jurnal` BEFORE INSERT | validasi jenis resmi, tanggal `YYYY-MM-DD` + kalender nyata, konsistensi `REVERSAL`/`reversal_of`, backstop tanggal reversal tidak boleh sebelum tanggal jurnal aslinya (`T-B12`; bila jurnal aslinya tidak ada, cek tanggal batal menolak), serta backstop `peran`/`replaces_id` |
 | 8 | `trg_akun_validasi_insert` | `akun` BEFORE INSERT | validasi kode 4 digit, nama non-kosong, tipe resmi, posisi normal, aktif 0/1 |
 | 9 | `trg_akun_validasi_update` | `akun` BEFORE UPDATE | validasi akun yang sama saat update |
 | 10 | `trg_audit_log_immutable_update` | `audit_log` BEFORE UPDATE | menolak perubahan audit |
