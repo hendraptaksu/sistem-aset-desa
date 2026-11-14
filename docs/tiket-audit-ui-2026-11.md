@@ -30,7 +30,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 | UI-A19 | P2 | Perbaiki kebenaran peringatan tanggal koreksi | S | ✅ |
 | UI-A20 | P2 | Blokir Duplikat untuk jurnal SALDO_AWAL/REVERSAL | S | ✅ |
 | UI-A21 | P3 | A11y tabel: aria-label baris klikabel, caption/scope, ekspander, ikon | M | ✅ |
-| UI-A22 | P3 | A11y form & tampilan: label nominal, teks <13px, kontras, LockScreen | M | ⬜ |
+| UI-A22 | P3 | A11y form & tampilan: label nominal, teks <13px, kontras, LockScreen | M | ✅ |
 | UI-A23 | P3 | State sibuk gabungan per tab | M | ⬜ |
 | UI-A24 | P3 | Perbaiki flag dirty (direset aksi lain / palsu saat kosong) | M | ⬜ |
 | UI-A25 | P3 | Batasi generator jadwal otomatis dari tenor | S | ⬜ |

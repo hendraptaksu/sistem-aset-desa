@@ -36,7 +36,8 @@ function SelAkun({ kode, keterangan }: { kode: string; keterangan?: string }) {
 function TabelJurnal({ jurnal }: { jurnal: AuditJurnalView }) {
   return (
     <div className="mt-1 max-h-56 overflow-auto rounded-lg border">
-      <table className="w-full text-left text-xs">
+      {/* UI-15/UI-A22: nominal jurnal adalah konten keputusan, bukan metadata. */}
+      <table className="w-full text-left text-helper">
         <thead className="sticky top-0 bg-stone-50 text-stone-600">
           <tr>
             <th className="py-1.5 pr-3 pl-2">Akun</th>
@@ -94,7 +95,7 @@ function DetailJurnal({ jurnal }: { jurnal: AuditJurnalView }) {
 function TabelItemPanjar({ items }: { items: AuditItemPanjar[] }) {
   return (
     <div className="mt-1 max-h-56 overflow-auto rounded-lg border">
-      <table className="w-full text-left text-xs">
+      <table className="w-full text-left text-helper">
         <thead className="sticky top-0 bg-stone-50 text-stone-600">
           <tr>
             <th className="py-1.5 pr-3 pl-2">Akun realisasi</th>
@@ -196,7 +197,7 @@ export function AuditDetail({ json }: { json: string | null | undefined }) {
   }
 
   return (
-    <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-stone-50 p-2 text-xs">
+    <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-stone-50 p-2 text-helper">
       {detail.teks || '-'}
     </pre>
   );

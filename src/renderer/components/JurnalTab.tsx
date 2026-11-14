@@ -1108,6 +1108,7 @@ function KoreksiModal({
                         <CurrencyInput
                           value={b.nominal}
                           disabled={busy}
+                          ariaLabel={`Nominal ${b.sisi === 'DEBIT' ? 'debit' : 'kredit'} baris ${i + 1}`}
                           onChange={(n) => ubahBaris(i, { nominal: n })}
                         />
                       </td>

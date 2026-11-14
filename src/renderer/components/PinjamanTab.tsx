@@ -1184,6 +1184,7 @@ export function PinjamanTab() {
                   <CurrencyInput
                     value={row.pokok}
                     disabled={busy}
+                    ariaLabel={`Pokok angsuran baris ${row.ke || i + 1}`}
                     onChange={(n) => ubahJadwal(i, { pokok: n })}
                   />
                 </Field>
@@ -1191,6 +1192,7 @@ export function PinjamanTab() {
                   <CurrencyInput
                     value={row.bunga}
                     disabled={busy}
+                    ariaLabel={`Bunga angsuran baris ${row.ke || i + 1}`}
                     onChange={(n) => ubahJadwal(i, { bunga: n })}
                   />
                 </Field>
@@ -1469,7 +1471,7 @@ export function PinjamanTab() {
                                       >
                                         {sisa.status}
                                       </Badge>
-                                      <div className="mt-1 text-xs text-stone-600">
+                                      <div className="mt-1 text-helper text-stone-600">
                                         <div>
                                           Pokok dibayar {formatRp(sisa.pokokDibayar)} · sisa{' '}
                                           {formatRp(sisa.sisaPokok)}

@@ -348,15 +348,20 @@ export function parseCurrencyInput(teks: string): { tampil: string; sen: number 
 
 /** Input Rupiah: tampil grouping Indonesia, state berupa SEN (integer).
  * Mendukung nominal bulat maupun pecahan sen: mengetik '1.500,50' →
- * onChange(150050). */
+ * onChange(150050).
+ * UI-A22: `ariaLabel` wajib untuk input di tabel/baris yang tidak punya
+ * `<label>` baku (mis. "Nominal debit baris 1") agar pembaca layar tahu
+ * isian milik baris mana; form dengan Field tunggal cukup mengandalkan label. */
 export function CurrencyInput({
   value,
   onChange,
   disabled = false,
+  ariaLabel,
 }: {
   value: number;
   onChange: (n: number) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   const [teks, setTeks] = useState<string | null>(null);
   const [fokus, setFokus] = useState(false);
@@ -381,6 +386,7 @@ export function CurrencyInput({
       placeholder="0"
       maxLength={MAX_PANJANG_INPUT}
       disabled={disabled}
+      aria-label={ariaLabel}
       value={shown}
       onFocus={() => {
         setFokus(true);

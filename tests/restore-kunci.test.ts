@@ -12,12 +12,13 @@ import { pesanRestoreSukses } from '../src/renderer/components/DashboardTab.js';
 const ROOT = process.cwd();
 const baca = (path: string): string => readFileSync(join(ROOT, path), 'utf8');
 
-function renderLock(pesan?: string): string {
+function renderLock(pesan?: string, blokirDetik?: number): string {
   return renderToStaticMarkup(
     createElement(LockScreen, {
       sudahSetup: true,
       onTerbuka: () => {},
       pesan,
+      blokirDetik,
     }),
   );
 }
@@ -53,6 +54,26 @@ describe('T2.7 — pesan restore di layar kunci', () => {
     expect(pesanRestoreSukses('lengkap', null)).toContain(
       'Pulihkan lengkap OK. Cadangan data lama: -.',
     );
+  });
+});
+
+describe('UI-A22 — blokir PIN di layar kunci', () => {
+  it('saat diblokir: PinInput mati dan hitung mundur diumumkan role="status"', () => {
+    const html = renderLock(undefined, 60);
+    expect(html).toMatch(/Terlalu banyak salah — coba lagi dalam 60 detik/);
+    expect(html).toMatch(/role="status"/);
+    // Enam kotak PIN semuanya disabled selama blokir.
+    expect((html.match(/disabled=""/g) ?? []).length).toBe(6);
+  });
+
+  it('tanpa blokir: PinInput aktif dan teks "terbuka otomatis" hanya satu tempat', () => {
+    const html = renderLock();
+    expect(html).not.toMatch(/Coba lagi dalam/);
+    expect(html).toMatch(/Terbuka otomatis saat 6 digit lengkap/);
+    expect(html).not.toMatch(/disabled=""/);
+    // Deskripsi atas tidak mengulang teks yang sama dengan baris status PIN.
+    expect((html.match(/[Tt]erbuka otomatis/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/Masukkan PIN 6 digit\./);
   });
 });
 

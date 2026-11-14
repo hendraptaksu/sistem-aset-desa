@@ -593,58 +593,69 @@ export function SaldoAwalWizard({
           </div>
 
           <div className="mt-2 space-y-2">
-            {rows.map((r, i) => (
-              <div
-                key={r.key}
-                className="grid grid-cols-1 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-2 sm:grid-cols-[minmax(0,1fr)_180px_auto]"
-              >
-                <Select
-                  aria-label={`Akun saldo awal baris ${i + 1}`}
-                  value={r.akun}
-                  disabled={busy}
-                  onChange={(e) =>
-                    setRows((prev) =>
-                      prev.map((x) =>
-                        x.key === r.key ? { ...x, akun: e.target.value } : x,
-                      ),
-                    )
-                  }
+            {rows.map((r, i) => {
+              // UI-A22: nama akun dipilih untuk label aksesibel nominal.
+              const namaPilih = grupAkun
+                .flatMap((grup) => grup.akun)
+                .find((a) => a.kode === r.akun)?.nama;
+              return (
+                <div
+                  key={r.key}
+                  className="grid grid-cols-1 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-2 sm:grid-cols-[minmax(0,1fr)_180px_auto]"
                 >
-                  <option value="">— Pilih akun —</option>
-                  {grupAkun.map((grup) => (
-                    <optgroup key={grup.label} label={grup.label}>
-                      {grup.akun.map((a) => (
-                        <option key={a.kode} value={a.kode}>
-                          {a.kode} — {a.nama}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </Select>
-                <div>
-                  <CurrencyInput
-                    value={r.nominal}
+                  <Select
+                    aria-label={`Akun saldo awal baris ${i + 1}`}
+                    value={r.akun}
                     disabled={busy}
-                    onChange={(n) =>
+                    onChange={(e) =>
                       setRows((prev) =>
                         prev.map((x) =>
-                          x.key === r.key ? { ...x, nominal: n } : x,
+                          x.key === r.key ? { ...x, akun: e.target.value } : x,
                         ),
                       )
                     }
-                  />
-                  <span className="mt-1 block text-helper text-stone-500">Saldo (Rp)</span>
+                  >
+                    <option value="">— Pilih akun —</option>
+                    {grupAkun.map((grup) => (
+                      <optgroup key={grup.label} label={grup.label}>
+                        {grup.akun.map((a) => (
+                          <option key={a.kode} value={a.kode}>
+                            {a.kode} — {a.nama}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </Select>
+                  <div>
+                    <CurrencyInput
+                      value={r.nominal}
+                      disabled={busy}
+                      ariaLabel={
+                        r.akun
+                          ? `Saldo akun ${r.akun}${namaPilih ? ` — ${namaPilih}` : ''} (baris ${i + 1})`
+                          : `Saldo awal baris ${i + 1}`
+                      }
+                      onChange={(n) =>
+                        setRows((prev) =>
+                          prev.map((x) =>
+                            x.key === r.key ? { ...x, nominal: n } : x,
+                          ),
+                        )
+                      }
+                    />
+                    <span className="mt-1 block text-helper text-stone-500">Saldo (Rp)</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    aria-label={`Hapus akun saldo awal baris ${i + 1}`}
+                    disabled={busy || rows.length <= 1}
+                    onClick={() => hapusBaris(r.key)}
+                  >
+                    <Trash2 size={16} />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  aria-label={`Hapus akun saldo awal baris ${i + 1}`}
-                  disabled={busy || rows.length <= 1}
-                  onClick={() => hapusBaris(r.key)}
-                >
-                  <Trash2 size={16} />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

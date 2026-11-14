@@ -298,7 +298,7 @@ export function TransaksiTerakhirCard({
                       <Badge tone="stone">Aktif</Badge>
                     )}
                     {!bisaBatal && alasanBatal && (
-                      <p className="mt-1 max-w-64 text-xs text-stone-500">
+                      <p className="mt-1 max-w-64 text-helper text-stone-500">
                         {alasanBatal}
                       </p>
                     )}

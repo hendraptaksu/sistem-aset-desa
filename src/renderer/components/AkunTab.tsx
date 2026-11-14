@@ -507,11 +507,11 @@ export function AkunTab() {
                           </Button>
                         ) : sistem ? (
                           <span
-                            className="px-2 py-1 text-right text-helper text-stone-400"
+                            className="px-2 py-1 text-right text-helper text-stone-500"
                             title="Akun sistem dibutuhkan wizard/alur dan tidak bisa dinonaktifkan."
                           >
                             Akun sistem
-                            <span className="block text-[11px] leading-tight">
+                            <span className="block">
                               tidak bisa dinonaktifkan
                             </span>
                           </span>

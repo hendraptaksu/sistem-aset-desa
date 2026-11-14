@@ -23,8 +23,25 @@ export function pesanErrorRenderer(
   return redaksiLog(satuBaris(bagian.join(' | ')));
 }
 
+/** UI-A22: waktu kejadian gaya Indonesia, mis. '15/11/2026 14.30.05'. */
+export function formatWaktuKejadian(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return (
+    `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ` +
+    `${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`
+  );
+}
+
 /** Tampilan fallback yang juga dipakai test komponen (tanpa DOM). */
-export function TampilanError({ onMuatUlang }: { onMuatUlang: () => void }) {
+export function TampilanError({
+  onMuatUlang,
+  waktu,
+}: {
+  onMuatUlang: () => void;
+  /** UI-A22: waktu kejadian dari ErrorBoundary; bila kosong, diambil saat render. */
+  waktu?: string;
+}) {
+  const waktuTampil = waktu ?? formatWaktuKejadian(new Date());
   return (
     <div
       role="alert"
@@ -37,7 +54,8 @@ export function TampilanError({ onMuatUlang }: { onMuatUlang: () => void }) {
         <h1 className="text-lg font-bold">Tampilan bermasalah</h1>
         <p className="mt-2 text-[15px] text-stone-600">{PESAN_ERROR_RENDERER}</p>
         <p className="mt-2 text-sm text-stone-500">
-          Bila masalah berulang, hubungi pendamping dan sebutkan waktu kejadiannya.
+          Bila masalah berulang, hubungi pendamping dan sebutkan waktu kejadian:{' '}
+          <b className="text-stone-700">{waktuTampil}</b>.
         </p>
         <Button type="button" className="mt-5" onClick={onMuatUlang}>
           Muat ulang
@@ -48,13 +66,17 @@ export function TampilanError({ onMuatUlang }: { onMuatUlang: () => void }) {
 }
 
 type Props = { children: ReactNode };
-type State = { error: Error | null };
+type State = { error: Error | null; waktu: string | null };
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, waktu: null };
 
   static getDerivedStateFromError(error: unknown): State {
-    return { error: error instanceof Error ? error : new Error(String(error)) };
+    // UI-A22: catat waktu saat error ditangkap agar operator bisa melaporkannya.
+    return {
+      error: error instanceof Error ? error : new Error(String(error)),
+      waktu: formatWaktuKejadian(new Date()),
+    };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -68,7 +90,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.error) {
-      return <TampilanError onMuatUlang={this.muatUlang} />;
+      return (
+        <TampilanError
+          onMuatUlang={this.muatUlang}
+          waktu={this.state.waktu ?? undefined}
+        />
+      );
     }
     return this.props.children;
   }

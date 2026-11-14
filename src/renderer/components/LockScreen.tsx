@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { Button, Card, ErrorBox, Field, PinInput, RING_FOKUS, TextInput } from './ui.js';
@@ -10,12 +10,15 @@ export function LockScreen({
   sudahSetup,
   onTerbuka,
   pesan,
+  blokirDetik = 0,
 }: {
   sudahSetup: boolean;
   /** Setup mengirim kode darurat plaintext sekali agar App bisa menampilkan modal. */
   onTerbuka: (kodeDarurat?: string) => void;
   /** T2.7: info restore sukses yang ditampilkan sebelum form PIN. */
   pesan?: string;
+  /** UI-A22: sisa blokir (detik) dari main saat layar ini dipasang; 0 = tidak diblokir. */
+  blokirDetik?: number;
 }) {
   const [mode, setMode] = useState<Mode>(sudahSetup ? 'buka' : 'setup');
   const [pin, setPin] = useState('');
@@ -25,9 +28,28 @@ export function LockScreen({
   const [err, setErr] = useState<string | null>(null);
   const [sibuk, setSibuk] = useState(false);
   const [gagal, setGagal] = useState(0);
+  const [blokirSisa, setBlokirSisa] = useState(() => Math.max(0, blokirDetik));
 
   const hanyaDigit = (s: string) => s.replace(/\D/g, '').slice(0, 6);
   const kirimRef = useRef(false);
+
+  const diblokir = blokirSisa > 0;
+
+  // UI-A22: hitung mundur blokir per detik. Selama diblokir PinInput mati dan
+  // status "Coba lagi dalam N detik" diumumkan lewat role="status".
+  useEffect(() => {
+    if (!diblokir) return;
+    const timer = setInterval(() => {
+      setBlokirSisa((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [diblokir]);
+
+  // Sinkronkan bila App melaporkan blokir baru (polling status / restart aplikasi
+  // di tengah blokir). Nilai yang lebih kecil tidak menimpa hitung mundur lokal.
+  useEffect(() => {
+    if (blokirDetik > 0) setBlokirSisa((s) => Math.max(s, blokirDetik));
+  }, [blokirDetik]);
 
   async function kirim(fn: () => Promise<unknown>) {
     if (kirimRef.current) return;
@@ -57,7 +79,15 @@ export function LockScreen({
       await api.lockUnlock(pinLengkap);
       onTerbuka();
     } catch (e) {
-      setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      // UI-A22: bila main memblokir (5x salah), matikan PinInput + tampilkan
+      // hitung mundur; pesan error duplikatif digantikan baris role="status".
+      const status = await api.lockStatus().catch(() => null);
+      if (status && status.blokirDetik > 0) {
+        setBlokirSisa(status.blokirDetik);
+        setErr(null);
+      } else {
+        setErr(pesanError(e, PESAN_PROSES_GAGAL));
+      }
       setPin('');
       setGagal((g) => g + 1);
     } finally {
@@ -105,7 +135,7 @@ export function LockScreen({
             ? 'Buat PIN 6 digit agar hanya pengurus yang bisa membuka.'
             : mode === 'reset'
               ? 'Reset PIN dengan kode darurat dari dokumen bendahara.'
-              : 'Masukkan PIN 6 digit — terbuka otomatis.'}
+              : 'Masukkan PIN 6 digit.'}
         </p>
         {pesan && (
           <div
@@ -121,6 +151,7 @@ export function LockScreen({
           {mode === 'reset' && (
             <Field label="Kode darurat">
               <TextInput
+                autoFocus
                 value={kode}
                 onChange={(e) => setKode(e.target.value)}
                 placeholder="cth: PURI-…"
@@ -132,14 +163,20 @@ export function LockScreen({
             <div>
               <PinInput
                 value={pin}
-                disabled={sibuk}
+                disabled={sibuk || diblokir}
                 invalid={err !== null}
                 invalidKey={gagal}
                 onChange={setPin}
                 onComplete={(v) => void bukaDengan(v)}
               />
-              <p className="mt-2 text-center text-sm text-stone-500">
-                {sibuk ? 'Membuka…' : 'Terbuka otomatis saat 6 digit lengkap.'}
+              {/* UI-A22: perubahan status (membuka/diblokir/siap) diumumkan
+                  pembaca layar; teks "terbuka otomatis" hanya di sini. */}
+              <p role="status" className="mt-2 text-center text-sm text-stone-500">
+                {diblokir
+                  ? `Terlalu banyak salah — coba lagi dalam ${blokirSisa} detik.`
+                  : sibuk
+                    ? 'Membuka…'
+                    : 'Terbuka otomatis saat 6 digit lengkap.'}
               </p>
             </div>
           )}
@@ -148,7 +185,6 @@ export function LockScreen({
               <TextInput
                 type="password"
                 inputMode="numeric"
-                autoFocus
                 value={baru}
                 onChange={(e) => setBaru(hanyaDigit(e.target.value))}
                 placeholder="••••••"

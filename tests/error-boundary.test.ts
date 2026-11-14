@@ -6,6 +6,7 @@ import {
   ErrorBoundary,
   PESAN_ERROR_RENDERER,
   TampilanError,
+  formatWaktuKejadian,
   pesanErrorRenderer,
 } from '../src/renderer/components/ErrorBoundary.js';
 
@@ -23,11 +24,34 @@ describe('AUD-34 — ErrorBoundary renderer', () => {
 
   it('menyimpan error ke state turunan React', () => {
     const err = new Error('rusak');
-    expect(ErrorBoundary.getDerivedStateFromError(err).error).toBe(err);
+    const state = ErrorBoundary.getDerivedStateFromError(err);
+    expect(state.error).toBe(err);
+    // UI-A22: waktu kejadian ikut dicatat saat error ditangkap.
+    expect(state.waktu).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}\.\d{2}\.\d{2}$/);
 
     const bukanError = ErrorBoundary.getDerivedStateFromError('rusak').error;
     expect(bukanError).toBeInstanceOf(Error);
     expect(bukanError?.message).toBe('rusak');
+  });
+
+  it('UI-A22: formatWaktuKejadian menampilkan tanggal dan jam gaya Indonesia', () => {
+    expect(formatWaktuKejadian(new Date(2026, 10, 15, 14, 30, 5))).toBe(
+      '15/11/2026 14.30.05',
+    );
+    expect(formatWaktuKejadian(new Date(2026, 0, 1, 3, 7, 9))).toBe(
+      '01/01/2026 03.07.09',
+    );
+  });
+
+  it('UI-A22: kartu error menampilkan waktu kejadian yang bisa dilaporkan', () => {
+    const html = renderToStaticMarkup(
+      createElement(TampilanError, {
+        onMuatUlang: () => {},
+        waktu: '15/11/2026 14.30.05',
+      }),
+    );
+    expect(html).toContain('sebutkan waktu kejadian');
+    expect(html).toContain('15/11/2026 14.30.05');
   });
 
   it('mencatat error ke console dengan satu baris dan tanpa PIN', () => {

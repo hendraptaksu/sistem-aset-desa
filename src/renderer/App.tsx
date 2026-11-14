@@ -541,6 +541,7 @@ function AppShell() {
         sudahSetup={lock.sudahSetup}
         onTerbuka={tanganiTerbuka}
         pesan={pesanRestore ?? undefined}
+        blokirDetik={lock.blokirDetik}
       />
     );
   }
@@ -551,6 +552,7 @@ function AppShell() {
         sudahSetup={false}
         onTerbuka={tanganiTerbuka}
         pesan={pesanRestore ?? undefined}
+        blokirDetik={lock.blokirDetik}
       />
     );
   }
@@ -625,7 +627,7 @@ function AppShell() {
                         aria-expanded={bukaGrup[grup.id]}
                         aria-controls={`menu-grup-${grup.id}`}
                         title={bukaGrup[grup.id] ? `Sembunyikan ${grup.label}` : `Tampilkan ${grup.label}`}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white ${RING_FOKUS_GELAP}`}
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-bold uppercase tracking-[0.12em] text-emerald-300 transition-colors hover:bg-white/5 hover:text-white ${RING_FOKUS_GELAP}`}
                       >
                         <span>{grup.label}</span>
                         <ChevronDown

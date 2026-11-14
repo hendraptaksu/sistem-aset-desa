@@ -1688,6 +1688,7 @@ export function PanjarTab() {
                     <CurrencyInput
                       value={it.nominal}
                       disabled={busyClose}
+                      ariaLabel={`Nota ${i + 1} — nominal`}
                       onChange={(n) => ubahItem(i, { nominal: n })}
                     />
                   </Field>

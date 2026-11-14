@@ -120,4 +120,22 @@ describe('AUD2-11 — CurrencyInput rupiah', () => {
     const { sen } = parseCurrencyInput('99999999999999999999');
     expect(Number.isSafeInteger(sen)).toBe(true);
   });
+
+  it('UI-A22: meneruskan ariaLabel sebagai aria-label untuk input di tabel/baris', () => {
+    const html = renderToStaticMarkup(
+      createElement(CurrencyInput, {
+        value: 15_000_000,
+        onChange: () => undefined,
+        ariaLabel: 'Nominal debit baris 1',
+      }),
+    );
+    expect(html).toContain('aria-label="Nominal debit baris 1"');
+  });
+
+  it('UI-A22: tanpa ariaLabel tidak ada atribut aria-label', () => {
+    const html = renderToStaticMarkup(
+      createElement(CurrencyInput, { value: 0, onChange: () => undefined }),
+    );
+    expect(html).not.toContain('aria-label=');
+  });
 });

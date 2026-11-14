@@ -585,6 +585,7 @@ export function JurnalUmumEditor({
                         <CurrencyInput
                           value={b.debit}
                           disabled={busy}
+                          ariaLabel={`Nominal debit baris ${i + 1}`}
                           onChange={(n) => ubahBaris(i, { debit: n })}
                         />
                       </td>
@@ -592,6 +593,7 @@ export function JurnalUmumEditor({
                         <CurrencyInput
                           value={b.kredit}
                           disabled={busy}
+                          ariaLabel={`Nominal kredit baris ${i + 1}`}
                           onChange={(n) => ubahBaris(i, { kredit: n })}
                         />
                       </td>

@@ -579,14 +579,15 @@ export function PengaturanTab({
           <InfoBox className="mb-2">{okPin}</InfoBox>
         )}
         <div className="grid max-w-lg gap-3">
+          {/* UI-A22: autoComplete membantu manajer sandi membedakan PIN lama/baru. */}
           <Field label="PIN lama">
-            <TextInput type="password" inputMode="numeric" value={lama} onChange={(e) => setLama(digit(e.target.value))} placeholder="••••••" />
+            <TextInput type="password" inputMode="numeric" autoComplete="current-password" value={lama} onChange={(e) => setLama(digit(e.target.value))} placeholder="••••••" />
           </Field>
           <Field label="PIN baru 6 digit">
-            <TextInput type="password" inputMode="numeric" value={baru} onChange={(e) => setBaru(digit(e.target.value))} placeholder="••••••" />
+            <TextInput type="password" inputMode="numeric" autoComplete="new-password" value={baru} onChange={(e) => setBaru(digit(e.target.value))} placeholder="••••••" />
           </Field>
           <Field label="Ulangi PIN baru">
-            <TextInput type="password" inputMode="numeric" value={ulang} onChange={(e) => setUlang(digit(e.target.value))} placeholder="••••••" />
+            <TextInput type="password" inputMode="numeric" autoComplete="new-password" value={ulang} onChange={(e) => setUlang(digit(e.target.value))} placeholder="••••••" />
           </Field>
           <div>
             <Button
