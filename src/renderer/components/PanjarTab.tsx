@@ -651,6 +651,11 @@ export function PanjarTab() {
   const shown = list.filter((p) => !fStatus || p.status === fStatus);
   // UI-A14: baris daftar hanya dirender setelah muat sukses dan tidak gagal.
   const daftarSiap = !memuatDaftar && !errDaftar;
+  // UI-A23: satu flag sibuk gabungan untuk seluruh tombol aksi di baris
+  // daftar. Selama form mana pun (serah, saldo awal, PJ) atau aksi daftar
+  // (batal, koreksi) berjalan, aksi daftar lain mati dengan alasan jelas.
+  const sibukAksiDaftar =
+    busyOpen || busyClose || busySaldoAwal || busyBatal || busyKoreksi;
   const openList = list.filter((p) => p.status === 'OPEN');
   const closeTarget = openList.find((p) => p.id === closeId);
 
@@ -1954,14 +1959,20 @@ export function PanjarTab() {
                       <td className="py-2">
                         <div className="flex flex-wrap gap-2">
                           {p.status === 'OPEN' && (
-                            <Button variant="ghost" onClick={() => pilihUntukClose(p)}>
+                            <Button
+                              variant="ghost"
+                              disabled={sibukAksiDaftar}
+                              title={alasanTombolNonaktif({ sibuk: sibukAksiDaftar })}
+                              onClick={() => pilihUntukClose(p)}
+                            >
                               Pertanggungjawaban
                             </Button>
                           )}
                           {p.status === 'OPEN' && p.sumber !== 'SALDO_AWAL' && (
                             <Button
                               variant="danger"
-                              disabled={busyBatal}
+                              disabled={sibukAksiDaftar}
+                              title={alasanTombolNonaktif({ sibuk: sibukAksiDaftar })}
                               onClick={() => {
                                 setErrBatal(null);
                                 setInfoBatal(null);
@@ -1974,7 +1985,8 @@ export function PanjarTab() {
                           {p.status === 'OPEN' && p.sumber === 'SALDO_AWAL' && (
                             <Button
                               variant="danger"
-                              disabled={busyBatal}
+                              disabled={sibukAksiDaftar}
+                              title={alasanTombolNonaktif({ sibuk: sibukAksiDaftar })}
                               onClick={() => {
                                 setErrBatal(null);
                                 setInfoBatal(null);
@@ -1987,7 +1999,8 @@ export function PanjarTab() {
                           {p.status === 'CLOSED' && (
                             <Button
                               variant="ghost"
-                              disabled={busyKoreksi}
+                              disabled={sibukAksiDaftar}
+                              title={alasanTombolNonaktif({ sibuk: sibukAksiDaftar })}
                               onClick={() => {
                                 setErrKoreksi(null);
                                 setInfoKoreksi(null);
@@ -2001,10 +2014,23 @@ export function PanjarTab() {
                           {/* UI-A21: ekspander diumumkan pembaca layar dengan
                               aria-expanded dan mengaitkan konten via
                               aria-controls. */}
+                          {/* UI-A23: klik "Lihat rincian" saat rincian lain
+                              sedang dimuat tidak lagi diabaikan diam-diam;
+                              tombol mati dengan alasan yang jelas. */}
                           <Button
                             variant="ghost"
                             aria-expanded={detailId === p.id}
                             aria-controls={`panjar-rincian-${p.id}`}
+                            disabled={sibukAksiDaftar || detailBusy !== ''}
+                            title={alasanTombolNonaktif({
+                              sibuk: sibukAksiDaftar,
+                              alasan:
+                                detailBusy === p.id
+                                  ? 'Sedang memuat rincian…'
+                                  : detailBusy !== ''
+                                    ? 'Sedang memuat rincian lain.'
+                                    : null,
+                            })}
                             onClick={() => void toggleDetail(p.id)}
                           >
                             {detailId === p.id ? 'Tutup rincian' : 'Lihat rincian'}

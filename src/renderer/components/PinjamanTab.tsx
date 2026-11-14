@@ -300,6 +300,10 @@ export function PinjamanTab() {
   const jumlahSelisihRekonsiliasi = rekonsiliasi.filter((r) => !r.cocok).length;
   // UI-A14: baris daftar hanya dirender setelah muat sukses dan tidak gagal.
   const daftarSiap = !memuatDaftar && !errDaftar;
+  // UI-A23: flag sibuk gabungan untuk aksi daftar (buka jadwal, kartu utang);
+  // selama simpan pinjaman, bayar angsuran, atau pembatalan berjalan, aksi
+  // daftar mati dengan alasan jelas, bukan diabaikan diam-diam.
+  const sibukAksiDaftar = busy || bayarBusy || batalBusy;
 
   useEffect(() => {
     let aktif = true;
@@ -1391,6 +1395,8 @@ export function PinjamanTab() {
                             variant="ghost"
                             aria-expanded={detailId === p.id}
                             aria-controls={`pinjaman-jadwal-${p.id}`}
+                            disabled={sibukAksiDaftar}
+                            title={alasanTombolNonaktif({ sibuk: sibukAksiDaftar })}
                             onClick={() => void toggleDetail(p.id)}
                           >
                             {detailId === p.id ? 'Tutup jadwal' : 'Lihat jadwal'}
@@ -1400,6 +1406,8 @@ export function PinjamanTab() {
                               pilihan lain otomatis kembali ke ghost. */}
                           <Button
                             variant={mutasiPinjamanId === p.id ? 'primary' : 'ghost'}
+                            disabled={sibukAksiDaftar}
+                            title={alasanTombolNonaktif({ sibuk: sibukAksiDaftar })}
                             onClick={() => pilihKartuHutang(p.id)}
                           >
                             Kartu utang
