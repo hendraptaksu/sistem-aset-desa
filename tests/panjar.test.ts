@@ -1645,3 +1645,132 @@ describe('AUD2-03 — koreksi pertanggungjawaban panjar CLOSED', () => {
     }
   });
 });
+
+// T-B01: tanggal jurnal balik batal panjar tidak boleh mundur dari tanggal
+// jurnal yang dibalik (serah untuk batal OPEN, close untuk koreksi CLOSED).
+// Jurnal balik yang lebih awal membuat Buku Kas tampak keluar sebelum masuk
+// dan 1040 bersaldo kredit pada cut-off di antara kedua tanggal.
+describe('T-B01 — tanggal batal panjar tidak boleh mundur dari jurnal yang dibalik', () => {
+  it('menolak batal panjar OPEN dengan tanggal sebelum tanggal jurnal serah', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true); // jurnal serah j-p1: 2026-02-01
+      const jumlahJurnalSebelum = listJurnal(db).length;
+      const auditSebelum = listAuditLog(db).length;
+
+      const hasil = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Salah serah ke panitia lain',
+        jurnalId: 'j-batal-p1',
+        tanggalBatal: '2026-01-31',
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      const pesan = hasil.errors.join(' ');
+      // Pesan menyebut kedua tanggal: usulan batal dan batas jurnal serah.
+      expect(pesan).toContain('2026-01-31');
+      expect(pesan).toContain('2026-02-01');
+      expect(pesan).toContain('2026-02-01 atau lebih baru');
+      // Ditolak sebelum menulis jurnal/audit/mengubah status.
+      expect(listJurnal(db)).toHaveLength(jumlahJurnalSebelum);
+      expect(listAuditLog(db, { aksi: 'PANJAR-BATAL' })).toHaveLength(0);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+      expect(getPanjar(db, 'p1')?.status).toBe('OPEN');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menerima batal panjar OPEN pada tanggal jurnal serah atau setelahnya', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+
+      const sama = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Salah serah ke panitia lain',
+        jurnalId: 'j-batal-p1',
+        tanggalBatal: '2026-02-01',
+      });
+      expect(sama.tersimpan, sama.errors.join(' ')).toBe(true);
+      expect(sama.jurnal?.tanggal).toBe('2026-02-01');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('tanpa tanggal eksplisit, batal tetap memakai tanggal jurnal serah (default tidak berubah)', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+
+      const hasil = batalPanjarV2(db, {
+        id: 'p1',
+        alasan: 'Salah serah ke panitia lain',
+        jurnalId: 'j-batal-p1',
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+      expect(hasil.jurnal?.tanggal).toBe('2026-02-01');
+      expect(hasil.panjar?.tanggal_batal).toBe('2026-02-01');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak koreksi pertanggungjawaban dengan tanggal sebelum tanggal jurnal close', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const close = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-02-05',
+        items: [{ kategori_baga: '5003', nominal: RP(900_000) }],
+      });
+      expect(close.tersimpan, close.errors.join(' ')).toBe(true);
+      const jumlahJurnalSebelum = listJurnal(db).length;
+      const auditSebelum = listAuditLog(db).length;
+
+      const hasil = batalkanPertanggungjawabanPanjar(db, {
+        id: 'p1',
+        alasan: 'Salah kategori realisasi',
+        tanggalBatal: '2026-02-04',
+      });
+
+      expect(hasil.tersimpan).toBe(false);
+      const pesan = hasil.errors.join(' ');
+      expect(pesan).toContain('2026-02-04');
+      expect(pesan).toContain('2026-02-05');
+      expect(pesan).toContain('2026-02-05 atau lebih baru');
+      // Ditolak sebelum menulis jurnal/audit/mengubah status.
+      expect(listJurnal(db)).toHaveLength(jumlahJurnalSebelum);
+      expect(listAuditLog(db, { aksi: 'PANJAR-BATAL-CLOSE' })).toHaveLength(0);
+      expect(listAuditLog(db)).toHaveLength(auditSebelum);
+      expect(getPanjar(db, 'p1')?.status).toBe('CLOSED');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menerima koreksi pertanggungjawaban pada tanggal jurnal close atau setelahnya', () => {
+    const db = dbKas();
+    try {
+      expect(serah(db).tersimpan).toBe(true);
+      const close = closePanjarV2(db, {
+        id: 'p1',
+        tanggalClose: '2026-02-05',
+        items: [{ kategori_baga: '5003', nominal: RP(900_000) }],
+      });
+      expect(close.tersimpan, close.errors.join(' ')).toBe(true);
+
+      const sama = batalkanPertanggungjawabanPanjar(db, {
+        id: 'p1',
+        alasan: 'Salah kategori realisasi',
+        tanggalBatal: '2026-02-05',
+      });
+      expect(sama.tersimpan, sama.errors.join(' ')).toBe(true);
+      expect(sama.jurnal?.tanggal).toBe('2026-02-05');
+    } finally {
+      db.close();
+    }
+  });
+});

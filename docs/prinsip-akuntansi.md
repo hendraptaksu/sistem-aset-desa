@@ -193,6 +193,14 @@ Status resmi panjar adalah `OPEN`, `CLOSED`, atau `DIBATALKAN`.
 - Jurnal balik dibuat dari jurnal serah: `D kas sumber / K 1040`, berjenis
   `REVERSAL`, `grup_id` sama, `reversal_of` = jurnal serah, keterangan
   `KOREKSI: ...`. Jurnal serah asli tidak diubah/dihapus.
+- **Tanggal batal/reversal panjar wajib ≥ tanggal jurnal yang dibalik.**
+  Bila `tanggalBatal` diisi eksplisit, tanggal itu tidak boleh lebih awal dari
+  tanggal jurnal yang dibalik: jurnal serah untuk batal panjar OPEN, dan
+  jurnal close untuk koreksi pertanggungjawaban panjar CLOSED
+  (`PANJAR-BATAL-CLOSE`). Tanpa tanggal eksplisit, jurnal balik memakai
+  tanggal jurnal asli. Ceknya satu aturan dengan reversal generik (§10.4)
+  lewat `cekTanggalTidakMundur`, agar Buku Kas tidak menunjukkan kas keluar
+  sebelum pernah masuk dan 1040 tidak bersaldo kredit di tengah periode.
 - Pembatalan wajib menulis audit `PANJAR-BATAL` dalam transaksi yang sama.
   Panjar CLOSED tidak dibatalkan lewat jalur ini.
 - Panjar DIBATALKAN tidak muncul di daftar/filter OPEN maupun CLOSED, tidak bisa

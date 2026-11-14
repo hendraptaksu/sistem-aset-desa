@@ -43,6 +43,7 @@ import {
 import {
   PESAN_REVERSAL,
   barisCerminReversal,
+  cekTanggalTidakMundur,
   jenisPenggantiSah,
   rencanaReversal,
   type RencanaReversalInput,
@@ -2009,5 +2010,29 @@ describe('T-A10 — batas tanggal reversal dan koreksi generik', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+// T-B01: aturan "tanggal balik >= tanggal asli" adalah satu aturan yang sama
+// untuk jalur generik (T-A10) dan jalur batal panjar — keduanya wajib memakai
+// `cekTanggalTidakMundur`, bukan cek paralel dengan aturan berbeda.
+describe('T-B01 — cekTanggalTidakMundur dipakai bersama jalur generik dan panjar', () => {
+  it('menerima tanggal sama dan setelahnya, menolak tanggal mundur dengan kedua tanggal', () => {
+    const sama = cekTanggalTidakMundur('2026-02-01', '2026-02-01', 'jurnal balik');
+    expect(sama.boleh).toBe(true);
+
+    const setelah = cekTanggalTidakMundur('2026-03-01', '2026-02-01', 'jurnal balik');
+    expect(setelah.boleh).toBe(true);
+
+    const mundur = cekTanggalTidakMundur('2026-01-31', '2026-02-01', 'jurnal balik');
+    expect(mundur.boleh).toBe(false);
+    expect(mundur.pesan).toContain('2026-01-31');
+    expect(mundur.pesan).toContain('2026-02-01');
+    expect(mundur.pesan).toContain('2026-02-01 atau lebih baru');
+  });
+
+  it('meneruskan tanggal tidak valid ke validator format (tidak menolak di sini)', () => {
+    expect(cekTanggalTidakMundur('bukan-tanggal', '2026-02-01', 'jurnal balik').boleh).toBe(true);
+    expect(cekTanggalTidakMundur('2026-01-31', '', 'jurnal balik').boleh).toBe(true);
   });
 });

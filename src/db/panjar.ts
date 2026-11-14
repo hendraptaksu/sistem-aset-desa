@@ -33,7 +33,7 @@ import {
   type HasilValidasiJurnal,
   type JurnalInput,
 } from '../core/posting.js';
-import { rencanaReversal } from '../core/reversal.js';
+import { cekTanggalTidakMundur, rencanaReversal } from '../core/reversal.js';
 import type { Jurnal, Panjar, PanjarItem } from '../core/types.js';
 import { formatRp } from '../utils/format.js';
 import { AKUN_PANJAR, isAkunKasData } from './coa.js';
@@ -844,9 +844,23 @@ export function batalPanjarV2(
         'Pembatalan dibatalkan agar tidak ada jurnal balik tanpa asli.',
     );
 
-  const tanggalBatal =
-    String(input?.tanggalBatal ?? '').trim() || String(panjar.tanggal);
+  const tanggalEksplisit = String(input?.tanggalBatal ?? '').trim();
+  const tanggalBatal = tanggalEksplisit || String(panjar.tanggal);
   const jurnalBatalId = String(input?.jurnalId ?? '').trim() || uid('jb');
+
+  // T-B01: tanggal batal eksplisit tidak boleh mundur dari tanggal jurnal
+  // serah yang dibalik — aturan sama dengan jalur generik (T-A10) lewat
+  // `cekTanggalTidakMundur`. Tanpa tanggal eksplisit, default tetap tanggal
+  // jurnal serah (perilaku lama tidak berubah).
+  if (tanggalEksplisit) {
+    const cekTanggal = cekTanggalTidakMundur(
+      tanggalEksplisit,
+      detail.jurnal.tanggal,
+      'jurnal balik',
+    );
+    if (!cekTanggal.boleh) return gagal(cekTanggal.pesan!);
+  }
+
   const rencana = rencanaReversal({
     jurnal: detail.jurnal,
     baris: detail.baris,
@@ -1084,9 +1098,23 @@ export function batalkanPertanggungjawabanPanjar(
         'Koreksi dibatalkan agar tidak ada jurnal balik tanpa asli.',
     );
 
-  const tanggalBatal =
-    String(input?.tanggalBatal ?? '').trim() || String(panjar.tanggal_close ?? '');
+  const tanggalEksplisit = String(input?.tanggalBatal ?? '').trim();
+  const tanggalBatal = tanggalEksplisit || String(panjar.tanggal_close ?? '');
   const jurnalBatalId = uid('jk');
+
+  // T-B01: tanggal koreksi eksplisit tidak boleh mundur dari tanggal jurnal
+  // close yang dibalik — aturan sama dengan jalur generik (T-A10) lewat
+  // `cekTanggalTidakMundur`. Tanpa tanggal eksplisit, default tetap tanggal
+  // close panjar (perilaku lama tidak berubah).
+  if (tanggalEksplisit) {
+    const cekTanggal = cekTanggalTidakMundur(
+      tanggalEksplisit,
+      detail.jurnal.tanggal,
+      'jurnal balik',
+    );
+    if (!cekTanggal.boleh) return gagal(cekTanggal.pesan!);
+  }
+
   const rencana = rencanaReversal({
     jurnal: detail.jurnal,
     baris: detail.baris,
