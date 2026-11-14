@@ -30,7 +30,7 @@ const KELOMPOK: {
   keterangan: string;
 }[] = [
   { kunci: 'operasi', label: 'Operasi', keterangan: 'Pendapatan, beban, panjar, utang usaha' },
-  { kunci: 'investasi', label: 'Investasi', keterangan: 'Perpindahan aset non-kas (termasuk 1050 lama)' },
+  { kunci: 'investasi', label: 'Investasi', keterangan: 'Perpindahan aset non-kas' },
   { kunci: 'pendanaan', label: 'Pendanaan', keterangan: 'Pinjaman dan modal' },
   { kunci: 'transfer', label: 'Transfer', keterangan: 'Pindah dana antar dompet (neto 0)' },
 ];
@@ -291,7 +291,7 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                     <th className="py-2 pr-3">No. Bukti</th>
                     <th className="py-2 pr-3">Keterangan</th>
                     <th className="py-2 pr-3">Dompet</th>
-                    <th className="py-2 pr-3">Lawan akun</th>
+                    <th className="py-2 pr-3">Akun terkait</th>
                     <th className="py-2 pr-3">Kelompok</th>
                     <th className="py-2 pr-3 text-right">Masuk</th>
                     <th className="py-2 pr-3 text-right">Keluar</th>

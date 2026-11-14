@@ -15,6 +15,7 @@ import {
   KonfirmasiModal,
 } from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
+import { LABEL_JENIS } from './DetailJurnalModal.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 /** Tab yang bisa dibuka dari pintasan dashboard (P1-14). */
@@ -595,7 +596,7 @@ export function DashboardTab({
                   <p className="mt-1">
                     Neraca Saldo seimbang, tetapi Neraca selisih{' '}
                     {formatRp(data.selisih)}. Jangan kunci periode; periksa
-                    cut-over/pembukaan dan Jurnal Umum.
+                    jurnal pembukaan/saldo awal dan Jurnal Umum.
                   </p>
                 </div>
               )}
@@ -653,7 +654,11 @@ export function DashboardTab({
                   <h3 className="text-base font-bold">Jurnal Terakhir</h3>
                   <p className="text-sm text-stone-600">Jurnal terbaru s/d tanggal laporan</p>
                 </div>
-                {data.jurnalTerakhir && <Badge>{data.jurnalTerakhir.jenis}</Badge>}
+                {data.jurnalTerakhir && (
+                  <Badge>
+                    {LABEL_JENIS[data.jurnalTerakhir.jenis] ?? data.jurnalTerakhir.jenis}
+                  </Badge>
+                )}
               </div>
               {data.jurnalTerakhir ? (
                 <div className="mt-3 space-y-1 text-[15px]">

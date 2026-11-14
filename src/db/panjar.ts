@@ -372,7 +372,7 @@ export function catatPanjarSaldoAwal(
 ): HasilPanjar {
   const jumlah = input?.jumlah;
   if (!Number.isSafeInteger(jumlah) || jumlah <= 0)
-    return gagal('Jumlah panjar saldo awal harus bilangan bulat lebih dari 0 (satuan sen).');
+    return gagal('Jumlah panjar saldo awal harus lebih dari 0.');
 
   try {
     const simpan = db.transaction((): HasilPanjar => {

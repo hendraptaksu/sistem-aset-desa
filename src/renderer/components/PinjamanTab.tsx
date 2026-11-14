@@ -797,7 +797,7 @@ export function PinjamanTab() {
       setInfoBayar(
         `Bayar angsuran ke-${ke} ${bayar.pinjaman.kreditur} tersimpan ` +
           `(${r.jurnal.no_bukti || r.jurnal.id}) — ${formatRp(total)}. ` +
-          `Outstanding sekarang ${formatRp(r.pinjaman?.outstanding ?? 0)}.`,
+          `Sisa pokok sekarang ${formatRp(r.pinjaman?.outstanding ?? 0)}.`,
       );
       // UI-A06: form bayar (posisi operator saat ini) menutup setelah tersimpan;
       // gulir ke banner hasil di seksi detail agar konfirmasi terlihat dan
@@ -865,8 +865,13 @@ export function PinjamanTab() {
             ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
             : {},
         );
+        // UI-A16: tampilkan nomor angsuran (ke-N), bukan ID baris DB mentah.
+        const angsuranId = targetPembatalan.pembayaran.angsuran_id;
+        const keAngsuran =
+          targetPembatalan.pinjaman.angsuran?.find((a) => a.id === angsuranId)
+            ?.ke ?? angsuranId;
         setInfoBatal(
-          `Catatan pembayaran angsuran ${targetPembatalan.pembayaran.angsuran_id ?? 'tanpa jadwal'} ` +
+          `Catatan pembayaran angsuran ${keAngsuran == null ? 'tanpa jadwal' : `ke-${keAngsuran}`} ` +
             `dibatalkan. Jurnal balik ${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
             'jurnal dan riwayat asal tetap tersimpan. Catat ulang pembayaran yang benar bila diperlukan.',
         );
@@ -1282,8 +1287,8 @@ export function PinjamanTab() {
           <div>
             <h2 className="text-lg font-bold">Daftar Pinjaman LPD</h2>
             <p className="mt-1 text-sm text-stone-600">
-              Outstanding dihitung dari sisa pokok awal dikurangi pokok yang sudah
-              dibayar menurut jurnal. Jadwal adalah rencana, bukan saldo.
+              Sisa pokok (outstanding) dihitung dari sisa pokok awal dikurangi pokok
+              yang sudah dibayar menurut jurnal. Jadwal adalah rencana, bukan saldo.
             </p>
           </div>
           {/* UI-A14: jumlah pinjaman hanya diklaim setelah daftar termuat. */}
@@ -1301,7 +1306,7 @@ export function PinjamanTab() {
                 <th className="py-2 pr-3">Kas</th>
                 <th className="py-2 pr-3 text-right">Pokok awal</th>
                 <th className="py-2 pr-3 text-right">Sisa awal</th>
-                <th className="py-2 pr-3 text-right">Outstanding</th>
+                <th className="py-2 pr-3 text-right">Sisa pokok (outstanding)</th>
                 <th className="py-2 pr-3">Sumber jurnal</th>
                 <th className="py-2">Tindakan</th>
               </tr>
@@ -1835,7 +1840,7 @@ export function PinjamanTab() {
           <div>
             <h2 className="text-lg font-bold">Rekonsiliasi 2050 vs Jadwal Pinjaman</h2>
             <p className="mt-1 max-w-3xl text-sm text-stone-600">
-              Membandingkan outstanding menurut jurnal{' '}
+              Membandingkan sisa pokok (outstanding) menurut jurnal{' '}
               <b>2050 HUTANG LAIN-LAIN</b> yang tertaut ke pinjaman dengan{' '}
               <b>sisa pokok awal dikurangi pokok yang dibayar</b>. Hanya jurnal
               milik pinjaman ini yang dihitung; saldo 2050 untuk utang non-LPD
@@ -1866,7 +1871,7 @@ export function PinjamanTab() {
               <thead>
                 <tr className="border-b text-stone-500">
                   <th className="py-2 pr-3">Kreditur / ID</th>
-                  <th className="py-2 pr-3 text-right">GL 2050</th>
+                  <th className="py-2 pr-3 text-right">Saldo jurnal 2050</th>
                   <th className="py-2 pr-3 text-right">Jadwal</th>
                   <th className="py-2 pr-3 text-right">Selisih</th>
                   <th className="py-2 pr-3">Status</th>
@@ -1930,8 +1935,8 @@ export function PinjamanTab() {
           <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
             <p className="font-semibold">Ada selisih yang perlu diperiksa</p>
             <p className="mt-1">
-              Selisih berarti outstanding menurut jurnal 2050 berbeda dengan
-              outstanding menurut jadwal. Periksa jurnal pencairan, jurnal
+              Selisih berarti sisa pokok (outstanding) menurut jurnal 2050 berbeda
+              dengan sisa pokok menurut jadwal. Periksa jurnal pencairan, jurnal
               pembayaran (termasuk akun pokok dan link pembayaran), atau Saldo
               Awal 2050. Aplikasi <b>tidak mengoreksi otomatis</b> dan
               tidak menyediakan tombol koreksi di sini; koreksi data lama dilakukan
@@ -1955,7 +1960,7 @@ export function PinjamanTab() {
                 tidak ada saldo atau total bulanan yang disimpan di tabel pembayaran.
               </p>
             </div>
-            <Badge tone="stone">DB-16e</Badge>
+            <Badge tone="stone">Dihitung dari jurnal</Badge>
           </div>
   
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -2030,9 +2035,10 @@ export function PinjamanTab() {
                 ))}
               </div>
               <p className="mt-2 text-sm text-stone-600">
-                {mutasi.pinjaman.kreditur} · {mutasi.periode.label} · outstanding
-                seluruh riwayat <b>{formatRp(mutasi.outstanding)}</b>. Saldo akhir
-                periode = saldo awal − pokok dibayar; saldo berantai bulan ke bulan.
+                {mutasi.pinjaman.kreditur} · {mutasi.periode.label} · sisa pokok
+                (outstanding) seluruh riwayat <b>{formatRp(mutasi.outstanding)}</b>.
+                Saldo akhir periode = saldo awal − pokok dibayar; saldo berantai
+                bulan ke bulan.
               </p>
   
               <div className="mt-4 overflow-x-auto">

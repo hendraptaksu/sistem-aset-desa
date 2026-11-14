@@ -520,7 +520,7 @@ export function SaldoAwalWizard({
       )}
 
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Field label="Tanggal mulai pembukuan (tanggal jangkar)">
+          <Field label="Tanggal mulai pembukuan (tanggal acuan)">
             <TextInput
               type="date"
               value={tanggal}

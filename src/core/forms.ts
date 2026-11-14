@@ -89,7 +89,7 @@ function wajibTanggal(tanggal: string): string {
 
 function wajibNominal(nominal: number): number {
   if (!Number.isSafeInteger(nominal) || nominal <= 0)
-    throw new Error('Nominal harus bilangan bulat lebih dari 0 (satuan sen).');
+    throw new Error('Nominal harus lebih dari 0.');
   return nominal;
 }
 

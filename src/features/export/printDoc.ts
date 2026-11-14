@@ -473,5 +473,5 @@ export function infoPratinjauCetak(
 ): string {
   const kertas = orientasi === 'landscape' ? 'A4 Landscape' : 'A4 Portrait';
   const total = Math.max(1, jumlahHalaman);
-  return `Halaman 1 dari ${total} · ${kertas}`;
+  return `${total} halaman · ${kertas}`;
 }

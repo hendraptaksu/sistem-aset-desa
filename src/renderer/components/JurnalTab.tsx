@@ -537,18 +537,18 @@ export function JurnalTab({
 
         <div className="mt-3 flex items-center gap-2">
           <Button variant="ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-            ‹ Prev
+            ‹ Sebelumnya
           </Button>
           <span className="text-sm text-stone-600">
-            Menampilkan {awalTampil}–{akhirTampil} dari {total} jurnal · Hal{' '}
-            {page + 1} / {pages}
+            Menampilkan {awalTampil}–{akhirTampil} dari {total} jurnal · Halaman{' '}
+            {page + 1} dari {pages}
           </span>
           <Button
             variant="ghost"
             disabled={page + 1 >= pages}
             onClick={() => setPage((p) => p + 1)}
           >
-            Next ›
+            Berikutnya ›
           </Button>
         </div>
       </Card>

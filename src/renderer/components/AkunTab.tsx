@@ -69,7 +69,6 @@ export function AkunTab() {
   const [nama, setNama] = useState('');
   const [tipe, setTipe] = useState<CoaTipe>('BEBAN');
   const [kelompok, setKelompok] = useState<KelompokAkun>('BANK');
-  const [isKas, setIsKas] = useState(false);
   const [editKode, setEditKode] = useState<string | null>(null);
   const [cari, setCari] = useState('');
   const [filterTipe, setFilterTipe] = useState('');
@@ -115,7 +114,6 @@ export function AkunTab() {
     setNama('');
     setTipe('BEBAN');
     setKelompok('BANK');
-    setIsKas(false);
   }
 
   function mulaiUbah(a: Coa): void {
@@ -130,7 +128,6 @@ export function AkunTab() {
         ? a.kelompok
         : 'BANK',
     );
-    setIsKas(a.is_kas === true);
     document.getElementById('form-akun')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -160,10 +157,6 @@ export function AkunTab() {
           setErr(
             `Akun kas/bank baru harus memakai kode ${KODE_KAS_TAMBAHAN_MIN}–${KODE_KAS_TAMBAHAN_MAX}.`,
           );
-          return;
-        }
-        if (!isKas) {
-          setErr('Akun kas/bank wajib ditandai sebagai dompet (is_kas).');
           return;
         }
         if (!KELOMPOK_TAMBAHAN.includes(kelompok)) {
@@ -294,7 +287,7 @@ export function AkunTab() {
         </div>
         <p className="mt-2 text-helper text-amber-800">
           Akun kas/bank baru memakai kode kustom {KODE_KAS_TAMBAHAN_MIN}–{KODE_KAS_TAMBAHAN_MAX}
-          {' '}agar tidak bentrok dengan COA client. Setelah disimpan, akun langsung
+          {' '}agar tidak bentrok dengan daftar akun bawaan. Setelah disimpan, akun langsung
           muncul di Pindah Dana, Panjar, pembayaran, dan total kas.
         </p>
       </Card>
@@ -352,7 +345,6 @@ export function AkunTab() {
                 onChange={(e) => {
                   const nilai = e.target.value as CoaTipe;
                   setTipe(nilai);
-                  setIsKas(nilai === 'AKTIVA');
                   if (nilai !== 'AKTIVA') setKelompok('BANK');
                 }}
               >
@@ -378,17 +370,10 @@ export function AkunTab() {
                     ))}
                   </Select>
                 </Field>
-                <Field label="Dompet kas/bank (is_kas)">
-                  <label className="flex items-center gap-2 text-[15px] text-stone-700">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={isKas}
-                      disabled={busy || Boolean(editKode)}
-                      onChange={(e) => setIsKas(e.target.checked)}
-                    />
-                    Ya, akun ini dompet kas/bank
-                  </label>
+                <Field label="Dompet kas/bank">
+                  <span className="text-[15px] text-stone-600">
+                    Akun aktiva otomatis menjadi dompet kas/bank
+                  </span>
                 </Field>
               </>
             ) : (

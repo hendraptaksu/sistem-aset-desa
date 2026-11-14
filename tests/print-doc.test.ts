@@ -616,9 +616,9 @@ describe('P1-16 — pratinjau & PDF memakai HTML yang sama', () => {
     expect(hasil.html).toContain('@page{size:A4 portrait;margin:0}');
   });
 
-  it('info pratinjau menyebut halaman dan orientasi', () => {
-    expect(infoPratinjauCetak(3, 'landscape')).toBe('Halaman 1 dari 3 · A4 Landscape');
-    expect(infoPratinjauCetak(0, 'portrait')).toBe('Halaman 1 dari 1 · A4 Portrait');
+  it('info pratinjau menyebut jumlah halaman dan orientasi', () => {
+    expect(infoPratinjauCetak(3, 'landscape')).toBe('3 halaman · A4 Landscape');
+    expect(infoPratinjauCetak(0, 'portrait')).toBe('1 halaman · A4 Portrait');
   });
 
   it('modal pratinjau menampilkan iframe, info halaman, Cetak, dan Tutup', () => {
@@ -635,7 +635,7 @@ describe('P1-16 — pratinjau & PDF memakai HTML yang sama', () => {
     expect(html).toContain('sandbox="allow-same-origin allow-modals"');
     expect(html).not.toContain('allow-scripts');
     expect(html).toContain('Pratinjau Cetak — Neraca Saldo');
-    expect(html).toContain('Halaman 1 dari 3');
+    expect(html).toContain('3 halaman');
     expect(html).toContain('A4 Landscape');
     expect(html).toContain('Cetak');
     expect(html).toContain('Tutup');

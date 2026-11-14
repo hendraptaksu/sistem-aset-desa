@@ -882,14 +882,17 @@ describe('DB-14 — akun bank/LPD baru di form kas', () => {
     expect(html).toContain('1001 — KAS');
   });
 
-  it('form Daftar Akun menyediakan jenis AKTIVA, kelompok, dan penanda is_kas', () => {
+  it('form Daftar Akun menyediakan jenis AKTIVA dan kelompok; dompet kas/bank otomatis (UI-A16)', () => {
     const sumber = readFileSync(
       join(process.cwd(), 'src/renderer/components/AkunTab.tsx'),
       'utf8',
     );
     expect(sumber).toContain("'AKTIVA'");
     expect(sumber).toContain('Kelompok akun');
-    expect(sumber).toContain('is_kas');
+    // UI-A16: checkbox is_kas dihapus — AKTIVA otomatis dompet kas/bank,
+    // tidak ada checkbox lagi di form.
+    expect(sumber).toContain('Akun aktiva otomatis menjadi dompet kas/bank');
+    expect(sumber).not.toContain('type="checkbox"');
     expect(sumber).toContain('KODE_KAS_TAMBAHAN_MIN');
   });
 });

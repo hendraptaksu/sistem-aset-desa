@@ -1422,7 +1422,7 @@ describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
           akunKas: '1001',
           akunLawan: '4005',
         }),
-      ).toThrow(/bilangan bulat/);
+      ).toThrow(/lebih dari 0/);
 
       const panjar = serahkanPanjar(db, {
         tanggal: '2026-01-02',
@@ -1440,7 +1440,7 @@ describe('AKT-29 — ketahanan validasi input & nominal aman', () => {
           keterangan: 'Nominal tidak aman',
           akunBeban: '5003',
         }),
-      ).toThrow(/bilangan bulat/);
+      ).toThrow(/lebih dari 0/);
 
       expect(jumlahJurnal(db)).toBe(0);
     } finally {

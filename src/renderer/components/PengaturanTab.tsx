@@ -615,13 +615,12 @@ export function PengaturanTab({
           <b>
             {kodeDiatur
               ? 'kode darurat sudah diatur untuk instalasi ini'
-              : 'kode darurat belum diatur (instalasi lama)'}
+              : 'kode darurat belum diatur'}
           </b>
         </div>
         {!kodeDiatur && (
           <p className="mt-2 text-sm text-amber-800">
-            Instalasi lama belum punya kode darurat. Atur sekarang sebelum PIN lupa —
-            kode default lama sudah tidak berlaku.
+            Perangkat ini belum punya kode darurat. Buat sekarang.
           </p>
         )}
         <div className="mt-3">
@@ -642,7 +641,7 @@ export function PengaturanTab({
         )}
         <div className="flex max-w-lg items-end gap-2">
           <div className="flex-1">
-            <Field label={`Idle (menit, ${IDLE_MIN_MENIT}–${IDLE_MAKS_MENIT})`}>
+            <Field label={`Menit tanpa aktivitas (${IDLE_MIN_MENIT}–${IDLE_MAKS_MENIT})`}>
               <TextInput type="number" min={IDLE_MIN_MENIT} max={IDLE_MAKS_MENIT} value={idle} onChange={(e) => setIdle(e.target.value)} />
             </Field>
           </div>
@@ -765,7 +764,7 @@ export function PengaturanTab({
                   ? 'Portable — data di folder aplikasi (exe)'
                   : lokasi.mode === 'INSTALLED'
                     ? 'Installer — data di folder aplikasi Windows'
-                    : 'Pengembangan (PURA_DB) — lokasi khusus'}
+                    : 'Mode pengembangan — lokasi data ditentukan sistem'}
               </b>
             </div>
 
@@ -867,16 +866,6 @@ export function PengaturanTab({
               ))}
             </Select>
           </Field>
-          <Field label="ID referensi">
-            <TextInput
-              value={fRefId}
-              placeholder="mis. j-... atau p-..."
-              onChange={(e) => {
-                setFRefId(e.target.value);
-                setOffset(0);
-              }}
-            />
-          </Field>
           <Field label="Dari tanggal">
             <TextInput
               type="date"
@@ -911,6 +900,26 @@ export function PengaturanTab({
             </Select>
           </Field>
         </div>
+
+        {/* UI-A16: filter ID referensi adalah jargon internal — sembunyikan
+            di bagian lanjutan untuk pendamping. */}
+        <details className="mb-3">
+          <summary className="min-h-8 cursor-pointer py-1 text-sm font-semibold text-stone-700">
+            Filter lanjutan (untuk pendamping)
+          </summary>
+          <div className="mt-2 max-w-sm">
+            <Field label="ID referensi">
+              <TextInput
+                value={fRefId}
+                placeholder="mis. j-... atau p-..."
+                onChange={(e) => {
+                  setFRefId(e.target.value);
+                  setOffset(0);
+                }}
+              />
+            </Field>
+          </div>
+        </details>
 
         <ErrorBox msg={auditErr} />
         <div className="overflow-x-auto">

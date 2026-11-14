@@ -4,7 +4,8 @@ import type { JurnalLengkap } from '../lib/api.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { Badge, Button, Modal } from './ui.js';
 
-const LABEL_JENIS: Record<string, string> = {
+/** Label Indonesia untuk jenis jurnal; dipakai bersama DashboardTab (UI-A16). */
+export const LABEL_JENIS: Record<string, string> = {
   UMUM: 'Jurnal Umum',
   TERIMA: 'Terima Uang',
   BAYAR: 'Bayar / Beban',
