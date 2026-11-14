@@ -176,7 +176,7 @@ function labelBulanMutasi(bulan: string): string {
 }
 
 /**
- * Periode UI kartu hutang: satu tahun penuh bila bulan kosong, atau satu bulan
+ * Periode UI kartu utang: satu tahun penuh bila bulan kosong, atau satu bulan
  * penuh. Mengembalikan null bila tahun/bulan belum valid.
  */
 function batasPeriodeMutasi(
@@ -265,7 +265,7 @@ export function PinjamanTab() {
    * mempertahankan alasan, sementara target berbeda tetap mulai kosong.
    */
   const kunciTargetBatalRef = useRef<string | null>(null);
-  // DB-16e — kartu hutang / mutasi bulanan.
+  // DB-16e — kartu utang / mutasi bulanan.
   const [mutasiPinjamanId, setMutasiPinjamanId] = useState('');
   const [mutasiTahun, setMutasiTahun] = useState(String(tahunLokal()));
   const [mutasiBulan, setMutasiBulan] = useState('');
@@ -931,7 +931,7 @@ export function PinjamanTab() {
     setMutasiBuka({});
     setMutasiErr(null);
     // UI-A07: kartu mutasi berada jauh di bawah daftar pinjaman; tanpa gulir,
-    // klik tombol "Kartu hutang" terasa tidak bereaksi. Tunggu commit render
+    // klik tombol "Kartu utang" terasa tidak bereaksi. Tunggu commit render
     // dulu (requestAnimationFrame, pola pilihJenis di TransaksiTab) agar
     // posisi kartu sudah terukur, lalu gulir ke sana dengan menghormati
     // preferensi reduced-motion.
@@ -1390,7 +1390,7 @@ export function PinjamanTab() {
                             variant={mutasiPinjamanId === p.id ? 'primary' : 'ghost'}
                             onClick={() => pilihKartuHutang(p.id)}
                           >
-                            Kartu hutang
+                            Kartu utang
                           </Button>
                         </div>
                       </td>
@@ -1764,7 +1764,7 @@ export function PinjamanTab() {
                                         setBayarErr(null);
                                       }}
                                     >
-                                      Periksa lagi
+                                      Ubah isian
                                     </Button>
                                   </div>
                                 </div>
@@ -1946,14 +1946,14 @@ export function PinjamanTab() {
         )}
       </Card>
 
-      {/* UI-A07: jangkar gulir untuk tombol "Kartu hutang" di daftar pinjaman;
+      {/* UI-A07: jangkar gulir untuk tombol "Kartu utang" di daftar pinjaman;
           kartu mutasi berada jauh di bawah sehingga tanpa gulir klik terasa
           tidak bereaksi. scroll-mt-24 menambal header sticky aplikasi. */}
       <div id="kartu-hutang" className="scroll-mt-24">
         <Card>
           <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 className="text-lg font-bold">Kartu Hutang / Mutasi Bulanan</h2>
+              <h2 className="text-lg font-bold">Kartu Utang / Mutasi Bulanan</h2>
               <p className="mt-1 max-w-3xl text-sm text-stone-600">
                 Mutasi pokok, bunga, denda, dan kas keluar per bulan. Semua angka
                 dihitung ulang dari baris jurnal pembayaran yang tertaut ke pinjaman;
@@ -2113,7 +2113,7 @@ export function PinjamanTab() {
                                   <tr className="text-stone-500">
                                     <th className="py-1 pr-3">No. bukti</th>
                                     <th className="py-1 pr-3">Tanggal jurnal</th>
-                                    <th className="py-1 pr-3">Tanggal link</th>
+                                    <th className="py-1 pr-3">Tanggal catat</th>
                                     <th className="py-1 pr-3">Jurnal ID</th>
                                     <th className="py-1 pr-3 text-right">Pokok</th>
                                     <th className="py-1 pr-3 text-right">Bunga</th>
@@ -2132,7 +2132,7 @@ export function PinjamanTab() {
                                       </td>
                                       <td className="py-1 pr-3 whitespace-nowrap">
                                         {p.tanggal_bayar === p.tanggal
-                                          ? 'sama'
+                                          ? 'sama dengan jurnal'
                                           : formatTanggal(p.tanggal_bayar)}
                                       </td>
                                       <td className="py-1 pr-3 font-mono text-helper">
@@ -2208,8 +2208,18 @@ export function PinjamanTab() {
                           {formatTanggal(a.jatuh_tempo)}
                         </td>
                         <td className="py-2 pr-3">
-                          <Badge tone={a.dibayar ? 'green' : 'stone'}>
-                            {a.dibayar ? 'LUNAS' : 'BELUM'}
+                          {/* UI-A17: status turunan sama dengan Daftar (BELUM/
+                              SEBAGIAN/LUNAS), bukan hanya dibayar penuh. */}
+                          <Badge
+                            tone={
+                              a.status === 'LUNAS'
+                                ? 'green'
+                                : a.status === 'SEBAGIAN'
+                                  ? 'amber'
+                                  : 'stone'
+                            }
+                          >
+                            {a.status}
                           </Badge>
                         </td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap">
@@ -2252,11 +2262,11 @@ export function PinjamanTab() {
                               <div className="font-mono">{a.jurnal_id}</div>
                               {a.jumlah_pembayaran > 1 && (
                                 <div className="font-semibold text-amber-800">
-                                  dicicil {a.jumlah_pembayaran}× pembayaran
+                                  dibayar dalam {a.jumlah_pembayaran} catatan pembayaran
                                 </div>
                               )}
                               {a.tanggal_bayar && a.tanggal_bayar !== a.tanggal_jurnal && (
-                                <div>link: {formatTanggal(a.tanggal_bayar)}</div>
+                                <div>catat: {formatTanggal(a.tanggal_bayar)}</div>
                               )}
                             </>
                           ) : (

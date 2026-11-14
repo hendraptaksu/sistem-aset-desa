@@ -31,7 +31,7 @@ describe('T2.7 — pesan restore di layar kunci', () => {
     const html = renderLock(pesan);
 
     expect(html).toContain('data-testid="pesan-restore"');
-    expect(html).toMatch(/Restore lengkap OK/);
+    expect(html).toMatch(/Pulihkan lengkap OK/);
     expect(html).toContain('/data/backups/pre-restore-2026-11-06-1000.db');
     expect(html).toMatch(/Cadangan data lama/i);
     expect(html).toMatch(/dikunci ulang/i);
@@ -48,10 +48,10 @@ describe('T2.7 — pesan restore di layar kunci', () => {
 
   it('pesanRestoreSukses menyebut jalur restore dan cadangan pra-restore', () => {
     expect(pesanRestoreSukses('db', '/backups/pre-restore-a.db')).toBe(
-      'Restore OK. Cadangan data lama: /backups/pre-restore-a.db. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.',
+      'Pulihkan OK. Cadangan data lama: /backups/pre-restore-a.db. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.',
     );
     expect(pesanRestoreSukses('lengkap', null)).toContain(
-      'Restore lengkap OK. Cadangan data lama: -.',
+      'Pulihkan lengkap OK. Cadangan data lama: -.',
     );
   });
 });

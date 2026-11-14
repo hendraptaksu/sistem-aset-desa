@@ -1071,7 +1071,6 @@ describe('DB-21 — pembatalan panjar OPEN', () => {
   it('menampilkan filter Dibatalkan dan penjelasan tombol Batalkan', () => {
     const html = renderToStaticMarkup(createElement(PanjarTab));
     expect(html).toContain('Dibatalkan');
-    expect(html).toContain('DIBATALKAN');
     expect(html).toContain('Batalkan');
     expect(html).toContain('alasan minimal 5 karakter');
     expect(html).toContain('jurnal serah asli tidak dihapus');

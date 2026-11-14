@@ -43,13 +43,25 @@ describe('AUD2-12 — tab Buku Pembantu dihapus dari navigasi', () => {
 });
 
 describe('AUD2-12 — label arah mutasi Buku Besar', () => {
-  it('akun posisi normal DEBIT: debit menambah, kredit mengurangi', () => {
+  // UI-A17: akun non-kas (Beban, Piutang, Panjar, dst.) memakai
+  // Bertambah/Berkurang, bukan Masuk/Keluar.
+  it('akun non-kas posisi normal DEBIT: debit bertambah, kredit berkurang', () => {
     const html = renderToStaticMarkup(
       createElement(KepalaMutasi, { posisiNormal: 'DEBIT' }),
     );
     expect(html).toContain('Debit');
-    expect(html).toContain('(+ / Masuk)');
+    expect(html).toContain('(+ / Bertambah)');
     expect(html).toContain('Kredit');
+    expect(html).toContain('(- / Berkurang)');
+    expect(html).not.toContain('Masuk');
+    expect(html).not.toContain('Keluar');
+  });
+
+  it('akun kas/bank posisi normal DEBIT tetap Masuk/Keluar', () => {
+    const html = renderToStaticMarkup(
+      createElement(KepalaMutasi, { posisiNormal: 'DEBIT', kasBank: true }),
+    );
+    expect(html).toContain('(+ / Masuk)');
     expect(html).toContain('(- / Keluar)');
   });
 
@@ -64,6 +76,7 @@ describe('AUD2-12 — label arah mutasi Buku Besar', () => {
   });
 
   it('tabel mutasi memakai posisi normal akun yang sedang dibuka', () => {
-    expect(BUKU_BESAR).toContain('<KepalaMutasi posisiNormal={data.posisi_normal} />');
+    expect(BUKU_BESAR).toContain('posisiNormal={data.posisi_normal}');
+    expect(BUKU_BESAR).toContain('kasBank={isAkunKasData(');
   });
 });

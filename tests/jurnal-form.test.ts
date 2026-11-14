@@ -390,7 +390,7 @@ describe('P1-7 — smoke UI Jurnal Umum', () => {
   it('menampilkan tombol besar + Jurnal Baru hanya pada mode akuntan', () => {
     const modeAkuntan = renderToStaticMarkup(createElement(JurnalTab));
     expect(modeAkuntan).toContain('+ Jurnal Baru');
-    expect(modeAkuntan).toContain('Mode akuntan');
+    expect(modeAkuntan).toContain('Mode lanjutan');
     expect(modeAkuntan).toContain('Jurnal Umum');
     expect(modeAkuntan).toContain('>Jurnal Umum</span>');
 

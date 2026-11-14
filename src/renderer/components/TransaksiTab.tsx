@@ -32,6 +32,7 @@ import {
   TextInput,
 } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
+import { LABEL_JENIS } from '../lib/tampilanLaporan.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -99,18 +100,6 @@ const KARTU_JENIS: KartuJenis[] = [
 
 const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
   id !== 'PANJAR' && id !== 'PINJAMAN';
-
-const LABEL_JENIS: Record<string, string> = {
-  UMUM: 'Jurnal Umum',
-  TERIMA: 'Terima Uang',
-  BAYAR: 'Bayar / Beban',
-  TRANSFER: 'Pindah Dana',
-  PANJAR: 'Panjar',
-  PIUTANG: 'Piutang',
-  HUTANG: 'Hutang',
-  SALDO_AWAL: 'Saldo Awal',
-  REVERSAL: 'Jurnal Balik',
-};
 
 /**
  * Sama dengan `PESAN_SALDO_AWAL_SUDAH_ADA` di `src/db/saldoAwal.ts`. Disalin
@@ -540,7 +529,7 @@ export function TransaksiTab({
           <div>
             <h2 className="text-lg font-bold">Saldo Awal Pembukuan</h2>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang,
+              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, utang,
               dan aset lain per tanggal mulai; selisih otomatis menjadi modal sehingga
               terbentuk satu jurnal yang seimbang.
             </p>
@@ -849,7 +838,7 @@ export function BatalkanJurnalModal({
                 setErr(null);
               }}
             >
-              Periksa lagi
+              Ubah isian
             </Button>
             <Button
               variant="danger"

@@ -1080,7 +1080,7 @@ describe('T3.8 — poles UX aksi berisiko', () => {
         onKonfirmasi: () => {},
       }),
     );
-    expect(db).toContain('Buat backup Export .db?');
+    expect(db).toContain('Buat backup file .db?');
     expect(db).toContain('tanpa');
     expect(db).toContain('Yang berubah:');
     expect(db).toContain('Yang tetap:');
@@ -1097,7 +1097,7 @@ describe('T3.8 — poles UX aksi berisiko', () => {
     expect(db).toContain('manifest.json');
     expect(db).toContain('PIN aplikasi dipertahankan');
     expect(db).toContain('pre-restore');
-    expect(db).toMatch(/Bila hasil restore tidak sesuai/);
+    expect(db).toMatch(/Bila hasil pemulihan tidak sesuai/);
     expect(db).toContain('dikunci');
 
     const lengkap = renderToStaticMarkup(

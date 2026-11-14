@@ -282,13 +282,13 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('BACKUP-AUTO')) return 'Backup otomatis';
   if (a.startsWith('BACKUP')) return 'Backup database';
   if (a.startsWith('RESTORE-KODE-DARURAT-DIPERTAHANKAN')) {
-    return 'Restore database (kode darurat dipertahankan)';
+    return 'Pulihkan database (kode darurat dipertahankan)';
   }
   if (a.startsWith('RESTORE-PIN-DIPERTAHANKAN')) {
-    return 'Restore database (PIN dipertahankan)';
+    return 'Pulihkan database (PIN dipertahankan)';
   }
-  if (a.startsWith('RESTORE-LENGKAP')) return 'Restore lengkap';
-  if (a.startsWith('RESTORE')) return 'Restore database';
+  if (a.startsWith('RESTORE-LENGKAP')) return 'Pulihkan lengkap';
+  if (a.startsWith('RESTORE')) return 'Pulihkan database';
   if (a.startsWith('PANJAR-OPEN')) return 'Panjar baru';
   if (a.startsWith('PANJAR-CLOSE')) return 'Tutup panjar';
   if (a.startsWith('PANJAR-BATAL')) return 'Batalkan panjar';

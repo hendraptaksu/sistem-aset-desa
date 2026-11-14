@@ -294,6 +294,7 @@ describe('DB-16e — mutasi bulanan dari jurnal', () => {
       selisih_pokok: 0,
       selisih_bunga: 0,
       dibayar: true,
+      status: 'LUNAS',
       jurnal_id: 'j-bayar-1',
       no_bukti: 'B-1',
       tanggal_jurnal: '2026-02-05',
@@ -301,6 +302,8 @@ describe('DB-16e — mutasi bulanan dari jurnal', () => {
     });
 
     // Realisasi angsuran 2 berbeda dari jadwal, jadwal tetap rencana.
+    // UI-A17: status turunan SEBAGIAN sama dengan Daftar (bukan hanya
+    // dibayar penuh), sehingga Kartu Utang tidak menampilkan BELUM.
     expect(laporan.jadwal[1]).toMatchObject({
       ke: 2,
       pokok_jadwal: RP(3_000_000),
@@ -310,6 +313,7 @@ describe('DB-16e — mutasi bulanan dari jurnal', () => {
       selisih_pokok: -RP(500_000),
       selisih_bunga: RP(50_000),
       dibayar: false,
+      status: 'SEBAGIAN',
       jurnal_id: 'j-bayar-2',
       no_bukti: 'B-2',
     });
@@ -581,7 +585,7 @@ describe('DB-16e — validasi, IPC, API, UI, dan dokumentasi', () => {
   });
 
   it('UI menampilkan tabel bulan, filter periode, jadwal vs realisasi, dan detail jurnal', () => {
-    expect(UI).toContain('Kartu Hutang / Mutasi Bulanan');
+    expect(UI).toContain('Kartu Utang / Mutasi Bulanan');
     expect(UI).toContain('api.pinjamanMutasi');
     expect(UI).toContain('Jadwal vs Realisasi');
     expect(UI).toContain('Saldo awal periode');
@@ -593,7 +597,7 @@ describe('DB-16e — validasi, IPC, API, UI, dan dokumentasi', () => {
   });
 
   it('panduan pengguna menjelaskan kartu hutang dan sumber jurnalnya', () => {
-    expect(PANDUAN).toContain('Kartu hutang');
+    expect(PANDUAN).toContain('Kartu utang');
     expect(PANDUAN).toContain('mutasi bulanan');
     expect(PANDUAN).toContain('2050');
     expect(PANDUAN).toContain('tidak disimpan');

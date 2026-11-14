@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Coa, PosisiNormal } from '../../db/coa.js';
+import { isAkunKasData, type Coa, type PosisiNormal } from '../../db/coa.js';
 import {
   bukuBesarToWorkbook,
   periodeFile,
@@ -35,10 +35,25 @@ function SisiSaldoBadge({
 /**
  * AUD2-12: istilah Debit/Kredit tetap dipertahankan untuk akuntan, dengan
  * sub-label arah yang memudahkan bendahara membaca efek mutasi pada akun.
+ * UI-A17: akun kas/bank tetap memakai "Masuk/Keluar" (uang masuk/keluar
+ * dompet), akun lain (Beban, Piutang, Panjar, Kewajiban, ...) memakai
+ * "Bertambah/Berkurang" agar "+ / Masuk" tidak muncul untuk akun non-kas.
  */
-export function KepalaMutasi({ posisiNormal }: { posisiNormal: PosisiNormal }) {
-  const debit = posisiNormal === 'DEBIT' ? '+ / Masuk' : '- / Berkurang';
-  const kredit = posisiNormal === 'DEBIT' ? '- / Keluar' : '+ / Bertambah';
+export function KepalaMutasi({
+  posisiNormal,
+  kasBank = false,
+}: {
+  posisiNormal: PosisiNormal;
+  /** True hanya untuk akun kas/bank (kelompok KAS/BANK/LPD). */
+  kasBank?: boolean;
+}) {
+  const masukKas = kasBank && posisiNormal === 'DEBIT';
+  const debit = masukKas ? '+ / Masuk' : posisiNormal === 'DEBIT' ? '+ / Bertambah' : '- / Berkurang';
+  const kredit = masukKas
+    ? '- / Keluar'
+    : posisiNormal === 'DEBIT'
+      ? '- / Berkurang'
+      : '+ / Bertambah';
   return (
     <>
       <th className="py-2 pr-3 text-right">
@@ -364,7 +379,10 @@ export function BukuBesarTab({
                     <th className="py-2 pr-3">Tanggal</th>
                     <th className="py-2 pr-3">No. Bukti</th>
                     <th className="py-2 pr-3">Keterangan</th>
-                    <KepalaMutasi posisiNormal={data.posisi_normal} />
+                    <KepalaMutasi
+                      posisiNormal={data.posisi_normal}
+                      kasBank={isAkunKasData(akunTerpilih ?? { kode: data.kode })}
+                    />
                     <th className="py-2 pr-3 text-right">Saldo</th>
                     <th className="py-2">Sisi</th>
                   </tr>

@@ -107,7 +107,7 @@ describe('DB-29 — TABS dan GRUP_MENU bersih', () => {
   it('dashboard hanya punya satu pintasan menuju Kunci Periode dan Jurnal', () => {
     expect((DASHBOARD.match(/onBukaTab\('tutup'\)/g) ?? []).length).toBe(1);
     expect((DASHBOARD.match(/onBukaTab\('jurnal'\)/g) ?? []).length).toBe(1);
-    expect(DASHBOARD).toContain('Buka Kunci Periode');
+    expect(DASHBOARD).toContain('Buka menu Kunci Periode');
     expect(DASHBOARD).not.toMatch(/Tutup Buku|Buka Tutup Buku|jangan tutup buku/);
   });
 });
@@ -132,7 +132,7 @@ describe('DB-29 — Kunci Periode di UI dan audit', () => {
   it('Pengaturan dan label audit memakai Kunci periode, nilai DB tetap', () => {
     expect(PENGATURAN).toContain("{ value: 'TUTUP', label: 'Kunci periode' }");
     expect(PENGATURAN).toContain("{ value: 'tutup_buku', label: 'Kunci periode' }");
-    expect(PENGATURAN).toContain('jurnal, koreksi, kunci periode, backup/restore');
+    expect(PENGATURAN).toContain('jurnal, koreksi, kunci periode, backup/pulihkan');
     expect(PENGATURAN).not.toContain("label: 'Tutup buku'");
 
     expect(AUDIT_DETAIL).toContain("return 'Kunci periode'");

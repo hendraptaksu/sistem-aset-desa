@@ -434,7 +434,7 @@ export function JurnalUmumEditor({
   return (
     <Modal
       judul={awal?.id ? 'Duplikat Jurnal' : 'Jurnal Baru'}
-      deskripsi="Mode akuntan: isi beberapa baris debit dan kredit. Sistem hanya menyimpan bila minimal 2 baris sah dan total debit = total kredit."
+      deskripsi="Mode lanjutan: isi beberapa baris debit dan kredit. Sistem hanya menyimpan bila minimal 2 baris sah dan total debit = total kredit."
       onTutup={mintaTutup}
       sibuk={busy}
       maxWidth="64rem"

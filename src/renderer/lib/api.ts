@@ -193,7 +193,7 @@ export type OpsiBatalPinjamanApi = {
   alasanPeringatan?: string;
 };
 
-/** Filter kartu hutang / mutasi bulanan pinjaman LPD (DB-16e). */
+/** Filter kartu utang / mutasi bulanan pinjaman LPD (DB-16e). */
 export type FilterMutasiPinjamanApi = {
   pinjamanId: string;
   /** Bulan `YYYY-MM`; kosongkan bila memakai rentang tanggal. */
@@ -623,7 +623,7 @@ export const api = {
       pinjaman: Pinjaman;
       jurnal: Jurnal;
     }>('pinjaman:batal', { id, alasan }, opsi),
-  /** DB-16e: kartu hutang / mutasi bulanan dari jurnal pembayaran tertaut. */
+  /** DB-16e: kartu utang / mutasi bulanan dari jurnal pembayaran tertaut. */
   pinjamanMutasi: (f: FilterMutasiPinjamanApi) =>
     call<MutasiPinjamanHasil>('pinjaman:mutasi', f),
   /**

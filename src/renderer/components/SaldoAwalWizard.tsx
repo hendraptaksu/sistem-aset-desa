@@ -263,7 +263,7 @@ export function SaldoAwalWizard({
     if (kas.length > 0) grup.push({ label: 'Kas / Bank', akun: kas });
     if (asetLain.length > 0)
       grup.push({ label: 'Aset lain', akun: asetLain });
-    if (kewajiban.length > 0) grup.push({ label: 'Hutang', akun: kewajiban });
+    if (kewajiban.length > 0) grup.push({ label: 'Utang', akun: kewajiban });
     return grup;
   }, [akunRelevan]);
 
@@ -503,7 +503,7 @@ export function SaldoAwalWizard({
       deskripsi={
         modeKoreksi
           ? 'Perbaiki saldo awal yang sudah tersimpan. Sistem membalik jurnal pembukaan lama lalu membuat jurnal penyesuaian baru; jurnal lama tidak dihapus dan tetap tersimpan di audit.'
-          : 'Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, hutang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit.'
+          : 'Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, utang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit.'
       }
       onTutup={mintaTutup}
       sibuk={busy}
@@ -577,7 +577,7 @@ export function SaldoAwalWizard({
             <div>
               <h3 className="font-bold">Saldo per akun</h3>
               <p className="text-sm text-stone-600">
-                Hanya kas/bank, hutang, dan aset lain. Pendapatan, beban, dan modal
+                Hanya kas/bank, utang, dan aset lain. Pendapatan, beban, dan modal
                 tidak diisi di sini.
               </p>
             </div>

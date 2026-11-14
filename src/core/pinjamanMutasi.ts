@@ -18,6 +18,7 @@
 
 import { AKUN_HUTANG, type Coa } from '../db/coa.js';
 import { ringkasanAngsuran } from './pinjamanAngsuran.js';
+import type { PinjamanAngsuranStatus } from './types.js';
 
 const POLA_BULAN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const POLA_TANGGAL = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -134,6 +135,13 @@ export type JadwalRealisasiPinjaman = {
   selisih_pokok: number;
   selisih_bunga: number;
   dibayar: boolean;
+  /**
+   * UI-A17: status turunan (BELUM/SEBAGIAN/LUNAS) dari `ringkasanAngsuran`,
+   * sama dengan yang dipakai Daftar pinjaman agar Kartu Utang tidak menampilkan
+   * "BELUM" untuk angsuran yang sudah dibayar sebagian. Turunan tampilan saja;
+   * tidak mengubah DB.
+   */
+  status: PinjamanAngsuranStatus;
   /**
    * Jumlah pembayaran aktif yang tertaut ke angsuran ini. ≥ 2 berarti
    * angsuran dicicil; referensi bukti diambil dari pembayaran pertama.
@@ -440,6 +448,11 @@ export function hitungMutasiPinjaman(
       const pokokRealisasi = daftar.reduce((s, it) => s + it.pokok, 0);
       const bungaRealisasi = daftar.reduce((s, it) => s + it.bunga, 0);
       const dendaRealisasi = daftar.reduce((s, it) => s + it.denda, 0);
+      const ringkasan = ringkasanAngsuran(a, {
+        pokok: pokokRealisasi,
+        bunga: bungaRealisasi,
+        denda: dendaRealisasi,
+      });
       return {
         angsuran_id: a.id,
         ke: a.ke,
@@ -452,7 +465,8 @@ export function hitungMutasiPinjaman(
         denda_realisasi: dendaRealisasi,
         selisih_pokok: pokokRealisasi - a.pokok,
         selisih_bunga: bungaRealisasi - a.bunga,
-        dibayar: ringkasanAngsuran(a, { pokok: pokokRealisasi, bunga: bungaRealisasi, denda: dendaRealisasi }).dibayar,
+        dibayar: ringkasan.dibayar,
+        status: ringkasan.status,
         jumlah_pembayaran: daftar.length,
         pembayaran_id: p?.pembayaran_id ?? null,
         jurnal_id: p?.jurnal_id ?? null,

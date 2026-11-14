@@ -40,7 +40,7 @@ const LABEL_KELOMPOK: Record<KelompokAkun, string> = {
   LPD: 'LPD',
   PANJAR: 'Panjar',
   PIUTANG: 'Piutang',
-  HUTANG: 'Hutang',
+  HUTANG: 'Utang',
   EKUITAS: 'Ekuitas',
   PENDAPATAN: 'Pendapatan',
   BEBAN: 'Beban',

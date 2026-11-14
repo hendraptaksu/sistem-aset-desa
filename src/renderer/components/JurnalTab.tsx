@@ -43,22 +43,10 @@ import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { JurnalUmumEditor } from './JurnalUmumEditor.js';
 import { PratinjauCetakModal } from './PratinjauCetakModal.js';
 import { SaranNomorBukti } from './SaranNomorBukti.js';
-import { rentangTerbalik } from '../lib/tampilanLaporan.js';
+import { LABEL_JENIS, rentangTerbalik } from '../lib/tampilanLaporan.js';
 import { PESAN_MUAT_GAGAL, PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 const PAGE = 25;
-
-const LABEL_JENIS: Record<string, string> = {
-  UMUM: 'Jurnal Umum',
-  TERIMA: 'Terima Uang',
-  BAYAR: 'Bayar / Beban',
-  TRANSFER: 'Pindah Dana',
-  PANJAR: 'Panjar',
-  PIUTANG: 'Piutang',
-  HUTANG: 'Hutang',
-  SALDO_AWAL: 'Saldo Awal',
-  REVERSAL: 'Jurnal Balik',
-};
 
 const namaAkun = (coa: Coa[], kode: string): string => {
   const a = coa.find((x) => x.kode === kode);
@@ -333,7 +321,7 @@ export function JurnalTab({
             <Badge tone="green">Neraca Saldo selalu dihitung dari jurnal</Badge>
             {modeAkuntan && (
               <>
-                <Badge tone="amber">Mode akuntan</Badge>
+                <Badge tone="amber">Mode lanjutan</Badge>
                 <Button
                   type="button"
                   className="px-5 py-3 text-base"

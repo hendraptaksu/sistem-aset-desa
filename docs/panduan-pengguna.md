@@ -278,9 +278,9 @@ dibatalkan, masukkan kembali pembayaran yang benar melalui **Bayar Angsuran**.
 > ada pembayaran aktif yang terkait. Pinjaman **Sudah berjalan** tidak memiliki
 > jurnal pencairan baru untuk dibatalkan.
 
-#### Kartu hutang / mutasi bulanan
+#### Kartu utang / mutasi bulanan
 
-Bagian **Kartu Hutang / Mutasi Bulanan** di menu **Pinjaman LPD** menampilkan
+Bagian **Kartu Utang / Mutasi Bulanan** di menu **Pinjaman LPD** menampilkan
 mutasi pokok, bunga, denda, dan kas keluar setiap bulan. Pilih pinjaman, tahun,
 dan bulan (kosongkan bulan untuk satu tahun penuh; default tahun berjalan).
 
@@ -491,7 +491,7 @@ atau memperbarui COA bawaan.
   dan badge **Neraca Saldo: Seimbang**.
 - Periksa **Jurnal Terakhir** dan **Backup Terakhir**.
 - Lakukan **Backup Lengkap** ke flashdisk/Drive — ini jalur yang disarankan.
-  **Backup Export .db** hanya untuk kebutuhan lanjutan (satu file database,
+  **Backup file .db** hanya untuk kebutuhan lanjutan (satu file database,
   tanpa manifest).
 
 ### Bulanan
@@ -504,7 +504,7 @@ atau memperbarui COA bawaan.
 2. Periksa **Laba Rugi**, **Neraca**, dan **Arus Kas**.
 3. Buat **Backup Lengkap** dalam satu folder bertanggal,
    misalnya `backup-2026-10-31`. Ini jalur utama; jangan mengandalkan satu file
-   **Backup Export .db** kecuali diminta pendamping.
+   **Backup file .db** kecuali diminta pendamping.
 4. Catatan: **kunci periode hanya untuk tahun yang sudah selesai**, bukan
    penutupan bulanan. Tidak ada penutupan bulanan di aplikasi ini.
 
@@ -548,7 +548,7 @@ yang dibuat untuk tahun parsial ini.
 
 ### 5.1 Apa yang harus dibackup
 
-| Yang dibackup | Letaknya | Backup Lengkap (disarankan) | Backup Export `.db` (lanjutan) |
+| Yang dibackup | Letaknya | Backup Lengkap (disarankan) | Backup file `.db` (lanjutan) |
 |---|---|---|---|
 | Database | file `pura.db` | ya | ya — hanya database |
 | Manifest | file `manifest.json` | ya | tidak ada |
@@ -564,7 +564,7 @@ yang dibuat untuk tahun parsial ini.
   folder induk. Aplikasi membuat satu folder berisi `pura.db` dan
   `manifest.json`. Pakai cara ini untuk arsip jangka panjang, pindah laptop,
   atau sebelum perubahan besar.
-- **Backup Export .db (lanjutan):** **Dashboard → Backup Export .db**, lalu
+- **Backup file .db (lanjutan):** **Dashboard → Backup file .db**, lalu
   pilih lokasi penyimpanan (flashdisk/Drive). File ini hanya berisi database
   dan **tidak punya manifest**. Gunakan hanya bila diminta pendamping.
 
@@ -594,10 +594,10 @@ simpan di media yang aman dan pisahkan dari laptop.
 
 Ada dua pilihan di **Dashboard**:
 
-- **Restore Lengkap (disarankan)** — pilih folder hasil **Backup Lengkap** yang
+- **Pulihkan Lengkap (disarankan)** — pilih folder hasil **Backup Lengkap** yang
   berisi `manifest.json` dan `pura.db`. Manifest diperiksa lebih dulu, sehingga
   aplikasi tahu folder itu memang backup lengkap.
-- **Restore Import .db (lanjutan/berisiko)** — memulihkan database dari satu
+- **Pulihkan file .db (lanjutan/berisiko)** — memulihkan database dari satu
   file `.db`. Jalur ini **hanya memulihkan database**, **tidak memvalidasi
   manifest.json**, dan selalu meminta dua konfirmasi. Gunakan hanya bila folder
   Backup Lengkap tidak tersedia atau Anda diminta pendamping.
@@ -605,14 +605,14 @@ Ada dua pilihan di **Dashboard**:
 Langkah umum:
 
 1. Tutup pekerjaan lain; jangan menutup aplikasi saat restore berjalan.
-2. Buka **Dashboard** dan pilih **Restore Lengkap** (disarankan). Untuk file
-   `.db`, pilih **Restore Import .db** dan baca peringatan lanjutannya.
+2. Buka **Dashboard** dan pilih **Pulihkan Lengkap** (disarankan). Untuk file
+   `.db`, pilih **Pulihkan file .db** dan baca peringatan lanjutannya.
 3. Baca peringatan, lalu pilih folder backup lengkap atau file `.db`.
 4. Sistem memvalidasi isi backup sebelum menyentuh data aktif: file SQLite
    terbaca, `integrity_check` lolos, tidak ada baris foreign key yatim,
    **skema harus baseline v2**, 12 tabel wajib tersedia, dan audit akuntansi
-   tidak menemukan masalah. Restore Lengkap juga memeriksa `manifest.json`;
-   Restore Import .db tidak. Setelah lolos, sistem membuat cadangan data lama
+   tidak menemukan masalah. Pulihkan Lengkap juga memeriksa `manifest.json`;
+   Pulihkan file .db tidak. Setelah lolos, sistem membuat cadangan data lama
    (`pre-restore-<waktu>.db`) lalu mengganti data aktif.
 5. Setelah selesai, periksa **Dashboard**, **Neraca Saldo**, dan beberapa jurnal.
 
@@ -629,13 +629,13 @@ Jangan menimpa backup yang sah.
 1. Di laptop lama: buka **Dashboard → Backup Lengkap** dan simpan foldernya ke
    flashdisk/Drive.
 2. Di laptop baru: pasang aplikasi, buat PIN, lalu
-   **Dashboard → Restore Lengkap** dan pilih folder backup tadi.
+   **Dashboard → Pulihkan Lengkap** dan pilih folder backup tadi.
 3. Buka aplikasi dan periksa beberapa jurnal serta **Neraca Saldo**.
 
-Bila terpaksa memakai **Backup Export .db**, ingat bahwa restore hanya
+Bila terpaksa memakai **Backup file .db**, ingat bahwa restore hanya
 memulihkan database dari file tersebut: manifest tidak ada, tidak ada validasi
 manifest, dan aplikasi meminta konfirmasi tambahan. Jalur **Backup Lengkap →
-Restore Lengkap** tetap yang paling aman.
+Pulihkan Lengkap** tetap yang paling aman.
 
 **Cara portable:** tutup aplikasi, lalu salin **seluruh folder portable**
 (file `.exe`, `data`, `backups`) ke flashdisk/laptop baru. Jangan hanya
@@ -753,7 +753,7 @@ saldo awal asli.
 1. Buka **Dashboard**.
 2. Tekan **Backup Lengkap** (disarankan) dan pilih folder induk. Hasilnya satu
    folder berisi `pura.db` + `manifest.json`.
-3. **Backup Export .db** hanya untuk kebutuhan lanjutan: satu file database,
+3. **Backup file .db** hanya untuk kebutuhan lanjutan: satu file database,
    tanpa manifest.
 4. Simpan di **media/disk terenkripsi**, pisahkan dari laptop, dan hapus salinan
    lama yang tidak dipakai. Backup **tidak terenkripsi**; **PIN bukan enkripsi**
@@ -762,8 +762,8 @@ saldo awal asli.
 **Memulihkan**
 
 1. Tutup pekerjaan lain dan jangan menutup aplikasi saat restore berjalan.
-2. **Dashboard → Restore Lengkap** (disarankan) lalu pilih folder Backup Lengkap;
-   atau **Restore Import .db** untuk satu file `.db` (jalur lanjutan, baca
+2. **Dashboard → Pulihkan Lengkap** (disarankan) lalu pilih folder Backup Lengkap;
+   atau **Pulihkan file .db** untuk satu file `.db` (jalur lanjutan, baca
    peringatannya).
 3. Konfirmasi. Sistem memeriksa backup (SQLite terbaca, integritas, foreign key,
    skema v2, 12 tabel wajib) sebelum menyentuh data aktif.
@@ -783,8 +783,8 @@ mengubahnya.
    yang ditolak. Jangan mencoba menambal tabel/kolom dengan alat SQLite.
 2. Tutup aplikasi. Salin file database yang bermasalah ke tempat aman, misalnya
    `pura-rusak-<tanggal>.db`.
-3. **Pulihkan dari backup sehat** lewat **Dashboard → Restore Lengkap** atau
-   **Restore Import .db**. Ini jalur yang disarankan.
+3. **Pulihkan dari backup sehat** lewat **Dashboard → Pulihkan Lengkap** atau
+   **Pulihkan file .db**. Ini jalur yang disarankan.
 4. Bila tidak ada backup sehat atau restore juga ditolak, **hubungi pendamping**.
    Aplikasi tidak memigrasikan dan tidak membuat ulang tabel/kolom yang hilang.
 

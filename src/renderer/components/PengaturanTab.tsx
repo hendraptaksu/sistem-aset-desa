@@ -44,7 +44,7 @@ const OPSI_AKSI = [
   { value: 'SALDO-AWAL', label: 'Saldo awal' },
   { value: 'PANJAR', label: 'Panjar' },
   { value: 'BACKUP', label: 'Backup' },
-  { value: 'RESTORE', label: 'Restore' },
+  { value: 'RESTORE', label: 'Pulihkan (restore)' },
   { value: 'PENGATURAN', label: 'Pengaturan' },
 ] as const;
 
@@ -798,16 +798,16 @@ export function PengaturanTab({
               <ol className="mt-1 list-decimal space-y-1 pl-5">
                 <li>Di Dashboard, tekan <b>Backup Lengkap</b> lalu simpan foldernya ke flashdisk/Drive.</li>
                 <li>Simpan folder backup bertanggal, mis. <code>backup-2026-10-23</code>.</li>
-                <li>Untuk memulihkan, gunakan <b>Restore Lengkap</b> dan pilih folder tersebut.</li>
+                <li>Untuk memulihkan, gunakan <b>Pulihkan Lengkap</b> dan pilih folder tersebut.</li>
               </ol>
               <p className="mt-2">
                 <b>Backup Lengkap</b> berisi <code>pura.db</code> dan{' '}
                 <code>manifest.json</code>; manifest itulah yang diperiksa saat
-                Restore Lengkap.
+                Pulihkan Lengkap.
               </p>
               <p className="mt-2">
-                <b>Backup Export .db (lanjutan)</b> hanya berisi database, tanpa
-                manifest. <b>Restore Import .db</b> juga hanya memulihkan database
+                <b>Backup file .db (lanjutan)</b> hanya berisi database, tanpa
+                manifest. <b>Pulihkan file .db</b> juga hanya memulihkan database
                 dan tidak memvalidasi manifest, sehingga selalu meminta konfirmasi
                 tambahan. Pakai jalur ini hanya bila diminta pendamping.
               </p>
@@ -835,7 +835,7 @@ export function PengaturanTab({
       <Card>
         <h2 className="mb-1 text-lg font-bold">Riwayat Audit</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Semua perubahan penting tercatat: jurnal, koreksi, kunci periode, backup/restore,
+          Semua perubahan penting tercatat: jurnal, koreksi, kunci periode, backup/pulihkan,
           panjar, dan pengaturan. Data sebelum/sesudah bisa dibuka per baris.
         </p>
 

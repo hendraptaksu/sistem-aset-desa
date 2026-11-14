@@ -698,7 +698,7 @@ describe('P1-6 — validasi bentuk input IPC & UI', () => {
     expect(html).toContain('Kas / Bank');
     expect(html).toContain('Aset lain');
     expect(html).not.toContain('Piutang &amp; aset lain');
-    expect(html).toContain('Hutang');
+    expect(html).toContain('Utang');
     expect(html).toContain('Saldo (Rp)');
     expect(html).toContain('Pratinjau Jurnal');
     expect(html).toContain('Simpan Saldo Awal');

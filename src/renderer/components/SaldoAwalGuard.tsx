@@ -104,9 +104,9 @@ export function SaldoAwalGuard({
           saldo awal; tanpa saldo awal semua saldo dianggap nol sejak jurnal
           pertama sehingga laporan bisa tidak cocok dengan kenyataan. */}
       <p className="mt-2 text-[15px] text-stone-700">
-        Bila mulai tanpa saldo awal, saldo kas/bank, panjar, hutang, dan modal
+        Bila mulai tanpa saldo awal, saldo kas/bank, panjar, utang, dan modal
         dianggap nol sejak jurnal pertama — laporan bisa tidak cocok dengan uang
-        dan hutang yang sebenarnya sampai saldo awal dilengkapi lewat koreksi
+        dan utang yang sebenarnya sampai saldo awal dilengkapi lewat koreksi
         saldo awal.
       </p>
       {err && (

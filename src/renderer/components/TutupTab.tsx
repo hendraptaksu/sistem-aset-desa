@@ -59,7 +59,9 @@ export function TutupTab() {
       </p>
       <p>Laba snapshot: {formatRp(snapshot.laba)}</p>
       <p>
-        Total aset {formatRp(snapshot.total_aset)} · total pasiva{' '}
+        {/* UI-A17: total_pasiva = kewajiban + ekuitas, bukan kewajiban saja,
+            jadi labelnya dijelaskan; "Kewajiban" dipakai untuk liabilities. */}
+        Total aset {formatRp(snapshot.total_aset)} · kewajiban + ekuitas{' '}
         {formatRp(snapshot.total_pasiva)} · selisih {formatRp(snapshot.selisih)}
       </p>
     </div>
@@ -347,8 +349,8 @@ export function TutupTab() {
                   {formatRp(t.laba)}
                   {t.snapshotTerbaru && (
                     <p className="mt-1 text-helper text-stone-500">
-                      Aset {formatRp(t.snapshotTerbaru.total_aset)} · pasiva{' '}
-                      {formatRp(t.snapshotTerbaru.total_pasiva)} · selisih{' '}
+                      Aset {formatRp(t.snapshotTerbaru.total_aset)} · kewajiban +{' '}
+                      ekuitas {formatRp(t.snapshotTerbaru.total_pasiva)} · selisih{' '}
                       {formatRp(t.snapshotTerbaru.selisih)}
                     </p>
                   )}

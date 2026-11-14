@@ -338,7 +338,7 @@ function BatalPanjarSaldoAwalModal({
             saldo itu belum dikoreksi.
           </p>
           <p>
-            Hanya boleh untuk panjar saldo awal berstatus OPEN tanpa item
+            Hanya boleh untuk panjar saldo awal berstatus Terbuka tanpa item
             realisasi. Tulis alasan minimal {MIN_ALASAN_PERINGATAN} karakter —
             alasan ini tercatat di audit.
           </p>
@@ -422,7 +422,7 @@ function KoreksiPertanggungjawabanModal({
           </p>
           <p>
             Rincian nota lama dihapus dari dokumen ini, tetapi seluruh datanya
-            tetap tersimpan di audit. Panjar kembali <b>OPEN</b> agar rincian
+            tetap tersimpan di audit. Panjar kembali <b>Terbuka</b> agar rincian
             yang benar bisa diisi ulang. Jurnal close asli tidak diubah/dihapus.
           </p>
           <p>
@@ -1814,8 +1814,10 @@ export function PanjarTab() {
               }
             >
               <option value="">Semua status</option>
-              <option value="OPEN">Belum dipertanggungjawabkan</option>
-              <option value="CLOSED">Sudah dipertanggungjawabkan</option>
+              {/* UI-A17: istilah filter = istilah badge daftar (Terbuka/
+                  Selesai/Dibatalkan), bukan Belum/Sudah. */}
+              <option value="OPEN">Terbuka</option>
+              <option value="CLOSED">Selesai</option>
               <option value="DIBATALKAN">Dibatalkan</option>
             </Select>
             <ExportActions
@@ -1837,14 +1839,14 @@ export function PanjarTab() {
         )}
         <ErrorBox msg={errKoreksi} />
         <p className="mb-2 text-sm text-stone-600">
-          Panjar yang masih <b>OPEN</b> bisa dibatalkan lewat tombol{' '}
+          Panjar yang masih <b>Terbuka</b> bisa dibatalkan lewat tombol{' '}
           <b>Batalkan</b>. Pembatalan membuat jurnal balik (kas kembali, 1040
           nol), menyimpan alasan minimal 5 karakter, dan menampilkan status{' '}
-          <b>DIBATALKAN</b>; jurnal serah asli tidak dihapus. Panjar{' '}
-          <b>CLOSED</b> yang salah input bisa dikoreksi lewat tombol{' '}
+          <b>Dibatalkan</b>; jurnal serah asli tidak dihapus. Panjar{' '}
+          <b>Selesai</b> yang salah input bisa dikoreksi lewat tombol{' '}
           <b>Koreksi Pertanggungjawaban</b>: jurnal balik dibuat, rincian item
           lama dihapus dari dokumen tetapi tersimpan di audit, dan panjar
-          kembali <b>OPEN</b> untuk diisi ulang. Panjar berlabel{' '}
+          kembali <b>Terbuka</b> untuk diisi ulang. Panjar berlabel{' '}
           <b>Saldo awal</b> adalah representasi 1040 dari jurnal pembukaan:
           penutupannya memakai alur normal setelah ada realisasi, sedangkan
           pembatalannya menghapus dokumen tanpa jurnal balik.
@@ -1903,10 +1905,10 @@ export function PanjarTab() {
                           }
                         >
                           {p.status === 'OPEN'
-                            ? 'Belum'
+                            ? 'Terbuka'
                             : p.status === 'CLOSED'
-                              ? 'Sudah'
-                              : 'DIBATALKAN'}
+                              ? 'Selesai'
+                              : 'Dibatalkan'}
                         </Badge>
                         {p.sumber === 'SALDO_AWAL' && (
                           <div className="mt-1">

@@ -833,7 +833,7 @@ export function PeringatanModal({
 }
 
 /**
- * Konfirmasi aksi besar (tutup buku, restore, koreksi, hapus).
+ * Konfirmasi aksi besar (tutup buku, pulihkan, koreksi, hapus).
  *
  * Memakai Modal bersama sehingga berada di atas modal lain dan memakai bahasa
  * operator awam: judul singkat, akibat aksi, lalu tombol Batal / Ya, lanjutkan.

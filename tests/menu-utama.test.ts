@@ -302,7 +302,7 @@ describe('DB-37 — modul Lampiran dihapus dari UI/API/IPC', () => {
       expect(layar).not.toContain('attachments');
     }
     expect(DASHBOARD).toContain('Backup Lengkap');
-    expect(DASHBOARD).toContain('Restore Lengkap');
+    expect(DASHBOARD).toContain('Pulihkan Lengkap');
     expect(DASHBOARD).toContain('manifest.json');
   });
 

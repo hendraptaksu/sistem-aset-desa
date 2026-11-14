@@ -20,6 +20,23 @@ export const LABEL_POSISI_NORMAL: Record<PosisiNormal, string> = {
 };
 
 /**
+ * UI-A16/UI-A17: label Indonesia untuk jenis jurnal. Satu-satunya definisi;
+ * dipakai JurnalTab, TransaksiTab, DetailJurnalModal, dan DashboardTab agar
+ * badge jenis tidak berbeda antar layar.
+ */
+export const LABEL_JENIS: Record<string, string> = {
+  UMUM: 'Jurnal Umum',
+  TERIMA: 'Terima Uang',
+  BAYAR: 'Bayar / Beban',
+  TRANSFER: 'Pindah Dana',
+  PANJAR: 'Panjar',
+  PIUTANG: 'Piutang',
+  HUTANG: 'Utang',
+  SALDO_AWAL: 'Saldo Awal',
+  REVERSAL: 'Jurnal Balik',
+};
+
+/**
  * Sisi saldo berjalan/akhir. Positif = sesuai posisi normal akun; negatif =
  * sisi lawannya (mis. bank bersaldo negatif berarti kredit). Nol = tanpa sisi.
  */

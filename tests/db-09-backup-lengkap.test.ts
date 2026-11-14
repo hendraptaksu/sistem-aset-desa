@@ -209,7 +209,7 @@ describe('DB-09 — auto-backup harian sengaja satu file .db', () => {
   });
 });
 
-describe('DB-09 — UI dan dokumentasi menempatkan Restore Lengkap sebagai jalur utama', () => {  it('Dashboard: tombol Restore Lengkap tampil lebih dulu dan .db diberi peringatan', () => {
+describe('DB-09 — UI dan dokumentasi menempatkan Pulihkan Lengkap sebagai jalur utama', () => {  it('Dashboard: tombol Pulihkan Lengkap tampil lebih dulu dan .db diberi peringatan', () => {
     const dashboard = baca('src/renderer/components/DashboardTab.tsx');
     const awalPulihkan = dashboard.indexOf('id="judul-pulihkan"');
     expect(awalPulihkan).toBeGreaterThan(-1);
@@ -218,8 +218,8 @@ describe('DB-09 — UI dan dokumentasi menempatkan Restore Lengkap sebagai jalur
       dashboard.indexOf('</section>', awalPulihkan),
     );
 
-    const lengkap = bagianPulihkan.indexOf('Restore Lengkap (disarankan)');
-    const db = bagianPulihkan.indexOf('Restore Import .db (lanjutan)');
+    const lengkap = bagianPulihkan.indexOf('Pulihkan Lengkap (disarankan)');
+    const db = bagianPulihkan.indexOf('Pulihkan file .db (lanjutan)');
     expect(lengkap).toBeGreaterThan(-1);
     expect(db).toBeGreaterThan(-1);
     expect(lengkap).toBeLessThan(db);
@@ -234,14 +234,14 @@ describe('DB-09 — UI dan dokumentasi menempatkan Restore Lengkap sebagai jalur
   it('Pengaturan dan panduan menandai Backup Lengkap sebagai disarankan dan .db sebagai lanjutan', () => {
     const pengaturan = baca('src/renderer/components/PengaturanTab.tsx');
     expect(pengaturan).toMatch(/Backup Lengkap/);
-    expect(pengaturan).toMatch(/Restore Lengkap/);
-    expect(pengaturan).toMatch(/Backup Export \.db \(lanjutan\)/);
+    expect(pengaturan).toMatch(/Pulihkan Lengkap/);
+    expect(pengaturan).toMatch(/Backup file \.db \(lanjutan\)/);
     expect(pengaturan).toMatch(/tidak memvalidasi manifest/i);
 
     for (const path of ['docs/panduan-pengguna.md', 'docs/panduan-portable.md']) {
       // Normalisasi line break agar kalimat yang dibungkus tetap bisa dicek.
       const dokumen = baca(path).replace(/\s+/g, ' ');
-      expect(dokumen, path).toMatch(/Restore Lengkap \(disarankan\)/);
+      expect(dokumen, path).toMatch(/Pulihkan Lengkap \(disarankan\)/);
       expect(dokumen, path).toMatch(/hanya memulihkan database/i);
       expect(dokumen, path).toMatch(/tidak memvalidasi manifest/i);
       expect(dokumen, path).toMatch(/satu file database/i);

@@ -242,7 +242,7 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('SALDO-AWAL j-1')).toBe('Saldo awal');
     expect(formatAksiAudit('BACKUP-AUTO')).toBe('Backup otomatis');
     expect(formatAksiAudit('BACKUP-EXPORT')).toBe('Backup manual');
-    expect(formatAksiAudit('RESTORE')).toBe('Restore database');
+    expect(formatAksiAudit('RESTORE')).toBe('Pulihkan database');
     expect(formatAksiAudit('PENGATURAN-IDLE')).toBe('Ubah auto-kunci');
   });
 
@@ -295,12 +295,12 @@ describe('T12 formatAksiAudit', () => {
       'Ubah pengaturan pembukuan',
     );
     expect(formatAksiAudit('BACKUP-LENGKAP')).toBe('Backup lengkap');
-    expect(formatAksiAudit('RESTORE-LENGKAP')).toBe('Restore lengkap');
+    expect(formatAksiAudit('RESTORE-LENGKAP')).toBe('Pulihkan lengkap');
     expect(formatAksiAudit('RESTORE-PIN-DIPERTAHANKAN')).toBe(
-      'Restore database (PIN dipertahankan)',
+      'Pulihkan database (PIN dipertahankan)',
     );
     expect(formatAksiAudit('RESTORE-KODE-DARURAT-DIPERTAHANKAN')).toBe(
-      'Restore database (kode darurat dipertahankan)',
+      'Pulihkan database (kode darurat dipertahankan)',
     );
   });
 

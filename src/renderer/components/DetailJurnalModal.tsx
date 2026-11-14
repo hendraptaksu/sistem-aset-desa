@@ -3,19 +3,7 @@ import type { Coa } from '../../db/coa.js';
 import type { JurnalLengkap } from '../lib/api.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { Badge, Button, Modal } from './ui.js';
-
-/** Label Indonesia untuk jenis jurnal; dipakai bersama DashboardTab (UI-A16). */
-export const LABEL_JENIS: Record<string, string> = {
-  UMUM: 'Jurnal Umum',
-  TERIMA: 'Terima Uang',
-  BAYAR: 'Bayar / Beban',
-  TRANSFER: 'Pindah Dana',
-  PANJAR: 'Panjar',
-  PIUTANG: 'Piutang',
-  HUTANG: 'Hutang',
-  SALDO_AWAL: 'Saldo Awal',
-  REVERSAL: 'Jurnal Balik',
-};
+import { LABEL_JENIS } from '../lib/tampilanLaporan.js';
 
 function namaAkun(coa: Coa[], kode: string): string {
   const akun = coa.find((a) => a.kode === kode);
