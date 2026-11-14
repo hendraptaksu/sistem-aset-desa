@@ -200,6 +200,10 @@ function batasPeriodeMutasi(
 export function PinjamanTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [list, setList] = useState<Pinjaman[]>([]);
+  // UI-A14: status memuat + gagal muat daftar tampil di kartu Daftar Pinjaman
+  // sendiri, bukan di kartu form; empty state hanya setelah muat sukses.
+  const [memuatDaftar, setMemuatDaftar] = useState(true);
+  const [errDaftar, setErrDaftar] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -291,17 +295,29 @@ export function PinjamanTab() {
     targetPokok > 0 && Number.isSafeInteger(targetPokok) && totalPokokJadwal === targetPokok;
   const batasMutasi = batasPeriodeMutasi(mutasiTahun, mutasiBulan);
   const jumlahSelisihRekonsiliasi = rekonsiliasi.filter((r) => !r.cocok).length;
+  // UI-A14: baris daftar hanya dirender setelah muat sukses dan tidak gagal.
+  const daftarSiap = !memuatDaftar && !errDaftar;
 
   useEffect(() => {
     let aktif = true;
     void (async () => {
       try {
-        const [c, p] = await Promise.all([api.coa(), api.pinjamanList()]);
+        const [c, p] = await Promise.all([
+          api.coa(),
+          // UI-A14: gagal muat daftar ditandai di kartu daftar sendiri, bukan
+          // di kartu form.
+          api.pinjamanList().catch((e) => {
+            if (aktif) setErrDaftar(pesanError(e, PESAN_MUAT_GAGAL));
+            return null;
+          }),
+        ]);
         if (!aktif) return;
         setCoa(c);
-        setList(p);
+        if (p !== null) setList(p);
       } catch (e) {
         if (aktif) setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      } finally {
+        if (aktif) setMemuatDaftar(false);
       }
     })();
     return () => {
@@ -395,11 +411,17 @@ export function PinjamanTab() {
   }, [setDirty]);
 
   async function refresh(): Promise<void> {
+    // UI-A14: memuat ulang daftar setelah aksi menampilkan status memuat dan
+    // gagal muat di kartu daftar sendiri, bukan di kartu form.
+    setMemuatDaftar(true);
     try {
       setList(await api.pinjamanList());
+      setErrDaftar(null);
       setErr(null);
     } catch (e) {
-      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      setErrDaftar(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      setMemuatDaftar(false);
     }
   }
 
@@ -1255,7 +1277,10 @@ export function PinjamanTab() {
               dibayar menurut jurnal. Jadwal adalah rencana, bukan saldo.
             </p>
           </div>
-          <Badge tone="stone">{list.length} pinjaman</Badge>
+          {/* UI-A14: jumlah pinjaman hanya diklaim setelah daftar termuat. */}
+          <Badge tone="stone">
+            {memuatDaftar ? 'Memuat…' : errDaftar ? '—' : `${list.length} pinjaman`}
+          </Badge>
         </div>
 
         <div className="overflow-x-auto">
@@ -1273,7 +1298,23 @@ export function PinjamanTab() {
               </tr>
             </thead>
             <tbody>
-              {list.map((p) => {
+              {memuatDaftar && (
+                <tr>
+                  <td colSpan={8} className="py-4 text-center text-stone-500">
+                    Memuat daftar pinjaman…
+                  </td>
+                </tr>
+              )}
+              {!memuatDaftar && errDaftar && (
+                <tr>
+                  <td colSpan={8} className="py-2">
+                    {/* UI-A14: gagal muat daftar tampil di kartu ini sendiri,
+                        bukan di kartu form. */}
+                    <ErrorBox msg={errDaftar} />
+                  </td>
+                </tr>
+              )}
+              {daftarSiap && list.map((p) => {
                 const d = detail[p.id];
                 const jadwalTampil = d?.angsuran ?? p.angsuran ?? [];
                 const daftarBayar = pembayaran[p.id] ?? [];
@@ -1452,9 +1493,25 @@ export function PinjamanTab() {
                                   menyimpan jurnal balik dan tidak menghapus riwayat.
                                 </p>
                               </div>
-                              <Badge tone="stone">{daftarBayar.length} catatan</Badge>
+                              <Badge tone="stone">
+                                {/* UI-A14: jumlah catatan hanya setelah data
+                                    pembayaran benar-benar termuat. */}
+                                {detailBusy === p.id
+                                  ? 'Memuat…'
+                                  : pembayaran[p.id] !== undefined
+                                    ? `${daftarBayar.length} catatan`
+                                    : '—'}
+                              </Badge>
                             </div>
-                            {daftarBayar.length > 0 ? (
+                            {/* UI-A14: saat memuat tampilkan status memuat,
+                                bukan klaim "belum ada pembayaran"; saat gagal
+                                muat detail, jangan klaim kosong — errDetail
+                                sudah tampil di jangkar atas seksi detail. */}
+                            {detailBusy === p.id ? (
+                              <p className="mt-2 text-sm text-stone-500">
+                                Memuat riwayat pembayaran…
+                              </p>
+                            ) : daftarBayar.length > 0 ? (
                               <div className="mt-3 overflow-x-auto">
                                 <table className="w-full text-left text-sm">
                                   <thead>
@@ -1522,11 +1579,11 @@ export function PinjamanTab() {
                                   </tbody>
                                 </table>
                               </div>
-                            ) : (
+                            ) : pembayaran[p.id] !== undefined ? (
                               <p className="mt-2 text-sm text-stone-500">
                                 Belum ada pembayaran tercatat.
                               </p>
-                            )}
+                            ) : null}
                             <div className="mt-3 border-t pt-3">
                               {bolehBatalPencairan ? (
                                 <Button
@@ -1749,7 +1806,7 @@ export function PinjamanTab() {
                   </Fragment>
                 );
               })}
-              {list.length === 0 && (
+              {daftarSiap && list.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-4 text-center text-stone-500">
                     Belum ada pinjaman LPD.
@@ -1774,11 +1831,15 @@ export function PinjamanTab() {
             </p>
           </div>
           <Badge tone={jumlahSelisihRekonsiliasi > 0 ? 'amber' : 'green'}>
+            {/* UI-A14: selama daftar pinjaman masih dimuat, belum bisa
+                diklaim "Semua cocok". */}
             {rekonsiliasiBusy
               ? 'Memeriksa…'
-              : jumlahSelisihRekonsiliasi > 0
-                ? `${jumlahSelisihRekonsiliasi} selisih`
-                : 'Semua cocok'}
+              : memuatDaftar
+                ? 'Memuat…'
+                : jumlahSelisihRekonsiliasi > 0
+                  ? `${jumlahSelisihRekonsiliasi} selisih`
+                  : 'Semua cocok'}
           </Badge>
         </div>
 
@@ -1843,7 +1904,9 @@ export function PinjamanTab() {
           </div>
         )}
 
+        {/* UI-A14: jangan klaim kosong selama daftar pinjaman masih dimuat. */}
         {!rekonsiliasiBusy &&
+          !memuatDaftar &&
           rekonsiliasi.length === 0 &&
           !rekonsiliasiErr && (
             <p className="mt-2 text-sm text-stone-500">

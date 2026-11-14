@@ -490,6 +490,10 @@ function KoreksiPertanggungjawabanModal({
 export function PanjarTab() {
   const [coa, setCoa] = useState<Coa[]>([]);
   const [list, setList] = useState<Panjar[]>([]);
+  // UI-A14: status memuat + gagal muat daftar tampil di kartu Daftar Panjar
+  // sendiri, bukan di kartu form; empty state hanya setelah muat sukses.
+  const [memuatDaftar, setMemuatDaftar] = useState(true);
+  const [errDaftar, setErrDaftar] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [errClose, setErrClose] = useState<string | null>(null);
@@ -592,18 +596,29 @@ export function PanjarTab() {
   const labelAkun = (kode: string): string => namaAkun.get(kode) ?? kode;
 
   async function refresh() {
+    setMemuatDaftar(true);
     try {
       const [c, p, sa] = await Promise.all([
         api.coa(),
-        api.panjarList(),
+        // UI-A14: gagal muat daftar ditandai di kartu daftar sendiri, bukan
+        // di kartu form yang jauh di atas.
+        api.panjarList().catch((e) => {
+          setErrDaftar(pesanError(e, PESAN_MUAT_GAGAL));
+          return null;
+        }),
         // Belum ada pembukaan aktif bukan error: tombol saldo awal disembunyikan.
         api.saldoAwalSaatIni().catch(() => null),
       ]);
       setCoa(c);
-      setList(p);
       setPembukaan(sa);
+      if (p !== null) {
+        setErrDaftar(null);
+        setList(p);
+      }
     } catch (e) {
       setErr(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      setMemuatDaftar(false);
     }
   }
 
@@ -632,6 +647,8 @@ export function PanjarTab() {
   }, [kasList]);
 
   const shown = list.filter((p) => !fStatus || p.status === fStatus);
+  // UI-A14: baris daftar hanya dirender setelah muat sukses dan tidak gagal.
+  const daftarSiap = !memuatDaftar && !errDaftar;
   const openList = list.filter((p) => p.status === 'OPEN');
   const closeTarget = openList.find((p) => p.id === closeId);
 
@@ -1843,7 +1860,23 @@ export function PanjarTab() {
               </tr>
             </thead>
             <tbody>
-              {shown.map((p) => {
+              {memuatDaftar && (
+                <tr>
+                  <td colSpan={7} className="py-4 text-center text-stone-500">
+                    Memuat daftar panjar…
+                  </td>
+                </tr>
+              )}
+              {!memuatDaftar && errDaftar && (
+                <tr>
+                  <td colSpan={7} className="py-2">
+                    {/* UI-A14: gagal muat daftar tampil di kartu ini sendiri,
+                        bukan di kartu form. */}
+                    <ErrorBox msg={errDaftar} />
+                  </td>
+                </tr>
+              )}
+              {daftarSiap && shown.map((p) => {
                 const realisasi = p.total_realisasi ?? 0;
                 const realisasiPerAkun =
                   detailId === p.id ? totalPanjarPerAkun(detailItems[p.id] ?? []) : [];
@@ -2020,10 +2053,14 @@ export function PanjarTab() {
                   </Fragment>
                 );
               })}
-              {shown.length === 0 && (
+              {/* UI-A14: bedakan benar-benar kosong dengan filter yang tidak
+                  menemukan apa pun. */}
+              {daftarSiap && shown.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-4 text-center text-stone-500">
-                    Belum ada panjar.
+                    {fStatus
+                      ? 'Tidak ada panjar yang cocok dengan filter.'
+                      : 'Belum ada panjar.'}
                   </td>
                 </tr>
               )}

@@ -31,6 +31,10 @@ const TAHUN_TERAKHIR_BOLEH_DITUTUP = TAHUN_BERJALAN - 1;
 
 export function TutupTab() {
   const [list, setList] = useState<TutupBukuTampil[]>([]);
+  // UI-A14: status memuat + gagal muat riwayat tampil di kartu riwayat sendiri,
+  // bukan di kartu Kunci Periode; empty state hanya setelah muat sukses.
+  const [memuatRiwayat, setMemuatRiwayat] = useState(true);
+  const [errRiwayat, setErrRiwayat] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [tahun, setTahun] = useState(TAHUN_TERAKHIR_BOLEH_DITUTUP);
@@ -43,6 +47,8 @@ export function TutupTab() {
     (t) => t.kode !== 'SNAPSHOT_TUTUP_BERUBAH',
   );
   const snapshot = preview?.snapshotTerbaru ?? null;
+  // UI-A14: baris riwayat hanya dirender setelah muat sukses dan tidak gagal.
+  const riwayatSiap = !memuatRiwayat && !errRiwayat;
   const snapshotRingkas = snapshot ? (
     <div className="rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm">
       <p className="font-semibold">
@@ -60,10 +66,14 @@ export function TutupTab() {
   ) : null;
 
   async function refresh() {
+    setMemuatRiwayat(true);
     try {
       setList(await api.tutupList());
+      setErrRiwayat(null);
     } catch (e) {
-      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      setErrRiwayat(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      setMemuatRiwayat(false);
     }
   }
 
@@ -302,7 +312,23 @@ export function TutupTab() {
             </tr>
           </thead>
           <tbody>
-            {list.map((t) => (
+            {memuatRiwayat && (
+              <tr>
+                <td colSpan={3} className="py-4 text-center text-stone-500">
+                  Memuat riwayat kunci periode…
+                </td>
+              </tr>
+            )}
+            {!memuatRiwayat && errRiwayat && (
+              <tr>
+                <td colSpan={3} className="py-2">
+                  {/* UI-A14: gagal muat riwayat tampil di kartu ini sendiri,
+                      bukan di kartu Kunci Periode. */}
+                  <ErrorBox msg={errRiwayat} />
+                </td>
+              </tr>
+            )}
+            {riwayatSiap && list.map((t) => (
               <tr key={t.tahun} className="border-b last:border-0">
                 <td className="py-2 pr-3">
                   <Badge>{t.tahun}</Badge>
@@ -342,7 +368,7 @@ export function TutupTab() {
                 </td>
               </tr>
             ))}
-            {list.length === 0 && (
+            {riwayatSiap && list.length === 0 && (
               <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum pernah ada periode dikunci.</td></tr>
             )}
           </tbody>
