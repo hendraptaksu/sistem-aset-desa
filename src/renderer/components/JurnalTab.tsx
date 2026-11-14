@@ -1035,6 +1035,7 @@ function KoreksiModal({
                       <td className="py-2 pr-2">
                         <CurrencyInput
                           value={b.nominal}
+                          disabled={busy}
                           onChange={(n) => ubahBaris(i, { nominal: n })}
                         />
                       </td>

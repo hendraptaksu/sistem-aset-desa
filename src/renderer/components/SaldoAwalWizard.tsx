@@ -624,6 +624,7 @@ export function SaldoAwalWizard({
                 <div>
                   <CurrencyInput
                     value={r.nominal}
+                    disabled={busy}
                     onChange={(n) =>
                       setRows((prev) =>
                         prev.map((x) =>

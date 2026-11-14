@@ -1032,6 +1032,7 @@ export function FormTransaksiTerpandu({
           <div ref={nominalRef}>
             <CurrencyInput
               value={nominal}
+              disabled={busy}
               onChange={(nilai) => {
                 setNominal(nilai);
                 setDirty(true);

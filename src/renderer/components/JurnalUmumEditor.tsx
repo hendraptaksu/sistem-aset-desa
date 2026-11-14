@@ -584,12 +584,14 @@ export function JurnalUmumEditor({
                       <td className="py-2 pr-2">
                         <CurrencyInput
                           value={b.debit}
+                          disabled={busy}
                           onChange={(n) => ubahBaris(i, { debit: n })}
                         />
                       </td>
                       <td className="py-2 pr-2">
                         <CurrencyInput
                           value={b.kredit}
+                          disabled={busy}
                           onChange={(n) => ubahBaris(i, { kredit: n })}
                         />
                       </td>

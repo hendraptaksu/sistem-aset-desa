@@ -207,6 +207,9 @@ export function PinjamanTab() {
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // UI-A15: penahan klik-ganda untuk simpan() sama seperti form lain — state
+  // `busy` saja tidak cukup cepat untuk klik ganda sebelum render ulang.
+  const busyRef = useRef(false);
   const [mode, setMode] = useState<ModePinjamanApi>('PENCAIRAN');
   const [tanggal, setTanggal] = useState(tanggalLokal());
   const [kreditur, setKreditur] = useState('');
@@ -449,7 +452,7 @@ export function PinjamanTab() {
   }
 
   async function simpan(alasanPeringatan?: string): Promise<void> {
-    if (busy) return;
+    if (busyRef.current) return;
     const konfirmasi = alasanPeringatan !== undefined;
     setErr(null);
     setInfo(null);
@@ -496,6 +499,7 @@ export function PinjamanTab() {
       return;
     }
 
+    busyRef.current = true;
     setBusy(true);
     try {
       const r = await api.pinjamanSimpan(
@@ -549,6 +553,7 @@ export function PinjamanTab() {
         setErr(pesanError(e));
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -1027,6 +1032,7 @@ export function PinjamanTab() {
             <Field label="Pokok pinjaman (Rp)">
               <CurrencyInput
                 value={pokok}
+                disabled={busy}
                 onChange={(n) => {
                   setPokok(n);
                   setDirty(true);
@@ -1037,6 +1043,7 @@ export function PinjamanTab() {
             <Field label="Sisa pokok saat ini (Rp)">
               <CurrencyInput
                 value={sisaPokok}
+                disabled={busy}
                 onChange={(n) => {
                   setSisaPokok(n);
                   setDirty(true);
@@ -1171,12 +1178,14 @@ export function PinjamanTab() {
                 <Field label="Pokok (Rp)">
                   <CurrencyInput
                     value={row.pokok}
+                    disabled={busy}
                     onChange={(n) => ubahJadwal(i, { pokok: n })}
                   />
                 </Field>
                 <Field label="Bunga (Rp)">
                   <CurrencyInput
                     value={row.bunga}
+                    disabled={busy}
                     onChange={(n) => ubahJadwal(i, { bunga: n })}
                   />
                 </Field>
@@ -1669,18 +1678,21 @@ export function PinjamanTab() {
                                 <Field label="Pokok dibayar (Rp)">
                                   <CurrencyInput
                                     value={bayar.pokok}
+                                    disabled={bayarBusy}
                                     onChange={(n) => ubahBayar({ pokok: n })}
                                   />
                                 </Field>
                                 <Field label="Bunga dibayar (Rp)">
                                   <CurrencyInput
                                     value={bayar.bunga}
+                                    disabled={bayarBusy}
                                     onChange={(n) => ubahBayar({ bunga: n })}
                                   />
                                 </Field>
                                 <Field label="Denda (Rp, opsional)">
                                   <CurrencyInput
                                     value={bayar.denda}
+                                    disabled={bayarBusy}
                                     onChange={(n) => ubahBayar({ denda: n })}
                                   />
                                 </Field>

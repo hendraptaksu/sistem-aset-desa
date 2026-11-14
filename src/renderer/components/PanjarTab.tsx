@@ -1353,6 +1353,7 @@ export function PanjarTab() {
           <Field label="Jumlah panjar (Rp)">
             <CurrencyInput
               value={jumlah}
+              disabled={busyOpen}
               onChange={(n) => {
                 setJumlah(n);
                 setSerahDirty(true);
@@ -1501,6 +1502,7 @@ export function PanjarTab() {
               <Field label="Jumlah panjar beredar (Rp)">
                 <CurrencyInput
                   value={saJumlah}
+                  disabled={busySaldoAwal}
                   onChange={(n) => setSaJumlah(n)}
                 />
               </Field>
@@ -1683,6 +1685,7 @@ export function PanjarTab() {
                   <Field label="Nominal (Rp)">
                     <CurrencyInput
                       value={it.nominal}
+                      disabled={busyClose}
                       onChange={(n) => ubahItem(i, { nominal: n })}
                     />
                   </Field>
