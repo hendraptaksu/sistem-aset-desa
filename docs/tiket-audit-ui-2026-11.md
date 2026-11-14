@@ -9,7 +9,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 
 | ID | Prioritas | Ringkasan | Usaha | Status |
 |----|-----------|-----------|-------|--------|
-| UI-A01 | P1 | Panjar: rincian nota bisa terhapus diam-diam saat pilih target | S | ⬜ |
+| UI-A01 | P1 | Panjar: rincian nota bisa terhapus diam-diam saat pilih target | S | ✅ |
 | UI-A02 | P1 | Jurnal: KoreksiModal membuang isian saat Escape/klik latar | S | ⬜ |
 | UI-A03 | P1 | Drill-down Neraca/Neraca Saldo → Buku Besar kehilangan konteks periode | M | ⬜ |
 | UI-A04 | P1 | Pengaturan: race + spam request filter Riwayat Audit | S | ⬜ |

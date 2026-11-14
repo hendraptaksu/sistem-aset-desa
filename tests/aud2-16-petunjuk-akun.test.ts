@@ -153,10 +153,18 @@ describe('AUD2-16 — petunjuk di TransaksiForm', () => {
 
 describe('AUD2-16 — petunjuk di PanjarTab', () => {
   it('tampil di bawah dropdown akun beban pertanggungjawaban (default 5004)', () => {
+    // UI-A01: grid nota beserta petunjuknya hanya tampil setelah panjar
+    // dipilih, jadi render awal tanpa target tidak memuat petunjuk.
     const html = renderToStaticMarkup(createElement(PanjarTab));
-    expect(html).toContain('Akun beban');
-    expect(html).toContain('data-petunjuk-akun="5004"');
-    expect(html).toContain('5062 PENGELUARAN BANTEN RUTIN (HARIAN)');
+    expect(html).not.toContain('data-petunjuk-akun');
+
+    // Petunjuk default baris nota tetap 5004; dicek langsung di komponen
+    // karena render statis tidak bisa memilih panjar target.
+    const petunjuk = renderToStaticMarkup(
+      createElement(PetunjukAkunKembar, { kode: '5004' }),
+    );
+    expect(petunjuk).toContain('data-petunjuk-akun="5004"');
+    expect(petunjuk).toContain('5062 PENGELUARAN BANTEN RUTIN (HARIAN)');
   });
 
   it('mengikat petunjuk ke kategori baris agar ikut berubah', () => {

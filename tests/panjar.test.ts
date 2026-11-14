@@ -10,7 +10,7 @@
 //   ditolak, Neraca Saldo selalu nol, audit PANJAR-OPEN/CLOSE tercatat.
 
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createElement } from 'react';
@@ -610,8 +610,21 @@ describe('DB-18 — detail nota per baris panjar', () => {
     }
   });
 
-  it('form close menampilkan input nomor/tanggal nota, toko, dan keterangan', () => {
+  it('UI-A01: rincian nota close hanya tampil setelah panjar dipilih', () => {
+    // Tanpa panjar target, grid nota disembunyikan agar isian operator tidak
+    // bisa hilang diam-diam saat memilih/ganti panjar.
     const html = renderToStaticMarkup(createElement(PanjarTab));
+    expect(html).not.toContain('Nomor nota');
+    expect(html).not.toContain('Akun beban');
+    expect(html).not.toContain('+ Tambah baris nota');
+    expect(html).not.toContain('Belum ada rincian belanja');
+
+    // Isian nota tetap bagian dari form close; dicek lewat sumber karena
+    // render statis tidak bisa memilih panjar target.
+    const sumber = readFileSync(
+      join(process.cwd(), 'src/renderer/components/PanjarTab.tsx'),
+      'utf8',
+    );
     for (const label of [
       'Nomor nota',
       'Tanggal nota',
@@ -620,8 +633,9 @@ describe('DB-18 — detail nota per baris panjar', () => {
       'Nominal (Rp)',
       'Keterangan baris (opsional)',
       '+ Tambah baris nota',
+      'Belum ada rincian belanja. Isi nota untuk melihat sisa/kurang.',
     ]) {
-      expect(html, label).toContain(label);
+      expect(sumber, label).toContain(label);
     }
   });
 });

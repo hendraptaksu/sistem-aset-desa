@@ -42,6 +42,7 @@ import {
   CurrencyInput,
   ErrorBox,
   Field,
+  KonfirmasiModal,
   LockModal,
   Modal,
   PeringatanModal,
@@ -548,6 +549,11 @@ export function PanjarTab() {
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const alasanCloseRef = useRef('');
+  // UI-A01: target baru yang menunggu konfirmasi sebelum rincian nota lama
+  // dikosongkan. `target: null` berarti operator memilih "— pilih panjar —".
+  const [gantiTargetPending, setGantiTargetPending] = useState<{
+    target: Panjar | null;
+  } | null>(null);
 
   // Rincian item di daftar
   const [detailId, setDetailId] = useState('');
@@ -941,15 +947,20 @@ export function PanjarTab() {
     setBusyBatal(true);
     try {
       const r = await api.panjarBatal(batalTarget.id, alasanBersih);
+      // UI-A01: bila panjar yang dibatalkan sedang jadi target form
+      // pertanggungjawaban, kosongkan form itu agar isian lama tidak menggantung.
+      const pjDikosongkan = closeId === batalTarget.id;
       setBatalTarget(null);
       setErrBatal(null);
       setDetailId('');
       setDetailItems({});
+      if (pjDikosongkan) kosongkanFormClose();
       await refresh();
       setInfoBatal(
         `Panjar untuk ${r.panjar.penerima} dibatalkan. Jurnal balik dibuat; ` +
           `Uang Panjar (1040) dan kas sumber kembali seperti sebelum panjar. ` +
-          `Jurnal asli tetap tersimpan.`,
+          `Jurnal asli tetap tersimpan.` +
+          (pjDikosongkan ? ' Form pertanggungjawaban terkait dikosongkan.' : ''),
       );
     } catch (e) {
       if (isPerluAlasan(e)) {
@@ -1030,15 +1041,20 @@ export function PanjarTab() {
     try {
       await api.panjarBatalSaldoAwal(batalSaldoAwalTarget.id, alasanBersih);
       const target = batalSaldoAwalTarget;
+      // UI-A01: bila dokumen yang dihapus sedang jadi target form
+      // pertanggungjawaban, kosongkan form itu juga.
+      const pjDikosongkan = closeId === target.id;
       setBatalSaldoAwalTarget(null);
       setErrBatal(null);
       setDetailId('');
       setDetailItems({});
+      if (pjDikosongkan) kosongkanFormClose();
       await refresh();
       setInfoBatal(
         `Dokumen panjar saldo awal untuk ${target.penerima} dihapus. ` +
           'Tidak ada jurnal balik; jurnal pembukaan tidak diubah. Bila saldo ' +
-          '1040 pembukaan memang salah, koreksi lewat Wizard Koreksi Saldo Awal.',
+          '1040 pembukaan memang salah, koreksi lewat Wizard Koreksi Saldo Awal.' +
+          (pjDikosongkan ? ' Form pertanggungjawaban terkait dikosongkan.' : ''),
       );
     } catch (e) {
       if (isPerluAlasan(e)) {
@@ -1129,7 +1145,8 @@ export function PanjarTab() {
     }
   }
 
-  function pilihUntukClose(p: Panjar) {
+  /** UI-A01: isi ulang form pertanggungjawaban untuk panjar target baru. */
+  function terapkanTargetClose(p: Panjar): void {
     setCloseId(p.id);
     setTanggalClose(tanggalLokal() < p.tanggal ? p.tanggal : tanggalLokal());
     setItems([barisItemBaru()]);
@@ -1147,6 +1164,27 @@ export function PanjarTab() {
         block: 'start',
       });
     }
+  }
+
+  /** UI-A01: kembalikan form pertanggungjawaban ke keadaan kosong awal. */
+  function kosongkanFormClose(): void {
+    setCloseId('');
+    setItems([barisItemBaru()]);
+    setPesanKonfirmasi(null);
+    setErrorKonfirmasi(null);
+    setErrClose(null);
+    setInfoClose(null);
+    setCloseDirty(false);
+  }
+
+  function pilihUntukClose(p: Panjar) {
+    // UI-A01: ganti target saat form masih kotor wajib konfirmasi dulu agar
+    // rincian nota yang sudah diketik operator tidak hilang diam-diam.
+    if (closeDirty && p.id !== closeId) {
+      setGantiTargetPending({ target: p });
+      return;
+    }
+    terapkanTargetClose(p);
   }
 
   function ubahItem(i: number, patch: Partial<ItemRow>): void {
@@ -1493,7 +1531,11 @@ export function PanjarTab() {
               onChange={(e) => {
                 const p = openList.find((x) => x.id === e.target.value);
                 if (p) pilihUntukClose(p);
-                else {
+                else if (closeDirty) {
+                  // UI-A01: mengosongkan target juga menyembunyikan grid nota,
+                  // jadi form yang masih berisi wajib dikonfirmasi dulu.
+                  setGantiTargetPending({ target: null });
+                } else {
                   setCloseId('');
                   setCloseDirty(false);
                 }
@@ -1536,110 +1578,125 @@ export function PanjarTab() {
           />
         )}
 
-        <div className="mt-3 space-y-3">
-          {items.map((it, i) => (
-            <div
-              key={i}
-              className="rounded-xl border border-stone-200 bg-stone-50 p-3"
-            >
-              <div className="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_150px_1fr_auto]">
-                <Field label="Nomor nota">
-                  <TextInput
-                    value={it.nota_nomor}
-                    disabled={busyClose}
-                    placeholder="cth: 001/NOTA/2026"
-                    onChange={(e) => ubahItem(i, { nota_nomor: e.target.value })}
-                  />
-                </Field>
-                <Field label="Tanggal nota">
-                  <TextInput
-                    type="date"
-                    value={it.nota_tanggal}
-                    max={tanggalClose || undefined}
-                    disabled={busyClose}
-                    onChange={(e) => ubahItem(i, { nota_tanggal: e.target.value })}
-                  />
-                </Field>
-                <Field label="Toko / penerima nota">
-                  <TextInput
-                    value={it.toko}
-                    disabled={busyClose}
-                    placeholder="cth: Toko Bangunan Jaya"
-                    onChange={(e) => ubahItem(i, { toko: e.target.value })}
-                  />
-                </Field>
-                <Button
-                  variant="ghost"
-                  disabled={busyClose || items.length === 1}
-                  onClick={() => {
-                    setItems((xs) => xs.filter((_, j) => j !== i));
-                    setCloseDirty(true);
-                  }}
-                >
-                  Hapus
-                </Button>
-              </div>
-              <div className="mt-2 grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_180px_1fr]">
-                <Field label="Akun beban">
-                  <Select
-                    value={it.kategori_baga}
-                    disabled={busyClose}
-                    onChange={(e) => ubahItem(i, { kategori_baga: e.target.value })}
+        {/* UI-A01: grid nota hanya tampil saat ada panjar target. Sebelum
+            target dipilih tidak ada isian yang bisa hilang diam-diam. */}
+        {closeTarget && (
+          <div className="mt-3 space-y-3">
+            {items.map((it, i) => (
+              <div
+                key={i}
+                className="rounded-xl border border-stone-200 bg-stone-50 p-3"
+              >
+                <div className="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_150px_1fr_auto]">
+                  <Field label="Nomor nota">
+                    <TextInput
+                      value={it.nota_nomor}
+                      disabled={busyClose}
+                      placeholder="cth: 001/NOTA/2026"
+                      onChange={(e) => ubahItem(i, { nota_nomor: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Tanggal nota">
+                    <TextInput
+                      type="date"
+                      value={it.nota_tanggal}
+                      max={tanggalClose || undefined}
+                      disabled={busyClose}
+                      onChange={(e) => ubahItem(i, { nota_tanggal: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Toko / penerima nota">
+                    <TextInput
+                      value={it.toko}
+                      disabled={busyClose}
+                      placeholder="cth: Toko Bangunan Jaya"
+                      onChange={(e) => ubahItem(i, { toko: e.target.value })}
+                    />
+                  </Field>
+                  <Button
+                    variant="ghost"
+                    disabled={busyClose || items.length === 1}
+                    onClick={() => {
+                      setItems((xs) => xs.filter((_, j) => j !== i));
+                      setCloseDirty(true);
+                    }}
                   >
-                    {bagaList.map((b) => (
-                      <option key={b.kode} value={b.kode}>
-                        {b.kode} — {b.nama}
-                      </option>
-                    ))}
-                  </Select>
-                  <PetunjukAkunKembar kode={it.kategori_baga} />
-                </Field>
-                <Field label="Nominal (Rp)">
-                  <CurrencyInput
-                    value={it.nominal}
-                    onChange={(n) => ubahItem(i, { nominal: n })}
-                  />
-                </Field>
-                <Field label="Keterangan baris (opsional)">
-                  <TextInput
-                    value={it.keterangan}
-                    disabled={busyClose}
-                    placeholder="cth: beli bahan bangunan"
-                    onChange={(e) => ubahItem(i, { keterangan: e.target.value })}
-                  />
-                </Field>
+                    Hapus
+                  </Button>
+                </div>
+                <div className="mt-2 grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_180px_1fr]">
+                  <Field label="Akun beban">
+                    <Select
+                      value={it.kategori_baga}
+                      disabled={busyClose}
+                      onChange={(e) => ubahItem(i, { kategori_baga: e.target.value })}
+                    >
+                      {bagaList.map((b) => (
+                        <option key={b.kode} value={b.kode}>
+                          {b.kode} — {b.nama}
+                        </option>
+                      ))}
+                    </Select>
+                    <PetunjukAkunKembar kode={it.kategori_baga} />
+                  </Field>
+                  <Field label="Nominal (Rp)">
+                    <CurrencyInput
+                      value={it.nominal}
+                      onChange={(n) => ubahItem(i, { nominal: n })}
+                    />
+                  </Field>
+                  <Field label="Keterangan baris (opsional)">
+                    <TextInput
+                      value={it.keterangan}
+                      disabled={busyClose}
+                      placeholder="cth: beli bahan bangunan"
+                      onChange={(e) => ubahItem(i, { keterangan: e.target.value })}
+                    />
+                  </Field>
+                </div>
               </div>
-            </div>
-          ))}
-          <Button
-            variant="ghost"
-            disabled={busyClose}
-            onClick={() => {
-              setItems((xs) => [...xs, barisItemBaru(tanggalClose)]);
-              setCloseDirty(true);
-            }}
-          >
-            + Tambah baris nota
-          </Button>
-        </div>
+            ))}
+            <Button
+              variant="ghost"
+              disabled={busyClose}
+              onClick={() => {
+                setItems((xs) => [...xs, barisItemBaru(tanggalClose)]);
+                setCloseDirty(true);
+              }}
+            >
+              + Tambah baris nota
+            </Button>
+          </div>
+        )}
 
         {closeTarget && (
           <div className="mt-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[15px]">
-            <p>
-              Total belanja: <b>{formatRp(totalRealisasi)}</b> dari panjar{' '}
-              <b>{formatRp(closeTarget.jumlah)}</b>.
-            </p>
-            {selisih > 0 && (
-              <p className="mt-1 font-semibold text-green-700">
-                Sisa {formatRp(sisa)} — kembali ke kas sumber dan mengurangi Uang Panjar.
+            {/* UI-A01: sisa/kurang hanya masuk akal setelah ada rincian nota. */}
+            {totalRealisasi > 0 ? (
+              <>
+                <p>
+                  Total belanja: <b>{formatRp(totalRealisasi)}</b> dari panjar{' '}
+                  <b>{formatRp(closeTarget.jumlah)}</b>.
+                </p>
+                {selisih > 0 && (
+                  <p className="mt-1 font-semibold text-green-700">
+                    Sisa {formatRp(sisa)} — kembali ke kas sumber dan mengurangi Uang Panjar.
+                  </p>
+                )}
+                {selisih < 0 && (
+                  <p className="mt-1 font-semibold text-red-700">
+                    Kurang {formatRp(kurang)} — dibayar dari kas sumber.
+                  </p>
+                )}
+                {selisih === 0 && (
+                  <p className="mt-1 font-semibold">Pas — tidak ada sisa/kurang.</p>
+                )}
+              </>
+            ) : (
+              <p className="text-stone-500">
+                Belum ada rincian belanja. Isi nota untuk melihat sisa/kurang.
               </p>
             )}
-            {selisih < 0 && (
-              <p className="mt-1 font-semibold text-red-700">
-                Kurang {formatRp(kurang)} — dibayar dari kas sumber.
-              </p>
-            )}
-            {selisih === 0 && <p className="mt-1 font-semibold">Pas — tidak ada sisa/kurang.</p>}
           </div>
         )}
 
@@ -1998,6 +2055,22 @@ export function PanjarTab() {
           onSubmit={(alasan, konfirmasi) =>
             void submitKoreksi(alasan, konfirmasi)
           }
+        />
+      )}
+
+      {gantiTargetPending && (
+        <KonfirmasiModal
+          judul="Ganti panjar?"
+          deskripsi="Rincian yang sudah diisi akan kosong."
+          labelYa="Ya, ganti panjar"
+          sibuk={busyClose}
+          onBatal={() => setGantiTargetPending(null)}
+          onKonfirmasi={() => {
+            const target = gantiTargetPending.target;
+            setGantiTargetPending(null);
+            if (target) terapkanTargetClose(target);
+            else kosongkanFormClose();
+          }}
         />
       )}
 
