@@ -131,9 +131,10 @@ export function KonfirmasiBackup({
             <b>Yang tetap:</b> data aktif, jurnal, dan pengaturan tidak
             disentuh; backup lama tidak dihapus.
           </p>
+          {/* UI-A18: peringatan tak-terenkripsi cukup sekali di kartu
+              (kotak PeringatanBackupTidakTerenkripsi), tidak diulang di sini. */}
           <p className="text-sm text-stone-600">
-            File backup tidak terenkripsi — simpan di media yang aman. Bila
-            dialog dibatalkan, tidak ada file yang dibuat. Gunakan{' '}
+            Bila dialog dibatalkan, tidak ada file yang dibuat. Gunakan{' '}
             <b>Backup Lengkap</b> untuk arsip/pindah laptop; jalur .db hanya
             untuk kebutuhan lanjutan.
           </p>
@@ -301,9 +302,9 @@ export function DashboardTab({
       try {
         const r = await api.backupExport();
         if (r.saved) {
-          setInfo(
-            `Backup tersimpan: ${r.path}. Data aktif tidak berubah; simpan cadangan ini di media yang aman.`,
-          );
+          // UI-A18: peringatan "media yang aman" cukup sekali di kartu ini
+          // (kotak PeringatanBackupTidakTerenkripsi), jadi tidak diulang di sini.
+          setInfo(`Backup tersimpan: ${r.path}. Data aktif tidak berubah.`);
         } else {
           // UI-A11: dialog file dibatalkan — jangan diam saja, operator perlu
           // tahu tidak ada file yang dibuat.
@@ -325,9 +326,8 @@ export function DashboardTab({
       try {
         const r = await api.backupLengkap();
         if (r.saved) {
-          setInfo(
-            `Backup lengkap tersimpan: ${r.path}. Data aktif tidak berubah; simpan folder ini di media yang aman.`,
-          );
+          // UI-A18: peringatan "media yang aman" cukup sekali di kartu ini.
+          setInfo(`Backup lengkap tersimpan: ${r.path}. Data aktif tidak berubah.`);
         } else {
           // UI-A11: dialog folder dibatalkan — tidak ada backup baru.
           setInfo('Backup lengkap dibatalkan. Tidak ada file yang dibuat.');

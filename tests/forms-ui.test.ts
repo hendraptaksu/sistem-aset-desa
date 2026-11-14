@@ -1057,7 +1057,7 @@ describe('T3.8 — poles UX aksi berisiko', () => {
     expect(alasanTombolNonaktif({})).toBeUndefined();
   });
 
-  it('konfirmasi backup menjelaskan yang berubah, yang tetap, dan enkripsi', () => {
+  it('konfirmasi backup menjelaskan yang berubah dan yang tetap tanpa mengulang peringatan enkripsi', () => {
     const lengkap = renderToStaticMarkup(
       createElement(KonfirmasiBackup, {
         jenis: 'lengkap',
@@ -1070,7 +1070,9 @@ describe('T3.8 — poles UX aksi berisiko', () => {
     expect(lengkap).toContain('Yang tetap:');
     expect(lengkap).toContain('data aktif');
     expect(lengkap).toContain('tidak dihapus');
-    expect(lengkap).toContain('tidak terenkripsi');
+    // UI-A18: peringatan tak-terenkripsi cukup sekali di kartu
+    // (PeringatanBackupTidakTerenkripsi), modal tidak mengulangnya.
+    expect(lengkap).not.toContain('tidak terenkripsi');
     expect(lengkap).toContain('manifest.json');
 
     const db = renderToStaticMarkup(

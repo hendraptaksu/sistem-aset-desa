@@ -52,12 +52,12 @@ export function TutupTab() {
   const snapshotRingkas = snapshot ? (
     <div className="rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm">
       <p className="font-semibold">
-        Snapshot Kunci Periode versi {snapshot.versi}
+        Ringkasan terkunci versi {snapshot.versi}
         {preview?.versiSnapshotBerikutnya !== undefined
           ? ` (versi berikutnya: ${preview.versiSnapshotBerikutnya})`
           : ''}
       </p>
-      <p>Laba snapshot: {formatRp(snapshot.laba)}</p>
+      <p>Laba: {formatRp(snapshot.laba)}</p>
       <p>
         {/* UI-A17: total_pasiva = kewajiban + ekuitas, bukan kewajiban saja,
             jadi labelnya dijelaskan; "Kewajiban" dipakai untuk liabilities. */}
@@ -180,12 +180,12 @@ export function TutupTab() {
             data-testid="peringatan-snapshot-tutup"
           >
             <p className="font-semibold">
-              Angka live sudah berbeda dari snapshot Kunci Periode versi {snapshot.versi}.
+              Angka live sudah berbeda dari Ringkasan terkunci versi {snapshot.versi}.
             </p>
             <p className="text-sm">
-              Snapshot tidak diubah. Periksa apakah perbedaan berasal dari koreksi
-              setelah tutup atau data rusak. TUTUP-ULANG yang dikonfirmasi tetap boleh
-              mencatat snapshot versi baru.
+              Ringkasan terkunci tidak diubah. Periksa apakah perbedaan berasal dari
+              koreksi setelah tutup atau data rusak. TUTUP-ULANG yang dikonfirmasi
+              tetap boleh mencatat versi baru.
             </p>
             {preview.perbedaanSnapshot.length > 0 && (
               <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
@@ -197,14 +197,33 @@ export function TutupTab() {
           </div>
         )}
         {info && <InfoBox className="mb-2">{info}</InfoBox>}
+        {/* UI-A18: paragraf 4 konsep diringkas jadi 2 kalimat + indikator
+            langkah visual; istilah "snapshot" dijelaskan sekali di sini. */}
         <p className="mb-3 text-sm text-stone-600">
-          Langkah {step}/3: {step === 1 ? 'Preview laba' : step === 2 ? 'Auto-backup .db' : 'Konfirmasi'}.
-          Saat periode dikunci, snapshot laba + Neraca + hash jurnal disahkan dan disimpan permanen.
-          Angka laporan tetap dihitung dari jurnal, jadi angka live bisa berbeda bila ada koreksi
-          setelah tutup; perbedaannya akan diperingatkan di riwayat.
-          Ini bukan jurnal penutup: tidak ada jurnal yang dibuat atau dipindahkan ke ekuitas.
-          Tahun yang sudah selesai bisa dikoreksi dengan alasan, dan tercatat otomatis.
+          Saat periode dikunci, laba, Neraca, dan hash jurnal disahkan permanen
+          sebagai <b>Ringkasan terkunci (snapshot)</b>; angka live tetap dihitung
+          dari jurnal, jadi koreksi setelah tutup bisa membuat angka berbeda —
+          perbedaannya diperingatkan di riwayat. Ini bukan jurnal penutup: tidak
+          ada jurnal yang dibuat atau dipindahkan ke ekuitas; koreksi tahun yang
+          sudah ditutup tetap boleh dengan alasan dan tercatat di audit.
         </p>
+        <ol className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label="Langkah kunci periode">
+          {(
+            [
+              [1, 'Preview laba'],
+              [2, 'Backup otomatis (tersimpan di folder Backup — lihat Pengaturan)'],
+              [3, 'Konfirmasi (backup tersimpan di folder Backup — lihat Pengaturan)'],
+            ] as [Step, string][]
+          ).map(([n, label]) => (
+            <li
+              key={n}
+              aria-current={step === n ? 'step' : undefined}
+              className={step === n ? 'font-semibold text-stone-800' : 'text-stone-500'}
+            >
+              {n}. {label}
+            </li>
+          ))}
+        </ol>
         <p className="mb-3 text-sm text-stone-600">
           Tahun yang boleh dikunci: <b>≤ {TAHUN_TERAKHIR_BOLEH_DITUTUP}</b>. Tahun berjalan
           ({TAHUN_BERJALAN}) dan tahun berikutnya belum boleh dikunci.
@@ -301,9 +320,9 @@ export function TutupTab() {
       <Card>
         <h3 className="mb-2 font-bold">Riwayat kunci periode</h3>
         <p className="mb-2 text-sm text-stone-600">
-          Laba dan Neraca di bawah adalah snapshot yang disahkan saat tahun ditutup.
-          Snapshot tidak berubah walau ada koreksi sesudahnya, sehingga angka live
-          bisa berbeda dari angka yang disahkan.
+          Laba dan Neraca di bawah adalah Ringkasan terkunci yang disahkan saat
+          tahun ditutup. Angka itu tidak berubah walau ada koreksi sesudahnya,
+          sehingga angka live bisa berbeda dari angka yang disahkan.
         </p>
         <table className="w-full text-left text-[15px]">
           <thead>
@@ -336,7 +355,7 @@ export function TutupTab() {
                   <Badge>{t.tahun}</Badge>
                   {t.snapshotTerbaru && (
                     <p className="mt-1 text-helper text-stone-500">
-                      snapshot v{t.snapshotTerbaru.versi}
+                      Ringkasan terkunci v{t.snapshotTerbaru.versi}
                     </p>
                   )}
                   {t.catatanTahunPertama && (

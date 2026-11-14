@@ -561,7 +561,18 @@ async function cekKonfirmasiAksiBerisiko(page, t) {
   const teks = await dialog.innerText();
   assert.match(teks, /Yang berubah:/, 'Konfirmasi backup tidak menyebut yang berubah');
   assert.match(teks, /Yang tetap:/, 'Konfirmasi backup tidak menyebut yang tetap');
-  assert.match(teks, /tidak terenkripsi/i, 'Konfirmasi backup tidak menyebut enkripsi');
+  // UI-A18: peringatan tak-terenkripsi cukup sekali di kartu (kotak permanen),
+  // jadi modal konfirmasi tidak mengulangnya.
+  assert.equal(
+    await page.locator('[data-testid="peringatan-backup-tidak-terenkripsi"]').count(),
+    1,
+    'Peringatan backup tak-terenkripsi harus tampil tepat satu di kartu',
+  );
+  assert.doesNotMatch(
+    teks,
+    /tidak terenkripsi/i,
+    'Konfirmasi backup tidak perlu mengulang peringatan enkripsi',
+  );
 
   const fokus = await page.evaluate(() =>
     (document.activeElement?.textContent ?? '').trim(),

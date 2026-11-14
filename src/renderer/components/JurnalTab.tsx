@@ -823,14 +823,30 @@ function KoreksiModal({
       sibuk={busy}
       lebar="3xl"
     >
-      <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-        Jurnal balik mengikuti tanggal asli. Tanggal balik/pengganti tidak boleh
-        sebelum tanggal jurnal asli. Jika periode terkunci, isi alasan minimal{' '}
-        {ALASAN_REVERSAL_MIN} karakter. Bila tanggal jatuh di tahun yang sudah
-        ditutup, snapshot tutup buku tidak ikut berubah — laporan tahun itu akan
-        berbeda dari snapshot, dan koreksi yang perlu memindahkan tanggal lebih
-        awal hanya bisa lewat Wizard Koreksi Saldo Awal.
-      </p>
+      {/* UI-A18: wall-of-text diringkas jadi bullet pendek di titik keputusan;
+          kalimat teknis (koreksi tanggal lebih awal) pindah ke blok bantuan. */}
+      <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+        <p>
+          Default tanggal balik = tanggal jurnal asli. Boleh diubah, tidak boleh
+          sebelum tanggal asli.
+        </p>
+        <ul className="mt-1 list-disc space-y-1 pl-5">
+          <li>Periode terkunci? Alasan wajib minimal {ALASAN_REVERSAL_MIN} karakter.</li>
+          <li>
+            Tahun sudah ditutup? Ringkasan terkunci (snapshot) tidak ikut berubah,
+            laporan bisa berbeda dari yang disahkan.
+          </li>
+        </ul>
+        <details className="mt-2 text-stone-600">
+          <summary className="cursor-pointer font-semibold">
+            Koreksi tanggal lebih awal?
+          </summary>
+          <p className="mt-1">
+            Koreksi yang perlu memindahkan tanggal lebih awal dari jurnal asli
+            hanya bisa lewat Wizard Koreksi Saldo Awal.
+          </p>
+        </details>
+      </div>
       <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-[15px]">
           <p className="font-semibold">{jurnal.keterangan}</p>
           <p className="text-sm text-stone-600">

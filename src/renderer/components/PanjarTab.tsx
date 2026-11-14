@@ -1838,19 +1838,26 @@ export function PanjarTab() {
           <InfoBox className="mb-2">{infoBatal}</InfoBox>
         )}
         <ErrorBox msg={errKoreksi} />
-        <p className="mb-2 text-sm text-stone-600">
-          Panjar yang masih <b>Terbuka</b> bisa dibatalkan lewat tombol{' '}
-          <b>Batalkan</b>. Pembatalan membuat jurnal balik (kas kembali, 1040
-          nol), menyimpan alasan minimal 5 karakter, dan menampilkan status{' '}
-          <b>Dibatalkan</b>; jurnal serah asli tidak dihapus. Panjar{' '}
-          <b>Selesai</b> yang salah input bisa dikoreksi lewat tombol{' '}
-          <b>Koreksi Pertanggungjawaban</b>: jurnal balik dibuat, rincian item
-          lama dihapus dari dokumen tetapi tersimpan di audit, dan panjar
-          kembali <b>Terbuka</b> untuk diisi ulang. Panjar berlabel{' '}
-          <b>Saldo awal</b> adalah representasi 1040 dari jurnal pembukaan:
-          penutupannya memakai alur normal setelah ada realisasi, sedangkan
-          pembatalannya menghapus dokumen tanpa jurnal balik.
-        </p>
+        {/* UI-A18: paragraf ±10 baris diringkas jadi 3 bullet pendek. */}
+        <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-stone-600">
+          <li>
+            <b>Terbuka</b> bisa dibatalkan lewat <b>Batalkan</b>: kas kembali via
+            jurnal balik (1040 nol), wajib alasan minimal{' '}
+            {MIN_ALASAN_PERINGATAN} karakter, status jadi <b>Dibatalkan</b>;
+            jurnal serah asli tidak dihapus.
+          </li>
+          <li>
+            <b>Selesai</b> yang salah input dikoreksi lewat{' '}
+            <b>Koreksi Pertanggungjawaban</b>: jurnal balik dibuat, panjar
+            kembali <b>Terbuka</b> untuk diisi ulang; rincian item lama dihapus
+            dari dokumen tetapi tersimpan di audit.
+          </li>
+          <li>
+            Berlabel <b>Saldo awal</b> (representasi 1040 dari jurnal pembukaan):
+            ditutup lewat alur normal setelah ada realisasi; pembatalannya tanpa
+            jurnal balik.
+          </li>
+        </ul>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[15px]">
             <thead>
