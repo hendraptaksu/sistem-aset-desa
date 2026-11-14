@@ -2019,6 +2019,11 @@ export function PinjamanTab() {
                                 : '—'}
                             </div>
                             <div className="font-mono">{a.jurnal_id}</div>
+                            {a.jumlah_pembayaran > 1 && (
+                              <div className="font-semibold text-amber-800">
+                                dicicil {a.jumlah_pembayaran}× pembayaran
+                              </div>
+                            )}
                             {a.tanggal_bayar && a.tanggal_bayar !== a.tanggal_jurnal && (
                               <div>link: {formatTanggal(a.tanggal_bayar)}</div>
                             )}

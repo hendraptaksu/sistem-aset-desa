@@ -388,8 +388,8 @@ untuk `jurnal_pencairan_id`.
 ### `pinjaman_angsuran`
 
 Rencana jadwal angsuran. Bukan realisasi; status `BELUM`/`SEBAGIAN`/`LUNAS`
-dihitung dari akumulasi nominal jurnal pembayaran aktif yang tertaut ke
-angsuran.
+dihitung dari akumulasi pokok dan bunga jurnal pembayaran aktif yang tertaut
+ke angsuran. Pembayaran denda-saja tidak mengubah status (T-B08).
 
 | Kolom | Tipe | Null | Default | Kunci/Constraint |
 |---|---|---|---|---|

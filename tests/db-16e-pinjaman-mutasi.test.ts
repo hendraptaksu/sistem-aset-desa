@@ -327,6 +327,91 @@ describe('DB-16e — mutasi bulanan dari jurnal', () => {
     });
   });
 
+  // T-B08: angsuran boleh dicicil (angsuran_id boleh ganda); kartu mutasi
+  // tetap menampilkan jejak bukti dari pembayaran pertama + jumlah pembayaran.
+  it('menampilkan referensi pembayaran pertama dan jumlah pembayaran saat angsuran dicicil', () => {
+    const db = openDb(':memory:');
+    dbTerbuka.push(db);
+    const awal = postingJurnal(db, {
+      header: {
+        id: 'awal-cicil',
+        tanggal: '2026-01-01',
+        no_bukti: 'SA-CICIL',
+        keterangan: 'Saldo awal uji cicilan',
+        jenis: 'SALDO_AWAL',
+      },
+      baris: [D('1001', RP(200_000_000)), K(AKUN_MODAL, RP(200_000_000))],
+    });
+    expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+    const jadwal = [1, 2].map((ke) => ({
+      ke,
+      jatuh_tempo: `2026-0${ke + 1}-01`,
+      pokok: RP(3_000_000),
+      bunga: RP(100_000),
+      catatan: `Angsuran ${ke}`,
+    }));
+    const simpan = simpanPinjamanLpd(db, {
+      id: 'pjr-cicil',
+      mode: 'PENCAIRAN',
+      kreditur: 'LPD Desa Adat',
+      tanggal: '2026-01-02',
+      akunKas: '1014',
+      akunBunga: '5063',
+      pokok: RP(6_000_000),
+      tenor: 2,
+      catatan: 'Pinjaman uji cicilan',
+      angsuran: jadwal,
+    });
+    expect(simpan.tersimpan, simpan.errors.join(' ')).toBe(true);
+    const pinjamanId = simpan.pinjaman!.id;
+    const a1 = simpan.pinjaman!.angsuran![0];
+
+    const cicil = (
+      id: string,
+      tanggal: string,
+      pokok: number,
+      bunga: number,
+      noBukti: string,
+    ): void => {
+      const hasil = bayarAngsuranPinjaman(db, {
+        id,
+        jurnal_id: `j-${id}`,
+        pinjaman_id: pinjamanId,
+        angsuran_id: a1.id,
+        tanggal,
+        akun_kas: '1014',
+        pokok,
+        bunga,
+        denda: 0,
+        noBukti,
+        catatan: `Cicilan angsuran 1 (${noBukti})`,
+      });
+      expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+    };
+    cicil('pby-1a', '2026-02-05', RP(1_000_000), RP(100_000), 'B-1A');
+    cicil('pby-1b', '2026-02-20', RP(2_000_000), 0, 'B-1B');
+
+    const laporan = laporanMutasiPinjaman(db, pinjamanId, {
+      periode: '2026-02',
+    });
+    expect(laporan.jadwal).toHaveLength(1);
+    expect(laporan.jadwal[0]).toMatchObject({
+      ke: 1,
+      dibayar: true,
+      pokok_realisasi: RP(3_000_000),
+      bunga_realisasi: RP(100_000),
+      denda_realisasi: 0,
+      jumlah_pembayaran: 2,
+      // Referensi dari pembayaran pertama, bukan null.
+      pembayaran_id: 'pby-1a',
+      jurnal_id: 'j-pby-1a',
+      no_bukti: 'B-1A',
+      tanggal_jurnal: '2026-02-05',
+      tanggal_bayar: '2026-02-05',
+    });
+  });
+
   it('memfilter satu bulan dan menampilkan periode kosong tanpa mengubah saldo', () => {
     const { db, pinjamanId } = siapkanFixture();
 

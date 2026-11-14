@@ -130,8 +130,10 @@ export function ringkasanAngsuran(
 } {
   const sisaPokok = Math.max(0, jadwal.pokok - realisasi.pokok);
   const sisaBunga = Math.max(0, jadwal.bunga - realisasi.bunga);
-  const adaRealisasi =
-    realisasi.pokok > 0 || realisasi.bunga > 0 || (realisasi.denda ?? 0) > 0;
+  // T-B08: status angsuran dihitung dari akumulasi pokok & bunga saja
+  // (docs/skema.md). Denda yang dibayar sendiri tidak menandai angsuran
+  // SEBAGIAN/LUNAS; denda tetap tercatat pada angka turunan laporan.
+  const adaRealisasi = realisasi.pokok > 0 || realisasi.bunga > 0;
   const lunas = sisaPokok === 0 && sisaBunga === 0;
   // Jadwal bernilai nol tanpa pembayaran bukan angsuran yang lunas: status
   // harus mencerminkan realisasi, bukan hanya kewajiban yang tersisa.

@@ -134,6 +134,11 @@ export type JadwalRealisasiPinjaman = {
   selisih_pokok: number;
   selisih_bunga: number;
   dibayar: boolean;
+  /**
+   * Jumlah pembayaran aktif yang tertaut ke angsuran ini. ≥ 2 berarti
+   * angsuran dicicil; referensi bukti diambil dari pembayaran pertama.
+   */
+  jumlah_pembayaran: number;
   pembayaran_id: string | null;
   jurnal_id: string | null;
   no_bukti: string | null;
@@ -428,7 +433,10 @@ export function hitungMutasiPinjaman(
     })
     .map((a) => {
       const daftar = perAngsuran.get(a.id) ?? [];
-      const p = daftar.length === 1 ? daftar[0] : undefined;
+      // T-B08: angsuran boleh dicicil (`angsuran_id` boleh ganda). Referensi
+      // bukti diisi dari pembayaran pertama (tertua menurut tanggal jurnal)
+      // agar jejak bukti tidak hilang; `jumlah_pembayaran` menandai cicilan.
+      const p = daftar[0];
       const pokokRealisasi = daftar.reduce((s, it) => s + it.pokok, 0);
       const bungaRealisasi = daftar.reduce((s, it) => s + it.bunga, 0);
       const dendaRealisasi = daftar.reduce((s, it) => s + it.denda, 0);
@@ -445,9 +453,10 @@ export function hitungMutasiPinjaman(
         selisih_pokok: pokokRealisasi - a.pokok,
         selisih_bunga: bungaRealisasi - a.bunga,
         dibayar: ringkasanAngsuran(a, { pokok: pokokRealisasi, bunga: bungaRealisasi, denda: dendaRealisasi }).dibayar,
+        jumlah_pembayaran: daftar.length,
         pembayaran_id: p?.pembayaran_id ?? null,
         jurnal_id: p?.jurnal_id ?? null,
-        no_bukti: p ? p.no_bukti : null,
+        no_bukti: p?.no_bukti ?? null,
         tanggal_bayar: p?.tanggal_bayar ?? null,
         tanggal_jurnal: p?.tanggal ?? null,
       };

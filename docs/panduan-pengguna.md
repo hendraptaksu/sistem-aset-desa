@@ -293,7 +293,9 @@ dan bulan (kosongkan bulan untuk satu tahun penuh; default tahun berjalan).
   **kas keluar** adalah kredit kas/bank pada jurnal pembayaran yang tertaut.
 - Tabel **Jadwal vs Realisasi** membandingkan pokok/bunga jadwal dengan nominal
   jurnal per angsuran. Selisih negatif berarti kurang bayar. Jadwal tidak
-  diubah oleh realisasi.
+  diubah oleh realisasi. Bila angsuran dicicil (lebih dari satu pembayaran),
+  kolom jurnal menampilkan bukti pembayaran pertama ditambah penanda jumlah
+  pembayaran.
 - Tombol **Lihat jurnal** per bulan menampilkan nomor bukti, tanggal jurnal,
   tanggal link pembayaran, dan ID jurnal untuk drill-down. Semua angka dibaca
   dari baris jurnal; total bulanan/saldo **tidak disimpan** di tabel pembayaran.

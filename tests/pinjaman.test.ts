@@ -504,26 +504,28 @@ describe('T-A12 — validasi jadwal & realisasi angsuran', () => {
       sisa_bunga: 0,
     });
 
+    // T-B08: status hanya dari akumulasi pokok & bunga (sesuai skema).
+    // Pembayaran denda-saja tidak menandai angsuran SEBAGIAN.
     expect(
       ringkasanAngsuran(
         { pokok: RP(1_000_000), bunga: RP(100_000) },
         { pokok: 0, bunga: 0, denda: RP(25_000) },
       ),
     ).toMatchObject({
-      status: 'SEBAGIAN',
+      status: 'BELUM',
       dibayar: false,
       sisa_pokok: RP(1_000_000),
       sisa_bunga: RP(100_000),
     });
 
-    // Pelunasan dengan realisasi tetap LUNAS, termasuk bila hanya denda yang
-    // tercatat pada jadwal bernilai nol.
+    // T-B08: jadwal bernilai nol pun tetap BELUM bila hanya denda yang
+    // tercatat; tanpa pokok/bunga terbayar angsuran belum terealisasi.
     expect(
       ringkasanAngsuran(
         { pokok: 0, bunga: 0 },
         { pokok: 0, bunga: 0, denda: RP(25_000) },
       ),
-    ).toMatchObject({ status: 'LUNAS', dibayar: true });
+    ).toMatchObject({ status: 'BELUM', dibayar: false });
   });
 });
 
@@ -589,6 +591,43 @@ describe('DB-16b — pembayaran link-only', () => {
       kas_keluar: RP(1_150_000),
     });
     expect(hitungOutstandingPinjaman(db, 'pjr-1')).toBe(RP(11_000_000));
+  });
+
+  // T-B08: denda bukan realisasi angsuran; status tetap dari pokok & bunga.
+  it('pembayaran denda-saja tidak mengubah status angsuran', () => {
+    const db = dbKas();
+    jurnalPencairan(db);
+    expect(buatPinjaman(db, inputPinjaman()).tersimpan).toBe(true);
+    const a = getPinjaman(db, 'pjr-1')?.angsuran?.[0];
+
+    const hasil = bayarAngsuranPinjaman(db, {
+      id: 'pby-denda',
+      jurnal_id: 'j-bayar-denda',
+      pinjaman_id: 'pjr-1',
+      angsuran_id: a?.id,
+      tanggal: '2026-02-20',
+      akun_kas: '1001',
+      pokok: 0,
+      bunga: 0,
+      denda: RP(50_000),
+      noBukti: 'D-1',
+      catatan: 'Denda keterlambatan',
+    });
+    expect(hasil.tersimpan, hasil.errors.join(' ')).toBe(true);
+
+    const sesudah = getPinjaman(db, 'pjr-1');
+    expect(sesudah?.angsuran?.find((x) => x.id === a?.id)).toMatchObject({
+      status: 'BELUM',
+      dibayar: false,
+      jumlah_pembayaran: 1,
+      sisa_pokok: RP(1_000_000),
+      sisa_bunga: RP(100_000),
+    });
+    // Denda tetap tercatat pada angka turunan, tanpa pokok/bunga.
+    expect(sesudah?.total_denda_dibayar).toBe(RP(50_000));
+    expect(sesudah?.total_pokok_dibayar).toBe(0);
+    expect(sesudah?.total_bunga_dibayar).toBe(0);
+    expect(sesudah?.outstanding).toBe(RP(12_000_000));
   });
 
   it('menerima alias catatPembayaran dan jurnal tanpa denda', () => {
