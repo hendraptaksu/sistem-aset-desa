@@ -9,6 +9,8 @@
 //   jadwal;
 // - pembayaran ganda, akun nonaktif, nominal negatif/nol, dan input bukan
 //   bilangan bulat ditolak tanpa meninggalkan jurnal/link;
+// - cicilan dua jurnal pada satu angsuran tetap sah (T-B10: DDL tidak punya
+//   UNIQUE angsuran_id), jurnal yang sama hanya boleh ditautkan sekali;
 // - IPC/API/UI/dokumen tersedia dan memakai metadata akun dari DB.
 
 import Database from 'better-sqlite3';
@@ -454,6 +456,105 @@ describe('DB-16d — selisih jadwal dan penolakan', () => {
     expect(jumlahJurnal(db)).toBe(jurnal);
     expect(jumlahBayar(db)).toBe(1);
     expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(8_000_000));
+  });
+
+  // T-B10: `pinjaman_bayar.angsuran_id` sengaja TANPA UNIQUE agar satu
+  // angsuran boleh dicicil beberapa jurnal. Dua pembayaran (dua jurnal
+  // berbeda) pada angsuran yang sama wajib tetap sah.
+  it('menerima cicilan: dua jurnal berbeda pada angsuran yang sama tetap sah', () => {
+    const db = dbKas();
+    const { pinjamanId, angsuran } = pinjamanUji(db);
+    const a1 = angsuran[0];
+
+    const cicil1 = bayarAngsuranPinjaman(
+      db,
+      inputBayar(pinjamanId, a1.id, {
+        id: 'pby-cicil-1',
+        jurnal_id: 'j-cicil-1',
+        pokok: RP(2_000_000),
+        bunga: RP(100_000),
+        denda: 0,
+      }),
+    );
+    expect(cicil1.tersimpan, cicil1.errors.join(' ')).toBe(true);
+
+    const setengahJalan = getPinjaman(db, pinjamanId)!.angsuran?.find(
+      (a) => a.id === a1.id,
+    );
+    expect(setengahJalan).toMatchObject({
+      status: 'SEBAGIAN',
+      dibayar: false,
+      jumlah_pembayaran: 1,
+    });
+    expect(setengahJalan?.sisa_pokok).toBe(RP(2_000_000));
+
+    const cicil2 = bayarAngsuranPinjaman(
+      db,
+      inputBayar(pinjamanId, a1.id, {
+        id: 'pby-cicil-2',
+        jurnal_id: 'j-cicil-2',
+        tanggal: '2026-03-15',
+        pokok: RP(2_000_000),
+        bunga: 0,
+        denda: 0,
+      }),
+    );
+    // Penjaga dead-code: kalau DDL mendapat UNIQUE(angsuran_id) atau handler
+    // "satu angsuran hanya boleh dibayar sekali" dihidupkan lagi, insert
+    // kedua ini gagal dan test merah.
+    expect(cicil2.tersimpan, cicil2.errors.join(' ')).toBe(true);
+
+    const baris = listPinjamanBayar(db, pinjamanId).filter(
+      (p) => p.angsuran_id === a1.id,
+    );
+    expect(baris).toHaveLength(2);
+    expect(new Set(baris.map((p) => p.jurnal_id))).toEqual(
+      new Set(['j-cicil-1', 'j-cicil-2']),
+    );
+
+    const lunas = getPinjaman(db, pinjamanId)!.angsuran?.find(
+      (a) => a.id === a1.id,
+    );
+    expect(lunas).toMatchObject({
+      status: 'LUNAS',
+      dibayar: true,
+      jumlah_pembayaran: 2,
+      sisa_pokok: 0,
+    });
+    expect(getPinjaman(db, pinjamanId)!.total_pokok_dibayar).toBe(RP(4_000_000));
+    expect(getPinjaman(db, pinjamanId)!.outstanding).toBe(RP(8_000_000));
+  });
+
+  // T-B10: UNIQUE yang benar-benar ada di DDL adalah `jurnal_id`. Jurnal yang
+  // sudah ditautkan tidak boleh dipakai pembayaran lain, dan pesannya tetap
+  // konsisten dengan docstring ("satu jurnal hanya boleh ditautkan sekali").
+  it('menolak jurnal yang sudah ditautkan dipakai pembayaran lain', () => {
+    const db = dbKas();
+    const { pinjamanId, angsuran } = pinjamanUji(db);
+    const a1 = angsuran[0];
+    const a2 = angsuran[1];
+    const jurnalAwal = jumlahJurnal(db);
+
+    const pertama = bayarAngsuranPinjaman(db, inputBayar(pinjamanId, a1.id));
+    expect(pertama.tersimpan, pertama.errors.join(' ')).toBe(true);
+    const jurnalPertama = pertama.jurnal!.id;
+
+    const ganda = bayarAngsuranPinjaman(
+      db,
+      inputBayar(pinjamanId, a2.id, {
+        id: 'pby-jurnal-ganda',
+        jurnal_id: jurnalPertama,
+      }),
+    );
+    expect(ganda.tersimpan).toBe(false);
+    expect(ganda.errors.join(' ')).toMatch(
+      new RegExp(`Jurnal ${jurnalPertama} sudah ditautkan ke pembayaran`),
+    );
+    expect(jumlahJurnal(db)).toBe(jurnalAwal + 1);
+    expect(jumlahBayar(db)).toBe(1);
+    expect(
+      listPinjamanBayar(db, pinjamanId).filter((p) => p.angsuran_id === a2.id),
+    ).toHaveLength(0);
   });
 
   it('menolak akun kas nonaktif/bukan kas dan nominal negatif, pecahan, atau nol', () => {

@@ -1397,10 +1397,8 @@ export function tautkanPembayaran(
     const pesan = e instanceof Error ? e.message : String(e);
     if (/UNIQUE constraint failed: pinjaman_bayar\.jurnal_id/i.test(pesan))
       return gagalBayar(`Jurnal ${jurnalId} sudah ditautkan ke pembayaran lain.`);
-    if (/UNIQUE constraint failed: pinjaman_bayar\.angsuran_id/i.test(pesan))
-      return gagalBayar(
-        `Angsuran ${angsuranId ?? ''} sudah dibayar. Satu angsuran hanya boleh dibayar sekali.`,
-      );
+    // T-B10: tidak ada handler UNIQUE `angsuran_id` — DDL sengaja membolehkan
+    // `angsuran_id` ganda untuk cicilan (lihat docstring di atas).
     return gagalBayar(`Pembayaran pinjaman gagal disimpan: ${pesan}`);
   }
 
@@ -1792,13 +1790,8 @@ export function bayarAngsuranPinjaman(
         ...gagalBayar(`Jurnal ${jurnalId} sudah ditautkan ke pembayaran lain.`),
         selisih,
       };
-    if (/UNIQUE constraint failed: pinjaman_bayar\.angsuran_id/i.test(pesan))
-      return {
-        ...gagalBayar(
-          `Angsuran ${a.id} sudah dibayar. Satu angsuran hanya boleh dibayar sekali.`,
-        ),
-        selisih,
-      };
+    // T-B10: tidak ada handler UNIQUE `angsuran_id` — DDL sengaja membolehkan
+    // `angsuran_id` ganda untuk cicilan (cicilan sebagian adalah alur biasa).
     return {
       ...gagalBayar(`Pembayaran pinjaman gagal disimpan: ${pesan}`),
       selisih,
