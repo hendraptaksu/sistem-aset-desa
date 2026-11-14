@@ -10,6 +10,7 @@ export function LockScreen({
   sudahSetup,
   onTerbuka,
   pesan,
+  isianDitutup = false,
   blokirDetik = 0,
 }: {
   sudahSetup: boolean;
@@ -17,6 +18,9 @@ export function LockScreen({
   onTerbuka: (kodeDarurat?: string) => void;
   /** T2.7: info restore sukses yang ditampilkan sebelum form PIN. */
   pesan?: string;
+  /** UI-A24: benar bila kunci menggantung saat ada isian yang belum disimpan;
+   *  layar kunci memberi tahu bahwa isian itu telah ditutup bersama UI. */
+  isianDitutup?: boolean;
   /** UI-A22: sisa blokir (detik) dari main saat layar ini dipasang; 0 = tidak diblokir. */
   blokirDetik?: number;
 }) {
@@ -144,6 +148,17 @@ export function LockScreen({
             className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-left text-sm text-emerald-900"
           >
             {pesan}
+          </div>
+        )}
+        {isianDitutup && (
+          /* UI-A24: satu baris penjelasan bahwa isian yang belum disimpan
+              ikut tertutup saat sesi dikunci otomatis. */
+          <div
+            role="status"
+            data-testid="pesan-isian-ditutup"
+            className="mt-3 rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-left text-sm text-stone-700"
+          >
+            Isian yang belum disimpan telah ditutup.
           </div>
         )}
         <div className="mt-4 space-y-3 text-left">

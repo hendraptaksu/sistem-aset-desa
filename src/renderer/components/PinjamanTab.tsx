@@ -41,6 +41,53 @@ function barisBaru(ke: number, tanggal = ''): BarisJadwal {
   return { ke, jatuh_tempo: tanggal, pokok: 0, bunga: 0, catatan: '' };
 }
 
+/** Baris jadwal dianggap berisi bila operator mengisi salah satu kolomnya. */
+function jadwalBerisiData(rows: BarisJadwal[]): boolean {
+  return rows.some(
+    (r) =>
+      r.jatuh_tempo !== '' ||
+      r.pokok !== 0 ||
+      r.bunga !== 0 ||
+      r.catatan.trim() !== '',
+  );
+}
+
+/** Tenor bawaan form; nilai selain ini dihitung sebagai isian operator. */
+const TENOR_AWAL = '12';
+
+/**
+ * UI-A24: form pinjaman utama dianggap berisi data bila ada field yang
+ * bernilai selain bawaan (kreditur, pokok/sisa pokok, tenor, catatan,
+ * no. bukti, bunga rencana, jadwal, tanggal selain hari ini). Dipakai sebagai
+ * satu-satunya sumber flag dirty tab-guard sehingga aksi lain (ganti mode,
+ * buka/tutup form bayar, simpan bayar) tidak bisa lagi menghapus atau
+ * memalsukan status isian utama. Pilihan akun tidak dihitung karena nilainya
+ * selalu diisi ulang otomatis dari COA saat tab dipasang.
+ */
+function formBerisiData(f: {
+  mode: ModePinjamanApi;
+  tanggal: string;
+  kreditur: string;
+  pokok: number;
+  sisaPokok: number;
+  tenor: string;
+  catatan: string;
+  noBukti: string;
+  bungaRencana: number;
+  jadwal: BarisJadwal[];
+}): boolean {
+  return (
+    f.kreditur.trim() !== '' ||
+    f.catatan.trim() !== '' ||
+    f.noBukti.trim() !== '' ||
+    f.tanggal !== tanggalLokal() ||
+    (f.mode === 'PENCAIRAN' ? f.pokok !== 0 : f.sisaPokok !== 0) ||
+    f.bungaRencana !== 0 ||
+    f.tenor.trim() !== TENOR_AWAL ||
+    jadwalBerisiData(f.jadwal)
+  );
+}
+
 /** Tombol generator aktif hanya saat target pokok > 0 dan tenor bulat ≥ 1. */
 export function bolehIsiJadwalOtomatis(
   targetPokok: number,
@@ -304,6 +351,27 @@ export function PinjamanTab() {
   // selama simpan pinjaman, bayar angsuran, atau pembatalan berjalan, aksi
   // daftar mati dengan alasan jelas, bukan diabaikan diam-diam.
   const sibukAksiDaftar = busy || bayarBusy || batalBusy;
+  // UI-A24: flag dirty tab adalah derivasi isi form, bukan status yang diset
+  // manual di banyak titik. Form pinjaman utama dihitung dari field-fieldnya
+  // (formBerisiData); form bayar ikut dihitung hanya saat operator mengubah
+  // isian dari prefill (prefill murni tidak dihitung isian — UI-A12).
+  const dirtyKini =
+    formBerisiData({
+      mode,
+      tanggal,
+      kreditur,
+      pokok,
+      sisaPokok,
+      tenor,
+      catatan,
+      noBukti,
+      bungaRencana,
+      jadwal,
+    }) || (bayar !== null && bayarTersentuh);
+
+  useEffect(() => {
+    setDirty(dirtyKini);
+  }, [dirtyKini, setDirty]);
 
   useEffect(() => {
     let aktif = true;
@@ -412,10 +480,10 @@ export function PinjamanTab() {
     };
   }, [list]);
 
-  useEffect(() => {
-    setDirty(false);
-    return () => setDirty(false);
-  }, [setDirty]);
+  // UI-A24: nilai dirty sudah disinkronkan derivasi di atas; yang tersisa
+  // hanyalah membersihkan status saat tab di-unmount agar tidak bocor ke tab
+  // lain (pola yang sama dengan PanjarTab dan TransaksiForm).
+  useEffect(() => () => setDirty(false), [setDirty]);
 
   async function refresh(): Promise<void> {
     // UI-A14: memuat ulang daftar setelah aksi menampilkan status memuat dan
@@ -452,7 +520,8 @@ export function PinjamanTab() {
     setKonfirmasiJadwalOtomatis(false);
     setPesanKonfirmasi(null);
     setErrorKonfirmasi(null);
-    setDirty(false);
+    // UI-A24: dirty tidak direset manual; setelah state kosong, derivasi
+    // formBerisiData otomatis menandai tab bersih.
   }
 
   async function simpan(alasanPeringatan?: string): Promise<void> {
@@ -568,12 +637,12 @@ export function PinjamanTab() {
     setInfo(null);
     setPesanKonfirmasi(null);
     setErrorKonfirmasi(null);
-    setDirty(true);
+    // UI-A24: ganti mode tidak lagi memalsukan dirty; flag mengikuti isi form
+    // lewat formBerisiData sehingga form kosong tetap bersih.
   }
 
   function ubahJadwal(i: number, patch: Partial<BarisJadwal>): void {
     setJadwal((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-    setDirty(true);
   }
 
   function tambahJadwal(): void {
@@ -581,22 +650,10 @@ export function PinjamanTab() {
       const ke = rows.reduce((maks, r) => Math.max(maks, r.ke), 0) + 1;
       return [...rows, barisBaru(ke)];
     });
-    setDirty(true);
   }
 
   function hapusJadwal(i: number): void {
     setJadwal((rows) => rows.filter((_, j) => j !== i));
-    setDirty(true);
-  }
-
-  function jadwalBerisiData(rows: BarisJadwal[]): boolean {
-    return rows.some(
-      (r) =>
-        r.jatuh_tempo !== '' ||
-        r.pokok !== 0 ||
-        r.bunga !== 0 ||
-        r.catatan.trim() !== '',
-    );
   }
 
   function terapkanJadwalOtomatis(): void {
@@ -623,7 +680,6 @@ export function PinjamanTab() {
         }),
       );
       setErr(null);
-      setDirty(true);
     } catch (e) {
       setErr(pesanError(e));
     } finally {
@@ -699,7 +755,8 @@ export function PinjamanTab() {
     setBayarTersentuh(false);
     setInfoBayar(null);
     setInfoBatal(null);
-    setDirty(true);
+    // UI-A24: membuka form bayar tidak lagi menandai tab dirty; prefill murni
+    // bukan isian (UI-A12) dan derivasi dirty mengikuti bayarTersentuh.
   }
 
   function batalBayar(): void {
@@ -708,7 +765,8 @@ export function PinjamanTab() {
     setBayarPerluKonfirmasi(false);
     setBayarErr(null);
     setBayarTersentuh(false);
-    setDirty(false);
+    // UI-A24: pembatalan form bayar tidak boleh menghapus guard isian form
+    // pinjaman utama yang belum disimpan; derivasi dirty yang memutuskan.
   }
 
   function ubahBayar(patch: Partial<FormBayar>): void {
@@ -716,7 +774,6 @@ export function PinjamanTab() {
     setBayarTersentuh(true);
     setBayarPerluKonfirmasi(false);
     setBayarErr(null);
-    setDirty(true);
   }
 
   async function simpanBayar(konfirmasi = false): Promise<void> {
@@ -815,7 +872,8 @@ export function PinjamanTab() {
       setBayarAlasan('');
       setBayarPerluKonfirmasi(false);
       setBayarTersentuh(false);
-      setDirty(false);
+      // UI-A24: dirty tidak direset manual di sini; form utama yang masih
+      // berisi tetap terjaga oleh derivasi formBerisiData.
       await refresh();
       try {
         await muatDetail(idPinjaman);
@@ -1020,10 +1078,7 @@ export function PinjamanTab() {
               type="date"
               value={tanggal}
               disabled={busy}
-              onChange={(e) => {
-                setTanggal(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setTanggal(e.target.value)}
             />
           </Field>
           <Field label="Kreditur / LPD">
@@ -1031,10 +1086,7 @@ export function PinjamanTab() {
               value={kreditur}
               disabled={busy}
               placeholder="cth: LPD Desa Adat"
-              onChange={(e) => {
-                setKreditur(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setKreditur(e.target.value)}
             />
           </Field>
           {mode === 'PENCAIRAN' ? (
@@ -1042,10 +1094,7 @@ export function PinjamanTab() {
               <CurrencyInput
                 value={pokok}
                 disabled={busy}
-                onChange={(n) => {
-                  setPokok(n);
-                  setDirty(true);
-                }}
+                onChange={(n) => setPokok(n)}
               />
             </Field>
           ) : (
@@ -1053,10 +1102,7 @@ export function PinjamanTab() {
               <CurrencyInput
                 value={sisaPokok}
                 disabled={busy}
-                onChange={(n) => {
-                  setSisaPokok(n);
-                  setDirty(true);
-                }}
+                onChange={(n) => setSisaPokok(n)}
               />
             </Field>
           )}
@@ -1065,10 +1111,7 @@ export function PinjamanTab() {
               <Select
                 value={akunKas}
                 disabled={busy}
-                onChange={(e) => {
-                  setAkunKas(e.target.value);
-                  setDirty(true);
-                }}
+                onChange={(e) => setAkunKas(e.target.value)}
               >
                 {kasList.map((k) => (
                   <option key={k.kode} value={k.kode}>
@@ -1082,10 +1125,7 @@ export function PinjamanTab() {
             <Select
               value={akunBunga}
               disabled={busy}
-              onChange={(e) => {
-                setAkunBunga(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setAkunBunga(e.target.value)}
             >
               {bungaList.map((b) => (
                 <option key={b.kode} value={b.kode}>
@@ -1101,10 +1141,7 @@ export function PinjamanTab() {
               value={tenor}
               disabled={busy}
               placeholder="cth: 12"
-              onChange={(e) => {
-                setTenor(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setTenor(e.target.value)}
             />
           </Field>
           <Field label="Catatan (opsional)">
@@ -1112,10 +1149,7 @@ export function PinjamanTab() {
               value={catatan}
               disabled={busy}
               placeholder="cth: pinjaman untuk pembangunan"
-              onChange={(e) => {
-                setCatatan(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setCatatan(e.target.value)}
             />
           </Field>
           {mode === 'PENCAIRAN' && (
@@ -1124,10 +1158,7 @@ export function PinjamanTab() {
                 value={noBukti}
                 disabled={busy}
                 placeholder="cth: JU-2026-0001 — boleh kosong"
-                onChange={(e) => {
-                  setNoBukti(e.target.value);
-                  setDirty(true);
-                }}
+                onChange={(e) => setNoBukti(e.target.value)}
               />
             </Field>
           )}
@@ -1154,10 +1185,7 @@ export function PinjamanTab() {
             tenor={tenor}
             bungaRencana={bungaRencana}
             busy={busy}
-            onBungaRencana={(n) => {
-              setBungaRencana(n);
-              setDirty(true);
-            }}
+            onBungaRencana={(n) => setBungaRencana(n)}
             onIsi={mintaIsiJadwalOtomatis}
           />
 

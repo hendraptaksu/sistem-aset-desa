@@ -20,6 +20,23 @@ type TabGuard = {
  * Provider global menyimpan status `dirty` dan merender satu dialog konfirmasi
  * saat navigasi diminta. Fallback no-op dipakai agar komponen form tetap bisa
  * dirender terisolasi (mis. test SSR); di aplikasi selalu ada provider.
+ *
+ * Kontrak pemakaian (UI-A24):
+ * - Form yang bidangnya tetap terbuka saat navigasi (tab biasa) wajib
+ *   menyinkronkan `dirty`. Hitung `dirty` sebagai derivasi dari state form
+ *   (lihat `formBerisiData` di PinjamanTab, `adaIsian` di JurnalUmumEditor)
+ *   alih-alih menyebarnya manual di banyak titik — aksi sekunder (tutup form
+ *   lain, ganti mode, simpan aksi lain) tidak boleh bisa menghapus atau
+ *   memalsukan status isian.
+ * - Komponen yang dirender sebagai modal layar penuh menutupi navigasi tab
+ *   (backdrop `fixed inset-0` di ui.tsx), jadi saat modal terbuka guard tidak
+ *   pernah sempat dipicu: konfirmasi internal modal itulah yang berlaku saat
+ *   menutupnya (mis. konfirmasi tutup KoreksiModal UI-A02 dan editor Jurnal
+ *   Umum UI-A12). Modal seperti itu tidak wajib memakai guard; bila tetap
+ *   memasangnya, guard hanya lapisan cadangan dan tetap harus dihitung dari
+ *   state form.
+ * - Auto-lock mengganti seluruh UI dengan layar kunci; App membersihkan
+ *   `dirty` secara paksa dan layar kunci memberi tahu isian yang tertutup.
  */
 const TabGuardContext = createContext<TabGuard>({
   dirty: false,

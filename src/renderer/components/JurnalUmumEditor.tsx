@@ -20,6 +20,7 @@ import {
   opsiPeringatanApi,
   rapikanAlasanPeringatan,
 } from '../lib/peringatan.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import {
   adalahErrorSaldoAwal,
   opsiSaldoAwal,
@@ -201,6 +202,21 @@ export function JurnalUmumEditor({
   const headerSah =
     tanggalKalenderValid(tanggal) && Boolean(keterangan.trim());
   const formSah = headerSah && validasi.barisSah && validasi.seimbang;
+
+  // UI-A24: editor dipasangi tab-guard sebagai lapisan cadangan. Modal layar
+  // penuh menutupi navigasi tab, jadi konfirmasi internal (mintaTutup +
+  // konfirmasiTutup UI-A12) yang berlaku saat menutup; guard baru berperan
+  // bila navigasi tetap bisa terjadi saat editor terbuka. Dirty dihitung dari
+  // state form (header + baris, lewat adaIsian) — alasan periode/peringatan
+  // hidup di LockModal/PeringatanModal yang juga menutupi navigasi (kontrak
+  // di tabGuard.tsx).
+  const { setDirty } = useTabGuard();
+  useEffect(() => {
+    setDirty(adaIsian);
+  }, [adaIsian, setDirty]);
+  // Editor di-unmount saat ditutup atau pindah tab; jangan biarkan status
+  // kotor bocor ke tab lain.
+  useEffect(() => () => setDirty(false), [setDirty]);
 
   function mintaTutup(): void {
     if (busyRef.current) return;

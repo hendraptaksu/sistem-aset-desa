@@ -184,6 +184,9 @@ function AppShell() {
   const [lock, setLock] = useState<LockStatus | null>(null);
   // T2.7: pesan restore ditampilkan di layar kunci sampai PIN berhasil dibuka.
   const [pesanRestore, setPesanRestore] = useState<string | null>(null);
+  // UI-A24: benar bila sesi dikunci otomatis saat ada isian yang belum
+  // disimpan; layar kunci lalu menampilkan satu baris penjelasannya.
+  const [isianDitutup, setIsianDitutup] = useState(false);
   // T-A16: ringkasan audit startup dan status abaikan banner. Audit hanya
   // diminta setelah sesi terbuka karena kanal IPC-nya dijaga `perluBuka`.
   const [auditAwal, setAuditAwal] = useState<RingkasanAuditAwal | null>(null);
@@ -400,6 +403,8 @@ function AppShell() {
     (kodeDarurat?: string) => {
       // T2.7: pesan restore hanya untuk layar kunci; PIN benar = sudah dibaca.
       setPesanRestore(null);
+      // UI-A24: pesan isian yang ditutup juga hanya untuk layar kunci.
+      setIsianDitutup(false);
       if (kodeDarurat) setKodeDaruratBaru(kodeDarurat);
       setLock((l) =>
         l
@@ -513,6 +518,9 @@ function AppShell() {
           // UI-07: jangan biarkan dialog guard menutupi layar PIN. Pindah ke
           // dashboard dengan paksa dan bersihkan status dirty karena semua UI
           // akan diganti layar kunci.
+          // UI-A24: bila ada isian yang belum disimpan, layar kunci memberi
+          // tahu bahwa isian itu ikut ditutup bersama UI yang diganti.
+          if (dirtyRef.current) setIsianDitutup(true);
           setDirty(false);
           pindahTab('dashboard', { paksa: true });
           void refreshLock();
@@ -541,6 +549,7 @@ function AppShell() {
         sudahSetup={lock.sudahSetup}
         onTerbuka={tanganiTerbuka}
         pesan={pesanRestore ?? undefined}
+        isianDitutup={isianDitutup}
         blokirDetik={lock.blokirDetik}
       />
     );
