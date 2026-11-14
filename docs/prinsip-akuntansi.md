@@ -175,13 +175,22 @@ sebagai dokumen panjar dengan `sumber = 'SALDO_AWAL'`:
   lain), dan satu jurnal pembukaan hanya boleh punya satu dokumen.
 - Rekonsiliasi `1040` menghitung dokumen ini satu kali. Close normal tetap
   memakai jurnal close yang mengkredit `1040`; tidak ada jurnal serah tambahan.
+- Close panjar saldo awal hanya boleh dilakukan selama `jurnal_open_id` masih
+  menunjuk jurnal pembukaan aktif yang sah (`OPENING`/`OPENING_REPLACEMENT`).
+  Bila pembukaan yang ditunjuk sudah dibalik/digantikan koreksi saldo awal,
+  atau penunjuk pembukaan aktif kosong/tidak valid, close ditolak dengan pesan
+  yang mengarahkan ke Wizard Koreksi Saldo Awal/penunjuk pembukaan aktif.
+  Tanpa guard ini, close bisa mengkredit `1040` penuh di atas pembukaan yang
+  sudah dibalik dan membuat saldo GL `1040` kredit (aset negatif).
 - Pembatalan generik ditolak karena akan membalik jurnal pembukaan. Bila belum
   ada realisasi, pembatalan khusus panjar saldo awal menghapus **dokumen
   representasi** tanpa jurnal balik (audit `PANJAR-SALDO-AWAL-BATAL`); jurnal
   pembukaan tidak diubah. Koreksi saldo awal tidak memindahkan
   `jurnal_open_id` dokumen ini secara otomatis; bila penunjuknya menunjuk
-  pembukaan lama yang sudah tidak aktif, audit melaporkan
-  `PANJAR_OPENING_TIDAK_LENGKAP`.
+  pembukaan lama yang sudah tidak aktif, audit melaporkan varian
+  `PANJAR_OPENING_TIDAK_LENGKAP`: panjar OPEN `sumber = 'SALDO_AWAL'` yang
+  `jurnal_open_id`-nya ≠ pembukaan aktif, termasuk saat saldo GL `1040` masih
+  cocok (temuan memblokir kunci periode sesuai kebijakan audit integritas).
 
 ### Pembatalan panjar OPEN
 

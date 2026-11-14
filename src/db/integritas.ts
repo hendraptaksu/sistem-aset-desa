@@ -1369,10 +1369,10 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     );
     if (adaOpeningOpen) {
       const aktif = getPembukaanAktif(db);
-      const pointerSah =
-        aktif !== null &&
-        (aktif.peran === 'OPENING' || aktif.peran === 'OPENING_REPLACEMENT');
-      if (!pointerSah) {
+      if (
+        aktif === null ||
+        (aktif.peran !== 'OPENING' && aktif.peran !== 'OPENING_REPLACEMENT')
+      ) {
         const alasan = [
           aktif
             ? `penunjuk pembukaan aktif menunjuk ${aktif.id} berperan ${aktif.peran}`
@@ -1389,6 +1389,39 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
             `${alasan[0]}. Perbaiki penunjuk pembukaan sebelum cut-over dipakai.`,
           detail,
         });
+      } else {
+        // T-B02: pointer pembukaan aktif sah, jadi setiap panjar OPEN wajib
+        // menunjuk jurnal yang sama. Koreksi saldo awal memindahkan penunjuk
+        // ke jurnal pengganti tanpa mengubah dokumen panjar; pointer basi
+        // membuat close panjar mengkredit 1040 di atas pembukaan yang sudah
+        // dibalik. Saldo GL bisa saja masih cocok, jadi pemeriksaan ini tidak
+        // bergantung pada REKONSILIASI_PANJAR_GL_SELISIH.
+        for (const r of openingRows) {
+          if (r.status !== 'OPEN') continue;
+          if (r.jurnal_batal_id !== null && r.jurnal_batal_id !== '') continue;
+          if (r.jurnal_open_id === aktif.id) continue;
+          const alasan = [
+            `menunjuk jurnal ${r.jurnal_open_id} sedangkan pembukaan aktif ` +
+              `adalah ${aktif.id} (${aktif.tanggal})`,
+          ];
+          const detail: PanjarOpeningTidakLengkap = {
+            id: r.id,
+            jurnal_open_id: r.jurnal_open_id,
+            status: r.status,
+            jumlah: Number(r.jumlah),
+            alasan,
+          };
+          temuan.push({
+            kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
+            pesan:
+              `Panjar saldo awal ${r.id} (OPEN) menunjuk jurnal ` +
+              `${r.jurnal_open_id} yang bukan pembukaan aktif ${aktif.id} — ` +
+              'pembukaan lama sudah dibalik/digantikan koreksi saldo awal. ' +
+              'Perbarui penunjuk panjar lewat Wizard Koreksi Saldo Awal/' +
+              'penunjuk pembukaan aktif sebelum panjar ini ditutup.',
+            detail,
+          });
+        }
       }
     }
   }

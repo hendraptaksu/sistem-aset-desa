@@ -30,10 +30,12 @@ import {
 } from '../src/db/panjar.js';
 import { auditIntegritas } from '../src/db/integritas.js';
 import { postingJurnal } from '../src/db/posting.js';
-import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
+import { koreksiSaldoAwal, simpanSaldoAwal } from '../src/db/saldoAwal.js';
 import { listBarisJurnal } from '../src/db/laporan.js';
 import {
   getJurnal,
+  getPengaturan,
+  KUNCI_SALDO_AWAL_AKTIF_ID,
   listAuditLog,
   listJurnal,
   listJurnalBaris,
@@ -41,6 +43,7 @@ import {
 import {
   buatJurnalPanjarClose,
   buatJurnalPanjarSerah,
+  buatJurnalSaldoAwal,
 } from '../src/core/forms.js';
 import {
   rekonsiliasiPanjar,
@@ -1388,6 +1391,67 @@ describe('T-A11 — panjar OPEN saat cut-over (sumber SALDO_AWAL)', () => {
       );
       expect(batalTerlambat.tersimpan).toBe(false);
       expect(batalTerlambat.errors.join(' ')).toMatch(/OPEN/i);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('menolak close panjar saldo awal yang menunjuk pembukaan yang sudah digantikan koreksi (T-B02)', () => {
+    const db = dbPanjarSaldoAwal();
+    try {
+      expect(
+        catatPanjarSaldoAwal(db, { id: 'psa-stale', jumlah: RP(2_000_000) })
+          .tersimpan,
+      ).toBe(true);
+
+      // Koreksi saldo awal membalik pembukaan lama dan memposting pengganti.
+      // Saldo 1040 pengganti sama besar, jadi selisih nominal tidak ada —
+      // hanya pointer `jurnal_open_id` panjar yang menjadi basi.
+      const koreksi = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          tanggal: '2026-01-01',
+          saldo: [
+            { akun_kode: '1040', nominal: RP(2_000_000) },
+            { akun_kode: '1001', nominal: RP(8_000_000) },
+          ],
+        }).input,
+        { alasan: 'Saldo awal kas kurang dicatat', sekarang: '2026-12-31' },
+      );
+      expect(koreksi.tersimpan, koreksi.errors.join(' ')).toBe(true);
+      expect(getPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID)).not.toBe(
+        'awal-panjar',
+      );
+
+      const jumlahJurnal = listJurnal(db).length;
+      const tutup = closePanjarV2(db, {
+        id: 'psa-stale',
+        tanggalClose: '2026-02-01',
+        items: [{ akun: '5004', nominal: RP(1_000_000) }],
+      });
+      expect(tutup.tersimpan).toBe(false);
+      expect(tutup.errors.join(' ')).toMatch(/pembukaan aktif/i);
+      expect(tutup.errors.join(' ')).toMatch(/Koreksi Saldo Awal/i);
+      expect(getPanjar(db, 'psa-stale')?.status).toBe('OPEN');
+      expect(listJurnal(db)).toHaveLength(jumlahJurnal);
+      expect(listPanjarItemsV2(db, 'psa-stale')).toEqual([]);
+
+      // Panjar yang menunjuk pembukaan pengganti (aktif) tetap bisa ditutup.
+      expect(
+        catatPanjarSaldoAwal(db, { id: 'psa-baru', jumlah: RP(2_000_000) })
+          .tersimpan,
+      ).toBe(true);
+      const lanjut = closePanjarV2(db, {
+        id: 'psa-baru',
+        tanggalClose: '2026-02-01',
+        items: [{ akun: '5004', nominal: RP(1_000_000) }],
+      });
+      expect(lanjut.tersimpan, lanjut.errors.join(' ')).toBe(true);
+      expect(lanjut.panjar).toMatchObject({
+        status: 'CLOSED',
+        sumber: 'SALDO_AWAL',
+        jurnal_open_id: koreksi.jurnal?.id,
+      });
     } finally {
       db.close();
     }

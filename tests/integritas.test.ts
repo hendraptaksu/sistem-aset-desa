@@ -18,7 +18,8 @@ import {
   setPengaturan,
 } from '../src/db/repository.js';
 import { catatPanjarSaldoAwal } from '../src/db/panjar.js';
-import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
+import { koreksiSaldoAwal, simpanSaldoAwal } from '../src/db/saldoAwal.js';
+import { buatJurnalSaldoAwal } from '../src/core/forms.js';
 import { tutupBuku } from '../src/db/tutup.js';
 
 const WAKTU = '2026-10-29T00:00:00.000Z';
@@ -1844,6 +1845,96 @@ describe('T-A11 — audit panjar opening saldo awal', () => {
       );
       expect(temuan).toBeDefined();
       expect(temuan?.pesan).toMatch(/penunjuk pembukaan aktif/i);
+    });
+  });
+
+  it('panjar OPEN (seed SQL) menunjuk pembukaan lama yang sudah dibalik/digantikan menghasilkan PANJAR_OPENING_TIDAK_LENGKAP (T-B02)', () => {
+    denganDb((db) => {
+      buatPembukaan1040(db, 100_000); // 'sa-panjar' jadi pembukaan aktif
+
+      // Seed SQL langsung: reversal pembukaan lama + jurnal pengganti
+      // OPENING_REPLACEMENT + pointer aktif pindah. Baris `panjar` TIDAK
+      // disentuh, sehingga `jurnal_open_id`-nya basi — keadaan yang sama
+      // dengan koreksi saldo awal yang tidak memperbarui dokumen panjar.
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, peran, grup_id,
+            reversal_of, created_at)
+         VALUES ('rev-sa-panjar', ?, '', 'Uji reversal pembukaan', 'REVERSAL',
+                 'NORMAL', 'sa-panjar', 'sa-panjar', ?)`,
+      ).run(CUTOVER, WAKTU);
+      buatBaris(db, 'rev-sa-panjar', '1040', 0, 100_000);
+      buatBaris(db, 'rev-sa-panjar', AKUN_MODAL, 100_000, 0);
+
+      db.prepare(
+        `INSERT INTO jurnal
+           (id, tanggal, no_bukti, keterangan, jenis, peran, grup_id,
+            replaces_id, created_at)
+         VALUES ('sa-pengganti', ?, '', 'Uji pengganti pembukaan', 'UMUM',
+                 'OPENING_REPLACEMENT', 'sa-panjar', 'sa-panjar', ?)`,
+      ).run(CUTOVER, WAKTU);
+      buatBaris(db, 'sa-pengganti', '1040', 100_000, 0);
+      buatBaris(db, 'sa-pengganti', AKUN_MODAL, 0, 100_000);
+
+      setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'sa-pengganti');
+
+      // Panjar OPEN di-seed lewat SQL langsung, masih menunjuk jurnal lama.
+      simpanOpeningMentah(db, {
+        id: 'p-pointer-basi',
+        jumlah: 100_000,
+        jurnalOpenId: 'sa-panjar',
+      });
+
+      const hasil = auditIntegritas(db);
+      expect(hasil.ok).toBe(false);
+      const temuan = hasil.temuan.find(
+        (t) =>
+          t.kode === 'PANJAR_OPENING_TIDAK_LENGKAP' &&
+          (t.detail as { id?: string })?.id === 'p-pointer-basi',
+      );
+      expect(temuan).toBeDefined();
+      expect(temuan?.pesan).toMatch(/bukan pembukaan aktif/i);
+      expect(
+        (temuan?.detail as { jurnal_open_id?: string })?.jurnal_open_id,
+      ).toBe('sa-panjar');
+      expect(
+        (temuan?.detail as { alasan?: string[] })?.alasan?.join(' '),
+      ).toMatch(/sa-pengganti/);
+    });
+  });
+
+  it('koreksi saldo awal yang membalik pembukaan yang ditunjuk panjar OPEN menghasilkan temuan pointer basi (T-B02)', () => {
+    denganDb((db) => {
+      buatPembukaan1040(db, 100_000);
+      expect(
+        catatPanjarSaldoAwal(db, { id: 'p-pointer-basi-alur', jumlah: 100_000 })
+          .tersimpan,
+      ).toBe(true);
+
+      // Koreksi dengan saldo 1040 pengganti sama besar agar tidak ada
+      // REKONSILIASI_PANJAR_GL_SELISIH — temuan harusnya murni dari pointer.
+      const koreksi = koreksiSaldoAwal(
+        db,
+        buatJurnalSaldoAwal({
+          tanggal: CUTOVER,
+          saldo: [
+            { akun_kode: '1040', nominal: 100_000 },
+            { akun_kode: '1001', nominal: 500_000 },
+          ],
+        }).input,
+        { alasan: 'Saldo awal kas kurang dicatat', sekarang: '2026-12-31' },
+      );
+      expect(koreksi.tersimpan, koreksi.errors.join(' ')).toBe(true);
+
+      const temuan = auditIntegritas(db).temuan.find(
+        (t) =>
+          t.kode === 'PANJAR_OPENING_TIDAK_LENGKAP' &&
+          (t.detail as { id?: string })?.id === 'p-pointer-basi-alur',
+      );
+      expect(temuan).toBeDefined();
+      expect(
+        (temuan?.detail as { jurnal_open_id?: string })?.jurnal_open_id,
+      ).toBe('sa-panjar');
     });
   });
 

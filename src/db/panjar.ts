@@ -551,6 +551,37 @@ export function closePanjarV2(
   if (panjar.status !== 'OPEN')
     return gagal('Hanya panjar berstatus OPEN yang bisa dipertanggungjawabkan.');
 
+  // T-B02: panjar saldo awal mewakili bagian 1040 pada jurnal pembukaan.
+  // Koreksi saldo awal membalik pembukaan lama dan memposting pengganti tanpa
+  // memindahkan `jurnal_open_id` panjar. Close di atas pembukaan yang sudah
+  // dibalik mengkredit 1040 penuh di atas saldo yang tidak ada lagi dan bisa
+  // membuat saldo GL 1040 kredit (aset negatif), jadi pointer wajib masih
+  // menunjuk pembukaan aktif.
+  if (panjar.sumber === 'SALDO_AWAL') {
+    const aktif = getPembukaanAktif(db);
+    const openId = String(panjar.jurnal_open_id ?? '').trim();
+    const aktifSesuai =
+      aktif !== null &&
+      openId === aktif.id &&
+      (aktif.peran === 'OPENING' || aktif.peran === 'OPENING_REPLACEMENT');
+    if (!aktifSesuai) {
+      const arahan =
+        aktif !== null &&
+        (aktif.peran === 'OPENING' || aktif.peran === 'OPENING_REPLACEMENT')
+          ? `Pembukaan aktif saat ini adalah ${aktif.id}. Perbarui penunjuk ` +
+            'panjar lewat Wizard Koreksi Saldo Awal/penunjuk pembukaan aktif ' +
+            'sebelum menutup panjar ini.'
+          : 'Penunjuk pembukaan aktif kosong atau tidak valid. Perbaiki ' +
+            'penunjuk pembukaan aktif (Wizard Koreksi Saldo Awal/saldo awal) ' +
+            'sebelum menutup panjar ini.';
+      return gagal(
+        `Panjar saldo awal ${id} menunjuk jurnal ${openId || '(kosong)'} ` +
+          'yang bukan jurnal pembukaan aktif — pembukaan lama sudah dibalik ' +
+          `atau digantikan. ${arahan}`,
+      );
+    }
+  }
+
   const tanggalClose = String(input.tanggalClose ?? '').trim();
   if (!tanggalKalenderValid(tanggalClose))
     return gagal('Tanggal realisasi panjar tidak valid (YYYY-MM-DD).');
