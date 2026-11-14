@@ -362,6 +362,23 @@ function AppShell() {
     [pindahTab],
   );
 
+  // UI-A08: tombol banner audit membuka tab Pengaturan lalu menggulir ke kartu
+  // "Audit Integritas" (jangkar #audit-integritas; pola scrollIntoView + jangkar
+  // UI-A07 di PinjamanTab). rAF menunggu commit render Pengaturan agar elemen
+  // jangkar sudah punya layout; reset scrollTop milik lakukanPindah terdaftar
+  // di rAF lebih dulu sehingga posisi akhir tetap di kartu. Bila guard form
+  // membatalkan pindah tab, jangkar tidak ada dan scroll menjadi no-op.
+  const bukaAuditIntegritas = useCallback(() => {
+    pindahTab('pengaturan');
+    if (typeof document === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById('audit-integritas');
+      if (!target) return;
+      const halus = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      target.scrollIntoView({ behavior: halus ? 'smooth' : 'auto', block: 'start' });
+    });
+  }, [pindahTab]);
+
   const refreshLock = useCallback(async () => {
     try {
       setLock(await api.lockStatus());
@@ -692,7 +709,7 @@ function AppShell() {
           <div className="px-6 pt-4">
             <AuditAwalBanner
               ringkasan={auditAwal}
-              onBukaAudit={() => pindahTab('pengaturan')}
+              onBukaAudit={bukaAuditIntegritas}
               onTutup={() => setAuditAwalDitutup(true)}
             />
           </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { clsx } from 'clsx';
 import { IDLE_MAKS_MENIT, IDLE_MIN_MENIT } from '../../core/pin.js';
 import {
   DEFAULT_PENGATURAN,
@@ -7,6 +8,8 @@ import {
   type PengaturanPembukuanPublik,
 } from '../../core/pengaturan.js';
 import { formatNomorBukti } from '../../core/nomorBukti.js';
+import { temuanKritis } from '../../core/auditAwalRingkasan.js';
+import type { HasilAuditIntegritas } from '../../db/integritas.js';
 import type { AuditLog } from '../../core/types.js';
 import {
   formatAksiAudit,
@@ -62,6 +65,115 @@ function Baris({ label, value }: { label: string; value: string }) {
       <span className="text-stone-500">{label}: </span>
       <span className="font-medium break-all">{value}</span>
     </p>
+  );
+}
+
+/** Data mentah temuan untuk diagnosis; pola `<pre>` sama dengan AuditDetail. */
+function TeksDetail({ detail }: { detail: unknown }) {
+  let teks: string;
+  try {
+    teks = JSON.stringify(detail, null, 2) ?? String(detail);
+  } catch {
+    teks = String(detail);
+  }
+  return (
+    <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-stone-50 p-2 text-xs">
+      {teks}
+    </pre>
+  );
+}
+
+/**
+ * UI-A08: tempat melihat ulang hasil audit integritas (kode temuan, pesan,
+ * dan data mentah). Banner startup hanya pemberitahuan ringkas; kartu ini
+ * yang merender daftar lengkap `api.auditIntegritas()`.
+ *
+ * Muat manual via tombol, bukan otomatis: audit memindai seluruh database
+ * (puluhan query) dan tab Pengaturan sering dibuka untuk keperluan lain, jadi
+ * tidak ada IPC berat yang berjalan tanpa diminta. Hasil ditampilkan sampai
+ * dijalankan ulang.
+ */
+export function AuditIntegritasCard() {
+  const [hasil, setHasil] = useState<HasilAuditIntegritas | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [sibuk, setSibuk] = useState(false);
+  const sibukRef = useRef(false);
+
+  async function jalankanAudit(): Promise<void> {
+    if (sibukRef.current) return;
+    sibukRef.current = true;
+    setSibuk(true);
+    setErr(null);
+    try {
+      setHasil(await api.auditIntegritas());
+    } catch (e) {
+      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+    } finally {
+      sibukRef.current = false;
+      setSibuk(false);
+    }
+  }
+
+  const temuan = hasil?.temuan ?? [];
+  const adaKritis = temuan.some((t) => temuanKritis(t));
+
+  return (
+    <div id="audit-integritas" className="scroll-mt-24">
+      <Card>
+        <h2 className="mb-1 text-lg font-bold">Audit Integritas</h2>
+        <p className="mb-3 text-sm text-stone-600">
+          Pemeriksaan menyeluruh konsistensi pembukuan: jurnal seimbang, panjar,
+          pinjaman, dan snapshot kunci periode. Audit hanya membaca data, tidak
+          mengubah apa pun.
+        </p>
+        <ErrorBox msg={err} />
+        {!hasil && !err && (
+          <p className="text-sm text-stone-500" role="status">
+            Belum diperiksa pada sesi ini. Temuan saat aplikasi dibuka muncul di
+            banner; jalankan audit di sini untuk melihat daftar lengkapnya.
+          </p>
+        )}
+        {hasil && temuan.length === 0 && (
+          <div className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="font-semibold">Lolos audit integritas.</p>
+            <p>{hasil.ringkasan}</p>
+          </div>
+        )}
+        {hasil && temuan.length > 0 && (
+          <div
+            className={clsx(
+              'rounded-lg border px-3 py-2 text-sm',
+              adaKritis
+                ? 'border-red-300 bg-red-50 text-red-800'
+                : 'border-amber-300 bg-amber-50 text-amber-900',
+            )}
+          >
+            <p className="font-semibold">{hasil.ringkasan}</p>
+            <ul className="mt-2 space-y-2">
+              {temuan.map((t, i) => (
+                <li key={`${t.kode}-${i}`} className="break-words">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-semibold">{t.kode}</span>
+                    {temuanKritis(t) && <Badge tone="red">Kritis</Badge>}
+                  </div>
+                  <p>{t.pesan}</p>
+                  {t.detail != null && <TeksDetail detail={t.detail} />}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="mt-3">
+          <Button disabled={sibuk} onClick={() => void jalankanAudit()}>
+            {sibuk
+              ? 'Memeriksa…'
+              : hasil
+                ? 'Jalankan ulang audit'
+                : 'Jalankan audit integritas'}
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -716,6 +828,11 @@ export function PengaturanTab({
           </div>
         )}
       </Card>
+
+      {/* UI-A08: hasil audit integritas dirender di kartu tersendiri di atas
+          Riwayat Audit (status kini vs catatan sejarah); banner startup
+          menunjuk ke kartu ini lewat jangkar #audit-integritas. */}
+      <AuditIntegritasCard />
 
       <Card>
         <h2 className="mb-1 text-lg font-bold">Riwayat Audit</h2>

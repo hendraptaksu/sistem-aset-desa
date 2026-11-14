@@ -2,11 +2,17 @@
 //
 // Banner tidak memblokir aplikasi dan tidak menawarkan perbaikan otomatis.
 // Tujuannya hanya agar operator melihat temuan tanpa harus membuka log.
+//
+// UI-A08: banner hanyalah pemberitahuan awal; tempat melihat ulang seluruh
+// temuan adalah kartu "Audit Integritas" di tab Pengaturan (tombol banner
+// membuka kartu itu). Menutup banner temuan kritis wajib lewat konfirmasi
+// agar temuan tidak hilang karena satu klik tanpa sengaja.
 
+import { useState } from 'react';
 import { AlertTriangle, ShieldAlert, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { RingkasanAuditAwal } from '../../core/auditAwalRingkasan.js';
-import { Badge, Button, RING_FOKUS } from './ui.js';
+import { Badge, Button, KonfirmasiModal, RING_FOKUS } from './ui.js';
 
 export function AuditAwalBanner({
   ringkasan,
@@ -17,6 +23,10 @@ export function AuditAwalBanner({
   onBukaAudit: () => void;
   onTutup: () => void;
 }) {
+  // UI-A08: hanya penutupan temuan kritis yang lewat konfirmasi; state ini
+  // tidak berpengaruh pada banner non-kritis yang boleh ditutup langsung.
+  const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
+
   if (!ringkasan || ringkasan.jumlahTemuan === 0) return null;
 
   const kritis = ringkasan.adaKritis;
@@ -69,7 +79,7 @@ export function AuditAwalBanner({
             </ul>
             {sisa > 0 && (
               <p className="mt-1 text-sm font-medium">
-                +{sisa} temuan lain. Buka Riwayat Audit untuk memeriksa semuanya.
+                +{sisa} temuan lain. Buka Audit Integritas untuk memeriksa semuanya.
               </p>
             )}
             {kritis && ringkasan.kodeKritis.length > 0 && (
@@ -82,28 +92,61 @@ export function AuditAwalBanner({
                 variant={kritis ? 'danger' : 'primary'}
                 onClick={onBukaAudit}
               >
-                Buka Audit
+                Buka Audit Integritas
               </Button>
-              <Button variant="ghost" onClick={onTutup}>
+              {/* UI-A08: temuan kritis tidak bisa diabaikan satu klik —
+                  tutup wajib lewat konfirmasi agar operator menyadari risiko. */}
+              <Button
+                variant="ghost"
+                onClick={kritis ? () => setKonfirmasiTutup(true) : onTutup}
+              >
                 Abaikan
               </Button>
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onTutup}
-          aria-label="Tutup peringatan audit"
-          title="Tutup peringatan audit"
-          className={clsx(
-            'shrink-0 rounded-lg p-1.5 hover:bg-black/5',
-            RING_FOKUS,
-            kritis ? 'text-red-800' : 'text-amber-800',
-          )}
-        >
-          <X size={18} aria-hidden="true" />
-        </button>
+        {/* UI-A08: tombol X disembunyikan untuk temuan kritis supaya tidak ada
+            jalur menutup tanpa konfirmasi; kartu Pengaturan tetap tempat
+            melihat ulang temuan sampai sesi berakhir. */}
+        {!kritis && (
+          <button
+            type="button"
+            onClick={onTutup}
+            aria-label="Tutup peringatan audit"
+            title="Tutup peringatan audit"
+            className={clsx(
+              'shrink-0 rounded-lg p-1.5 text-amber-800 hover:bg-black/5',
+              RING_FOKUS,
+            )}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        )}
       </div>
+      {konfirmasiTutup && (
+        <KonfirmasiModal
+          judul="Abaikan peringatan audit kritis?"
+          deskripsi={
+            <>
+              <p>
+                Temuan kritis berarti angka laporan tidak dapat dipercaya.
+                Menutup peringatan ini hanya berlaku untuk sesi sekarang dan
+                tidak memperbaiki data.
+              </p>
+              <p>
+                Seluruh temuan tetap bisa dilihat kapan saja di{' '}
+                <b>Pengaturan → Audit Integritas</b>.
+              </p>
+            </>
+          }
+          labelYa="Ya, abaikan untuk sesi ini"
+          onBatal={() => setKonfirmasiTutup(false)}
+          onKonfirmasi={() => {
+            setKonfirmasiTutup(false);
+            onTutup();
+          }}
+        />
+      )}
     </section>
   );
 }

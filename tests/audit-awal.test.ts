@@ -5,6 +5,9 @@
 
 import type Database from 'better-sqlite3';
 import { createElement } from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { openDb } from '../src/db/database.js';
@@ -18,6 +21,11 @@ import {
   ringkasanAuditAwal,
 } from '../src/main/auditAwal.js';
 import { AuditAwalBanner } from '../src/renderer/components/AuditAwalBanner.js';
+import { AuditIntegritasCard } from '../src/renderer/components/PengaturanTab.js';
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const bacaSumber = (path: string): string =>
+  readFileSync(join(ROOT, path), 'utf8');
 
 const WAKTU = '2026-10-30T00:00:00.000Z';
 
@@ -226,5 +234,59 @@ describe('T-A16 — banner audit awal', () => {
         }),
       ),
     ).toBe('');
+  });
+});
+
+describe('UI-A08 — label banner dan kartu Audit Integritas', () => {
+  const renderBanner = (kode: KodeTemuan[]): string =>
+    renderToStaticMarkup(
+      createElement(AuditAwalBanner, {
+        ringkasan: ringkasanAuditAwal(hasilPalsu(kode)),
+        onBukaAudit: () => {},
+        onTutup: () => {},
+      }),
+    );
+
+  it('tujuan banner konsisten "Buka Audit Integritas", bukan Riwayat Audit', () => {
+    // 6 temuan agar paragraf "+N temuan lain…" ikut dirender.
+    const kasus: KodeTemuan[][] = [
+      ['NERACA_TIDAK_SEIMBANG', 'JURNAL_TANPA_BARIS', 'REVERSAL_GANDA',
+        'AKUN_TIDAK_DIKENAL', 'PANJAR_OPEN_TIDAK_LENGKAP', 'NOMOR_BUKTI_DUPLIKAT'],
+      ['JURNAL_TANPA_BARIS', 'REVERSAL_GANDA', 'AKUN_TIDAK_DIKENAL',
+        'PANJAR_OPEN_TIDAK_LENGKAP', 'NOMOR_BUKTI_DUPLIKAT', 'BARIS_ORPHAN'],
+    ];
+    for (const kode of kasus) {
+      const html = renderBanner(kode);
+      expect(html).toContain('Buka Audit Integritas');
+      expect(html).toContain('Buka Audit Integritas untuk memeriksa semuanya');
+      expect(html).not.toContain('Riwayat Audit');
+    }
+  });
+
+  it('banner kritis tidak punya jalur tutup tanpa konfirmasi (tombol X hilang)', () => {
+    const html = renderBanner(['NERACA_TIDAK_SEIMBANG']);
+    expect(html).toContain('Abaikan');
+    expect(html).not.toContain('aria-label="Tutup peringatan audit"');
+  });
+
+  it('banner non-kritis tetap bisa ditutup langsung lewat tombol X', () => {
+    const html = renderBanner(['JURNAL_TANPA_BARIS']);
+    expect(html).toContain('aria-label="Tutup peringatan audit"');
+  });
+
+  it('kartu Audit Integritas punya jangkar #audit-integritas dan muat manual', () => {
+    const html = renderToStaticMarkup(createElement(AuditIntegritasCard));
+    expect(html).toContain('id="audit-integritas"');
+    expect(html).toContain('Jalankan audit integritas');
+    // Muat manual: tidak ada hasil audit sebelum tombol ditekan.
+    expect(html).toContain('Belum diperiksa pada sesi ini');
+  });
+
+  it('alur banner → Pengaturan → jangkar kartu tersambung di App', () => {
+    const app = bacaSumber('src/renderer/App.tsx');
+    expect(app).toContain("getElementById('audit-integritas')");
+    expect(app).toContain('onBukaAudit={bukaAuditIntegritas}');
+    const pengaturan = bacaSumber('src/renderer/components/PengaturanTab.tsx');
+    expect(pengaturan).toContain('id="audit-integritas"');
   });
 });
