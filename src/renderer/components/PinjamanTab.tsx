@@ -212,6 +212,11 @@ export function PinjamanTab() {
   const [detail, setDetail] = useState<Record<string, Pinjaman>>({});
   const [pembayaran, setPembayaran] = useState<Record<string, PinjamanBayar[]>>({});
   const [detailBusy, setDetailBusy] = useState('');
+  // UI-A06 — feedback aksi di seksi detail (gagal muat, bayar angsuran,
+  // pembatalan) dirender di seksi detail, bukan di kartu Catat Pinjaman atas.
+  const [errDetail, setErrDetail] = useState<string | null>(null);
+  const [infoBayar, setInfoBayar] = useState<string | null>(null);
+  const [infoBatal, setInfoBatal] = useState<string | null>(null);
   const [bayar, setBayar] = useState<FormBayar | null>(null);
   const [bayarAlasan, setBayarAlasan] = useState('');
   const [bayarPerluKonfirmasi, setBayarPerluKonfirmasi] = useState(false);
@@ -580,12 +585,17 @@ export function PinjamanTab() {
       return;
     }
     setDetailId(id);
+    // UI-A06: buka seksi detail selalu mulai bersih agar hasil aksi pinjaman
+    // lain tidak ikut tampil di seksi ini.
+    setErrDetail(null);
+    setInfoBayar(null);
+    setInfoBatal(null);
     if (detail[id] && pembayaran[id]) return;
     setDetailBusy(id);
     try {
       await muatDetail(id);
     } catch (e) {
-      setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      setErrDetail(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
       setDetailBusy('');
     }
@@ -612,7 +622,8 @@ export function PinjamanTab() {
     setBayarAlasan('');
     setBayarPerluKonfirmasi(false);
     setBayarErr(null);
-    setInfo(null);
+    setInfoBayar(null);
+    setInfoBatal(null);
     setDirty(true);
   }
 
@@ -634,7 +645,8 @@ export function PinjamanTab() {
   async function simpanBayar(konfirmasi = false): Promise<void> {
     if (!bayar || bayarBusyRef.current) return;
     setBayarErr(null);
-    setInfo(null);
+    setInfoBayar(null);
+    setInfoBatal(null);
     const { pokok, bunga, denda } = bayar;
     if (
       !Number.isSafeInteger(pokok) ||
@@ -708,11 +720,20 @@ export function PinjamanTab() {
             }
           : {},
       );
-      setInfo(
+      setInfoBatal(null);
+      setInfoBayar(
         `Bayar angsuran ke-${ke} ${bayar.pinjaman.kreditur} tersimpan ` +
           `(${r.jurnal.no_bukti || r.jurnal.id}) — ${formatRp(total)}. ` +
           `Outstanding sekarang ${formatRp(r.pinjaman?.outstanding ?? 0)}.`,
       );
+      // UI-A06: form bayar (posisi operator saat ini) menutup setelah tersimpan;
+      // gulir ke banner hasil di seksi detail agar konfirmasi terlihat dan
+      // operator tidak mencatat pembayaran dua kali.
+      if (typeof document !== 'undefined') {
+        document
+          .getElementById(`pinjaman-detail-${idPinjaman}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       setBayar(null);
       setBayarAlasan('');
       setBayarPerluKonfirmasi(false);
@@ -741,7 +762,8 @@ export function PinjamanTab() {
     setAlasanPembatalan('');
     setBatalPerluKonfirmasi(false);
     setBatalErr(null);
-    setInfo(null);
+    setInfoBayar(null);
+    setInfoBatal(null);
   }
 
   async function simpanPembatalan(konfirmasi = false): Promise<void> {
@@ -764,7 +786,7 @@ export function PinjamanTab() {
             ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
             : {},
         );
-        setInfo(
+        setInfoBatal(
           `Catatan pembayaran angsuran ${targetPembatalan.pembayaran.angsuran_id ?? 'tanpa jadwal'} ` +
             `dibatalkan. Jurnal balik ${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
             'jurnal dan riwayat asal tetap tersimpan. Catat ulang pembayaran yang benar bila diperlukan.',
@@ -777,11 +799,19 @@ export function PinjamanTab() {
             ? { konfirmasiPeringatan: true, alasanPeringatan: alasan }
             : {},
         );
-        setInfo(
+        setInfoBatal(
           `Catatan pencairan ${r.pinjaman.kreditur} dibatalkan. Jurnal balik ` +
             `${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
             'jurnal dan riwayat asal tetap tersimpan.',
         );
+      }
+      setInfoBayar(null);
+      // UI-A06: modal pembatalan menutup setelah sukses; gulir ke banner hasil
+      // di seksi detail (dekat tombol pembatalan) agar operator melihatnya.
+      if (typeof document !== 'undefined') {
+        document
+          .getElementById(`pinjaman-detail-${idPinjaman}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       setTargetPembatalan(null);
       setAlasanPembatalan('');
@@ -1242,6 +1272,21 @@ export function PinjamanTab() {
                     {detailId === p.id && (
                       <tr className="border-b bg-stone-50 last:border-0">
                         <td colSpan={8} className="px-3 py-3">
+                          {/* UI-A06: jangkar gulir + banner hasil aksi seksi
+                              detail (gagal muat, bayar angsuran, pembatalan). */}
+                          <div id={`pinjaman-detail-${p.id}`}>
+                            <ErrorBox msg={errDetail} />
+                            {infoBayar && (
+                              <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+                                {infoBayar}
+                              </div>
+                            )}
+                            {infoBatal && (
+                              <div className="mb-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800">
+                                {infoBatal}
+                              </div>
+                            )}
+                          </div>
                           {detailBusy === p.id ? (
                             <p className="text-stone-500">Memuat jadwal…</p>
                           ) : jadwalTampil.length > 0 ? (
