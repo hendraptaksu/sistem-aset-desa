@@ -222,10 +222,17 @@ export function PengaturanTab({
   const [limit, setLimit] = useState<number>(25);
   const [offset, setOffset] = useState(0);
   const [detail, setDetail] = useState<AuditLog | null>(null);
+  // UI-A04: penanda permintaan muat riwayat audit. Respons yang kembali saat
+  // penanda sudah bergeser dianggap basi agar hasil terakhir selalu sesuai
+  // filter terakhir di layar.
+  const idPermintaan = useRef(0);
 
   const digit = (s: string) => s.replace(/\D/g, '').slice(0, 6);
 
+  // UI-A04: setiap mulai muat naikkan penanda; respons basi tidak boleh
+  // menimpa hasil lebih baru.
   async function muatAudit() {
+    const id = ++idPermintaan.current;
     setAuditLoading(true);
     setAuditErr(null);
     try {
@@ -238,17 +245,24 @@ export function PengaturanTab({
         limit,
         offset,
       });
+      if (id !== idPermintaan.current) return;
       setAudit(r.rows);
       setAuditTotal(r.total);
     } catch (e) {
+      if (id !== idPermintaan.current) return;
       setAuditErr(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
-      setAuditLoading(false);
+      if (id === idPermintaan.current) setAuditLoading(false);
     }
   }
 
   useEffect(() => {
-    void muatAudit();
+    // UI-A04: debounce 250 ms (pola serupa SaranNomorBukti) supaya filter teks
+    // tidak menembak IPC per ketikan huruf.
+    const timer = setTimeout(() => {
+      void muatAudit();
+    }, 250);
+    return () => clearTimeout(timer);
     // Filter & pagination adalah satu-satunya pemicu muat ulang.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fAksi, fRefType, fRefId, fMulai, fSampai, limit, offset]);
