@@ -37,6 +37,7 @@ const DOKUMEN_KANONIK = [
   'debugging.md',
   'template-cetak.md',
   'rilis.md',
+  'tiket-audit-ui-2026-11.md',
 ] as const;
 
 const DOKUMEN_PENGGUNA = [README, PENGGUNA, PEMERIKSAAN, PORTABLE, SKEMA, PRINSIP];
