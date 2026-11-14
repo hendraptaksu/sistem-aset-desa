@@ -665,7 +665,11 @@ export function LockModal({
   onCancel: () => void;
   onSubmit: (alasan: string) => void;
 }) {
-  let alasan = '';
+  // State React, bukan variabel biasa: re-render parent saat modal terbuka
+  // tidak lagi mengosongkan alasan (closure lama menangkap nilai awal).
+  const [alasan, setAlasan] = useState('');
+  const cukup = alasan.trim().length >= 5;
+
   return (
     <Modal
       judul="Periode sudah ditutup"
@@ -676,13 +680,25 @@ export function LockModal({
       <Field label="Alasan (min. 5 karakter)">
         <TextInput
           autoFocus
-          onChange={(e) => (alasan = e.target.value)}
+          value={alasan}
+          onChange={(e) => setAlasan(e.target.value)}
           placeholder="cth: koreksi struk susulan Desember"
         />
       </Field>
+      {!cukup && (
+        <p className="mt-1 text-helper text-stone-500">Alasan minimal 5 karakter.</p>
+      )}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>Batal</Button>
-        <Button onClick={() => alasan.trim().length >= 5 && onSubmit(alasan.trim())}>Tetap simpan</Button>
+        <Button
+          disabled={!cukup}
+          onClick={() => {
+            if (!cukup) return;
+            onSubmit(alasan.trim());
+          }}
+        >
+          Tetap simpan
+        </Button>
       </div>
     </Modal>
   );

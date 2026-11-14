@@ -17,7 +17,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 | UI-A06 | P1 | Pinjaman: feedback aksi di bawah halaman tak terlihat | M | ✅ |
 | UI-A07 | P1 | Pinjaman: tombol "Kartu hutang" tanpa efek terlihat | S | ✅ |
 | UI-A08 | P1 | Temuan audit integritas tidak bisa dilihat ulang; banner menunjuk layar yang salah | M | ✅ |
-| UI-A09 | P1 | ui.tsx: LockModal — alasan di closure, tombol bisa diam tanpa reaksi | S | ⬜ |
+| UI-A09 | P1 | ui.tsx: LockModal — alasan di closure, tombol bisa diam tanpa reaksi | S | ✅ |
 | UI-A10 | P2 | Komponen KontrolPeriode bersama untuk semua laporan | L | ⬜ |
 | UI-A11 | P2 | InfoBox `role="status"` + feedback tampil dekat aksinya | M | ⬜ |
 | UI-A12 | P2 | Konfirmasi seragam sebelum isian user ditimpa | M | ⬜ |
