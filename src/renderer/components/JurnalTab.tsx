@@ -629,6 +629,7 @@ function KoreksiModal({
     null,
   );
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState('');
+  const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
 
   // UI-08: Koreksi adalah modal di dalam tab Jurnal. Isian yang belum disimpan
   // harus memicu guard saat pindah tab; status dibersihkan saat modal ditutup
@@ -637,17 +638,26 @@ function KoreksiModal({
   useEffect(() => () => setDirty(false), [setDirty]);
 
   // Form isi ulang: terisi data lama supaya operator tinggal membetulkan typo.
-  const [tanggal, setTanggal] = useState(jurnal.tanggal);
-  const [keterangan, setKeterangan] = useState(jurnal.keterangan);
-  const [noBukti, setNoBukti] = useState('');
-  const [baris, setBaris] = useState<BarisForm[]>(() =>
+  const barisAwalDariJurnal = (): BarisForm[] =>
     jurnal.baris.map((b) => ({
       akun_kode: b.akun_kode,
       sisi: b.debit > 0 ? 'DEBIT' : 'KREDIT',
       nominal: b.debit > 0 ? b.debit : b.kredit,
       keterangan: b.keterangan,
-    })),
-  );
+    }));
+  const [tanggal, setTanggal] = useState(jurnal.tanggal);
+  const [keterangan, setKeterangan] = useState(jurnal.keterangan);
+  const [noBukti, setNoBukti] = useState('');
+  const [baris, setBaris] = useState<BarisForm[]>(barisAwalDariJurnal);
+
+  // UI-A02: snapshot isian saat modal dibuka. Pembanding untuk mintaTutup agar
+  // Escape/klik latar/tombol × tidak langsung membuang isian yang sudah diubah.
+  const [snapshotAwal] = useState(() => ({
+    alasan: '',
+    tanggalBalik: jurnal.tanggal,
+    tanggal: jurnal.tanggal,
+    baris: barisAwalDariJurnal(),
+  }));
 
   const totalDebit = baris
     .filter((b) => b.sisi === 'DEBIT')
@@ -677,6 +687,21 @@ function KoreksiModal({
     tanggalKalenderValid(tanggalBalik) &&
     tanggalKalenderValid(tanggal) &&
     tanggalBalik.slice(0, 4) !== tanggal.slice(0, 4);
+  // Ada perubahan dibanding snapshot awal modal dibuka?
+  const adaPerubahan =
+    alasan !== snapshotAwal.alasan ||
+    tanggalBalik !== snapshotAwal.tanggalBalik ||
+    tanggal !== snapshotAwal.tanggal ||
+    baris.length !== snapshotAwal.baris.length ||
+    baris.some((b, i) => {
+      const s = snapshotAwal.baris[i];
+      return (
+        b.akun_kode !== s.akun_kode ||
+        b.sisi !== s.sisi ||
+        b.nominal !== s.nominal ||
+        b.keterangan !== s.keterangan
+      );
+    });
 
   function ubahBaris(index: number, patch: Partial<BarisForm>) {
     setBaris((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -701,6 +726,17 @@ function KoreksiModal({
   function batal(): void {
     setDirty(false);
     onBatal();
+  }
+
+  /** Pola JurnalUmumEditor: tutup lewat Escape/klik latar/tombol ×/Batal
+   *  dikonfirmasi dulu bila isian sudah berubah dari snapshot awal. */
+  function mintaTutup(): void {
+    if (busyRef.current) return;
+    if (adaPerubahan) {
+      setKonfirmasiTutup(true);
+      return;
+    }
+    batal();
   }
 
   async function kirimBalik(konfirmasi = false) {
@@ -789,7 +825,7 @@ function KoreksiModal({
           koreksi tercatat di riwayat audit.
         </span>
       }
-      onTutup={batal}
+      onTutup={mintaTutup}
       sibuk={busy}
       lebar="3xl"
     >
@@ -891,7 +927,7 @@ function KoreksiModal({
                   {alasanAksiTidakSiap}
                 </span>
               )}
-              <Button variant="ghost" disabled={busy} onClick={batal}>
+              <Button variant="ghost" disabled={busy} onClick={mintaTutup}>
                 Batal
               </Button>
               <Button
@@ -1064,7 +1100,7 @@ function KoreksiModal({
               <Button variant="ghost" disabled={busy} onClick={() => setLangkah('alasan')}>
                 Kembali
               </Button>
-              <Button variant="ghost" disabled={busy} onClick={batal}>
+              <Button variant="ghost" disabled={busy} onClick={mintaTutup}>
                 Batal
               </Button>
               <Button
@@ -1116,6 +1152,22 @@ function KoreksiModal({
               setKonfirmasiFinal(null);
               if (aksi === 'balik') void kirimBalik();
               else void kirimIsiUlang();
+            }}
+          />
+        )}
+
+        {konfirmasiTutup && (
+          <KonfirmasiModal
+            judul="Buang isian koreksi?"
+            deskripsi="Isian koreksi yang belum disimpan akan hilang. Jurnal asli tidak terpengaruh."
+            labelYa="Ya, buang isian"
+            sibuk={busy}
+            onBatal={() => setKonfirmasiTutup(false)}
+            onKonfirmasi={() => {
+              setKonfirmasiTutup(false);
+              // Tutup konfirmasi lebih dulu agar tumpukan modal mengembalikan
+              // fokus dengan rapi, baru modal koreksi ditutup.
+              window.setTimeout(batal, 0);
             }}
           />
         )}
