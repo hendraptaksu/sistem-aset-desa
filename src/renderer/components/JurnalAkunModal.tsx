@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import type { Coa } from '../../db/coa.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
-import { Button, ErrorBox, Modal } from './ui.js';
+import { Button, ErrorBox, Modal, TombolBaris } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -129,7 +130,8 @@ export function JurnalAkunModal({
                   <th scope="col" className="py-2 pr-3">No. Bukti</th>
                   <th scope="col" className="py-2 pr-3">Keterangan</th>
                   <th scope="col" className="py-2 pr-3 text-right">Debit</th>
-                  <th scope="col" className="py-2 text-right">Kredit</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Kredit</th>
+                  <th scope="col" className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -139,26 +141,10 @@ export function JurnalAkunModal({
                     <tr
                       key={j.id}
                       className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
-                      tabIndex={0}
                       title="Klik untuk melihat detail jurnal"
-                      // UI-A21: baris diumumkan sebagai tombol dengan label
-                      // yang menyebut jurnal mana yang akan dibuka.
-                      role="button"
-                      aria-label={`Buka detail jurnal ${formatTanggal(j.tanggal)}${
-                        j.no_bukti ? ` · ${j.no_bukti}` : ''
-                      } — ${j.keterangan || 'tanpa keterangan'}`}
-                      onClick={(e) => {
-                        // Simpan fokus di baris pemicu agar Modal mengembalikannya
-                        // ke sini saat Detail Jurnal ditutup.
-                        e.currentTarget.focus({ preventScroll: true });
-                        setDetail(j);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setDetail(j);
-                        }
-                      }}
+                      // UI-A28: klik baris hanya pintasan mouse; target
+                      // Tab/pembaca layar adalah tombol di kolom terakhir.
+                      onClick={() => setDetail(j)}
                     >
                       <td className="whitespace-nowrap py-2 pr-3">
                         {formatTanggal(j.tanggal)}
@@ -170,8 +156,18 @@ export function JurnalAkunModal({
                       <td className="whitespace-nowrap py-2 pr-3 text-right">
                         {n.debit ? formatRp(n.debit) : ''}
                       </td>
-                      <td className="whitespace-nowrap py-2 text-right">
+                      <td className="whitespace-nowrap py-2 pr-3 text-right">
                         {n.kredit ? formatRp(n.kredit) : ''}
+                      </td>
+                      <td className="py-2">
+                        <TombolBaris
+                          label={`Buka detail jurnal ${formatTanggal(j.tanggal)}${
+                            j.no_bukti ? ` · ${j.no_bukti}` : ''
+                          } — ${j.keterangan || 'tanpa keterangan'}`}
+                          onClick={() => setDetail(j)}
+                        >
+                          <ChevronRight size={16} aria-hidden="true" />
+                        </TombolBaris>
                       </td>
                     </tr>
                   );
@@ -186,9 +182,10 @@ export function JurnalAkunModal({
                   <td className="whitespace-nowrap py-2 pr-3 text-right">
                     {totalTampil.debit ? formatRp(totalTampil.debit) : ''}
                   </td>
-                  <td className="whitespace-nowrap py-2 text-right">
+                  <td className="whitespace-nowrap py-2 pr-3 text-right">
                     {totalTampil.kredit ? formatRp(totalTampil.kredit) : ''}
                   </td>
+                  <td />
                 </tr>
               </tfoot>
             </table>

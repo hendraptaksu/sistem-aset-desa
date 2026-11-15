@@ -14,7 +14,7 @@ import { tanggalLokal } from '../../utils/tanggal.js';
 import { api } from '../lib/api.js';
 import { ALASAN_EKSPOR_KOSONG, LABEL_TIPE_AKUN } from '../lib/tampilanLaporan.js';
 import type { PeriodeBukuBesar } from './BukuBesarTab.js';
-import { Badge, Button, Card, ErrorBox } from './ui.js';
+import { Badge, Button, Card, ErrorBox, TombolBaris } from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -232,33 +232,15 @@ export function NeracaSaldoTab({
                           ? 'border-b bg-amber-50/60 align-top italic last:border-0'
                           : 'cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50'
                       }
-                      tabIndex={sintetis ? undefined : 0}
                       title={
                         sintetis
                           ? 'Laba bersih sebelum periode; bukan akun pada Daftar Akun'
                           : `Buka Buku Besar ${r.kode} — ${r.nama}`
                       }
-                      // UI-A21: baris akun diumumkan sebagai tombol dengan
-                      // label yang menyebut akun tujuan; baris sintetis
-                      // tidak interaktif sehingga tanpa role.
-                      role={sintetis ? undefined : 'button'}
-                      aria-label={
-                        sintetis
-                          ? undefined
-                          : `Buka Buku Besar akun ${r.kode} — ${r.nama}`
-                      }
+                      // UI-A28: klik baris hanya pintasan mouse; target
+                      // Tab/pembaca layar adalah tombol di kolom terakhir.
                       onClick={
                         sintetis ? undefined : () => onBukaBukuBesar(r.kode, periodeSumber)
-                      }
-                      onKeyDown={
-                        sintetis
-                          ? undefined
-                          : (e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                onBukaBukuBesar(r.kode, periodeSumber);
-                              }
-                            }
                       }
                     >
                       <td className="whitespace-nowrap py-2 pr-3 font-semibold">
@@ -284,11 +266,14 @@ export function NeracaSaldoTab({
                       <td className="whitespace-nowrap py-2 pr-3 text-right font-semibold">
                         {formatRp(r.saldo)}
                       </td>
-                      <td className="py-2 text-right text-stone-400">
+                      <td className="py-2 text-right">
                         {!sintetis && (
-                          // UI-A21: ikon hanya penunjuk arah; makna ada di
-                          // aria-label baris.
-                          <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+                          <TombolBaris
+                            label={`Buka Buku Besar akun ${r.kode} — ${r.nama}`}
+                            onClick={() => onBukaBukuBesar(r.kode, periodeSumber)}
+                          >
+                            <ChevronRight size={16} aria-hidden="true" />
+                          </TombolBaris>
                         )}
                       </td>
                     </tr>

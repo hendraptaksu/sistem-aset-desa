@@ -76,6 +76,38 @@ export function Button({
   );
 }
 
+/**
+ * UI-A28: aksi "buka detail" di dalam baris tabel laporan. Baris tetap <tr>
+ * biasa agar semantik tabel utuh; tombol inilah target Tab dan pembaca layar,
+ * sedangkan klik di mana pun pada baris tetap jalan untuk mouse.
+ */
+export function TombolBaris({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={clsx(
+        'ml-auto flex items-center rounded-lg p-1 text-stone-500 hover:bg-emerald-100 hover:text-emerald-800',
+        RING_FOKUS,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Badge({
   children,
   tone = 'stone',

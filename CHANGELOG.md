@@ -114,7 +114,9 @@ dirilis sebagai versi baru.
   digulir, fokus pindah ke ringkasan error saat simpan gagal, hitung mundur
   blokir PIN tidak diumumkan tiap detik, badge "Memperbarui…" menjadi live
   region di luar judul, filter status panjar berlabel, tombol aksi baris punya
-  nama aksesibel, dan header tabel memakai `scope="col"`.
+  nama aksesibel, dan header tabel memakai `scope="col"`. Baris tabel laporan
+  tidak lagi memakai `role="button"`: drill-down dilakukan tombol berlabel di
+  kolom terakhir, sehingga semantik baris/kolom tetap utuh untuk pembaca layar.
 
 ### Verifikasi akhir (T4.1–T4.2)
 

@@ -17,7 +17,13 @@ import {
   labelPeriodeLaporan,
   rentangTerbalik,
 } from '../lib/tampilanLaporan.js';
-import { Badge, BadgeMemperbarui, Card, ErrorBox } from './ui.js';
+import {
+  Badge,
+  BadgeMemperbarui,
+  Card,
+  ErrorBox,
+  TombolBaris,
+} from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
@@ -309,27 +315,10 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                           ? 'cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50'
                           : 'border-b align-top last:border-0'
                       }
-                      tabIndex={r.jurnal_id ? 0 : undefined}
                       title={r.jurnal_id ? 'Klik untuk melihat jurnal asal' : undefined}
-                      // UI-A21: baris dengan jurnal diumumkan sebagai tombol
-                      // dengan label yang menyebut mutasi mana yang dibuka;
-                      // baris tanpa jurnal non-interaktif.
-                      role={r.jurnal_id ? 'button' : undefined}
-                      aria-label={
-                        r.jurnal_id
-                          ? `Buka detail jurnal ${formatTanggal(r.tanggal)}${
-                              r.no_bukti ? ` · ${r.no_bukti}` : ''
-                            } — ${r.keterangan || 'tanpa keterangan'}`
-                          : undefined
-                      }
+                      // UI-A28: klik baris hanya pintasan mouse; target
+                      // Tab/pembaca layar adalah tombol di kolom terakhir.
                       onClick={() => void bukaDetail(r.jurnal_id)}
-                      onKeyDown={(e) => {
-                        if (!r.jurnal_id) return;
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          void bukaDetail(r.jurnal_id);
-                        }
-                      }}
                     >
                       <td className="whitespace-nowrap py-2 pr-3">
                         {formatTanggal(r.tanggal)}
@@ -353,11 +342,16 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
                       <td className="whitespace-nowrap py-2 pr-3 text-right">
                         {r.keluar ? formatRp(r.keluar) : ''}
                       </td>
-                      <td className="py-2 text-right text-stone-400">
-                        {/* UI-A21: ikon hanya penunjuk arah; makna ada di
-                            aria-label baris. */}
+                      <td className="py-2 text-right">
                         {r.jurnal_id && (
-                          <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+                          <TombolBaris
+                            label={`Buka detail jurnal ${formatTanggal(r.tanggal)}${
+                              r.no_bukti ? ` · ${r.no_bukti}` : ''
+                            } — ${r.keterangan || 'tanpa keterangan'}`}
+                            onClick={() => void bukaDetail(r.jurnal_id)}
+                          >
+                            <ChevronRight size={16} aria-hidden="true" />
+                          </TombolBaris>
                         )}
                       </td>
                     </tr>

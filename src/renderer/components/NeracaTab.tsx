@@ -7,7 +7,7 @@ import { tanggalLokal } from '../../utils/tanggal.js';
 import { api, type NeracaHasil, type NeracaSaldoModeHasil } from '../lib/api.js';
 import { badgeNeracaSaldo } from '../lib/tampilanLaporan.js';
 import type { PeriodeBukuBesar } from './BukuBesarTab.js';
-import { Badge, Card, ErrorBox } from './ui.js';
+import { Badge, Card, ErrorBox, TombolBaris } from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
 import { ExportActions } from './ExportActions.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
@@ -90,30 +90,22 @@ export function NeracaTab({
             ? 'cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50'
             : 'border-b align-top last:border-0'
         }
-        tabIndex={onBukaBukuBesar ? 0 : undefined}
         title={onBukaBukuBesar ? `Buka Buku Besar ${a.kode} — ${a.nama}` : undefined}
-        // UI-A21: baris akun diumumkan sebagai tombol dengan label yang
-        // menyebut akun tujuan; tanpa drill-down baris ini non-interaktif.
-        role={onBukaBukuBesar ? 'button' : undefined}
-        aria-label={
-          onBukaBukuBesar ? `Buka Buku Besar akun ${a.kode} — ${a.nama}` : undefined
-        }
+        // UI-A28: klik baris hanya pintasan mouse; target Tab/pembaca layar
+        // adalah tombol di kolom terakhir (bila drill-down tersedia).
         onClick={() => onBukaBukuBesar?.(a.kode, periodeSumber())}
-        onKeyDown={(e) => {
-          if (!onBukaBukuBesar) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onBukaBukuBesar(a.kode, periodeSumber());
-          }
-        }}
       >
         <td className="whitespace-nowrap py-2 pr-3 font-semibold">{a.kode}</td>
         <td className="py-2 pr-3">{a.nama}</td>
         <td className="whitespace-nowrap py-2 pr-3 text-right">{formatRp(a.saldo)}</td>
-        <td className="py-2 text-right text-stone-400">
-          {/* UI-A21: ikon hanya penunjuk arah; makna ada di aria-label baris. */}
+        <td className="py-2 text-right">
           {onBukaBukuBesar && (
-            <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+            <TombolBaris
+              label={`Buka Buku Besar akun ${a.kode} — ${a.nama}`}
+              onClick={() => onBukaBukuBesar(a.kode, periodeSumber())}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </TombolBaris>
           )}
         </td>
       </tr>

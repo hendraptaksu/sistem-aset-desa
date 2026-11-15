@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { isAkunKasData, type Coa, type PosisiNormal } from '../../db/coa.js';
 import {
   bukuBesarToWorkbook,
@@ -13,7 +14,15 @@ import {
   sisiSaldo,
   toneSisiSaldo,
 } from '../lib/tampilanLaporan.js';
-import { Badge, BadgeMemperbarui, Card, ErrorBox, Field, Select } from './ui.js';
+import {
+  Badge,
+  BadgeMemperbarui,
+  Card,
+  ErrorBox,
+  Field,
+  Select,
+  TombolBaris,
+} from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { ExportActions } from './ExportActions.js';
@@ -350,7 +359,8 @@ export function BukuBesarTab({
               </h3>
               <BadgeMemperbarui aktif={menyegarkan} />
               <span className="text-sm text-stone-600">
-                {data.rows.length} baris · klik baris untuk melihat jurnal asal
+                {data.rows.length} baris · klik baris atau tombol panah untuk
+                melihat jurnal asal
               </span>
             </div>
             {/* UI-A10: data lama diredupkan + aria-busy saat hasil baru diambil. */}
@@ -376,6 +386,7 @@ export function BukuBesarTab({
                     />
                     <th scope="col" className="py-2 pr-3 text-right">Saldo</th>
                     <th scope="col" className="py-2">Sisi</th>
+                    <th scope="col" className="py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -383,21 +394,10 @@ export function BukuBesarTab({
                     <tr
                       key={`${r.jurnal_id}-${r.baris_id ?? i}`}
                       className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
-                      tabIndex={0}
                       title="Klik untuk melihat jurnal asal"
-                      // UI-A21: baris diumumkan sebagai tombol dengan label
-                      // yang menyebut jurnal mana yang akan dibuka.
-                      role="button"
-                      aria-label={`Buka detail jurnal ${formatTanggal(r.tanggal)}${
-                        r.no_bukti ? ` · ${r.no_bukti}` : ''
-                      } — ${r.keterangan || 'tanpa keterangan'}`}
+                      // UI-A28: klik baris hanya pintasan mouse; target
+                      // Tab/pembaca layar adalah tombol di kolom terakhir.
                       onClick={() => void bukaDetail(r.jurnal_id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          void bukaDetail(r.jurnal_id);
-                        }
-                      }}
                     >
                       <td className="whitespace-nowrap py-2 pr-3">
                         {formatTanggal(r.tanggal)}
@@ -421,11 +421,21 @@ export function BukuBesarTab({
                           posisiNormal={data.posisi_normal}
                         />
                       </td>
+                      <td className="py-2">
+                        <TombolBaris
+                          label={`Buka detail jurnal ${formatTanggal(r.tanggal)}${
+                            r.no_bukti ? ` · ${r.no_bukti}` : ''
+                          } — ${r.keterangan || 'tanpa keterangan'}`}
+                          onClick={() => void bukaDetail(r.jurnal_id)}
+                        >
+                          <ChevronRight size={16} aria-hidden="true" />
+                        </TombolBaris>
+                      </td>
                     </tr>
                   ))}
                   {!adaMutasi && (
                     <tr>
-                      <td colSpan={7} className="py-4 text-center text-stone-500">
+                      <td colSpan={8} className="py-4 text-center text-stone-500">
                         Tidak ada mutasi pada periode ini. Saldo tetap{' '}
                         {formatRp(data.saldoAkhir)}.
                       </td>
@@ -458,6 +468,7 @@ export function BukuBesarTab({
                         posisiNormal={data.posisi_normal}
                       />
                     </td>
+                    <td className="py-2" />
                   </tr>
                 </tfoot>
               </table>

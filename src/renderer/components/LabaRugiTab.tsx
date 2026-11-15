@@ -15,7 +15,7 @@ import {
   labelPeriodeHasil,
   rentangTerbalik,
 } from '../lib/tampilanLaporan.js';
-import { Badge, BadgeMemperbarui, Card, ErrorBox } from './ui.js';
+import { Badge, BadgeMemperbarui, Card, ErrorBox, TombolBaris } from './ui.js';
 import { KontrolPeriode } from './KontrolPeriode.js';
 import { ExportActions } from './ExportActions.js';
 import { JurnalAkunModal } from './JurnalAkunModal.js';
@@ -171,7 +171,7 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
           />
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Klik baris akun untuk melihat jurnal pada periode ini.
+          Klik baris akun atau tombol panah untuk melihat jurnal pada periode ini.
         </p>
 
         {data && (
@@ -236,29 +236,25 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                   <tr
                     key={b.kode}
                     className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
-                    tabIndex={0}
                     title={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
-                    // UI-A21: baris diumumkan sebagai tombol dengan label
-                    // yang menyebut akun mana yang akan ditelusuri.
-                    role="button"
-                    aria-label={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
+                    // UI-A28: klik baris hanya pintasan mouse; target
+                    // Tab/pembaca layar adalah tombol di kolom terakhir.
                     onClick={() => setAkunDipilih({ kode: b.kode, nama: b.nama })}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setAkunDipilih({ kode: b.kode, nama: b.nama });
-                      }
-                    }}
                   >
                     <td className="whitespace-nowrap py-2 pr-3 font-semibold">{b.kode}</td>
                     <td className="py-2 pr-3">{b.nama}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">
                       {formatRp(b.nominal)}
                     </td>
-                    <td className="py-2 text-right text-stone-400">
-                      {/* UI-A21: ikon hanya penunjuk arah; makna ada di
-                          aria-label baris. */}
-                      <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+                    <td className="py-2 text-right">
+                      <TombolBaris
+                        label={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
+                        onClick={() =>
+                          setAkunDipilih({ kode: b.kode, nama: b.nama })
+                        }
+                      >
+                        <ChevronRight size={16} aria-hidden="true" />
+                      </TombolBaris>
                     </td>
                   </tr>
                 ))}
@@ -288,29 +284,25 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                   <tr
                     key={b.kode}
                     className="cursor-pointer border-b align-top last:border-0 hover:bg-emerald-50"
-                    tabIndex={0}
                     title={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
-                    // UI-A21: baris diumumkan sebagai tombol dengan label
-                    // yang menyebut akun mana yang akan ditelusuri.
-                    role="button"
-                    aria-label={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
+                    // UI-A28: klik baris hanya pintasan mouse; target
+                    // Tab/pembaca layar adalah tombol di kolom terakhir.
                     onClick={() => setAkunDipilih({ kode: b.kode, nama: b.nama })}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setAkunDipilih({ kode: b.kode, nama: b.nama });
-                      }
-                    }}
                   >
                     <td className="whitespace-nowrap py-2 pr-3 font-semibold">{b.kode}</td>
                     <td className="py-2 pr-3">{b.nama}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">
                       {formatRp(b.nominal)}
                     </td>
-                    <td className="py-2 text-right text-stone-400">
-                      {/* UI-A21: ikon hanya penunjuk arah; makna ada di
-                          aria-label baris. */}
-                      <ChevronRight size={16} aria-hidden="true" className="ml-auto" />
+                    <td className="py-2 text-right">
+                      <TombolBaris
+                        label={`Lihat jurnal akun ${b.kode} — ${b.nama}`}
+                        onClick={() =>
+                          setAkunDipilih({ kode: b.kode, nama: b.nama })
+                        }
+                      >
+                        <ChevronRight size={16} aria-hidden="true" />
+                      </TombolBaris>
                     </td>
                   </tr>
                 ))}

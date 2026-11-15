@@ -28,9 +28,9 @@ lama, melainkan membuat jurnal balik.
 7. **Riwayat Audit** — periksa koreksi, kunci periode, backup/restore, perubahan
    pengaturan.
 
-Semua layar laporan bisa **drill-down**: klik baris/akun → daftar jurnal → detail
-debit/kredit + nomor bukti. Gunakan ini untuk membuktikan angka sampai ke
-transaksi aslinya.
+Semua layar laporan bisa **drill-down**: klik baris/akun (atau tombol panah di
+ujung baris) → daftar jurnal → detail debit/kredit + nomor bukti. Gunakan ini
+untuk membuktikan angka sampai ke transaksi aslinya.
 
 ---
 

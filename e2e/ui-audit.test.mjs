@@ -16,6 +16,7 @@
 // - UI-A10: rentang terbalik Laba Rugi/Arus Kas → guard amber seragam dan
 //   badge SURPLUS/DEFISIT tidak tampil.
 // - UI-A03: drill-down Neraca → Buku Besar membawa periode sumber ("per …").
+// - UI-A28: baris tabel laporan tetap <tr>; drill-down memakai tombol di sel.
 // - UI-A05: Pengaturan Pembukuan aktif setelah muat sukses (jalur gagal muat
 //   dikunci lewat uji sumber di tests/ui-a05-pembukuan-gagal-muat.test.ts
 //   karena IPC pengaturanGet tidak bisa digagalkan lewat e2e).
@@ -957,12 +958,28 @@ async function cekDrilldownNeracaBukuBesar(page, t) {
 
   const barisKas = page.getByRole('button', { name: /^Buka Buku Besar akun 1001/ });
   await barisKas.waitFor({ timeout: 20_000 });
+  // UI-A28: baris tabel tetap <tr> (bukan role tombol); aksi drill-down
+  // dilakukan tombol sungguhan di kolom terakhir.
+  assert.equal(
+    await barisKas.evaluate((el) => el.closest('tr')?.getAttribute('role') ?? null),
+    null,
+    'Baris Neraca masih memakai role tombol',
+  );
   await barisKas.click();
   await tungguHeader(page, 'Buku Besar');
   await page.waitForTimeout(300);
 
   await page.getByText(`periode awal s/d ${tanggalSumber}`).waitFor({ timeout: 20_000 });
   await page.getByText(`Saldo akhir (per ${tanggalSumber})`).waitFor({ timeout: 10_000 });
+
+  // UI-A28: baris mutasi Buku Besar juga menyediakan tombol buka jurnal.
+  const tombolJurnal = page.getByRole('button', { name: /^Buka detail jurnal/ }).first();
+  await tombolJurnal.waitFor({ timeout: 20_000 });
+  assert.equal(
+    await tombolJurnal.evaluate((el) => el.closest('tr')?.getAttribute('role') ?? null),
+    null,
+    'Baris Buku Besar masih memakai role tombol',
+  );
 
   t.diagnostic(
     `UI-A03 OK: Buku Besar dari drill-down Neraca memuat periode sumber "per ${tanggalSumber}"`,
