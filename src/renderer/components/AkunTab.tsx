@@ -525,7 +525,7 @@ export function AkunTab() {
                         )}
                         {!bawaan && (
                           <Button
-                            variant="ghost"
+                            variant="danger-outline"
                             onClick={() => setAksiTarget({ jenis: 'hapus', akun: a })}
                           >
                             Hapus

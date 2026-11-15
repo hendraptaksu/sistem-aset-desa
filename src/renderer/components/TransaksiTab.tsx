@@ -4,6 +4,7 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  ClipboardList,
   HandCoins,
   Landmark,
   Receipt,
@@ -86,7 +87,8 @@ const KARTU_JENIS: KartuJenis[] = [
     id: 'PANJAR',
     label: 'Panjar',
     keterangan: 'Uang muka kegiatan',
-    Icon: HandCoins,
+    // UI-A26: bukan HandCoins agar tidak kembar dengan kartu Bayar Utang.
+    Icon: ClipboardList,
     tujuan: 'panjar',
   },
   {
@@ -612,7 +614,7 @@ export function TransaksiTab({
             <ErrorBox msg={err} />
           </div>
         )}
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {KARTU_JENIS.map(({ id, label, keterangan, Icon, tujuan }) => {
             const aktif = !tujuan && jenis === id;
             const tersedia = !tujuan && bisaDipilih(id);

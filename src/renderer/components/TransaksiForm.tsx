@@ -1105,7 +1105,7 @@ export function FormTransaksiTerpandu({
             <table className="w-full text-left text-[15px]">
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-3">Keterangan</th>
+                  <th className="py-2 pr-3">Akun (posisi)</th>
                   <th className="py-2 pr-3 text-right">Debit</th>
                   <th className="py-2 text-right">Kredit</th>
                 </tr>

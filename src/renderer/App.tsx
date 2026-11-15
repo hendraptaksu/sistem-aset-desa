@@ -209,34 +209,45 @@ function AppShell() {
     dirtyRef.current = dirty;
   }, [dirty]);
 
-  const lakukanPindah = useCallback((id: TabId) => {
-    if (tabRef.current === id) return;
-    const dariKeyboard = modalitasTerakhirRef.current === 'keyboard';
-    tabRef.current = id;
-    setTab(id);
-    // Setelah commit React, gulir area konten kembali ke atas. rAF dipakai agar
-    // tidak memaksa window.scrollTo dan tidak berkedip saat render tab baru.
-    requestAnimationFrame(() => {
-      const main = mainRef.current;
-      if (!main) return;
-      main.scrollTop = 0;
-      // UI-06: jangan rebut fokus saat modal terbuka atau navigasi lewat mouse.
-      if (dariKeyboard && !document.querySelector('[aria-modal="true"]')) {
-        main.focus({ preventScroll: true });
-      }
-    });
-  }, []);
+  const lakukanPindah = useCallback(
+    (id: TabId, opsi?: { jenisPintasan?: DashboardFormTransaksi }) => {
+      if (tabRef.current === id) return;
+      const dariKeyboard = modalitasTerakhirRef.current === 'keyboard';
+      tabRef.current = id;
+      setTab(id);
+      // UI-A26: jenis awal form Transaksi sekali pakai. Navigasi biasa (tanpa
+      // pintasan dashboard) mengembalikannya ke 'TERIMA' agar form tidak
+      // terbuka dengan jenis pintasan terakhir; pintasan mengirim jenisnya
+      // lewat `opsi.jenisPintasan`.
+      setJenisTransaksiAwal(opsi?.jenisPintasan ?? 'TERIMA');
+      // Setelah commit React, gulir area konten kembali ke atas. rAF dipakai agar
+      // tidak memaksa window.scrollTo dan tidak berkedip saat render tab baru.
+      requestAnimationFrame(() => {
+        const main = mainRef.current;
+        if (!main) return;
+        main.scrollTop = 0;
+        // UI-06: jangan rebut fokus saat modal terbuka atau navigasi lewat mouse.
+        if (dariKeyboard && !document.querySelector('[aria-modal="true"]')) {
+          main.focus({ preventScroll: true });
+        }
+      });
+    },
+    [],
+  );
 
   // UI-07: tab yang sama tidak pernah memicu dialog atau reset scroll. Opsi
   // `paksa` dipakai auto-lock karena layar PIN akan mengganti seluruh UI.
   const pindahTab = useCallback(
-    (id: TabId, opsi?: { paksa?: boolean }) => {
+    (
+      id: TabId,
+      opsi?: { paksa?: boolean; jenisPintasan?: DashboardFormTransaksi },
+    ) => {
       if (tabRef.current === id) return;
       if (dirtyRef.current && !opsi?.paksa) {
-        konfirmasiTinggalkan(() => lakukanPindah(id));
+        konfirmasiTinggalkan(() => lakukanPindah(id, opsi));
         return;
       }
-      lakukanPindah(id);
+      lakukanPindah(id, opsi);
     },
     [konfirmasiTinggalkan, lakukanPindah],
   );
@@ -359,8 +370,9 @@ function AppShell() {
 
   const bukaDariDashboard = useCallback(
     (tab: DashboardTabTujuan, form?: DashboardFormTransaksi) => {
-      if (form) setJenisTransaksiAwal(form);
-      pindahTab(tab);
+      // UI-A26: jenis form terpandu dikirim bersama navigasi; navigasi tanpa
+      // pintasan dikembalikan ke 'TERIMA' oleh `lakukanPindah`.
+      pindahTab(tab, form ? { jenisPintasan: form } : undefined);
     },
     [pindahTab],
   );
