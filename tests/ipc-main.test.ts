@@ -41,6 +41,8 @@ type Env = {
   saveQueue: { canceled: boolean; filePath?: string }[];
   openQueue: { canceled: boolean; filePaths: string[] }[];
   openPaths: string[];
+  /** File yang diminta ditampilkan di file manager (shell.showItemInFolder). */
+  shownInFolder: string[];
   /** T1.2: path yang benar-benar ditulis lewat deps.writeFile/printPdf. */
   writePaths: string[];
   printPaths: string[];
@@ -66,6 +68,7 @@ function buatEnv(tambahan: Partial<IpcDeps> = {}): Env {
   const saveQueue: { canceled: boolean; filePath?: string }[] = [];
   const openQueue: { canceled: boolean; filePaths: string[] }[] = [];
   const openPaths: string[] = [];
+  const shownInFolder: string[] = [];
   const writePaths: string[] = [];
   const printPaths: string[] = [];
   const lokasi = {
@@ -101,6 +104,9 @@ function buatEnv(tambahan: Partial<IpcDeps> = {}): Env {
       openPaths.push(path);
       return '';
     },
+    showItemInFolder: (path) => {
+      shownInFolder.push(path);
+    },
     lokasiData: () => lokasi,
     pengirim: { rendererFile },
     // Tanggal tetap agar K2 (tutup hanya tahun selesai) deterministik.
@@ -121,6 +127,7 @@ function buatEnv(tambahan: Partial<IpcDeps> = {}): Env {
     saveQueue,
     openQueue,
     openPaths,
+    shownInFolder,
     writePaths,
     printPaths,
     panggil: async (channel, ...args) => {
@@ -174,8 +181,10 @@ const CHANNEL_IPC = [
   'backup:status',
   'coa:list',
   'dashboard:get',
+  'file:open-export',
   'file:save-buffer',
   'file:save-pdf',
+  'file:show-export',
   'jurnal:cari',
   'jurnal:koreksi-isi-ulang',
   'jurnal:list',
@@ -228,11 +237,11 @@ const CHANNEL_IPC = [
 ];
 
 describe('P2-7 — registrasi handler IPC', () => {
-  it('mendaftarkan seluruh 68 channel lewat deps.handle', () => {
+  it('mendaftarkan seluruh 70 channel lewat deps.handle', () => {
     const env = buatEnv();
-    expect(env.handlers.size).toBe(68);
+    expect(env.handlers.size).toBe(70);
     expect([...env.handlers.keys()].sort()).toEqual([...CHANNEL_IPC].sort());
-    expect(CHANNEL_IPC).toHaveLength(68);
+    expect(CHANNEL_IPC).toHaveLength(70);
   });
 
   it('DB-31: channel rekonsiliasi bank sudah tidak terdaftar', () => {
@@ -2596,6 +2605,52 @@ describe('T1.2 — guard path DB aktif di semua kanal simpan', () => {
         (f) => f.includes('.tmp-') || f.endsWith('.bak-'),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('Ekspor — buka file/folder hasil ekspor', () => {
+  const req = {
+    bufferB64: Buffer.from('isi laporan').toString('base64'),
+    defaultName: 'laporan.xlsx',
+  };
+
+  it('membuka file hasil ekspor dan menyorotnya di folder', async () => {
+    const env = buatEnv();
+    const tujuan = join(env.dir, 'laporan.xlsx');
+    env.saveQueue.push({ canceled: false, filePath: tujuan });
+
+    const simpan = await env.panggil('file:save-buffer', req);
+    expect(simpan.ok, simpan.error).toBe(true);
+    expect(simpan.data).toMatchObject({ saved: true, path: tujuan });
+
+    const buka = await env.panggil('file:open-export', tujuan);
+    expect(buka.ok, buka.error).toBe(true);
+    expect(env.openPaths).toEqual([tujuan]);
+
+    const folder = await env.panggil('file:show-export', tujuan);
+    expect(folder.ok, folder.error).toBe(true);
+    expect(env.shownInFolder).toEqual([tujuan]);
+  });
+
+  it('menolak path yang bukan hasil ekspor sesi ini', async () => {
+    const env = buatEnv();
+    const asing = join(env.dir, 'data', 'pura.db');
+
+    const buka = await env.panggil('file:open-export', asing);
+    expect(buka.ok).toBe(false);
+    expect(env.openPaths).toEqual([]);
+
+    const folder = await env.panggil('file:show-export', '/etc/passwd');
+    expect(folder.ok).toBe(false);
+    expect(env.shownInFolder).toEqual([]);
+
+    // Ekspor yang dibatalkan tidak mendaftarkan path apa pun.
+    env.saveQueue.push({ canceled: true });
+    const batal = await env.panggil('file:save-buffer', req);
+    expect(batal.ok, batal.error).toBe(true);
+    expect(batal.data).toMatchObject({ saved: false, path: '' });
+    const setelahBatal = await env.panggil('file:open-export', asing);
+    expect(setelahBatal.ok).toBe(false);
   });
 });
 

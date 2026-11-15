@@ -694,6 +694,12 @@ Semua laporan memakai alur yang sama:
 4. Tekan **Cetak** untuk printer, atau **Simpan PDF** untuk file PDF.
 5. **Ekspor Excel** tetap tersedia bila perlu diolah lagi.
 
+Setelah file tersimpan, kotak hijau menampilkan lokasi file beserta tombol
+**Buka file** (membuka Excel/PDF dengan aplikasi bawaan) dan **Tampilkan di
+folder** (membuka Finder/Explorer dan menyorot filenya). Kedua tombol bekerja
+di Windows, macOS, dan Linux, dan hanya bisa membuka file yang baru saja
+diekspor dari aplikasi pada sesi yang sama.
+
 Template sudah A4 dan otomatis memilih orientasi: portrait untuk laporan biasa,
 landscape untuk Buku Besar. Header tabel diulang di halaman berikutnya. Tidak
 perlu mengatur ukuran kertas manual.

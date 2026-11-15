@@ -182,6 +182,8 @@ export type IpcDeps = {
   printPdf(html: string, filePath: string, landscape?: boolean): Promise<void>;
   /** `shell.openPath`; string kosong = berhasil, selain itu pesan galat OS. */
   openPath(path: string): Promise<string>;
+  /** `shell.showItemInFolder`; membuka file manager dan menyorot file. */
+  showItemInFolder(path: string): void;
   /** Lokasi data final (P2-8): folder data, DB, dan backup. */
   lokasiData(): LokasiData;
   /**
@@ -1741,6 +1743,24 @@ export function registerIpc(deps: IpcDeps): void {
 
   // Simpan buffer (xlsx/html) via save dialog. Renderer bangun buffer murni,
   // main hanya tulis file — sesuai handoff: builder tetap di renderer.
+  //
+  // Hanya file hasil ekspor pada sesi ini yang boleh dibuka kembali lewat
+  // `file:open-export`/`file:show-export`. Renderer tidak pernah boleh
+  // mengirim path sembarang ke shell OS; daftar ini yang menjadi pembatasnya.
+  const hasilEkspor = new Set<string>();
+  const BATAS_HASIL_EKSPOR = 20;
+  const ingatHasilEkspor = (path: string): void => {
+    hasilEkspor.add(path);
+    if (hasilEkspor.size > BATAS_HASIL_EKSPOR) {
+      const tertua = hasilEkspor.values().next().value;
+      if (tertua !== undefined) hasilEkspor.delete(tertua);
+    }
+  };
+  const pathHasilEkspor = (path: unknown): string | null =>
+    typeof path === 'string' && hasilEkspor.has(path) ? path : null;
+  const PESAN_HASIL_TIDAK_DIKENAL =
+    'File hanya bisa dibuka dari hasil ekspor pada sesi ini. Ekspor ulang bila perlu.';
+
   daftarkan(
     'file:save-buffer',
     async (_e, req: { bufferB64: string; defaultName: string; filters?: { name: string; extensions: string[] }[] }) => {
@@ -1754,6 +1774,7 @@ export function registerIpc(deps: IpcDeps): void {
         if (canceled || !filePath) return ok({ saved: false, path: '' });
         pastikanTujuanBukanDbAktif(filePath);
         deps.writeFile(filePath, Buffer.from(req.bufferB64, 'base64'));
+        ingatHasilEkspor(filePath);
         return ok({ saved: true, path: filePath });
       } catch (e) {
         return fail(pesanError(e, GAGAL_FILE));
@@ -1779,12 +1800,44 @@ export function registerIpc(deps: IpcDeps): void {
         if (canceled || !filePath) return ok({ saved: false, path: '' });
         pastikanTujuanBukanDbAktif(filePath);
         await deps.printPdf(html, filePath, req.landscape === true);
+        ingatHasilEkspor(filePath);
         return ok({ saved: true, path: filePath });
       } catch (e) {
         return fail(pesanError(e, GAGAL_FILE));
       }
     },
   );
+
+  // Buka file hasil ekspor dengan aplikasi bawaan OS. Lintas platform karena
+  // Electron `shell.openPath` memakai handler default Windows/macOS/Linux.
+  daftarkan('file:open-export', async (_e, path: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const tujuan = pathHasilEkspor(path);
+      if (!tujuan) return fail(PESAN_HASIL_TIDAK_DIKENAL);
+      const galat = await deps.openPath(tujuan);
+      if (galat) return fail('File tidak bisa dibuka. Coba lagi atau hubungi pendamping.');
+      return ok({ opened: true });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_FILE));
+    }
+  });
+
+  // Tampilkan file hasil ekspor di file manager (Finder/Explorer/…).
+  // `shell.showItemInFolder` membuka folder induk dan menyorot filenya.
+  daftarkan('file:show-export', (_e, path: unknown) => {
+    try {
+      const k = perluBuka();
+      if (k) return fail(k);
+      const tujuan = pathHasilEkspor(path);
+      if (!tujuan) return fail(PESAN_HASIL_TIDAK_DIKENAL);
+      deps.showItemInFolder(tujuan);
+      return ok({ opened: true });
+    } catch (e) {
+      return fail(pesanError(e, GAGAL_FILE));
+    }
+  });
 
   // Backup manual .db via save dialog (VACUUM INTO — aman saat WAL terbuka).
   daftarkan('backup:export', async () => {

@@ -9,6 +9,13 @@ dirilis sebagai versi baru.
 
 ### Ditambahkan
 
+- **Buka hasil ekspor langsung dari aplikasi**: setelah Excel/PDF tersimpan,
+  kotak info kini menampilkan tombol **Buka file** (`shell.openPath`) dan
+  **Tampilkan di folder** (`shell.showItemInFolder`). Keduanya lintas platform
+  (Finder/Explorer/file manager Linux). Demi keamanan, main hanya membuka path
+  yang berasal dari `file:save-buffer`/`file:save-pdf` pada sesi yang sama;
+  path lain dari renderer ditolak.
+
 - **Alur koreksi saldo awal** (T1.6–T1.8): reversal jurnal `SALDO_AWAL` lama +
   jurnal penyesuaian `UMUM` bertanggal sama + audit `KOREKSI-SALDO-AWAL` dalam
   satu transaksi atomik. Tersedia tombol **Koreksi Saldo Awal** di wizard dengan

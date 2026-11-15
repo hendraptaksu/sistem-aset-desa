@@ -270,6 +270,7 @@ function buatIpcDeps(): IpcDeps {
     writeFile: (path, data) => writeFileSync(path, data),
     printPdf: printPdfKeFile,
     openPath: (path) => shell.openPath(path),
+    showItemInFolder: (path) => shell.showItemInFolder(path),
     lokasiData,
     auditAwal: () => hasilAuditAwal,
     log: loggerMain() ?? undefined,

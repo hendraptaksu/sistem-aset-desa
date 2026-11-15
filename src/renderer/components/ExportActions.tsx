@@ -50,7 +50,8 @@ export function ExportActions({
 }) {
   const [sibuk, setSibuk] = useState<null | 'excel' | 'pdf' | 'print'>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [info, setInfo] = useState<{ pesan: string; path: string | null } | null>(null);
+  const [bukaSibuk, setBukaSibuk] = useState<null | 'file' | 'folder'>(null);
   const [pratinjau, setPratinjau] = useState<Pratinjau | null>(null);
   const busyRef = useRef(false);
   const nonaktif = disabled || sibuk !== null;
@@ -79,7 +80,11 @@ export function ExportActions({
         defaultName: `${namaDasar}.xlsx`,
         filters: [{ name: 'Excel', extensions: ['xlsx'] }],
       });
-      setInfo(hasil.saved ? `Tersimpan: ${hasil.path}` : 'Penyimpanan dibatalkan.');
+      setInfo(
+        hasil.saved
+          ? { pesan: `Tersimpan: ${hasil.path}`, path: hasil.path }
+          : { pesan: 'Penyimpanan dibatalkan.', path: null },
+      );
     } catch (e) {
       setErr(
         pesanError(
@@ -121,7 +126,11 @@ export function ExportActions({
         defaultName: `${namaDasar}.pdf`,
         landscape: hasilCetak.orientasi === 'landscape',
       });
-      setInfo(hasil.saved ? `Tersimpan: ${hasil.path}` : 'Penyimpanan dibatalkan.');
+      setInfo(
+        hasil.saved
+          ? { pesan: `Tersimpan: ${hasil.path}`, path: hasil.path }
+          : { pesan: 'Penyimpanan dibatalkan.', path: null },
+      );
     } catch (e) {
       setErr(
         pesanError(
@@ -156,6 +165,30 @@ export function ExportActions({
     }
   }
 
+  /**
+   * Buka hasil ekspor lewat main: `shell.openPath` (aplikasi bawaan) atau
+   * `shell.showItemInFolder` (file manager). Keduanya lintas platform;
+   * renderer tidak pernah menyentuh fs/shell langsung.
+   */
+  async function bukaHasil(jenis: 'file' | 'folder'): Promise<void> {
+    if (!info?.path || bukaSibuk !== null) return;
+    setErr(null);
+    setBukaSibuk(jenis);
+    try {
+      if (jenis === 'file') await api.openExport(info.path);
+      else await api.showExport(info.path);
+    } catch (e) {
+      setErr(
+        pesanError(
+          e,
+          'File tidak bisa dibuka. Coba lagi; bila tetap gagal, hubungi pendamping.',
+        ),
+      );
+    } finally {
+      setBukaSibuk(null);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -187,7 +220,31 @@ export function ExportActions({
         )}
       </div>
       {info && (
-        <InfoBox className="text-sm">{info}</InfoBox>
+        <InfoBox className="text-sm">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="break-all">{info.pesan}</span>
+            {info.path && (
+              <>
+                <Button
+                  variant="ghost"
+                  className="px-3 py-1"
+                  disabled={bukaSibuk !== null}
+                  onClick={() => void bukaHasil('file')}
+                >
+                  {bukaSibuk === 'file' ? 'Membuka…' : 'Buka file'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="px-3 py-1"
+                  disabled={bukaSibuk !== null}
+                  onClick={() => void bukaHasil('folder')}
+                >
+                  {bukaSibuk === 'folder' ? 'Membuka…' : 'Tampilkan di folder'}
+                </Button>
+              </>
+            )}
+          </div>
+        </InfoBox>
       )}
       <ErrorBox msg={err} />
 

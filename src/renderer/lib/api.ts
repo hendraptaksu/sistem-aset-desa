@@ -661,6 +661,14 @@ export const api = {
   /** Simpan PDF langsung (hidden window + printToPDF di main). HTML dari paginator P1-16. */
   savePdf: (req: { htmlB64: string; defaultName: string; landscape?: boolean }) =>
     call<{ saved: boolean; path: string }>('file:save-pdf', req),
+  /**
+   * Buka file hasil ekspor dengan aplikasi bawaan OS (Excel/PDF viewer).
+   * `path` harus berasal dari respons save-buffer/save-pdf pada sesi ini;
+   * main menolak path lain.
+   */
+  openExport: (path: string) => call<{ opened: boolean }>('file:open-export', path),
+  /** Tampilkan file hasil ekspor di file manager (Finder/Explorer) dan sorot filenya. */
+  showExport: (path: string) => call<{ opened: boolean }>('file:show-export', path),
   backupExport: () => call<{ saved: boolean; path: string }>('backup:export'),
   /** Backup lengkap satu folder: DB + manifest. */
   backupLengkap: () => call<{ saved: boolean; path: string }>('backup:lengkap'),
