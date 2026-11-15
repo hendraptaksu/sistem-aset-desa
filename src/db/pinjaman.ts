@@ -155,6 +155,12 @@ export type SimpanPinjamanLpdInput = {
   tenor?: number | null;
   catatan?: string;
   noBukti?: string;
+  /**
+   * Alasan operator bila tanggal pencairan berada di periode yang sudah
+   * dikunci. Diteruskan sebagai `alasan` jurnal agar kunci periode longgar
+   * tetap bisa dipakai tanpa melemahkan validasi.
+   */
+  alasan?: string;
   angsuran?: PinjamanAngsuranInput[];
   jadwal?: PinjamanAngsuranInput[];
 };
@@ -235,6 +241,12 @@ export type BayarAngsuranPinjamanInput = {
   catatan?: string;
   noBukti?: string;
   created_at?: string;
+  /**
+   * Alasan operator bila tanggal pembayaran berada di periode yang sudah
+   * dikunci. Bila kosong, alasan selisih/peringatan yang sudah ada dipakai
+   * sebagai alasan jurnal.
+   */
+  alasan?: string;
   /** Alias konfirmasi di dalam input (selain opsi argumen). */
   konfirmasiSelisih?: boolean;
   alasanSelisih?: string;
@@ -920,6 +932,9 @@ export function simpanPinjamanLpd(
       let jurnalId: string | null = null;
 
       if (mode === 'PENCAIRAN') {
+        // AKT-06/kunci longgar: alasan yang sama dengan konfirmasi peringatan
+        // juga memenuhi syarat koreksi periode terkunci untuk jurnal pencairan.
+        const alasanJurnal = teks(data.alasan) || teks(opsi.alasanPeringatan);
         let inputJurnal: JurnalInput;
         try {
           inputJurnal = buatJurnalPinjamanPencairan({
@@ -929,6 +944,7 @@ export function simpanPinjamanLpd(
             kreditur,
             akunKas,
             ...(teks(data.noBukti) ? { noBukti: teks(data.noBukti) } : {}),
+            ...(alasanJurnal ? { alasan: alasanJurnal } : {}),
             daftarAkun: listAkun(db),
           });
         } catch (e) {
@@ -1575,9 +1591,15 @@ export function bayarAngsuranPinjaman(
   const konfirmasiSelisih =
     opsi.konfirmasiSelisih === true || data.konfirmasiSelisih === true;
   const alasanSelisih = teks(opsi.alasanSelisih ?? data.alasanSelisih);
+  const alasanPeringatan = teks(opsi.alasanPeringatan);
   const konfirmasiDendaLain =
     opsi.konfirmasiDendaLain === true || data.konfirmasiDendaLain === true;
   const alasanDendaLain = teks(opsi.alasanDendaLain ?? data.alasanDendaLain);
+  // Kunci periode longgar: alasan eksplisit menang, lalu alasan selisih, lalu
+  // alasan konfirmasi peringatan. Tanpa ini pembayaran bertanggal periode
+  // terkunci selalu ditolak karena tidak ada kanal alasan yang sampai ke jurnal.
+  const alasanJurnal =
+    teks(data.alasan) || alasanSelisih || alasanPeringatan;
   const selisih = {
     pokok: (pokok ?? 0) - sisaPokok,
     bunga: (bunga ?? 0) - sisaBunga,
@@ -1678,7 +1700,7 @@ export function bayarAngsuranPinjaman(
       ...(noBukti ? { no_bukti: noBukti } : {}),
     },
     baris,
-    ...(alasanSelisih ? { alasan: alasanSelisih } : {}),
+    ...(alasanJurnal ? { alasan: alasanJurnal } : {}),
     // Bunga/denda saja (pokok 0) tetap jurnal HUTANG tanpa baris 2050.
     ...(nilaiPokok === 0
       ? { konteks: 'PINJAMAN_BAYAR' as const }
@@ -1705,7 +1727,7 @@ export function bayarAngsuranPinjaman(
 
       const posting = postingJurnal(db, inputJurnal, {
         konfirmasiPeringatan: opsi.konfirmasiPeringatan === true,
-        alasanPeringatan: opsi.alasanPeringatan,
+        alasanPeringatan,
         wajibAlasanPeringatan: true,
         wajibSaldoAwal: opsi.wajibSaldoAwal === true,
         konfirmasiTanpaSaldoAwal: opsi.konfirmasiTanpaSaldoAwal === true,

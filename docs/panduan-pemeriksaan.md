@@ -66,7 +66,9 @@ menu Koreksi; aplikasi menolak jenis itu dari jalur Jurnal Umum.
   - form terpandu **Bayar** hanya menawarkan akun **BEBAN**; pembayaran panjar
     lewat menu **Buku Panjar**, sedangkan pencatatan/pembayaran utang usaha lewat
     kartu **Catat Utang** dan **Bayar Utang** di tab Transaksi. Jurnal Umum
-    tetap boleh memakai `1040`/`2050`/`2060` untuk koreksi akuntan.
+    hanya boleh memakai `2060` untuk koreksi akuntan; `1040` dan `2050` adalah
+    akun kontrol subledger dan ditolak di Jurnal Umum — gunakan menu **Buku
+    Panjar**/**Pinjaman LPD** atau Wizard Koreksi Saldo Awal.
   - `1050 PIUTANG LAIN LAIN` hanya untuk **data lama**. Alur input piutang sudah
     dihapus; jangan membuat jurnal 1050 baru. Koreksi saldo lama hanya lewat
     Jurnal Umum akuntan pendamping.

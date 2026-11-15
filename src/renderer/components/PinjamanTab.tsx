@@ -10,7 +10,12 @@ import type { MutasiPinjamanHasil } from '../../core/pinjamanMutasi.js';
 import type { HasilRekonsiliasiPinjaman } from '../../core/pinjamanRekonsiliasi.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { tanggalLokal, tahunLokal } from '../../utils/tanggal.js';
-import { api, isPerluKonfirmasi, type ModePinjamanApi } from '../lib/api.js';
+import {
+  api,
+  isPerluAlasan,
+  isPerluKonfirmasi,
+  type ModePinjamanApi,
+} from '../lib/api.js';
 import {
   PESAN_ALASAN_PERINGATAN_MIN,
   alasanPeringatanCukup,
@@ -659,7 +664,9 @@ export function PinjamanTab() {
       setDetail({});
       await refresh();
     } catch (e) {
-      if (isPerluKonfirmasi(e)) {
+      // Kunci periode memakai kanal alasan yang sama dengan peringatan posting:
+      // alasan yang diisi operator diteruskan sebagai alasan jurnal.
+      if (isPerluKonfirmasi(e) || isPerluAlasan(e)) {
         const pesan = pesanError(e);
         setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
         // Penolakan "alasan kurang" tetap di dalam modal agar bisa diperbaiki.
@@ -955,7 +962,9 @@ export function PinjamanTab() {
         /* daftar sudah diperbarui; detail akan dimuat lagi saat dibuka */
       }
     } catch (e) {
-      if (isPerluKonfirmasi(e)) {
+      // Peringatan posting dan koreksi periode terkunci sama-sama meminta
+      // konfirmasi + alasan; alasan itu diteruskan sebagai alasan jurnal.
+      if (isPerluKonfirmasi(e) || isPerluAlasan(e)) {
         setBayarPerluKonfirmasi(true);
         setBayarErr(pesanError(e));
       } else {

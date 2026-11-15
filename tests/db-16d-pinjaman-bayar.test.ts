@@ -35,6 +35,8 @@ import {
 import { rekonsiliasiPinjaman } from '../src/db/pinjamanRekonsiliasi.js';
 import { getJurnalDetail } from '../src/db/repository.js';
 import { postingJurnal } from '../src/db/posting.js';
+import { simpanSaldoAwal } from '../src/db/saldoAwal.js';
+import { tutupBuku } from '../src/db/tutup.js';
 import { validasiBentukPinjamanBayar } from '../src/main/validation.js';
 import type { JurnalBarisInput } from '../src/core/types.js';
 
@@ -910,5 +912,114 @@ describe('DB-16d — validasi bentuk, IPC, API, UI, dan dokumentasi', () => {
     expect(PANDUAN).toContain('selisih');
     expect(PANDUAN).toContain('denda');
     expect(PANDUAN).toContain('jurnal');
+  });
+});
+
+describe('Kunci periode — pinjaman memakai alasan koreksi yang sama', () => {
+  it('menolak pencairan/pembayaran tanpa alasan dan menerimanya dengan alasan', () => {
+    const db = openDb(':memory:');
+    dbTerbuka.push(db);
+
+    const awal = simpanSaldoAwal(db, {
+      header: {
+        id: 'awal-kunci-pinjaman',
+        tanggal: '2025-01-01',
+        no_bukti: 'SA-KUNCI',
+        keterangan: 'Saldo awal uji kunci periode pinjaman',
+        jenis: 'SALDO_AWAL',
+      },
+      baris: [D('1001', RP(10_000_000)), K(AKUN_MODAL, RP(10_000_000))],
+    });
+    expect(awal.tersimpan, awal.errors.join(' ')).toBe(true);
+
+    const dibuat = simpanPinjamanLpd(
+      db,
+      {
+        id: 'pjr-kunci',
+        mode: 'PENCAIRAN',
+        kreditur: 'LPD Uji Kunci',
+        tanggal: '2025-01-02',
+        akunKas: '1001',
+        pokok: RP(1_000_000),
+        angsuran: [
+          {
+            ke: 1,
+            jatuh_tempo: '2025-02-01',
+            pokok: RP(1_000_000),
+            bunga: 0,
+            catatan: '',
+          },
+        ],
+      },
+      { sekarang: '2026-11-15' },
+    );
+    expect(dibuat.tersimpan, dibuat.errors.join(' ')).toBe(true);
+
+    const tutup = tutupBuku(db, 2025, { sekarang: '2026-11-15' });
+    expect(tutup.tersimpan, tutup.errors.join(' ')).toBe(true);
+
+    const angsuranId = dibuat.pinjaman!.angsuran![0]!.id;
+    const bayar = {
+      id: 'pby-kunci',
+      jurnal_id: 'j-bayar-kunci',
+      pinjaman_id: 'pjr-kunci',
+      angsuran_id: angsuranId,
+      tanggal: '2025-03-01',
+      akun_kas: '1001',
+      pokok: RP(500_000),
+      bunga: 0,
+      denda: 0,
+      catatan: 'Pembayaran uji kunci',
+    };
+    const gagal = bayarAngsuranPinjaman(db, bayar, { sekarang: '2026-11-15' });
+    expect(gagal.tersimpan).toBe(false);
+    expect(gagal.errors.join(' ')).toMatch(/Periode sudah ditutup/);
+    expect(listPinjamanBayar(db, 'pjr-kunci')).toHaveLength(0);
+
+    const berhasil = bayarAngsuranPinjaman(db, bayar, {
+      sekarang: '2026-11-15',
+      alasanPeringatan: 'Koreksi pembayaran tahun lalu',
+    });
+    expect(berhasil.tersimpan, berhasil.errors.join(' ')).toBe(true);
+    expect(berhasil.jurnal?.tanggal).toBe('2025-03-01');
+    const auditBayar = db
+      .prepare(
+        "SELECT alasan FROM audit_log WHERE ref_type = 'jurnal' AND ref_id = ?",
+      )
+      .get(berhasil.jurnal!.id) as { alasan: string } | undefined;
+    expect(auditBayar?.alasan).toBe('Koreksi pembayaran tahun lalu');
+
+    const dasarPencairan = {
+      id: 'pjr-kunci-2',
+      mode: 'PENCAIRAN' as const,
+      kreditur: 'LPD Uji Kunci 2',
+      tanggal: '2025-04-01',
+      akunKas: '1001',
+      pokok: RP(2_000_000),
+      angsuran: [
+        {
+          ke: 1,
+          jatuh_tempo: '2025-05-01',
+          pokok: RP(2_000_000),
+          bunga: 0,
+          catatan: '',
+        },
+      ],
+    };
+    const pencairanGagal = simpanPinjamanLpd(db, dasarPencairan, {
+      sekarang: '2026-11-15',
+    });
+    expect(pencairanGagal.tersimpan).toBe(false);
+    expect(pencairanGagal.errors.join(' ')).toMatch(/Periode sudah ditutup/);
+    expect(getPinjaman(db, 'pjr-kunci-2')).toBeNull();
+
+    const pencairanBerhasil = simpanPinjamanLpd(db, dasarPencairan, {
+      sekarang: '2026-11-15',
+      alasanPeringatan: 'Koreksi pencairan tahun lalu',
+    });
+    expect(pencairanBerhasil.tersimpan, pencairanBerhasil.errors.join(' ')).toBe(
+      true,
+    );
+    expect(pencairanBerhasil.jurnal?.tanggal).toBe('2025-04-01');
   });
 });
