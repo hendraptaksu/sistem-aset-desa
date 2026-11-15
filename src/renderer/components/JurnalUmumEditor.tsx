@@ -591,9 +591,18 @@ export function JurnalUmumEditor({
                           onBlur={() => blurAkun(i)}
                         />
                         {akunSalah && (
-                          <span className="mt-1 block text-helper text-red-700">
-                            Akun tidak dikenal atau tidak boleh diposting
-                            (akun legacy/nonaktif). Pilih dari daftar akun.
+                          <span
+                            role="alert"
+                            className="mt-1 block text-helper text-red-700"
+                          >
+                            {/* UI-A26: pesan jujur — kita tidak tahu kenapa teks
+                                tidak cocok, jadi jangan menuduh akun
+                                legacy/nonaktif. Ketikan parsial kini dicocokkan
+                                dulu (awalan/mengandung); kalau tetap gagal,
+                                minta operator memilih dari saran. */}
+                            Akun tidak dikenali. Pilih akun dari daftar saran
+                            (ketik kode atau nama akun, lalu pilih saran yang
+                            muncul).
                           </span>
                         )}
                       </td>

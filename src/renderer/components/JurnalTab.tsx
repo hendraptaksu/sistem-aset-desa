@@ -165,6 +165,9 @@ export function JurnalTab({
   modeAkuntan?: boolean;
 }) {
   const [coa, setCoa] = useState<Coa[]>([]);
+  // UI-A26: bedakan "belum termuat" dari "memang kosong" agar tombol editor
+  // tidak aktif sebelum daftar akun siap (tanpa COA, editor tidak berguna).
+  const [coaTermuat, setCoaTermuat] = useState(false);
   const [daftar, setDaftar] = useState<JurnalLengkap[]>([]);
   const [total, setTotal] = useState(0);
   const [memuat, setMemuat] = useState(true);
@@ -230,6 +233,11 @@ export function JurnalTab({
       })
       .catch((e) => {
         if (aktif) setErr(pesanError(e, PESAN_MUAT_GAGAL));
+      })
+      .finally(() => {
+        // Termuat = percobaan selesai (berhasil maupun gagal). Saat gagal,
+        // tombol tetap nonaktif dengan alasan pada title.
+        if (aktif) setCoaTermuat(true);
       });
     return () => {
       aktif = false;
@@ -355,6 +363,12 @@ export function JurnalTab({
                 <Button
                   type="button"
                   className="px-5 py-3 text-base"
+                  disabled={!coaTermuat}
+                  title={
+                    !coaTermuat
+                      ? 'Menunggu daftar akun (COA) termuat. Bila gagal, buka ulang tab ini.'
+                      : undefined
+                  }
                   onClick={() => bukaEditor()}
                 >
                   + Jurnal Baru

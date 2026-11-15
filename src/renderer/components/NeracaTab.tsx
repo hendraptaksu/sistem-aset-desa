@@ -244,7 +244,8 @@ export function NeracaTab({
                   {kewajiban.length === 0 && (
                     <tr>
                       <td colSpan={4} className="py-3 text-stone-500">
-                        Tidak ada kewajiban sampai tanggal ini.
+                        {/* UI-A26: teks kosong diseragamkan dengan bagian Aset. */}
+                        Belum ada kewajiban bersaldo sampai tanggal ini.
                       </td>
                     </tr>
                   )}

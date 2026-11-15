@@ -225,7 +225,10 @@ function normalAkun(teks: string): string {
 /**
  * Cari akun COA dari teks autocomplete. Cocok untuk kode persis
  * (`1001`), format `1001 — KAS`, atau nama (`kas`), tanpa membedakan
- * huruf besar/kecil. Tidak ditemukan -> null.
+ * huruf besar/kecil. UI-A26: sebelum gagal, dicoba juga pencocokan
+ * awalan lalu mengandung (`100` -> 1001, `parkir` -> nama akun yang
+ * memuatnya) agar ketikan parsial tidak langsung dianggap akun asing.
+ * Tidak ditemukan -> null.
  */
 export function cariAkunDariTeks(coa: readonly Coa[], teks: string): Coa | null {
   if (!Array.isArray(coa)) return null;
@@ -240,6 +243,29 @@ export function cariAkunDariTeks(coa: readonly Coa[], teks: string): Coa | null 
     const lengkapSpasi = normalAkun(`${a.kode} ${a.nama}`);
     if (dicari === kode || dicari === nama || dicari === lengkap || dicari === lengkapSpasi)
       return a;
+  }
+
+  // Awalan: "100" mengarah ke 1001, "kas des" ke "Kas Desa".
+  for (const a of coa) {
+    if (!a) continue;
+    const kode = normalAkun(String(a.kode ?? ''));
+    const nama = normalAkun(String(a.nama ?? ''));
+    const lengkapSpasi = normalAkun(`${a.kode} ${a.nama}`);
+    if (kode.startsWith(dicari) || nama.startsWith(dicari) || lengkapSpasi.startsWith(dicari))
+      return a;
+  }
+
+  // Mengandung: hanya untuk ketikan yang cukup panjang agar satu-dua huruf
+  // tidak sembarangan memilih akun pertama yang kebetulan cocok.
+  if (dicari.length >= 3) {
+    for (const a of coa) {
+      if (!a) continue;
+      const kode = normalAkun(String(a.kode ?? ''));
+      const nama = normalAkun(String(a.nama ?? ''));
+      const lengkapSpasi = normalAkun(`${a.kode} ${a.nama}`);
+      if (kode.includes(dicari) || nama.includes(dicari) || lengkapSpasi.includes(dicari))
+        return a;
+    }
   }
   return null;
 }

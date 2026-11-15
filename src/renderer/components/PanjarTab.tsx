@@ -2061,7 +2061,10 @@ export function PanjarTab() {
                                     <th scope="col" className="py-1 pr-3">Jenis belanja</th>
                                     <th scope="col" className="py-1 pr-3 text-right">Nominal</th>
                                     <th scope="col" className="py-1 pr-3">Keterangan</th>
-                                    <th scope="col" className="py-1">Jurnal</th>
+                                    {/* UI-A26: isi kolom ini ID jurnal mentah (item
+                                        rincian tidak membawa nomor bukti), jadi
+                                        labelnya harus jujur menyebut ID. */}
+                                    <th scope="col" className="py-1">ID Jurnal</th>
                                   </tr>
                                 </thead>
                                 <tbody>

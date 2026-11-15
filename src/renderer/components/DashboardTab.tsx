@@ -289,6 +289,13 @@ export function DashboardTab({
     });
   }
 
+  // UI-A26: error lama tidak lagi relevan saat tanggal laporan diganti —
+  // kosongkan segera agar tidak muncul di bawah tanggal yang baru.
+  function ubahCutoff(c: string): void {
+    setCutoff(c);
+    setErr(null);
+  }
+
   useEffect(() => {
     void muat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -417,7 +424,7 @@ export function DashboardTab({
           <KontrolPeriode
             mode="cutoff"
             cutoff={cutoff}
-            onCutoff={setCutoff}
+            onCutoff={ubahCutoff}
             onTerapkan={() => void muat()}
             labelTerapkan={jenisSibuk === 'muat' ? 'Menampilkan…' : 'Tampilkan'}
             sibuk={sibuk}
@@ -484,12 +491,11 @@ export function DashboardTab({
               nominal tidak dipaksa muat di kartu sempit saat sidebar terbuka. */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(350px,1fr))] gap-3">
             <Card className="min-w-0">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
-                  <p className="text-sm text-stone-600">Semua dompet kas/bank per tanggal laporan</p>
-                </div>
-                <Badge tone="green">Total</Badge>
+              {/* UI-A26: badge "Total" dihapus — statis tanpa makna (angka di
+                  bawah sudah jelas merupakan total). */}
+              <div>
+                <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
+                <p className="text-sm text-stone-600">Semua dompet kas/bank per tanggal laporan</p>
               </div>
               <p className="mt-3 text-3xl font-bold text-emerald-900">
                 {formatRp(data.kasBank.total)}
@@ -499,7 +505,20 @@ export function DashboardTab({
                   Rincian per akun ({data.kasBank.rincian.length})
                 </summary>
                 <table className="mt-2 w-full text-left text-[15px]">
+                  <thead>
+                    <tr className="border-b text-stone-500">
+                      <th scope="col" className="py-2 pr-3">Dompet kas / bank</th>
+                      <th scope="col" className="py-2 text-right">Saldo</th>
+                    </tr>
+                  </thead>
                   <tbody>
+                    {data.kasBank.rincian.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="py-3 text-stone-500">
+                          Belum ada dompet kas/bank.
+                        </td>
+                      </tr>
+                    )}
                     {data.kasBank.rincian.map((a) => (
                       <tr key={a.kode} className="border-b last:border-0">
                         <td className="py-2 pr-3">
@@ -633,7 +652,7 @@ export function DashboardTab({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-stone-600">Boleh dikunci s/d</dt>
+                  <dt className="text-stone-600">Tahun terakhir yang boleh ditutup</dt>
                   <dd className="font-semibold">{data.periode.batasTahun}</dd>
                 </div>
               </dl>
@@ -722,9 +741,19 @@ export function DashboardTab({
                     Backup terakhir: {ringkasan.label}
                     {ringkasan.tanggal && <> · tanggal {formatTanggal(ringkasan.tanggal)}</>}
                   </p>
-                  <p className="mt-1 text-helper text-stone-500">
-                    Arahkan kursor ke nama file untuk melihat path lengkap.
-                  </p>
+                  {/* UI-A26: path lengkap kini bisa diklik, bukan hanya via
+                      title hover (yang tidak terjangkau papan ketik/sentuh). */}
+                  <details className="mt-1 min-w-0">
+                    <summary className="cursor-pointer text-helper text-stone-500">
+                      Lihat lokasi backup
+                    </summary>
+                    <p
+                      className="mt-1 break-all font-mono text-xs text-stone-500"
+                      data-testid="path-backup"
+                    >
+                      {data.backupTerakhir}
+                    </p>
+                  </details>
                 </div>
               ) : (
                 <p className="mt-3 text-stone-500" data-testid="status-backup">

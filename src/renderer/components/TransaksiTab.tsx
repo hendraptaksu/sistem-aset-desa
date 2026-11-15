@@ -680,7 +680,13 @@ export function TransaksiTab({
           jenis={jenis}
           coa={coa}
           memuat={memuat}
-          onTersimpan={muatJurnal}
+          onTersimpan={() => {
+            // UI-A26: info pembatalan lama tidak lagi relevan begitu transaksi
+            // baru tersimpan — kosongkan agar daftar tidak menampilkan pesan
+            // yang merujuk jurnal yang sudah lama.
+            setInfoJurnal(null);
+            muatJurnal();
+          }}
         />
       </div>
 

@@ -1459,7 +1459,16 @@ export function PinjamanTab() {
                   bayar?.pinjaman.id !== p.id;
                 return (
                   <Fragment key={p.id}>
-                    <tr className="border-b align-top last:border-0">
+                    {/* UI-A26: pinjaman dibatalkan direduksi seluruh barisnya
+                        (pola opacity seperti tabel laporan lain); badge
+                        DIBATALKAN tetap terbaca. */}
+                    <tr
+                      className={
+                        pinjamanBatal
+                          ? 'border-b align-top opacity-60 last:border-0'
+                          : 'border-b align-top last:border-0'
+                      }
+                    >
                       <td className="py-2 pr-3 whitespace-nowrap">
                         {formatTanggal(p.tanggal_mulai)}
                       </td>
@@ -1476,7 +1485,16 @@ export function PinjamanTab() {
                       <td className="py-2 pr-3 text-right whitespace-nowrap">
                         {formatRp(p.pokok_awal)}
                       </td>
-                      <td className="py-2 pr-3 text-right whitespace-nowrap">
+                      {/* "Sisa awal" pinjaman dibatalkan bukan angka yang masih
+                          berlaku — tampilkan abu/netral agar tidak dibaca
+                          sebagai saldo aktif. */}
+                      <td
+                        className={
+                          pinjamanBatal
+                            ? 'py-2 pr-3 text-right whitespace-nowrap text-stone-400'
+                            : 'py-2 pr-3 text-right whitespace-nowrap'
+                        }
+                      >
                         {formatRp(p.sisa_pokok_awal)}
                       </td>
                       <td className="py-2 pr-3 text-right whitespace-nowrap">

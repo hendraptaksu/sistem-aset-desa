@@ -203,8 +203,6 @@ export function BukuBesarTab({
 
   const akunTerpilih = coa?.find((a) => a.kode === akun) ?? null;
   const adaMutasi = (data?.rows.length ?? 0) > 0;
-  // UI-A03: drill-down aktif berarti ada cut-off sumber yang diteruskan.
-  const drilldownAktif = Boolean(sampaiAwal);
 
   return (
     <div className="space-y-4">
@@ -310,17 +308,10 @@ export function BukuBesarTab({
                     : ' · seluruh riwayat'}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                {/* UI-A03: saat drill-down, sebutkan cut-off sumber agar
-                    angka ini jelas cocok dengan laporan asalnya. */}
-                <span className="text-sm text-stone-600">
-                  {drilldownAktif && data.sampai
-                    ? `Saldo akhir (per ${formatTanggal(data.sampai)}):`
-                    : 'Saldo akhir:'}
-                </span>
-                <span className="text-xl font-bold">{formatRp(data.saldoAkhir)}</span>
-                <SisiSaldoBadge saldo={data.saldoAkhir} posisiNormal={data.posisi_normal} />
-              </div>
+              {/* UI-A26: "Saldo akhir" cukup tampil sekali di kartu ringkasan
+                  di bawah; duplikat identik di samping judul dihapus. Saat
+                  drill-down, cut-off sumber tetap terlihat pada teks periode
+                  di atas. */}
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -456,8 +447,14 @@ export function BukuBesarTab({
                     <td className="whitespace-nowrap py-2 pr-3 text-right">
                       {formatRp(data.totalKredit)}
                     </td>
+                    {/* UI-A26: nilai penutup kolom Saldo diberi konteks tanggal
+                        agar tidak jadi duplikat identik kartu ringkasan. */}
                     <td className="whitespace-nowrap py-2 pr-3 text-right">
                       {formatRp(data.saldoAkhir)}
+                      <div className="text-xs font-normal text-stone-500">
+                        Saldo akhir (per{' '}
+                        {data.sampai ? formatTanggal(data.sampai) : 'akhir riwayat'})
+                      </div>
                     </td>
                     <td className="py-2">
                       <SisiSaldoBadge
