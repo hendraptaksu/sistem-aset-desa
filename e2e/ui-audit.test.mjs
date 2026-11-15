@@ -6,6 +6,25 @@
 // isian, simpan transaksi, filter Jurnal Umum, dan akses sidebar. Jurnal Umum
 // hanya muncul setelah Mode lanjutan diaktifkan, sesuai DB-26/DB-29.
 //
+// UI-A27 — alur regresi perbaikan tiket audit UI dijalankan setelah audit tab
+// dasar, di ujung test agar kunci periode uji tidak mengganggu alur lain:
+// - UI-A01: grid nota Panjar baru dirender setelah target dipilih; ganti
+//   target saat form PJ kotor wajib konfirmasi "Ganti panjar?".
+// - UI-A02: KoreksiModal Escape saat isian berubah → konfirmasi
+//   "Buang isian koreksi?"; tanpa perubahan langsung tutup.
+// - UI-A20: Duplikat nonaktif dengan alasan untuk jurnal SALDO_AWAL.
+// - UI-A10: rentang terbalik Laba Rugi/Arus Kas → guard amber seragam dan
+//   badge SURPLUS/DEFISIT tidak tampil.
+// - UI-A03: drill-down Neraca → Buku Besar membawa periode sumber ("per …").
+// - UI-A05: Pengaturan Pembukuan aktif setelah muat sukses (jalur gagal muat
+//   dikunci lewat uji sumber di tests/ui-a05-pembukuan-gagal-muat.test.ts
+//   karena IPC pengaturanGet tidak bisa digagalkan lewat e2e).
+// - UI-A09: LockModal — alasan 3 karakter → tombol mati + helper; 5 karakter
+//   → tombol aktif dan submit benar-benar tersimpan (tahun lalu dikunci lewat
+//   alur Kunci Periode lebih dulu).
+// - UI-A13: form Transaksi kosong → tombol Simpan mati dengan alasan
+//   "Isi dulu: …" yang terlihat.
+//
 // Jalankan: npm run test:ui-audit
 // Simpan folder data uji saat gagal: SMOKE_KEEP=1 npm run test:ui-audit
 //
@@ -587,7 +606,9 @@ async function cekKonfirmasiAksiBerisiko(page, t) {
     { timeout: 5_000 },
   );
 
-  const restore = page.getByRole('button', { name: 'Restore Lengkap (disarankan)' });
+  // UI-A17: label dibakukan ke "Pulihkan (restore)" — tombol lama "Restore
+  // Lengkap" sudah tidak ada.
+  const restore = page.getByRole('button', { name: 'Pulihkan Lengkap (disarankan)' });
   await restore.click();
   const dialogRestore = page.getByRole('dialog', {
     name: 'Pulihkan database dari backup lengkap?',
@@ -758,6 +779,399 @@ async function cekLipatSidebar(page, ukuran, t) {
   t.diagnostic('sidebar OK: grup Laporan bisa dibuka, status lipat tetap mengakses semua tab');
 }
 
+// ---------------------------------------------------------------------------
+// UI-A27 — regresi perbaikan tiket audit UI (UI-A01 s/d UI-A20).
+// ---------------------------------------------------------------------------
+
+/**
+ * UI-A20 (kasus 3): tombol Duplikat tidak tersedia untuk jurnal SALDO_AWAL,
+ * dengan alasan terlihat; jurnal biasa (TERIMA) tetap bisa diduplikat.
+ * Seed dev menaruh saldo awal di JU-2026-0001 dan TERIMA di JU-2026-0002,
+ * keduanya ada di halaman 1 (urutan tanggal menaik).
+ */
+async function cekDuplikatSaldoAwal(page, t) {
+  const detail = page.getByRole('dialog', { name: 'Detail Jurnal' });
+
+  const lihatSaldoAwal = page.getByRole('button', {
+    name: 'Lihat jurnal JU-2026-0001',
+  });
+  await lihatSaldoAwal.waitFor({ timeout: 20_000 });
+  await lihatSaldoAwal.click();
+  await detail.waitFor({ timeout: 15_000 });
+
+  const duplikat = detail.getByRole('button', { name: 'Duplikat' });
+  assert.equal(await duplikat.count(), 1, 'Tombol Duplikat hilang dari Detail Jurnal');
+  assert.ok(
+    await duplikat.isDisabled(),
+    'Duplikat aktif untuk jurnal SALDO_AWAL — saldo awal bisa tercatat ganda',
+  );
+  assert.equal(
+    await duplikat.getAttribute('title'),
+    'Saldo awal tidak bisa diduplikat: saldo awal hanya boleh diatur lewat wizard saldo awal.',
+    'Duplikat nonaktif tanpa alasan terlihat',
+  );
+  // Konsistensi: koreksi saldo awal juga diblokir di baris yang sama.
+  assert.ok(
+    await page.getByRole('button', { name: 'Koreksi jurnal JU-2026-0001' }).isDisabled(),
+    'Koreksi aktif untuk jurnal SALDO_AWAL',
+  );
+  await page.keyboard.press('Escape');
+  await detail.waitFor({ state: 'detached' });
+
+  // Kontras: jurnal TERIMA boleh diduplikat (guard tidak terlalu luas).
+  const lihatTerima = page.getByRole('button', { name: 'Lihat jurnal JU-2026-0002' });
+  await lihatTerima.waitFor({ timeout: 10_000 });
+  await lihatTerima.click();
+  await detail.waitFor({ timeout: 15_000 });
+  assert.ok(
+    await detail.getByRole('button', { name: 'Duplikat' }).isEnabled(),
+    'Duplikat ikut mati untuk jurnal TERIMA — guard terlalu luas',
+  );
+  await page.keyboard.press('Escape');
+  await detail.waitFor({ state: 'detached' });
+
+  t.diagnostic('UI-A20 OK: Duplikat nonaktif+alasan untuk SALDO_AWAL, aktif untuk TERIMA');
+}
+
+/**
+ * UI-A02 (kasus 2): KoreksiModal — Escape saat isian berubah memunculkan
+ * konfirmasi "Buang isian koreksi?"; tanpa perubahan langsung menutup modal.
+ */
+async function cekKoreksiModalKonfirmasi(page, t) {
+  const pemicu = page.getByRole('button', { name: 'Koreksi jurnal JU-2026-0002' });
+  const modal = page.getByRole('dialog', { name: 'Koreksi Jurnal' });
+  const buang = page.getByRole('dialog', { name: 'Buang isian koreksi?' });
+
+  await pemicu.waitFor({ timeout: 10_000 });
+  await pemicu.click();
+  await modal.waitFor({ timeout: 15_000 });
+
+  // Tanpa perubahan: Escape langsung menutup modal tanpa konfirmasi.
+  await page.keyboard.press('Escape');
+  await modal.waitFor({ state: 'detached' });
+  assert.equal(
+    await buang.count(),
+    0,
+    'Konfirmasi buang muncul padahal isian koreksi belum diubah',
+  );
+
+  // Dengan perubahan: Escape memunculkan konfirmasi.
+  await pemicu.click();
+  await modal.waitFor({ timeout: 15_000 });
+  await page.getByLabel(/^Alasan koreksi/).fill('Salah ketik nominal — uji UI-A27');
+  await page.keyboard.press('Escape');
+  await buang.waitFor({ timeout: 10_000 });
+
+  // Escape pada konfirmasi hanya menutup konfirmasi; modal koreksi tetap ada.
+  await page.keyboard.press('Escape');
+  await buang.waitFor({ state: 'detached' });
+  assert.equal(await modal.count(), 1, 'Modal koreksi ikut tertutup saat konfirmasi dibatalkan');
+
+  // Escape ulang → konfirmasi lagi → "Ya, buang isian" menutup modal koreksi.
+  await page.keyboard.press('Escape');
+  await buang.waitFor({ timeout: 10_000 });
+  await buang.getByRole('button', { name: 'Ya, buang isian' }).click();
+  await modal.waitFor({ state: 'detached' });
+
+  t.diagnostic(
+    'UI-A02 OK: Escape tanpa perubahan langsung tutup; dengan perubahan muncul konfirmasi buang',
+  );
+}
+
+/**
+ * UI-A10 (kasus 4): rentang terbalik di Laba Rugi & Arus Kas memunculkan
+ * guard amber seragam, memblokir fetch (tabel & badge hilang), lalu pulih
+ * lewat preset tahun buku.
+ */
+async function cekGuardRentangLaporan(page, t) {
+  const presetTahun = page.getByRole('button', { name: 'Tahun berjalan (tahun buku)' });
+
+  await pindahTab(page, 'Laba Rugi');
+  await page.getByLabel('Dari tanggal').fill('2026-12-31');
+  await page.getByLabel('Sampai tanggal').fill('2026-01-01');
+  const guard = page.getByRole('alert').filter({ hasText: 'tidak boleh setelah' });
+  await guard.waitFor({ timeout: 10_000 });
+  assert.match(
+    (await guard.textContent()) ?? '',
+    /menampilkan Laba Rugi/,
+    'Guard rentang terbalik tidak menyebut nama laporan',
+  );
+  // Fetch diblok: hasil lama dihapus, jadi badge dan tabel tidak tampil.
+  assert.equal(
+    await page.getByText('SURPLUS').count(),
+    0,
+    'Badge SURPLUS tampil untuk rentang terbalik',
+  );
+  assert.equal(
+    await page.getByText('DEFISIT').count(),
+    0,
+    'Badge DEFISIT tampil untuk rentang terbalik',
+  );
+  assert.equal(
+    await page.getByText('Total Pendapatan').count(),
+    0,
+    'Tabel Laba Rugi masih tampil untuk rentang terbalik',
+  );
+
+  await presetTahun.click();
+  await guard.waitFor({ state: 'detached', timeout: 10_000 });
+  await page.locator('h1').getByText(/SURPLUS|DEFISIT/).waitFor({ timeout: 20_000 });
+
+  // Guard yang sama berlaku di Arus Kas (komponen KontrolPeriode bersama).
+  await pindahTab(page, 'Arus Kas');
+  await page.getByLabel('Dari tanggal').fill('2026-12-31');
+  await page.getByLabel('Sampai tanggal').fill('2026-01-01');
+  const guardKas = page.getByRole('alert').filter({ hasText: 'tidak boleh setelah' });
+  await guardKas.waitFor({ timeout: 10_000 });
+  assert.match(
+    (await guardKas.textContent()) ?? '',
+    /menampilkan Arus Kas/,
+    'Guard rentang terbalik Arus Kas tidak menyebut nama laporan',
+  );
+  await presetTahun.click();
+  await guardKas.waitFor({ state: 'detached', timeout: 10_000 });
+
+  t.diagnostic('UI-A10 OK: rentang terbalik Laba Rugi & Arus Kas → guard seragam, fetch diblok');
+}
+
+/**
+ * UI-A03 (kasus 5): Buku Besar dibuka dari drill-down Neraca membawa periode
+ * sumber — cut-off Neraca muncul di header kartu ("periode awal s/d …") dan
+ * di kaki tabel ("Saldo akhir (per …)").
+ */
+async function cekDrilldownNeracaBukuBesar(page, t) {
+  await pindahTab(page, 'Neraca');
+  await page.waitForFunction(
+    () =>
+      /^Neraca per \d{1,2} /.test(
+        document.querySelector('h1')?.textContent?.trim() ?? '',
+      ),
+    null,
+    { timeout: 20_000 },
+  );
+  const cocok = /Neraca per (\d{1,2} \w+ \d{4})/.exec(
+    (await page.locator('h1').textContent()) ?? '',
+  );
+  assert.ok(cocok, 'Cut-off Neraca tidak terbaca dari header');
+  const tanggalSumber = cocok[1];
+
+  const barisKas = page.getByRole('button', { name: /^Buka Buku Besar akun 1001/ });
+  await barisKas.waitFor({ timeout: 20_000 });
+  await barisKas.click();
+  await tungguHeader(page, 'Buku Besar');
+  await page.waitForTimeout(300);
+
+  await page.getByText(`periode awal s/d ${tanggalSumber}`).waitFor({ timeout: 20_000 });
+  await page.getByText(`Saldo akhir (per ${tanggalSumber})`).waitFor({ timeout: 10_000 });
+
+  t.diagnostic(
+    `UI-A03 OK: Buku Besar dari drill-down Neraca memuat periode sumber "per ${tanggalSumber}"`,
+  );
+}
+
+/**
+ * UI-A05 (kasus 7, jalur bahagia): setelah pengaturan pembukuan berhasil
+ * dimuat, Simpan aktif dan tidak ada tombol "Coba muat ulang". Jalur gagal
+ * muat (Simpan disabled saat errPembukuan) tidak mungkin dipicu lewat e2e —
+ * IPC `pengaturanGet` asli selalu tersedia dan errPembukuan adalah state
+ * internal — sehingga dikunci lewat uji sumber di
+ * tests/ui-a05-pembukuan-gagal-muat.test.ts.
+ */
+async function cekPengaturanPembukuanSiap(page, t) {
+  await pindahTab(page, 'Pengaturan');
+  const simpan = page.getByRole('button', { name: 'Simpan Pengaturan Pembukuan' });
+  await simpan.waitFor({ timeout: 20_000 });
+  assert.equal(
+    await page.getByRole('button', { name: 'Coba muat ulang' }).count(),
+    0,
+    'Tombol "Coba muat ulang" tampil padahal pengaturan berhasil dimuat',
+  );
+  assert.ok(
+    await simpan.isEnabled(),
+    'Simpan Pengaturan Pembukuan mati padahal pengaturan berhasil dimuat',
+  );
+  assert.ok(
+    await page.getByLabel('Nama entitas (kop laporan)').isEnabled(),
+    'Isian Nama entitas mati padahal pengaturan berhasil dimuat',
+  );
+
+  t.diagnostic('UI-A05 OK (jalur bahagia): muat sukses → Simpan & isian aktif, tanpa muat ulang');
+}
+
+/**
+ * UI-A01 (kasus 1): grid nota Panjar tidak dirender sebelum target dipilih;
+ * mengisi nota lalu mengganti target memunculkan konfirmasi "Ganti panjar?".
+ * Seed dev tidak menyisakan panjar terbuka, jadi satu panjar dibuat lewat
+ * form Serahkan Panjar lebih dulu.
+ */
+async function cekPanjarGantiTarget(page, folder, t) {
+  await pindahTab(page, 'Buku Panjar');
+
+  const selectPJ = page.getByLabel('Panjar yang dipertanggungjawabkan');
+  const nomorNota = page.getByLabel('Nomor nota');
+
+  // Tanpa target: grid nota (dan kotak sisa/kurang) tidak dirender.
+  await selectPJ.waitFor({ timeout: 20_000 });
+  assert.equal(
+    await nomorNota.count(),
+    0,
+    'Grid nota dirender sebelum panjar target dipilih (UI-A01 kembali)',
+  );
+
+  // Buat satu panjar terbuka lewat UI agar tersedia target.
+  await page.getByLabel('Penerima / panitia').fill('Panitia UI-A27');
+  await page.getByLabel('Jumlah panjar (Rp)').fill('100000');
+  await page.getByRole('button', { name: 'Serahkan Panjar' }).click();
+  await page
+    .getByRole('status')
+    .filter({ hasText: 'Panjar untuk Panitia UI-A27 tersimpan' })
+    .waitFor({ timeout: 20_000 });
+
+  // Pilih target → grid nota muncul.
+  const nilaiPanjar = await selectPJ
+    .locator('option')
+    .filter({ hasText: 'Panitia UI-A27' })
+    .first()
+    .getAttribute('value');
+  assert.ok(nilaiPanjar, 'Panjar baru tidak muncul di pilihan pertanggungjawaban');
+  await selectPJ.selectOption(nilaiPanjar);
+  await nomorNota.waitFor({ timeout: 10_000 });
+
+  // Isi nota → form PJ menjadi kotor.
+  await nomorNota.fill('001/UIA27/2026');
+
+  // Ganti target saat kotor → konfirmasi muncul, tidak menimpa diam-diam.
+  const dialog = page.getByRole('dialog', { name: 'Ganti panjar?' });
+  await selectPJ.selectOption('');
+  await dialog.waitFor({ timeout: 10_000 });
+  assert.match(
+    await dialog.innerText(),
+    /Rincian yang sudah diisi akan kosong/,
+    'Konfirmasi ganti panjar tidak menjelaskan dampak',
+  );
+  await page.screenshot({ path: join(folder, 'flow-panjar-ganti-target.png') });
+
+  // Batal → isian nota tetap ada.
+  await dialog.getByRole('button', { name: 'Batal' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  assert.equal(
+    await nomorNota.inputValue(),
+    '001/UIA27/2026',
+    'Isian nota hilang setelah Batal pada konfirmasi ganti panjar',
+  );
+
+  // Konfirmasi → form PJ kembali kosong dan grid nota hilang bersama target.
+  await selectPJ.selectOption('');
+  await dialog.waitFor({ timeout: 10_000 });
+  await dialog.getByRole('button', { name: 'Ya, ganti panjar' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await page.waitForTimeout(200);
+  assert.equal(
+    await nomorNota.count(),
+    0,
+    'Grid nota masih tampil setelah target dikosongkan',
+  );
+
+  t.diagnostic('UI-A01 OK: grid nota tersembunyi tanpa target; ganti target kotor → konfirmasi');
+}
+
+/**
+ * Kunci tahun lalu lewat alur Kunci Periode (3 langkah, tanpa dialog native)
+ * supaya transaksi bertanggal 31 Des tahun lalu memunculkan LockModal.
+ * Mengembalikan tahun yang dikunci.
+ */
+async function kunciTahunLalu(page, t) {
+  await pindahTab(page, 'Kunci Periode');
+  const fieldTahun = page.getByLabel('Tahun');
+  const tahun = Number(await fieldTahun.inputValue());
+  assert.ok(
+    Number.isInteger(tahun) && tahun > 1900,
+    pesan('Tahun default Kunci Periode tidak terbaca', String(tahun)),
+  );
+
+  await page.getByRole('button', { name: 'Preview laba' }).click();
+  const tombolBackup = page.getByRole('button', { name: 'Backup otomatis & lanjut' });
+  await tombolBackup.waitFor({ timeout: 30_000 });
+  await tombolBackup.click();
+  const tombolKonfirmasi = page.getByRole('button', { name: 'Konfirmasi kunci periode' });
+  await tombolKonfirmasi.waitFor({ timeout: 30_000 });
+  await tombolKonfirmasi.click();
+
+  const dialog = page.getByRole('dialog', { name: `Kunci periode tahun ${tahun}?` });
+  await dialog.waitFor({ timeout: 10_000 });
+  await dialog.getByRole('button', { name: 'Ya, kunci periode' }).click();
+  await page
+    .getByRole('status')
+    .filter({ hasText: 'dikunci' })
+    .waitFor({ timeout: 30_000 });
+
+  t.diagnostic(`Kunci periode uji OK: tahun ${tahun} dikunci lewat UI`);
+  return tahun;
+}
+
+/**
+ * UI-A13 (kasus 8) + UI-A09 (kasus 6): form Transaksi kosong menampilkan
+ * alasan tombol Simpan nonaktif; tanggal di tahun terkunci memunculkan
+ * LockModal dengan helper 5 karakter, dan alasan yang cukup benar-benar
+ * mengirim submit (alasan kini hidup di state React, bukan closure).
+ */
+async function cekTransaksiAlasanDanLockModal(page, tahunTerkunci, folder, t) {
+  await pindahTab(page, 'Transaksi');
+
+  // UI-A13: form kosong → tombol Simpan mati dengan alasan terlihat.
+  const simpan = page.getByRole('button', { name: 'Simpan Transaksi' });
+  await simpan.waitFor({ timeout: 20_000 });
+  assert.ok(await simpan.isDisabled(), 'Simpan Transaksi aktif padahal form kosong');
+  const alasanKosong = page.getByRole('status').filter({ hasText: 'Isi dulu:' });
+  // Teks bisa sempat "Memuat daftar akun…" sebelum COA selesai dimuat.
+  await alasanKosong.waitFor({ timeout: 15_000 });
+  assert.match(
+    (await alasanKosong.textContent()) ?? '',
+    /Isi dulu: tanggal, akun, nominal, dan keterangan\./,
+    'Teks alasan tombol Simpan tidak sesuai',
+  );
+
+  // UI-A09: simpan ke tahun terkunci → backend minta alasan → LockModal.
+  const fieldTanggal = page.getByLabel('Tanggal');
+  const tanggalAwal = await fieldTanggal.inputValue();
+  await fieldTanggal.fill(`${tahunTerkunci}-12-31`);
+  await page.getByLabel('Nominal').fill('50.000');
+  await page.getByLabel('Keterangan').fill('Uji UI-A27 LockModal periode terkunci');
+  await simpan.click();
+
+  const lock = page.getByRole('dialog', { name: 'Periode sudah ditutup' });
+  await lock.waitFor({ timeout: 20_000 });
+  const helper = lock.getByText('Alasan minimal 5 karakter.');
+  const tetapSimpan = lock.getByRole('button', { name: 'Tetap simpan' });
+
+  // Alasan 3 karakter: tombol mati + helper terlihat (kasus minimum tiket).
+  await lock.getByLabel(/^Alasan/).fill('abc');
+  assert.ok(await helper.isVisible(), 'Helper "Alasan minimal 5 karakter." tidak tampil');
+  assert.ok(
+    await tetapSimpan.isDisabled(),
+    'Tombol Tetap simpan aktif dengan alasan 3 karakter',
+  );
+
+  // Alasan 5 karakter: tombol aktif dan submit terkirim (bukan jalan buntu).
+  await lock.getByLabel(/^Alasan/).fill('abcde');
+  assert.ok(await tetapSimpan.isEnabled(), 'Tombol Tetap simpan mati dengan alasan 5 karakter');
+  await page.screenshot({ path: join(folder, 'flow-lock-modal.png') });
+  await tetapSimpan.click();
+  await lock.waitFor({ state: 'detached', timeout: 20_000 });
+  await page
+    .getByRole('status')
+    .filter({ hasText: 'tersimpan' })
+    .waitFor({ timeout: 20_000 });
+
+  // Pulihkan tanggal agar form tidak menyisakan tanggal periode terkunci.
+  await fieldTanggal.fill(tanggalAwal);
+
+  t.diagnostic(
+    'UI-A09/UI-A13 OK: alasan Simpan terlihat; LockModal 3 karakter mati+helper, 5 karakter terkirim',
+  );
+}
+
+
 /** Jalankan seluruh audit untuk satu ukuran jendela dengan profil baru. */
 async function jalankanAudit(ukuran, t) {
   assert.ok(
@@ -878,6 +1292,33 @@ async function jalankanAudit(ukuran, t) {
 
     await cekLipatSidebar(page, ukuran, t);
     ringkasan.flow.sidebarLipat = 'lulus';
+
+    // UI-A27: regresi perbaikan tiket audit UI. Dijalankan di ujung karena
+    // kunciTahunLalu mengunci tahun lalu di database uji — tidak boleh
+    // mengganggu alur simpan transaksi/filter di atas.
+    await cekDuplikatSaldoAwal(page, t);
+    ringkasan.flow.duplikatSaldoAwal = 'lulus';
+
+    await cekKoreksiModalKonfirmasi(page, t);
+    ringkasan.flow.koreksiModalKonfirmasi = 'lulus';
+
+    await cekGuardRentangLaporan(page, t);
+    ringkasan.flow.guardRentangLaporan = 'lulus';
+
+    await cekDrilldownNeracaBukuBesar(page, t);
+    ringkasan.flow.drilldownBukuBesar = 'lulus';
+
+    await cekPengaturanPembukuanSiap(page, t);
+    ringkasan.flow.pengaturanPembukuan = 'lulus';
+
+    await cekPanjarGantiTarget(page, folder, t);
+    ringkasan.flow.panjarGantiTarget = 'lulus';
+
+    const tahunTerkunci = await kunciTahunLalu(page, t);
+    ringkasan.flow.kunciTahunLalu = `lulus (${tahunTerkunci})`;
+
+    await cekTransaksiAlasanDanLockModal(page, tahunTerkunci, folder, t);
+    ringkasan.flow.transaksiAlasanLockModal = 'lulus';
 
     assert.equal(
       consoleErrors.length,

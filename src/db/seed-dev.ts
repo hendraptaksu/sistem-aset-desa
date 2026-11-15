@@ -5,7 +5,11 @@
 
 import type Database from 'better-sqlite3';
 import { akun } from './coa.js';
-import { insertJurnalInternal } from './repository.js';
+import {
+  KUNCI_SALDO_AWAL_AKTIF_ID,
+  insertJurnalInternal,
+  setPengaturan,
+} from './repository.js';
 import type { JurnalBarisInput, JurnalJenis } from '../core/types.js';
 
 /** Jumlah jurnal (bukan baris) yang dihasilkan seed. */
@@ -95,6 +99,10 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
     keterangan: string,
     baris: JurnalBarisInput[],
     grupId?: string,
+    /** UI-A27: jurnal saldo awal seed berperan OPENING agar penunjuk
+     * `saldo_awal_aktif_id` sah dan audit integritas tidak memblokir alur
+     * Kunci Periode pada database dev hasil seed. */
+    peran?: 'OPENING',
   ): void => {
     seq += 1;
     const tanggal = tanggalUntuk(i);
@@ -106,6 +114,7 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
       jenis,
       grup_id: grupId,
       created_at: `${tanggal}T08:00:00.000Z`,
+      ...(peran ? { peran } : {}),
     };
     insertJurnalInternal(db, header, baris, { sumber: 'SEED' });
   };
@@ -159,14 +168,24 @@ export function seedDev(db: Database.Database, jumlah = SEED_DEV_JURNAL_COUNT): 
   };
 
   const simpan = db.transaction(() => {
-    // 1) Saldo awal: kas tunai + bank, lawannya modal.
+    // 1) Saldo awal: kas tunai + bank, lawannya modal. Peran OPENING + penunjuk
+    //    resmi meniru hasil Wizard Saldo Awal agar dataset seed lolos audit
+    //    integritas (PEMBUKAAN_AKTIF_HILANG) dan alur Kunci Periode bisa diuji.
     const modalKas = 10_000_000_000;
     const modalBank = 25_000_000_000;
-    catat(0, 'SALDO_AWAL', 'Saldo awal kas dan bank', [
-      debit('1001', modalKas, 'Kas tunai'),
-      debit('1029', modalBank, 'Bank BPD'),
-      kredit('3000', modalKas + modalBank, 'Modal awal'),
-    ]);
+    catat(
+      0,
+      'SALDO_AWAL',
+      'Saldo awal kas dan bank',
+      [
+        debit('1001', modalKas, 'Kas tunai'),
+        debit('1029', modalBank, 'Bank BPD'),
+        kredit('3000', modalKas + modalBank, 'Modal awal'),
+      ],
+      undefined,
+      'OPENING',
+    );
+    setPengaturan(db, KUNCI_SALDO_AWAL_AKTIF_ID, 'seed-0001');
     saldoKas['1001'] = modalKas;
     saldoKas['1029'] = modalBank;
 
