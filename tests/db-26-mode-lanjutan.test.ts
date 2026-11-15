@@ -123,23 +123,21 @@ describe('DB-26 — saklar Mode lanjutan dan tab aman', () => {
     );
     expect(mati).toContain('Mode lanjutan');
     expect(mati).toContain('Nonaktif');
-    expect(mati).toContain('Aktifkan Mode lanjutan');
+    expect(mati).toContain('Aktifkan mode lanjutan');
     expect(mati).toContain('Jurnal Umum');
-    expect(mati).toContain('Operator harian tidak perlu membuka ini.');
+    expect(mati).toContain('akuntan pendamping');
 
     const hidup = renderToStaticMarkup(
       createElement(ModeLanjutanCard, { aktif: true, onBerubah: () => undefined }),
     );
     expect(hidup).toContain('Aktif');
-    expect(hidup).toContain('Nonaktifkan Mode lanjutan');
-    expect(hidup).toContain('Data &amp; Sistem');
-    expect(hidup).toContain('jurnal balik');
+    expect(hidup).toContain('Nonaktifkan mode lanjutan');
 
     // Konfirmasi eksplisit hanya muncul setelah tombol aktif ditekan.
     const sumber = baca('src/renderer/components/PengaturanTab.tsx');
-    expect(sumber).toContain('Aktifkan Mode lanjutan?');
-    expect(sumber).toContain('untuk pemeriksaan oleh akuntan');
-    expect(sumber).toContain('labelYa="Ya, aktifkan Mode lanjutan"');
+    expect(sumber).toContain('Aktifkan mode lanjutan?');
+    expect(sumber).toContain('untuk pemeriksaan');
+    expect(sumber).toContain('labelYa="Ya, aktifkan mode lanjutan"');
     expect(sumber).toContain('onKonfirmasi={() => {');
   });
 
@@ -155,14 +153,11 @@ describe('DB-26 — saklar Mode lanjutan dan tab aman', () => {
 
   it('JurnalTab menjelaskan pemeriksaan dan koreksi tanpa mengedit', () => {
     const html = renderToStaticMarkup(createElement(JurnalTab));
-    expect(html).toContain('Jurnal Umum = tampilan debit/kredit untuk pemeriksaan.');
-    expect(html).toContain('Operator harian tidak perlu membuka ini.');
-    expect(html).toContain('Koreksi tidak dilakukan dengan mengedit jurnal');
+    expect(html).toContain('Semua jurnal tersimpan.');
+    expect(html).toContain('Jurnal tidak bisa diedit');
     expect(html).toContain('jurnal balik');
-    expect(html).toContain('form terpandu');
-    // DB-03 tidak berubah: badge statis dan editor selalu UMUM.
-    expect(html).toContain('>Jurnal Umum</span>');
+    expect(html).toContain('Transaksi');
     expect(html).toContain('+ Jurnal Baru');
-    expect(JURNAL_TAB).toContain('Jurnal Umum = tampilan debit/kredit untuk pemeriksaan.');
+    expect(JURNAL_TAB).toContain('Semua jurnal tersimpan.');
   });
 });

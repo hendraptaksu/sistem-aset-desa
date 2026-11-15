@@ -143,14 +143,12 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold">Arus Kas</h1>
+            <h1 className="sr-only">Arus Kas</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Arus Kas menampilkan uang yang masuk dan keluar dari semua dompet
-              kas/bank pada satu periode. Pindah dana antar dompet tidak dihitung
-              sebagai uang masuk atau keluar. Semua angka dihitung ulang dari jurnal.
+              Uang masuk dan keluar dari semua dompet kas/bank pada satu periode.
+              Pindah dana antar dompet tidak dihitung sebagai masuk atau keluar.
             </p>
           </div>
-          <Badge tone="green">Dihitung dari jurnal</Badge>
         </div>
 
         {/* UI-A10: kontrol periode bersama (auto) dengan guard rentang seragam. */}
@@ -165,9 +163,8 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
           />
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Periode aktif: {periodeFilter}. Klik “Semua tanggal” untuk melihat
-          seluruh riwayat. Saldo awal dihitung dari jurnal sebelum tanggal “Dari”.
-          Klik baris mutasi untuk melihat jurnal asal dan nomor buktinya.
+          Periode aktif: {periodeFilter}. Saldo awal dihitung dari jurnal sebelum
+          tanggal “Dari”.
         </p>
         {data && (
           <div className="mt-3">
@@ -193,44 +190,45 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               {/* UI-A10: header dari data hasil, bukan input filter. */}
               <h3 className="flex items-center gap-2 font-bold">
-                Ringkasan periode {periodeHasil} <BadgeMemperbarui aktif={menyegarkan} />
+                Ringkasan periode {periodeHasil}
               </h3>
+              <BadgeMemperbarui aktif={menyegarkan} />
               <span className="text-sm text-stone-600">
                 {data.rows.length} baris mutasi kas
               </span>
             </div>
-            <div className={`grid grid-cols-2 gap-3 ${data.penyesuaianSaldoAwal !== 0 ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-5'}`}>
-              <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-5">
+              <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo awal</div>
-                <div className="text-2xl font-bold">{formatRp(data.saldoAwal)}</div>
+                <div className="whitespace-nowrap text-2xl font-bold">{formatRp(data.saldoAwal)}</div>
               </div>
               {data.penyesuaianSaldoAwal !== 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="min-w-0 rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="text-sm text-amber-800">Saldo pembukaan / penyesuaian</div>
-                  <div className="text-2xl font-bold text-amber-900">
+                  <div className="whitespace-nowrap text-2xl font-bold text-amber-900">
                     {formatRp(data.penyesuaianSaldoAwal)}
                   </div>
                 </div>
               )}
-              <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+              <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total masuk</div>
-                <div className="text-2xl font-bold text-emerald-700">
+                <div className="whitespace-nowrap text-2xl font-bold text-emerald-700">
                   {formatRp(data.totalMasuk)}
                 </div>
               </div>
-              <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+              <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total keluar</div>
-                <div className="text-2xl font-bold text-red-700">
+                <div className="whitespace-nowrap text-2xl font-bold text-red-700">
                   {formatRp(data.totalKeluar)}
                 </div>
               </div>
-              <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+              <div className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Kenaikan / (penurunan)</div>
-                <div className="text-2xl font-bold">{formatRp(data.kenaikan)}</div>
+                <div className="whitespace-nowrap text-2xl font-bold">{formatRp(data.kenaikan)}</div>
               </div>
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <div className="min-w-0 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                 <div className="text-sm text-emerald-800">Saldo akhir</div>
-                <div className="text-2xl font-bold text-emerald-900">
+                <div className="whitespace-nowrap text-2xl font-bold text-emerald-900">
                   {formatRp(data.saldoAkhir)}
                 </div>
                 <div className="mt-1 text-helper text-emerald-800">

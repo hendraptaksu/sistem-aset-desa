@@ -4,8 +4,8 @@
 // diuji tanpa runtime GUI. Main process hanya menyediakan dialog, folder
 // backup, dan aksi keluar lewat dependency injection.
 
-export const JUDUL_PEMULIHAN_DB = 'Pemulihan Database';
-export const PESAN_GAGAL_BUKA_DB = 'Database tidak dapat dibuka';
+export const JUDUL_PEMULIHAN_DB = 'Data aplikasi tidak bisa dibuka';
+export const PESAN_GAGAL_BUKA_DB = 'Data aplikasi tidak dapat dibuka';
 export const TOMBOL_BUKA_BACKUP = 'Buka folder backup';
 export const TOMBOL_COBA_LAGI = 'Coba lagi';
 export const TOMBOL_KELUAR = 'Keluar';
@@ -36,18 +36,18 @@ function kodeError(error: unknown): string {
 function petunjukAman(error: unknown): string {
   const kode = kodeError(error);
   if (kode === 'SQLITE_NOTADB' || kode === 'SQLITE_CORRUPT' || kode === 'SQLITE_FORMAT') {
-    return 'File database tampaknya rusak atau bukan file database SQLite.';
+    return 'File data aplikasi tampaknya rusak atau bukan file data aplikasi ini.';
   }
   if (kode === 'ENOSPC' || kode === 'SQLITE_FULL') {
     return 'Ruang penyimpanan mungkin penuh. Kosongkan sebagian ruang disk lalu coba lagi.';
   }
   if (kode === 'EACCES' || kode === 'EPERM' || kode === 'EROFS') {
-    return 'Aplikasi tidak punya izin menulis ke lokasi database.';
+    return 'Aplikasi tidak punya izin menulis ke lokasi file data.';
   }
   if (kode === 'EBUSY' || kode === 'SQLITE_BUSY' || kode === 'SQLITE_LOCKED') {
-    return 'File database sedang dipakai proses lain atau terkunci.';
+    return 'File data sedang dipakai aplikasi lain atau terkunci.';
   }
-  return 'File database mungkin rusak, sedang dipakai aplikasi lain, atau tidak dapat ditulis.';
+  return 'File data mungkin rusak, sedang dipakai aplikasi lain, atau tidak dapat ditulis.';
 }
 
 /** Teks error hanya untuk deteksi internal; tidak pernah ditampilkan. */
@@ -74,9 +74,9 @@ function dbTidakKompatibel(error: unknown): boolean {
 function pesanDbTidakKompatibel(lokasi: string): string {
   return [
     'Data Anda tidak dihapus oleh aplikasi.',
-    'Database ini memakai skema lama/tidak didukung. Aplikasi ini hanya mendukung skema v2. Backup dulu file database (beserta -wal/-shm), lalu buat database baru v2.',
-    `Pindahkan atau hapus file database di lokasi berikut, lalu jalankan aplikasi lagi: ${lokasiTampil(lokasi)}`,
-    'Bila data lama masih dibutuhkan, salin file tersebut ke tempat lain sebelum memindahkan atau menghapusnya.',
+    'File data ini dibuat oleh versi aplikasi yang berbeda, jadi belum bisa dibuka. Salin dulu file data tersebut sebagai cadangan, lalu kosongkan lokasi di bawah agar aplikasi membuat data baru.',
+    `Lokasi file data: ${lokasiTampil(lokasi)}`,
+    'Bila data lama masih dibutuhkan, simpan salinannya di tempat lain sebelum memindahkan atau menghapusnya.',
     'Bila masih gagal, klik "Keluar" lalu hubungi pendamping.',
   ].join('\n');
 }
@@ -94,8 +94,8 @@ export function pesanGagalBukaDb(error: unknown, lokasi: string): string {
   return [
     'Data Anda tidak dihapus oleh aplikasi.',
     petunjukAman(error),
-    `Lokasi database: ${lokasiTampil(lokasi)}`,
-    'Buka folder backup, salin file backup yang diinginkan ke lokasi database di atas, lalu klik "Coba lagi".',
+    `Lokasi file data: ${lokasiTampil(lokasi)}`,
+    'Buka folder backup, salin file backup yang diinginkan ke lokasi file data di atas, lalu klik "Coba lagi".',
     'Bila masih gagal, klik "Keluar" lalu hubungi pendamping.',
   ].join('\n');
 }

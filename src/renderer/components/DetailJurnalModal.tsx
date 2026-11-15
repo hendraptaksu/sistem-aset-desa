@@ -37,6 +37,7 @@ export function DetailJurnalModal({
   // Koreksi (`alasanTidakBisaKoreksi`). Guard `duplikatJurnalKeForm` tetap
   // memblokir jalur programatik.
   const alasanDuplikat = alasanTidakBisaDuplikat(jurnal);
+  const totalKredit = jurnal.baris.reduce((s, b) => s + b.kredit, 0);
   return (
     <Modal judul="Detail Jurnal" onTutup={onClose} lebar="2xl">
       <div className="flex flex-wrap gap-2">
@@ -49,7 +50,7 @@ export function DetailJurnalModal({
         )}
       </div>
 
-      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[15px]">
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[15px] sm:grid-cols-3">
         <p>
           <span className="text-stone-500">Tanggal: </span>
           {formatTanggal(jurnal.tanggal)}
@@ -62,34 +63,21 @@ export function DetailJurnalModal({
           <span className="text-stone-500">Jenis: </span>
           {LABEL_JENIS[jurnal.jenis] ?? jurnal.jenis}
         </p>
-        <p>
-          <span className="text-stone-500">ID: </span>
-          <span className="break-all">{jurnal.id}</span>
-        </p>
       </div>
       <p className="mt-2 text-[15px]">
         <span className="text-stone-500">Keterangan: </span>
         {jurnal.keterangan}
       </p>
-      {jurnal.reversal_of && (
-        <p className="mt-1 text-sm text-stone-600">
-          Jurnal ini membalik jurnal <b>{jurnal.reversal_of}</b>.
-        </p>
-      )}
-      {jurnal.reversal_id && (
-        <p className="mt-1 text-sm text-stone-600">
-          Jurnal ini sudah dikoreksi oleh <b>{jurnal.reversal_id}</b>.
-        </p>
-      )}
 
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-[15px]">
+          <caption className="sr-only">Rincian baris jurnal</caption>
           <thead>
             <tr className="border-b text-stone-500">
-              <th className="py-2 pr-3">Akun</th>
-              <th className="py-2 pr-3">Catatan</th>
-              <th className="py-2 pr-3 text-right">Debit</th>
-              <th className="py-2 text-right">Kredit</th>
+              <th scope="col" className="py-2 pr-3">Akun</th>
+              <th scope="col" className="py-2 pr-3">Catatan</th>
+              <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+              <th scope="col" className="py-2 text-right">Kredit</th>
             </tr>
           </thead>
           <tbody>
@@ -97,10 +85,10 @@ export function DetailJurnalModal({
               <tr key={b.id} className="border-b last:border-0">
                 <td className="py-2 pr-3">{namaAkun(coa, b.akun_kode)}</td>
                 <td className="py-2 pr-3 text-stone-600">{b.keterangan || '—'}</td>
-                <td className="py-2 pr-3 text-right">
+                <td className="whitespace-nowrap py-2 pr-3 text-right">
                   {b.debit ? formatRp(b.debit) : ''}
                 </td>
-                <td className="py-2 text-right">
+                <td className="whitespace-nowrap py-2 text-right">
                   {b.kredit ? formatRp(b.kredit) : ''}
                 </td>
               </tr>
@@ -111,8 +99,12 @@ export function DetailJurnalModal({
               <td colSpan={2} className="py-2 pr-3 text-right">
                 Total:
               </td>
-              <td className="py-2 pr-3 text-right">{formatRp(jurnal.total_debit)}</td>
-              <td className="py-2 text-right">{formatRp(jurnal.total_debit)}</td>
+              <td className="whitespace-nowrap py-2 pr-3 text-right">
+                {formatRp(jurnal.total_debit)}
+              </td>
+              <td className="whitespace-nowrap py-2 text-right">
+                {formatRp(totalKredit)}
+              </td>
             </tr>
           </tfoot>
         </table>

@@ -115,17 +115,17 @@ describe('DB-29 — TABS dan GRUP_MENU bersih', () => {
 describe('DB-29 — Kunci Periode di UI dan audit', () => {
   it('TutupTab menjelaskan penanda + kunci, bukan jurnal penutup', () => {
     const html = renderToStaticMarkup(createElement(TutupTab));
-    expect(html).toContain('<h1 class="mb-3 text-lg font-bold">Kunci Periode</h1>');
-    // UI-A18: istilah "snapshot" dijelaskan sekali sebagai
-    // "Ringkasan terkunci (snapshot)" di kalimat pertama.
-    expect(html).toContain('Ringkasan terkunci (snapshot)');
-    expect(html).toContain('hash jurnal disahkan permanen');
-    expect(html).toContain('angka live tetap dihitung dari jurnal');
-    expect(html).toContain('Ini bukan jurnal penutup');
-    expect(html).toContain('tidak ada jurnal yang dibuat atau dipindahkan ke ekuitas');
+    expect(html).toContain('>Kunci Periode</h1>');
+    // Istilah asing ("snapshot", "hash") tidak dipakai di UI.
+    expect(html).toContain('Ringkasan terkunci');
+    expect(html).not.toContain('snapshot');
+    expect(html).not.toContain('hash jurnal');
+    expect(html).toContain('Angka saat ini tetap dihitung dari jurnal');
+    expect(html).toContain('Apakah kunci periode membuat jurnal penutup?');
+    expect(html).toContain('Tidak ada jurnal yang dibuat atau dipindahkan ke ekuitas');
     // UI-A18: indikator langkah visual dengan aria-current="step".
     expect(html).toContain('aria-current="step"');
-    expect(html).toContain('tersimpan di folder Backup — lihat Pengaturan');
+    expect(html).toContain('Backup otomatis');
     expect(html).toContain('Riwayat kunci periode');
     expect(html).not.toMatch(/Tutup Buku|Tutup buku|tutup buku/);
 

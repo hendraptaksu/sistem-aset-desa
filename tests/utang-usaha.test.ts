@@ -474,7 +474,7 @@ describe('DB-23b — form terpandu di tab Transaksi', () => {
     expect(html).toContain('Tulis nama kreditur di Keterangan');
     expect(html).toContain('Utang Usaha (2060)');
     expect(html).toContain('Kas belum keluar');
-    expect(html).toContain('Simpan Catat Utang Usaha');
+    expect(html).toContain('Simpan Utang Usaha');
     expect(html).not.toContain('Pihak (wajib)');
     expect(html).not.toContain('Daftar Pihak');
   });
@@ -492,7 +492,7 @@ describe('DB-23b — form terpandu di tab Transaksi', () => {
     expect(html).toContain('Uang keluar dari');
     expect(html).toContain('Tulis nama kreditur di Keterangan');
     expect(html).toContain('Utang Usaha (2060)');
-    expect(html).toContain('Simpan Bayar Utang Usaha');
+    expect(html).toContain('Simpan Pembayaran Utang');
     expect(html).not.toContain('Pihak (wajib)');
     expect(html).not.toContain('Pilih pihak');
   });

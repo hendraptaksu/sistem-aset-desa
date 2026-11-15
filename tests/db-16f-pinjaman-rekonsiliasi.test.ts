@@ -737,7 +737,7 @@ describe('DB-16f — validasi, IPC, API, UI, dan dokumentasi', () => {
   });
 
   it('UI menampilkan status per pinjaman dan peringatan tanpa tombol koreksi', () => {
-    expect(UI).toContain('Rekonsiliasi 2050 vs Jadwal Pinjaman');
+    expect(UI).toContain('Rekonsiliasi Pinjaman');
     expect(UI).toContain('api.pinjamanRekonsiliasiSemua');
     expect(UI).toContain('Saldo jurnal 2050');
     expect(UI).toContain('Jadwal');

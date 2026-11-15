@@ -207,16 +207,12 @@ export function BukuBesarTab({
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold">Buku Besar</h1>
-            <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Buku Besar menampilkan rincian uang masuk dan keluar untuk satu akun.
-              Pilih akun dan periode, lalu klik baris mutasi untuk melihat jurnal asalnya.
-              Semua saldo dihitung ulang dari jurnal, jadi angkanya selalu bisa diperiksa.
-            </p>
-          </div>
-          <Badge tone="green">Dihitung dari jurnal</Badge>
+        <div>
+          <h1 className="sr-only">Buku Besar</h1>
+          <p className="mt-1 max-w-2xl text-sm text-stone-600">
+            Rincian uang masuk dan keluar untuk satu akun. Pilih akun dan periode,
+            lalu klik baris mutasi untuk melihat jurnal asalnya.
+          </p>
         </div>
       </Card>
 
@@ -251,8 +247,7 @@ export function BukuBesarTab({
         />
 
         <p className="mt-2 text-helper text-stone-500">
-          Kosongkan tanggal (preset “Semua tanggal”) untuk melihat seluruh riwayat. Saldo awal
-          adalah saldo sebelum tanggal “Dari”; saldo akhir adalah saldo sampai tanggal
+          Saldo awal dihitung sebelum tanggal “Dari”; saldo akhir sampai tanggal
           “Sampai”.
         </p>
 
@@ -280,7 +275,7 @@ export function BukuBesarTab({
         {!coa && <p className="mt-3 text-stone-500">Memuat daftar akun…</p>}
         {coa && coa.length === 0 && !err && (
           <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-            Belum ada akun pada daftar akun (COA). Tambahkan akun terlebih dahulu sebelum
+            Belum ada akun pada daftar akun. Tambahkan akun terlebih dahulu sebelum
             membuka Buku Besar.
           </p>
         )}
@@ -314,7 +309,7 @@ export function BukuBesarTab({
                   di atas. */}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo awal</div>
                 <div className="text-2xl font-bold">{formatRp(data.saldoAwal)}</div>
@@ -351,8 +346,9 @@ export function BukuBesarTab({
           <Card>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h3 className="flex items-center gap-2 font-bold">
-                Mutasi akun <BadgeMemperbarui aktif={menyegarkan} />
+                Mutasi akun
               </h3>
+              <BadgeMemperbarui aktif={menyegarkan} />
               <span className="text-sm text-stone-600">
                 {data.rows.length} baris · klik baris untuk melihat jurnal asal
               </span>

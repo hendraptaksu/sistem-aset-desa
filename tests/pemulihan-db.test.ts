@@ -38,10 +38,10 @@ describe('AUD-16 — pesanGagalBukaDb', () => {
 
   it('memetakan kode error menjadi petunjuk aman tanpa kode mentah', () => {
     const kasus: [string, string][] = [
-      ['SQLITE_NOTADB', 'rusak atau bukan file database SQLite'],
+      ['SQLITE_NOTADB', 'rusak atau bukan file data aplikasi'],
       ['ENOSPC', 'Ruang penyimpanan mungkin penuh'],
       ['EACCES', 'tidak punya izin menulis'],
-      ['SQLITE_BUSY', 'sedang dipakai proses lain'],
+      ['SQLITE_BUSY', 'sedang dipakai aplikasi lain'],
     ];
     for (const [code, petunjuk] of kasus) {
       const pesan = pesanGagalBukaDb(Object.assign(new Error('raw'), { code }), DB_PATH);
@@ -64,8 +64,8 @@ describe('AUD-16 — pesanGagalBukaDb', () => {
         'tersebut, lalu jalankan aplikasi lagi.',
     );
     const pesan = pesanGagalBukaDb(error, DB_PATH);
-    expect(pesan).toContain('skema v2');
-    expect(pesan).toMatch(/pindahkan atau hapus/i);
+    expect(pesan).toContain('versi aplikasi yang berbeda');
+    expect(pesan).toMatch(/kosongkan lokasi/i);
     expect(pesan).not.toMatch(/rusak/i);
   });
 });

@@ -25,8 +25,8 @@ jurnal, jadi tidak ada saldo atau laba yang “disimpan mati”.
    Setelah masuk, buat PIN baru. Bila kode belum pernah diatur (instalasi lama),
    aplikasi menolak reset dan meminta mengaturnya lewat Pengaturan.
 
-**Auto-kunci:** aplikasi mengunci sendiri setelah tidak dipakai (bawaan 30 menit,
-bisa diubah di **Pengaturan → Auto-kunci saat idle**). Ini bukan error.
+**Kunci otomatis:** aplikasi mengunci sendiri setelah tidak dipakai (bawaan 30 menit,
+bisa diubah di **Pengaturan → Kunci otomatis**). Ini bukan error.
 
 **Satu aplikasi saja:** buka aplikasi cukup sekali. Bila terasa “tidak terbuka”,
 periksa taskbar — kemungkinan jendela lama hanya ter-minimize dan aplikasi
@@ -338,7 +338,7 @@ berubah lewat setoran/penarikan modal atau wizard Saldo Awal.
 
 > **Mode lanjutan.** Menu **Jurnal Umum** tidak tampil untuk operator
 > harian. Akuntan/pendamping membukanya lewat **Pengaturan → Mode lanjutan**,
-> lalu menekan **Aktifkan Mode lanjutan** dan menyetujui konfirmasi. Setelah
+> lalu menekan **Aktifkan mode lanjutan** dan menyetujui konfirmasi. Setelah
 > aktif, menu Jurnal Umum muncul di grup **Data & Sistem**. Ini adalah tampilan
 > debit/kredit mentah untuk pemeriksaan, bukan menu input harian. Mematikan
 > mode menyembunyikan menu lagi; bila tab Jurnal Umum sedang terbuka, aplikasi
@@ -525,7 +525,7 @@ jurnal yang mencampur akun pendapatan/beban dengan ekuitas dalam satu jurnal
 2. Buka menu **Kunci Periode**.
 3. Isi **Tahun** yang akan dikunci. Hanya tahun yang sudah selesai yang boleh
    (mis. pada 2026 hanya sampai 2025). Tahun berjalan ditolak.
-4. Tekan **Preview laba**, periksa laba dan laba ditahan.
+4. Tekan **Pratinjau laba**, periksa laba dan laba ditahan.
 5. Tekan **Backup otomatis & lanjut** — sistem membuat backup `.db` lebih dulu.
 6. Isi catatan (opsional), lalu **Konfirmasi kunci periode**.
 
@@ -654,14 +654,14 @@ menyalin file `.exe`.
 - Ganti kode darurat di **Pengaturan → Kode Darurat** (butuh PIN terbuka). Kode
   baru tampil sekali; kode lama langsung tidak berlaku. Instalasi lama yang
   belum punya kode akan diminta mengaturnya di sana.
-- Auto-kunci diatur di **Pengaturan → Auto-kunci saat idle** (batas yang
+- Kunci otomatis diatur di **Pengaturan → Kunci otomatis** (batas yang
   diizinkan ditampilkan di layar).
 - Aplikasi selalu terkunci saat dibuka ulang. Ini disengaja.
 
 > **Penting — PIN bukan enkripsi.** PIN hanya kunci akses aplikasi; isi
 > `pura.db` tidak dienkripsi. Siapa pun yang memegang file `pura.db` atau
 > backup-nya bisa membuka dan membaca data dengan alat SQLite biasa, tanpa PIN.
-> Auto-kunci hanya menghalangi orang yang memakai aplikasi yang sedang terbuka,
+> Kunci otomatis hanya menghalangi orang yang memakai aplikasi yang sedang terbuka,
 > bukan orang yang menyalin file. Lindungi laptop dengan akun Windows dan
 > enkripsi disk (mis. BitLocker), dan simpan media backup di tempat aman.
 
@@ -672,7 +672,7 @@ menyalin file `.exe`.
 | Pesan | Artinya | Yang harus dilakukan |
 |---|---|---|
 | **Kas akan minus** | Transaksi membuat saldo kas/bank di akun itu negatif (kas minus). | Periksa saldo awal dan tanggal. Bila memang benar (kas belum tercatat), isi alasan minimal 5 karakter lalu konfirmasi; bila ragu, jangan simpan. |
-| **Periode sudah ditutup** | Tanggal transaksi berada di tahun yang sudah ditutup. | Bila koreksi memang perlu, isi **alasan** minimal 5 karakter. Koreksi tercatat di audit. |
+| **Periode sudah terkunci** | Tanggal transaksi berada di tahun yang sudah ditutup. | Bila koreksi memang perlu, isi **alasan** minimal 5 karakter. Koreksi tercatat di audit. |
 | **Nomor bukti sudah dipakai** | Nomor `JU-...` sudah ada. | Ganti nomor atau kosongkan agar sistem membuat nomor berikutnya. |
 | **Neraca Saldo: Selisih** | Ada jurnal yang tidak seimbang (seharusnya tidak terjadi). | Jangan kunci periode. Periksa Jurnal Umum dan hubungi pendamping. |
 | **Aplikasi terkunci** | Sesi PIN habis karena idle. | Masukkan PIN kembali. |
@@ -692,7 +692,7 @@ Semua laporan memakai alur yang sama:
 2. Atur periode/akun/cut-off.
 3. Tekan **Pratinjau Cetak**. Periksa kop, periode, kolom, dan nomor halaman.
 4. Tekan **Cetak** untuk printer, atau **Simpan PDF** untuk file PDF.
-5. **Export Excel** tetap tersedia bila perlu diolah lagi.
+5. **Ekspor Excel** tetap tersedia bila perlu diolah lagi.
 
 Template sudah A4 dan otomatis memilih orientasi: portrait untuk laporan biasa,
 landscape untuk Buku Besar. Header tabel diulang di halaman berikutnya. Tidak

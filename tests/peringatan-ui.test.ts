@@ -62,8 +62,9 @@ describe('AKT-07 — modal alasan konfirmasi peringatan', () => {
     expect(html).toContain(
       'Jurnal akan membuat saldo kas 1001 minus Rp 50.000.',
     );
+    expect(html).toContain('Alasan tetap menyimpan');
     expect(html).toContain(
-      `Alasan tetap menyimpan (min. ${MIN_ALASAN_PERINGATAN} karakter)`,
+      `Minimal ${MIN_ALASAN_PERINGATAN} karakter (spasi di awal dan akhir tidak dihitung).`,
     );
     expect(html).toContain('tercatat di audit');
     expect(html).toContain('Batal');
@@ -97,8 +98,9 @@ describe('AKT-07 — modal alasan konfirmasi peringatan', () => {
       }),
     );
 
-    expect(html).toContain('Periode sudah ditutup');
-    expect(html).toContain('Alasan (min. 5 karakter)');
+    expect(html).toContain('Periode sudah terkunci');
+    expect(html).toContain('Alasan');
+    expect(html).toContain('Minimal 5 karakter.');
     expect(html).toContain('koreksi struk susulan Desember');
     expect(html).not.toContain('Konfirmasi peringatan');
     expect(html).not.toContain('Ya, tetap simpan');

@@ -25,16 +25,12 @@ function renderLock(pesan?: string, blokirDetik?: number): string {
 
 describe('T2.7 — pesan restore di layar kunci', () => {
   it('menampilkan kotak info bila prop pesan diisi', () => {
-    const pesan = pesanRestoreSukses(
-      'lengkap',
-      '/data/backups/pre-restore-2026-11-06-1000.db',
-    );
+    const pesan = pesanRestoreSukses('lengkap');
     const html = renderLock(pesan);
 
     expect(html).toContain('data-testid="pesan-restore"');
-    expect(html).toMatch(/Pulihkan lengkap OK/);
-    expect(html).toContain('/data/backups/pre-restore-2026-11-06-1000.db');
-    expect(html).toMatch(/Cadangan data lama/i);
+    expect(html).toMatch(/Pulihkan lengkap berhasil/);
+    expect(html).toMatch(/dicadangkan otomatis/i);
     expect(html).toMatch(/dikunci ulang/i);
     // Alur PIN tetap utuh.
     expect(html).toMatch(/Masukkan PIN 6 digit/);
@@ -47,21 +43,22 @@ describe('T2.7 — pesan restore di layar kunci', () => {
     expect(html).toMatch(/Masukkan PIN 6 digit/);
   });
 
-  it('pesanRestoreSukses menyebut jalur restore dan cadangan pra-restore', () => {
-    expect(pesanRestoreSukses('db', '/backups/pre-restore-a.db')).toBe(
-      'Pulihkan OK. Cadangan data lama: /backups/pre-restore-a.db. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.',
+  it('pesanRestoreSukses menyebut pemulihan berhasil dan cadangan otomatis', () => {
+    expect(pesanRestoreSukses('db')).toBe(
+      'Pulihkan berhasil. Data lama sudah dicadangkan otomatis. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.',
     );
-    expect(pesanRestoreSukses('lengkap', null)).toContain(
-      'Pulihkan lengkap OK. Cadangan data lama: -.',
+    expect(pesanRestoreSukses('lengkap')).toBe(
+      'Pulihkan lengkap berhasil. Data lama sudah dicadangkan otomatis. Aplikasi dikunci ulang; masukkan PIN untuk melanjutkan.',
     );
   });
 });
 
 describe('UI-A22 — blokir PIN di layar kunci', () => {
-  it('saat diblokir: PinInput mati dan hitung mundur diumumkan role="status"', () => {
+  it('saat diblokir: PinInput mati dan hitung mundur tidak diumumkan tiap detik', () => {
     const html = renderLock(undefined, 60);
-    expect(html).toMatch(/Terlalu banyak salah — coba lagi dalam 60 detik/);
-    expect(html).toMatch(/role="status"/);
+    expect(html).toMatch(/Terlalu banyak salah — coba lagi dalam/);
+    expect(html).toContain('aria-live="off"');
+    expect(html).not.toMatch(/role="status"[^>]*>[^<]*Terlalu banyak/);
     // Enam kotak PIN semuanya disabled selama blokir.
     expect((html.match(/disabled=""/g) ?? []).length).toBe(6);
   });

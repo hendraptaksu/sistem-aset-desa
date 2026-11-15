@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { isAkunKasData } from '../../db/coa.js';
 import type { Coa } from '../../db/coa.js';
+import { adalahErrorSaldoAwal, opsiSaldoAwal } from '../lib/saldoAwal.js';
+import { SaldoAwalGuard } from './SaldoAwalGuard.js';
+import { tanggalKalenderValid } from '../../core/posting.js';
 import type { Pinjaman, PinjamanAngsuran, PinjamanBayar } from '../../core/types.js';
 import {
   buatJadwalAngsuranOtomatis,
@@ -23,6 +26,7 @@ import {
 } from '../lib/peringatan.js';
 import { useTabGuard } from '../lib/tabGuard.js';
 import {
+  ALASAN_SIBUK,
   alasanTombolNonaktif,
   Badge,
   Button,
@@ -34,6 +38,7 @@ import {
   KonfirmasiModal,
   Modal,
   PeringatanModal,
+  RING_FOKUS,
   Select,
   TextArea,
   TextInput,
@@ -224,6 +229,13 @@ function pinjamanDibatalkan(p: Pinjaman): boolean {
   return p.status === 'DIBATALKAN';
 }
 
+/** Label status angsuran untuk operator; enum mentah tidak ditampilkan. */
+function labelStatusAngsuran(status: 'BELUM' | 'SEBAGIAN' | 'LUNAS'): string {
+  if (status === 'LUNAS') return 'Lunas';
+  if (status === 'SEBAGIAN') return 'Dibayar sebagian';
+  return 'Belum dibayar';
+}
+
 /** UI-A12: identitas target pembatalan; dipakai untuk memutuskan apakah alasan
  * yang sudah diketik boleh dipertahankan saat modal dibuka ulang. */
 function kunciTargetPembatalan(target: TargetPembatalan): string {
@@ -338,6 +350,9 @@ export function PinjamanTab() {
     pinjaman: Pinjaman;
     angsuran: PinjamanAngsuran;
   } | null>(null);
+  const [tutupDetailTunda, setTutupDetailTunda] = useState(false);
+  const [saldoAwalOpen, setSaldoAwalOpen] = useState(false);
+  const mulaiTanpaSaldoAwalRef = useRef(false);
   const [targetPembatalan, setTargetPembatalan] = useState<TargetPembatalan | null>(null);
   const [alasanPembatalan, setAlasanPembatalan] = useState('');
   const [batalPerluKonfirmasi, setBatalPerluKonfirmasi] = useState(false);
@@ -382,6 +397,21 @@ export function PinjamanTab() {
   const totalPokokJadwal = jadwal.reduce((s, r) => s + (r.pokok || 0), 0);
   const cocokPokok =
     targetPokok > 0 && Number.isSafeInteger(targetPokok) && totalPokokJadwal === targetPokok;
+  const alasanSimpanPinjaman = !kreditur.trim()
+    ? 'Nama kreditur/LPD belum diisi.'
+    : !tanggalKalenderValid(tanggal)
+      ? 'Tanggal pinjaman belum diisi atau tidak valid.'
+      : tanggal > tanggalLokal()
+        ? 'Tanggal pinjaman tidak boleh melewati hari ini.'
+        : mode === 'PENCAIRAN' && !akunKas
+          ? 'Akun kas penerima pinjaman belum dipilih.'
+          : !akunBunga
+            ? 'Akun bunga pinjaman belum dipilih.'
+            : jadwal.some((r) => !r.jatuh_tempo)
+              ? 'Setiap baris jadwal wajib memiliki tanggal jatuh tempo.'
+              : !cocokPokok
+                ? 'Total pokok jadwal belum sama dengan target pokok.'
+                : null;
   const batasMutasi = batasPeriodeMutasi(mutasiTahun, mutasiBulan);
   const jumlahSelisihRekonsiliasi = rekonsiliasi.filter((r) => !r.cocok).length;
   // UI-A14: baris daftar hanya dirender setelah muat sukses dan tidak gagal.
@@ -557,6 +587,10 @@ export function PinjamanTab() {
     setSisaPokok(0);
     setCatatan('');
     setNoBukti('');
+    // Kembalikan juga default tanggal/tenor: keduanya ikut dihitung dirty,
+    // sehingga nilai lama (mis. tanggal mundur) tidak memicu guard palsu.
+    setTanggal(tanggalLokal());
+    setTenor(TENOR_AWAL);
     setJadwal([barisBaru(1)]);
     setBungaRencana(0);
     setKonfirmasiJadwalOtomatis(false);
@@ -570,6 +604,12 @@ export function PinjamanTab() {
 
   async function simpan(alasanPeringatan?: string): Promise<void> {
     if (busyRef.current) return;
+    // Form bayar yang sudah diedit tidak boleh hilang diam-diam saat form
+    // pinjaman disimpan (detail ditutup dan form bayar ikut tidak tampil).
+    if (bayarTersentuh) {
+      setErr('Selesaikan atau tutup form pembayaran angsuran dulu sebelum menyimpan pinjaman.');
+      return;
+    }
     const konfirmasi = alasanPeringatan !== undefined;
     setErr(null);
     setInfo(null);
@@ -640,9 +680,14 @@ export function PinjamanTab() {
           })),
         },
         konfirmasi
-          ? { konfirmasiPeringatan: true, alasanPeringatan: alasanBersih }
-          : {},
+          ? {
+              konfirmasiPeringatan: true,
+              alasanPeringatan: alasanBersih,
+              ...opsiSaldoAwal(mulaiTanpaSaldoAwalRef.current),
+            }
+          : opsiSaldoAwal(mulaiTanpaSaldoAwalRef.current),
       );
+      mulaiTanpaSaldoAwalRef.current = false;
       setPesanKonfirmasi(null);
       setErrorKonfirmasi(null);
       setInfo(
@@ -656,10 +701,12 @@ export function PinjamanTab() {
             ? `Keterangan tercatat: “${r.pinjaman.catatan.trim()}”. `
             : '') +
           (r.jurnal
-            ? 'Jurnal D kas / K 2050 dibuat seimbang.'
+            ? 'Jurnal pencairan otomatis sudah dibuat: kas bertambah dan utang pinjaman (2050) bertambah.'
             : 'Tidak ada jurnal pencairan baru; sisa pokok memakai Saldo Awal 2050.'),
       );
       resetForm();
+      setBayar(null);
+      setBayarTersentuh(false);
       setDetailId('');
       setDetail({});
       await refresh();
@@ -671,6 +718,11 @@ export function PinjamanTab() {
         setPesanKonfirmasi((sebelum) => sebelum ?? pesan);
         // Penolakan "alasan kurang" tetap di dalam modal agar bisa diperbaiki.
         setErrorKonfirmasi(konfirmasi ? pesan : null);
+      } else if (adalahErrorSaldoAwal(e)) {
+        setPesanKonfirmasi(null);
+        setErrorKonfirmasi(null);
+        setErr(null);
+        setSaldoAwalOpen(true);
       } else {
         setPesanKonfirmasi(null);
         setErrorKonfirmasi(null);
@@ -778,6 +830,11 @@ export function PinjamanTab() {
 
   async function toggleDetail(id: string): Promise<void> {
     if (detailId === id) {
+      // Jangan sembunyikan form bayar yang sudah diedit tanpa konfirmasi.
+      if (bayarTersentuh) {
+        setTutupDetailTunda(true);
+        return;
+      }
       setDetailId('');
       return;
     }
@@ -800,6 +857,8 @@ export function PinjamanTab() {
 
   function mulaiBayar(p: Pinjaman, a: PinjamanAngsuran): void {
     if (pinjamanDibatalkan(p) || sisaAngsuran(a).status === 'LUNAS') return;
+    // Klik ulang target yang sama hanya mempertahankan isian; jangan reset.
+    if (bayar?.pinjaman.id === p.id && bayar?.angsuran.id === a.id) return;
     // UI-A12: form bayar yang sudah diedit tidak boleh ditimpa diam-diam saat
     // operator klik "Bayar Angsuran" baris lain; minta konfirmasi dulu.
     if (
@@ -938,7 +997,7 @@ export function PinjamanTab() {
       setInfoBatal(null);
       setInfoBayar(
         `Bayar angsuran ke-${ke} ${bayar.pinjaman.kreditur} tersimpan ` +
-          `(${r.jurnal.no_bukti || r.jurnal.id}) — ${formatRp(total)}. ` +
+          `(${r.jurnal.no_bukti || 'tanpa nomor bukti'}) — ${formatRp(total)}. ` +
           `Sisa pokok sekarang ${formatRp(r.pinjaman?.outstanding ?? 0)}.`,
       );
       // UI-A06: form bayar (posisi operator saat ini) menutup setelah tersimpan;
@@ -1017,7 +1076,7 @@ export function PinjamanTab() {
             ?.ke ?? angsuranId;
         setInfoBatal(
           `Catatan pembayaran angsuran ${keAngsuran == null ? 'tanpa jadwal' : `ke-${keAngsuran}`} ` +
-            `dibatalkan. Jurnal balik ${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
+            `dibatalkan. Jurnal balik ${r.jurnal.no_bukti || 'tanpa nomor bukti'} dibuat pada tanggal jurnal asli; ` +
             'jurnal dan riwayat asal tetap tersimpan. Catat ulang pembayaran yang benar bila diperlukan.',
         );
       } else {
@@ -1030,7 +1089,7 @@ export function PinjamanTab() {
         );
         setInfoBatal(
           `Catatan pencairan ${r.pinjaman.kreditur} dibatalkan. Jurnal balik ` +
-            `${r.jurnal.no_bukti || r.jurnal.id} dibuat pada tanggal jurnal asli; ` +
+            `${r.jurnal.no_bukti || 'tanpa nomor bukti'} dibuat pada tanggal jurnal asli; ` +
             'jurnal dan riwayat asal tetap tersimpan.',
         );
       }
@@ -1091,27 +1150,16 @@ export function PinjamanTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold">Pinjaman LPD</h1>
-            <p className="mt-1 max-w-3xl text-[15px] text-stone-600">
-              Catat pinjaman dari LPD dan jadwal angsurannya. Pilih{' '}
-              <b>Pencairan baru</b> bila uang pinjaman baru diterima, atau{' '}
-              <b>Sudah berjalan</b> bila pinjaman sudah ada sebelum aplikasi dipakai.
-              Jadwal diisi manual dari perjanjian LPD; aplikasi tidak menghitung
-              amortisasi sendiri.
-            </p>
-          </div>
-          <Badge tone="green">Jurnal otomatis seimbang</Badge>
-        </div>
-      </Card>
-
+      <h1 className="sr-only">Pinjaman LPD</h1>
       <Card>
         <h2 className="mb-1 text-lg font-bold">Catat Pinjaman LPD</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Mode pencairan baru membuat jurnal <b>D kas / K 2050 HUTANG LAIN-LAIN</b>.
-          Mode sudah berjalan tidak membuat jurnal baru.
+          Catat pinjaman dari LPD dan jadwal angsurannya. Pilih{' '}
+          <b>Pencairan baru</b> bila uang pinjaman baru diterima, atau{' '}
+          <b>Sudah berjalan</b> bila pinjaman sudah ada sebelum aplikasi dipakai.
+          Jadwal diisi manual dari perjanjian LPD; aplikasi tidak menghitung
+          amortisasi sendiri. Pencairan baru membuat jurnal otomatis, sedangkan
+          pinjaman yang sudah berjalan tidak.
         </p>
 
         <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Mode pinjaman">
@@ -1126,8 +1174,9 @@ export function PinjamanTab() {
               type="button"
               aria-pressed={mode === id}
               disabled={busy}
+              title={busy ? ALASAN_SIBUK : undefined}
               onClick={() => ubahMode(id)}
-              className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+              className={`rounded-xl border px-3 py-2 text-left transition-colors ${RING_FOKUS} ${
                 mode === id
                   ? 'border-emerald-600 bg-emerald-50 text-emerald-950'
                   : 'border-stone-200 bg-white text-stone-700 hover:border-emerald-300'
@@ -1148,9 +1197,10 @@ export function PinjamanTab() {
           <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
             <p className="font-semibold">Peringatan Saldo Awal 2050</p>
             <p className="mt-1">
-              Sisa pokok pinjaman ini <b>harus sudah tercatat sebagai kredit 2050
-              HUTANG LAIN-LAIN di Saldo Awal</b>. Modul ini tidak membuat jurnal
-              pencairan baru; membuat jurnal lagi akan membuat kas dan utang dobel.
+              Sisa pokok ini harus sudah tercatat di Saldo Awal sebagai Utang
+              Lain-lain (2050). Pinjaman yang sudah berjalan tidak membuat jurnal
+              pencairan; mencatatnya dua kali akan membuat kas dan utang menjadi
+              dobel.
             </p>
           </div>
         )}
@@ -1160,6 +1210,7 @@ export function PinjamanTab() {
             <TextInput
               type="date"
               value={tanggal}
+              max={tanggalLokal()}
               disabled={busy}
               onChange={(e) => setTanggal(e.target.value)}
             />
@@ -1204,7 +1255,7 @@ export function PinjamanTab() {
               </Select>
             </Field>
           )}
-          <Field label="Akun bunga (default 5063)">
+          <Field label="Akun bunga pinjaman">
             <Select
               value={akunBunga}
               disabled={busy}
@@ -1240,7 +1291,7 @@ export function PinjamanTab() {
               <TextInput
                 value={noBukti}
                 disabled={busy}
-                placeholder="cth: JU-2026-0001 — boleh kosong"
+                placeholder="cth: JU-2026-0001"
                 onChange={(e) => setNoBukti(e.target.value)}
               />
             </Field>
@@ -1248,19 +1299,12 @@ export function PinjamanTab() {
         </div>
 
         <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h3 className="font-bold">Jadwal angsuran (input manual)</h3>
-              <p className="mt-1 text-sm text-stone-600">
-                Isi manual, atau bagi rata pokok otomatis dari tenor lalu sesuaikan
-                sebelum menyimpan. Jatuh tempo otomatis maju satu bulan per baris.
-                Total pokok jadwal harus sama dengan{' '}
-                {mode === 'PENCAIRAN' ? 'pokok pinjaman' : 'sisa pokok'}.
-              </p>
-            </div>
-            <Badge tone={cocokPokok ? 'green' : 'amber'}>
-              Total pokok {formatRp(totalPokokJadwal)}
-            </Badge>
+          <div>
+            <h3 className="font-bold">Jadwal angsuran (input manual)</h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Isi manual, atau bagi rata pokok dari tenor lalu sesuaikan. Jatuh tempo
+              otomatis maju satu bulan per baris.
+            </p>
           </div>
 
           <KontrolJadwalOtomatis
@@ -1277,7 +1321,7 @@ export function PinjamanTab() {
           <div className="mt-3 space-y-2">
             {jadwal.map((row, i) => (
               <div
-                key={`${row.ke}-${i}`}
+                key={i}
                 className="grid grid-cols-1 items-end gap-2 rounded-lg border border-stone-200 bg-white p-2 md:grid-cols-[70px_150px_1fr_1fr_1fr_auto]"
               >
                 <Field label="Ke">
@@ -1327,13 +1371,25 @@ export function PinjamanTab() {
                 <Button
                   variant="ghost"
                   disabled={busy || jadwal.length === 1}
+                  title={
+                    busy
+                      ? ALASAN_SIBUK
+                      : jadwal.length === 1
+                        ? 'Minimal satu baris angsuran.'
+                        : undefined
+                  }
                   onClick={() => hapusJadwal(i)}
                 >
                   Hapus
                 </Button>
               </div>
             ))}
-            <Button variant="ghost" disabled={busy} onClick={tambahJadwal}>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              title={busy ? ALASAN_SIBUK : undefined}
+              onClick={tambahJadwal}
+            >
               + Tambah angsuran
             </Button>
           </div>
@@ -1343,11 +1399,11 @@ export function PinjamanTab() {
               Target pokok: <b>{formatRp(targetPokok)}</b> · Total jadwal:{' '}
               <b>{formatRp(totalPokokJadwal)}</b>
             </p>
-            {!cocokPokok && (
+            {!cocokPokok && targetPokok > 0 && (
               <p className="mt-1 font-semibold text-red-700">
-                Total pokok jadwal belum sama dengan{' '}
-                {mode === 'PENCAIRAN' ? 'pokok pinjaman' : 'sisa pokok'}. Server akan
-                menolak simpan sampai angkanya cocok.
+                Total pokok jadwal harus sama dengan{' '}
+                {mode === 'PENCAIRAN' ? 'pokok pinjaman' : 'sisa pokok'} sebelum bisa
+                disimpan.
               </p>
             )}
             {cocokPokok && (
@@ -1394,8 +1450,8 @@ export function PinjamanTab() {
 
         {konfirmasiJadwalBesar && (
           <KonfirmasiModal
-            judul="Buat jadwal dari tenor besar?"
-            deskripsi={`Akan membuat ${Number(tenor)} baris jadwal — lanjutkan?`}
+            judul={`Buat ${Number(tenor)} baris jadwal?`}
+            deskripsi={`Jadwal angsuran akan dibuat sebanyak ${Number(tenor)} baris. Periksa kembali sebelum melanjutkan.`}
             labelYa="Ya, buat jadwal"
             labelBatal="Batal"
             variant="primary"
@@ -1406,14 +1462,27 @@ export function PinjamanTab() {
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button disabled={busy || !cocokPokok} onClick={() => void simpan()}>
+          <Button
+            disabled={busy || alasanSimpanPinjaman !== null}
+            title={
+              busy
+                ? ALASAN_SIBUK
+                : (alasanSimpanPinjaman ?? undefined)
+            }
+            onClick={() => void simpan()}
+          >
             {busy ? 'Menyimpan…' : 'Simpan Pinjaman LPD'}
           </Button>
           <span className="text-sm text-stone-500">
             {mode === 'PENCAIRAN'
-              ? 'Jurnal pencairan dibuat otomatis dan atomik bersama pinjaman + jadwal.'
+              ? 'Jurnal pencairan dan jadwal disimpan bersama.'
               : 'Mode sudah berjalan tidak membuat jurnal pencairan baru.'}
           </span>
+          {!busy && alasanSimpanPinjaman && (
+            <span className="text-sm font-semibold text-amber-800" role="status">
+              {alasanSimpanPinjaman}
+            </span>
+          )}
         </div>
       </Card>
 
@@ -1422,7 +1491,7 @@ export function PinjamanTab() {
           <div>
             <h2 className="text-lg font-bold">Daftar Pinjaman LPD</h2>
             <p className="mt-1 text-sm text-stone-600">
-              Sisa pokok (outstanding) dihitung dari sisa pokok awal dikurangi pokok
+              Sisa pokok dihitung dari sisa pokok awal dikurangi pokok
               yang sudah dibayar menurut jurnal. Jadwal adalah rencana, bukan saldo.
             </p>
           </div>
@@ -1443,7 +1512,7 @@ export function PinjamanTab() {
                 <th scope="col" className="py-2 pr-3">Kas</th>
                 <th scope="col" className="py-2 pr-3 text-right">Pokok awal</th>
                 <th scope="col" className="py-2 pr-3 text-right">Sisa awal</th>
-                <th scope="col" className="py-2 pr-3 text-right">Sisa pokok (outstanding)</th>
+                <th scope="col" className="py-2 pr-3 text-right">Sisa pokok</th>
                 <th scope="col" className="py-2 pr-3">Sumber jurnal</th>
                 <th scope="col" className="py-2">Tindakan</th>
               </tr>
@@ -1485,7 +1554,7 @@ export function PinjamanTab() {
                     <tr
                       className={
                         pinjamanBatal
-                          ? 'border-b align-top opacity-60 last:border-0'
+                          ? 'border-b align-top last:border-0'
                           : 'border-b align-top last:border-0'
                       }
                     >
@@ -1495,7 +1564,7 @@ export function PinjamanTab() {
                       <td className="py-2 pr-3">
                         <div className="font-semibold">{p.kreditur}</div>
                         {pinjamanBatal && (
-                          <Badge tone="red">DIBATALKAN</Badge>
+                          <Badge tone="red">Dibatalkan</Badge>
                         )}
                         {p.catatan && (
                           <div className="text-helper text-stone-500">{p.catatan}</div>
@@ -1511,7 +1580,7 @@ export function PinjamanTab() {
                       <td
                         className={
                           pinjamanBatal
-                            ? 'py-2 pr-3 text-right whitespace-nowrap text-stone-400'
+                            ? 'py-2 pr-3 text-right whitespace-nowrap text-stone-500'
                             : 'py-2 pr-3 text-right whitespace-nowrap'
                         }
                       >
@@ -1522,14 +1591,16 @@ export function PinjamanTab() {
                       </td>
                       <td className="py-2 pr-3">
                         <Badge tone={p.jurnal_pencairan_id ? 'green' : 'amber'}>
-                          {p.jurnal_pencairan_id ? 'Pencairan baru' : 'Saldo awal'}
+                          {p.jurnal_pencairan_id ? 'Dari pencairan' : 'Dari saldo awal'}
                         </Badge>
                         <div className="mt-1 text-helper text-stone-500">
-                          {p.jurnal_pencairan_id ?? 'tanpa jurnal pencairan'}
+                          {p.jurnal_pencairan_id
+                            ? 'Jurnal pencairan otomatis'
+                            : 'tanpa jurnal pencairan'}
                         </div>
                         {p.jurnal_batal_id && (
                           <div className="mt-1 text-helper text-stone-500">
-                            Jurnal balik: {p.jurnal_batal_id}
+                            Sudah ada jurnal balik
                           </div>
                         )}
                       </td>
@@ -1624,7 +1695,7 @@ export function PinjamanTab() {
                                               : 'stone'
                                         }
                                       >
-                                        {sisa.status}
+                                        {labelStatusAngsuran(sisa.status)}
                                       </Badge>
                                       <div className="mt-1 text-helper text-stone-600">
                                         <div>
@@ -1710,7 +1781,7 @@ export function PinjamanTab() {
                                       <th scope="col" className="py-1 pr-3 text-right">Pokok</th>
                                       <th scope="col" className="py-1 pr-3 text-right">Bunga</th>
                                       <th scope="col" className="py-1 pr-3 text-right">Kas keluar</th>
-                                      <th scope="col" className="py-1 pr-3">Status / jurnal</th>
+                                      <th scope="col" className="py-1 pr-3">Status</th>
                                       <th scope="col" className="py-1">Tindakan</th>
                                     </tr>
                                   </thead>
@@ -1723,7 +1794,14 @@ export function PinjamanTab() {
                                         <td className="py-1 pr-3">
                                           {b.angsuran_id == null
                                             ? 'Tanpa jadwal'
-                                            : `Ke-${jadwalTampil.find((a) => a.id === b.angsuran_id)?.ke ?? b.angsuran_id}`}
+                                            : (() => {
+                                                const ke = jadwalTampil.find(
+                                                  (a) => a.id === b.angsuran_id,
+                                                )?.ke;
+                                                return ke
+                                                  ? `Ke-${ke}`
+                                                  : 'Angsuran tidak ditemukan';
+                                              })()}
                                         </td>
                                         <td className="py-1 pr-3 text-right">{formatRp(b.pokok)}</td>
                                         <td className="py-1 pr-3 text-right">{formatRp(b.bunga)}</td>
@@ -1731,14 +1809,14 @@ export function PinjamanTab() {
                                         <td className="py-1 pr-3">
                                           {b.dibatalkan ? (
                                             <>
-                                              <Badge tone="red">DIBATALKAN</Badge>
+                                              <Badge tone="red">Dibatalkan</Badge>
                                               <div className="mt-1 text-xs text-stone-500">
-                                                Jurnal balik: {b.jurnal_batal_id ?? '—'}
+                                                Sudah ada jurnal balik
                                               </div>
                                             </>
                                           ) : (
                                             <span className="text-xs text-stone-600">
-                                              Aktif · jurnal {b.jurnal_id}
+                                              Aktif, jurnal otomatis
                                             </span>
                                           )}
                                         </td>
@@ -1890,8 +1968,8 @@ export function PinjamanTab() {
                                   · bunga <b>{formatRp(bayar.angsuran.bunga)}</b>
                                 </p>
                                 <p className="mt-1">
-                                  Jurnal: <b>D 2050 pokok + D {labelAkun(p.akun_bunga)}{' '}
-                                  bunga + D 5050 denda / K kas total</b>
+                                  Jurnal otomatis: pokok, bunga, dan denda dibayar
+                                  dari kas yang dipilih.
                                 </p>
                                 {bayar.bunga > sisaAngsuran(bayar.angsuran).sisaBunga && (
                                   <p className="mt-1 font-semibold text-amber-800">
@@ -2013,13 +2091,11 @@ export function PinjamanTab() {
       <Card>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="text-lg font-bold">Rekonsiliasi 2050 vs Jadwal Pinjaman</h2>
+            <h2 className="text-lg font-bold">Rekonsiliasi Pinjaman</h2>
             <p className="mt-1 max-w-3xl text-sm text-stone-600">
-              Membandingkan sisa pokok (outstanding) menurut jurnal{' '}
-              <b>2050 HUTANG LAIN-LAIN</b> yang tertaut ke pinjaman dengan{' '}
-              <b>sisa pokok awal dikurangi pokok yang dibayar</b>. Hanya jurnal
-              milik pinjaman ini yang dihitung; saldo 2050 untuk utang non-LPD
-              dan jurnal yang belum ditautkan tidak ikut dibandingkan.
+              Membandingkan sisa pokok menurut jurnal Utang Lain-lain (2050) dengan
+              sisa pokok awal dikurangi pokok yang sudah dibayar. Hanya jurnal yang
+              tertaut ke pinjaman ini yang dihitung.
             </p>
           </div>
           {/* UI-A26: saat masih memeriksa/memuat, tone netral — bukan hijau/
@@ -2028,20 +2104,24 @@ export function PinjamanTab() {
             tone={
               rekonsiliasiBusy || memuatDaftar
                 ? 'stone'
-                : jumlahSelisihRekonsiliasi > 0
-                  ? 'amber'
-                  : 'green'
+                : rekonsiliasi.length === 0
+                  ? 'stone'
+                  : jumlahSelisihRekonsiliasi > 0
+                    ? 'amber'
+                    : 'green'
             }
           >
             {/* UI-A14: selama daftar pinjaman masih dimuat, belum bisa
-                diklaim "Semua cocok". */}
+                diklaim "Semua cocok"; tanpa pinjaman pun tidak ada yang dicocokkan. */}
             {rekonsiliasiBusy
               ? 'Memeriksa…'
               : memuatDaftar
                 ? 'Memuat…'
-                : jumlahSelisihRekonsiliasi > 0
-                  ? `${jumlahSelisihRekonsiliasi} selisih`
-                  : 'Semua cocok'}
+                : rekonsiliasi.length === 0
+                  ? 'Belum ada data'
+                  : jumlahSelisihRekonsiliasi > 0
+                    ? `${jumlahSelisihRekonsiliasi} selisih`
+                    : 'Semua cocok'}
           </Badge>
         </div>
 
@@ -2059,7 +2139,7 @@ export function PinjamanTab() {
               </caption>
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th scope="col" className="py-2 pr-3">Kreditur / ID</th>
+                  <th scope="col" className="py-2 pr-3">Kreditur</th>
                   <th scope="col" className="py-2 pr-3 text-right">Saldo jurnal 2050</th>
                   <th scope="col" className="py-2 pr-3 text-right">Jadwal</th>
                   <th scope="col" className="py-2 pr-3 text-right">Selisih</th>
@@ -2077,10 +2157,7 @@ export function PinjamanTab() {
                     >
                       <td className="py-2 pr-3">
                         <div className="font-semibold">
-                          {p?.kreditur ?? r.pinjaman_id}
-                        </div>
-                        <div className="text-helper font-mono text-stone-500">
-                          {r.pinjaman_id}
+                          {p?.kreditur ?? 'Pinjaman tanpa nama'}
                         </div>
                       </td>
                       <td className="py-2 pr-3 text-right whitespace-nowrap">
@@ -2124,12 +2201,12 @@ export function PinjamanTab() {
           <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[15px] text-amber-900">
             <p className="font-semibold">Ada selisih yang perlu diperiksa</p>
             <p className="mt-1">
-              Selisih berarti sisa pokok (outstanding) menurut jurnal 2050 berbeda
+              Selisih berarti sisa pokok menurut jurnal 2050 berbeda
               dengan sisa pokok menurut jadwal. Periksa jurnal pencairan, jurnal
-              pembayaran (termasuk akun pokok dan link pembayaran), atau Saldo
-              Awal 2050. Aplikasi <b>tidak mengoreksi otomatis</b> dan
+              pembayaran (termasuk akun pokok dan keterkaitan pembayaran), atau
+              Saldo Awal 2050. Aplikasi <b>tidak mengoreksi otomatis</b> dan
               tidak menyediakan tombol koreksi di sini; koreksi data lama dilakukan
-              lewat jurnal koreksi/reversal oleh akuntan pendamping.
+              lewat jurnal koreksi oleh akuntan pendamping.
             </p>
           </div>
         )}
@@ -2144,12 +2221,10 @@ export function PinjamanTab() {
             <div>
               <h2 className="text-lg font-bold">Kartu Utang / Mutasi Bulanan</h2>
               <p className="mt-1 max-w-3xl text-sm text-stone-600">
-                Mutasi pokok, bunga, denda, dan kas keluar per bulan. Semua angka
-                dihitung ulang dari baris jurnal pembayaran yang tertaut ke pinjaman;
-                tidak ada saldo atau total bulanan yang disimpan di tabel pembayaran.
+                Mutasi pokok, bunga, denda, dan kas keluar per bulan, dihitung
+                dari jurnal pembayaran yang tertaut ke pinjaman.
               </p>
             </div>
-            <Badge tone="stone">Dihitung dari jurnal</Badge>
           </div>
   
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -2238,7 +2313,7 @@ export function PinjamanTab() {
               </div>
               <p className="mt-2 text-sm text-stone-600">
                 {mutasi.pinjaman.kreditur} · {mutasi.periode.label} · sisa pokok
-                (outstanding) seluruh riwayat <b>{formatRp(mutasi.outstanding)}</b>.
+                sisa pokok seluruh riwayat <b>{formatRp(mutasi.outstanding)}</b>.
                 Saldo akhir periode = saldo awal − pokok dibayar; saldo berantai
                 bulan ke bulan.
               </p>
@@ -2334,7 +2409,6 @@ export function PinjamanTab() {
                                     <th scope="col" className="py-1 pr-3">No. bukti</th>
                                     <th scope="col" className="py-1 pr-3">Tanggal jurnal</th>
                                     <th scope="col" className="py-1 pr-3">Tanggal catat</th>
-                                    <th scope="col" className="py-1 pr-3">Jurnal ID</th>
                                     <th scope="col" className="py-1 pr-3 text-right">Pokok</th>
                                     <th scope="col" className="py-1 pr-3 text-right">Bunga</th>
                                     <th scope="col" className="py-1 pr-3 text-right">Denda</th>
@@ -2354,9 +2428,6 @@ export function PinjamanTab() {
                                         {p.tanggal_bayar === p.tanggal
                                           ? 'sama dengan jurnal'
                                           : formatTanggal(p.tanggal_bayar)}
-                                      </td>
-                                      <td className="py-1 pr-3 font-mono text-helper">
-                                        {p.jurnal_id}
                                       </td>
                                       <td className="py-1 pr-3 text-right">
                                         {formatRp(p.pokok)}
@@ -2443,7 +2514,7 @@ export function PinjamanTab() {
                                   : 'stone'
                             }
                           >
-                            {a.status}
+                            {labelStatusAngsuran(a.status)}
                           </Badge>
                         </td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap">
@@ -2483,7 +2554,6 @@ export function PinjamanTab() {
                                   ? formatTanggal(a.tanggal_jurnal)
                                   : '—'}
                               </div>
-                              <div className="font-mono">{a.jurnal_id}</div>
                               {a.jumlah_pembayaran > 1 && (
                                 <div className="font-semibold text-amber-800">
                                   dibayar dalam {a.jumlah_pembayaran} catatan pembayaran
@@ -2527,6 +2597,21 @@ export function PinjamanTab() {
           }}
         />
       )}
+      {tutupDetailTunda && (
+        <KonfirmasiModal
+          judul="Tutup form pembayaran?"
+          deskripsi="Isian pembayaran angsuran yang belum disimpan akan hilang."
+          labelYa="Ya, tutup"
+          labelBatal="Kembali ke form"
+          onBatal={() => setTutupDetailTunda(false)}
+          onKonfirmasi={() => {
+            setTutupDetailTunda(false);
+            setBayar(null);
+            setBayarTersentuh(false);
+            setDetailId('');
+          }}
+        />
+      )}
       {targetPembatalan && (
         <Modal
           judul={
@@ -2542,9 +2627,9 @@ export function PinjamanTab() {
                 riwayat awal.
               </p>
               <p>
-                Pembatalan ini bukan catatan bahwa uang benar-benar dikembalikan.
-                Bila uang memang diterima atau dibayar kembali, catat transaksi
-                sebenarnya secara terpisah.
+                Pembatalan ini hanya membetulkan catatan, bukan mencatat
+                pengembalian uang. Bila uang memang diterima atau dibayar kembali,
+                catat transaksi sebenarnya secara terpisah.
               </p>
             </div>
           }
@@ -2559,10 +2644,10 @@ export function PinjamanTab() {
           <div className="space-y-3">
             <p className="text-sm text-stone-600">
               {targetPembatalan.jenis === 'pembayaran'
-                ? `Pinjaman: ${targetPembatalan.pinjaman.kreditur}; jurnal pembayaran: ${targetPembatalan.pembayaran.jurnal_id}.`
-                : `Pinjaman: ${targetPembatalan.pinjaman.kreditur}; jurnal pencairan: ${targetPembatalan.pinjaman.jurnal_pencairan_id}.`}
+                ? `Pinjaman: ${targetPembatalan.pinjaman.kreditur}; pembatalan ini membetulkan catatan pembayaran yang salah.`
+                : `Pinjaman: ${targetPembatalan.pinjaman.kreditur}; pembatalan ini membetulkan jurnal pencairan.`}
             </p>
-            <Field label="Alasan pembetulan (wajib ≥ 5 karakter)">
+            <Field label="Alasan pembetulan">
               <TextArea
                 autoFocus
                 value={alasanPembatalan}
@@ -2571,10 +2656,13 @@ export function PinjamanTab() {
                 onChange={(e) => setAlasanPembatalan(e.target.value)}
               />
             </Field>
+            {alasanPembatalan.trim().length < 5 && (
+              <p className="text-helper text-stone-500">Minimal 5 karakter.</p>
+            )}
             <ErrorBox msg={batalErr} />
             {batalPerluKonfirmasi && (
               <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-                Peringatan posting perlu dikonfirmasi. Alasan yang sama akan dicatat
+                Peringatan perlu dikonfirmasi. Alasan yang sama akan dicatat
                 sebagai alasan operator pada jurnal balik.
               </p>
             )}
@@ -2605,6 +2693,22 @@ export function PinjamanTab() {
           </div>
         </Modal>
       )}
+      <SaldoAwalGuard
+        terbuka={saldoAwalOpen}
+        coa={coa}
+        onBatal={() => setSaldoAwalOpen(false)}
+        onMulaiTanpa={() => {
+          setSaldoAwalOpen(false);
+          mulaiTanpaSaldoAwalRef.current = true;
+          void simpan();
+        }}
+        onSaldoAwalTersimpan={(pesan) => {
+          setSaldoAwalOpen(false);
+          setInfo(pesan);
+          // Form masih utuh; ulangi simpan agar operator tidak perlu klik dua kali.
+          void simpan();
+        }}
+      />
     </div>
   );
 }

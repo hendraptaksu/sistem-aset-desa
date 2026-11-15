@@ -71,8 +71,6 @@ export function AuditAwalBanner({
             <ul className="mt-2 space-y-1 text-sm">
               {ringkasan.temuanTampil.map((temuan, index) => (
                 <li key={`${temuan.kode}-${index}`} className="break-words">
-                  <span className="font-mono font-semibold">{temuan.kode}</span>
-                  <span className="mx-1">—</span>
                   <span>{temuan.pesan}</span>
                 </li>
               ))}
@@ -80,11 +78,6 @@ export function AuditAwalBanner({
             {sisa > 0 && (
               <p className="mt-1 text-sm font-medium">
                 +{sisa} temuan lain. Buka Audit Integritas untuk memeriksa semuanya.
-              </p>
-            )}
-            {kritis && ringkasan.kodeKritis.length > 0 && (
-              <p className="mt-2 text-sm font-semibold">
-                Kode kritis: {ringkasan.kodeKritis.join(', ')}
               </p>
             )}
             <div className="mt-3 flex flex-wrap gap-2">

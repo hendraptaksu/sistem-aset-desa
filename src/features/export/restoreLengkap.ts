@@ -87,7 +87,7 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
   if (!existsSync(manifestPath) || !statSync(manifestPath).isFile())
     return {
       valid: false,
-      error: 'manifest.json tidak ditemukan. Pilih folder hasil Backup Lengkap.',
+      error: 'Folder yang dipilih bukan folder Backup Lengkap. Pilih folder hasil Backup Lengkap.',
     };
 
   let mentah: unknown;
@@ -96,59 +96,59 @@ export function validasiBackupLengkap(dirBackup: string): ValidasiBackupLengkap 
   } catch {
     return {
       valid: false,
-      error: 'manifest.json rusak atau tidak bisa dibaca. Pilih folder backup lain.',
+      error: 'Keterangan backup tidak bisa dibaca. Pilih folder backup lain.',
     };
   }
   if (!mentah || typeof mentah !== 'object' || Array.isArray(mentah))
-    return { valid: false, error: 'Isi manifest.json tidak valid.' };
+    return { valid: false, error: 'Keterangan backup tidak valid.' };
 
   const m = mentah as Record<string, unknown>;
   if (typeof m.versiApp !== 'string' || !m.versiApp.trim())
-    return { valid: false, error: 'manifest.json tidak memuat versi aplikasi.' };
+    return { valid: false, error: 'Keterangan backup tidak memuat versi aplikasi.' };
   if (
     typeof m.schemaVersion !== 'number' ||
     !Number.isInteger(m.schemaVersion) ||
     m.schemaVersion < 0
   )
-    return { valid: false, error: 'manifest.json memuat versi skema yang tidak valid.' };
+    return { valid: false, error: 'Keterangan backup memuat versi aplikasi yang tidak valid.' };
   if (typeof m.dibuat !== 'string' || Number.isNaN(Date.parse(m.dibuat)))
-    return { valid: false, error: 'manifest.json memuat waktu pembuatan yang tidak valid.' };
+    return { valid: false, error: 'Keterangan backup memuat waktu pembuatan yang tidak valid.' };
   if (typeof m.ukuranDb !== 'number' || !Number.isFinite(m.ukuranDb) || m.ukuranDb <= 0)
-    return { valid: false, error: 'manifest.json memuat ukuran database yang tidak valid.' };
+    return { valid: false, error: 'Keterangan backup memuat ukuran data yang tidak valid.' };
   if (
     !Array.isArray(m.daftarFile) ||
     m.daftarFile.length === 0 ||
     !m.daftarFile.every((f) => typeof f === 'string')
   )
-    return { valid: false, error: 'manifest.json tidak memuat daftar file backup.' };
+    return { valid: false, error: 'Keterangan backup tidak memuat daftar file.' };
 
   const daftarFile = [...new Set(m.daftarFile as string[])];
   if (daftarFile.length !== m.daftarFile.length)
-    return { valid: false, error: 'manifest.json memuat daftar file ganda.' };
+    return { valid: false, error: 'Keterangan backup memuat daftar file ganda.' };
   if (!daftarFile.includes('pura.db'))
-    return { valid: false, error: 'manifest.json tidak mencantumkan pura.db.' };
+    return { valid: false, error: 'Keterangan backup tidak mencantumkan file data utama.' };
 
   for (const entry of daftarFile) {
     if (!pathRelatifAman(entry))
-      return { valid: false, error: 'manifest.json memuat path file yang tidak aman.' };
+      return { valid: false, error: 'Keterangan backup memuat nama file yang tidak aman.' };
     // Backup lama (sebelum DB-37) mencantumkan attachments/...; abaikan saja.
     if (entry.startsWith('attachments/')) continue;
     const file = join(backupDir, ...entry.split('/'));
     if (!existsSync(file) || !statSync(file).isFile())
       return {
         valid: false,
-        error: `File ${entry} yang tercatat di manifest.json tidak ditemukan.`,
+        error: 'Ada file yang tercatat di backup tetapi tidak ditemukan.',
       };
   }
 
   const dbPath = join(backupDir, 'pura.db');
   if (!existsSync(dbPath) || !statSync(dbPath).isFile())
-    return { valid: false, error: 'File pura.db tidak ditemukan di folder backup.' };
+    return { valid: false, error: 'File data utama tidak ditemukan di folder backup.' };
 
   if (m.schemaVersion !== SCHEMA_VERSION)
     return {
       valid: false,
-      error: `Manifest backup memakai skema v${m.schemaVersion}; aplikasi hanya mendukung skema v${SCHEMA_VERSION}. Pilih backup dari aplikasi versi ini.`,
+      error: 'Backup dibuat oleh versi aplikasi lain. Pilih backup dari aplikasi versi ini.',
     };
 
   return {
@@ -192,7 +192,7 @@ export function restoreLengkap(opsi: OpsiRestoreLengkap): HasilRestoreLengkap {
   if (validasi.dbPath === dbPath || diDalam(backupDir, dbPath))
     return {
       ok: false,
-      error: 'Folder backup tidak boleh berisi database yang sedang aktif. Pilih folder lain.',
+      error: 'Folder backup tidak boleh berisi file data yang sedang dipakai. Pilih folder lain.',
       db: opsi.db,
     };
 
@@ -208,7 +208,7 @@ export function restoreLengkap(opsi: OpsiRestoreLengkap): HasilRestoreLengkap {
     return {
       ok: false,
       error:
-        'Gagal membuat cadangan database sebelum restore. Data lama belum diubah. Coba lagi; bila tetap gagal, hubungi pendamping.',
+        'Gagal membuat backup sebelum restore. Data lama belum diubah. Coba lagi; bila tetap gagal, hubungi pendamping.',
       db: opsi.db,
     };
   }

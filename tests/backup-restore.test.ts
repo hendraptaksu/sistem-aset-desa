@@ -543,7 +543,7 @@ describe('P0-8 — validasiKandidatRestore: file sampah ditolak', () => {
       expect(vLain.valid).toBe(false);
       if (!vLain.valid) {
         expect(vLain.error).toMatch(/bukan backup aplikasi/i);
-        expect(vLain.error).toContain('jurnal');
+        expect(vLain.error).toContain('Backup Lengkap');
       }
     } finally {
       lain?.close();
@@ -572,8 +572,8 @@ describe('P0-8 — validasiKandidatRestore: versi skema tidak didukung ditolak',
       const hasil = validasiKandidatRestore(kandidatPath);
       expect(hasil.valid).toBe(false);
       if (hasil.valid) throw new Error('backup v23 seharusnya ditolak');
-      expect(hasil.error).toContain('v23');
-      expect(hasil.error).toContain('v2');
+      expect(hasil.error).toMatch(/versi aplikasi lain/i);
+      expect(hasil.error).toContain('Pilih backup dari aplikasi versi ini.');
 
       // restoreDbAman juga menolak sebelum DB aktif disentuh.
       const restore = restoreDbAman(aktif, {
@@ -617,7 +617,8 @@ describe('AKT-11 — validasiKandidatRestore: backup wajib lolos audit akuntansi
         'Backup tidak lolos audit akuntansi. Pilih backup lain.',
       );
       expect(hasil.error).toMatch(/Ditemukan \d+ temuan integritas akuntansi/);
-      expect(hasil.error).toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(hasil.error).not.toContain('JURNAL_TIDAK_SEIMBANG');
+      expect(hasil.error).toMatch(/tidak seimbang/i);
     } finally {
       db?.close();
       rmSync(dir, { recursive: true, force: true });
@@ -670,8 +671,8 @@ describe('DB-08 — validasiKandidatRestore: foreign key wajib bersih', () => {
       const hasil = validasiKandidatRestore(kandidatPath);
       expect(hasil.valid).toBe(false);
       if (hasil.valid) throw new Error('kandidat FK yatim seharusnya ditolak');
-      expect(hasil.error).toMatch(/pelanggaran foreign key/i);
-      expect(hasil.error).toContain('jurnal');
+      expect(hasil.error).toMatch(/data yang saling merujuk/i);
+      expect(hasil.error).not.toContain('tabel');
       // DB-08 memeriksa FK lebih dulu, bukan hanya mengandalkan audit akuntansi.
       expect(hasil.error).not.toContain('audit akuntansi');
     } finally {
@@ -1060,7 +1061,7 @@ describe('AUD-12 / DB-37 — restore lengkap: database atomik', () => {
       expect(hasil.ok).toBe(false);
       if (hasil.ok) throw new Error('seharusnya ditolak');
       expect(hasil.db).toBe(aktif);
-      expect(hasil.error).toMatch(/manifest/i);
+      expect(hasil.error).toMatch(/keterangan backup/i);
 
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
       expect(existsSync(join(dir, 'data', 'backups', 'pre-restore-manifest-rusak.db'))).toBe(

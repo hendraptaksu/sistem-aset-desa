@@ -90,7 +90,7 @@ test(
 
       // Database baru selalu meminta pembuatan PIN 6 digit.
       await page.getByLabel('PIN baru 6 digit').fill('123456');
-      await page.getByLabel('Ulangi PIN').fill('123456');
+      await page.getByLabel('Ulangi PIN baru', { exact: true }).fill('123456');
       await page.getByRole('button', { name: 'Simpan PIN' }).click();
 
       // AUD-19: kode darurat per-install tampil sekali dan wajib dicatat.
@@ -108,7 +108,7 @@ test(
       });
       await page.getByRole('button', { name: 'Saya sudah mencatat' }).click();
 
-      await page.getByText('Dashboard Akuntan').waitFor({ timeout: 15_000 });
+      await page.getByText('Ringkasan Pembukuan').waitFor({ timeout: 15_000 });
       await page.getByText('Seimbang').first().waitFor({ timeout: 15_000 });
       await page.screenshot({
         path: join(artifacts, '03-dashboard.png'),
@@ -118,7 +118,7 @@ test(
       // Daftar Akun: tambah akun BEBAN baru dan pastikan muncul di daftar.
       await page.getByRole('button', { name: 'Daftar Akun' }).click();
       await page
-        .getByRole('heading', { name: 'Daftar Akun (COA)' })
+        .getByRole('heading', { name: 'Daftar Akun' })
         .waitFor({ timeout: 15_000 });
       await page.getByLabel('Kode akun (4 digit)').fill('5011');
       await page.getByLabel('Nama akun').fill('PENGELUARAN ARTOS');
@@ -171,7 +171,7 @@ test(
       await page.getByLabel('Ulangi PIN baru').fill('654321');
       await page.getByRole('button', { name: 'Reset PIN' }).click();
       await page.getByRole('button', { name: 'Dashboard' }).click();
-      await page.getByText('Dashboard Akuntan').waitFor({ timeout: 15_000 });
+      await page.getByText('Ringkasan Pembukuan').waitFor({ timeout: 15_000 });
       await page.screenshot({
         path: join(artifacts, '06-setelah-reset.png'),
         fullPage: true,
@@ -186,9 +186,9 @@ test(
 
       // Jurnal Umum sengaja tersembunyi dari operator sampai mode pendamping aktif.
       await nav('Pengaturan').click();
-      await page.getByRole('button', { name: 'Aktifkan Mode lanjutan', exact: true }).click();
-      await page.getByRole('dialog', { name: 'Aktifkan Mode lanjutan?' })
-        .getByRole('button', { name: 'Ya, aktifkan Mode lanjutan', exact: true }).click();
+      await page.getByRole('button', { name: 'Aktifkan mode lanjutan', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Aktifkan mode lanjutan?' })
+        .getByRole('button', { name: 'Ya, aktifkan mode lanjutan', exact: true }).click();
 
       await nav('Transaksi').click();
       await page

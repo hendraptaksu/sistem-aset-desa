@@ -1034,9 +1034,7 @@ describe('AKT-02 — modal guard saldo awal', () => {
       }),
     );
 
-    expect(html).toContain(
-      'Belum ada saldo awal. Isi saldo awal dulu, atau mulai tanpa saldo awal.',
-    );
+    expect(html).toContain('Bila mulai tanpa saldo awal');
     expect(html).toContain('Isi Saldo Awal');
     expect(html).toContain('Mulai tanpa saldo awal');
     expect(html).toContain('Batal');

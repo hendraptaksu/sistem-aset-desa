@@ -97,17 +97,13 @@ export function SaldoAwalGuard({
       onTutup={onBatal}
       sibuk={sibuk}
     >
-      <p className="text-[15px] text-stone-700">
-        Belum ada saldo awal. Isi saldo awal dulu, atau mulai tanpa saldo awal.
-      </p>
       {/* UI-A13: operator perlu tahu konsekuensi sebelum memilih mulai tanpa
           saldo awal; tanpa saldo awal semua saldo dianggap nol sejak jurnal
           pertama sehingga laporan bisa tidak cocok dengan kenyataan. */}
-      <p className="mt-2 text-[15px] text-stone-700">
+      <p className="text-[15px] text-stone-700">
         Bila mulai tanpa saldo awal, saldo kas/bank, panjar, utang, dan modal
-        dianggap nol sejak jurnal pertama — laporan bisa tidak cocok dengan uang
-        dan utang yang sebenarnya sampai saldo awal dilengkapi lewat koreksi
-        saldo awal.
+        dianggap nol sejak jurnal pertama — laporan bisa tidak cocok dengan
+        kenyataan sampai saldo awal dilengkapi lewat koreksi.
       </p>
       {err && (
         <div className="mt-3">

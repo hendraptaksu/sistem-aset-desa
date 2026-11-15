@@ -77,6 +77,7 @@ export function AkunTab() {
   const [filterTipe, setFilterTipe] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('aktif');
   const [aksiTarget, setAksiTarget] = useState<AksiTarget | null>(null);
+  const [ubahTunda, setUbahTunda] = useState<Coa | null>(null);
 
   const kodeBawaan = useMemo(() => new Set(COA.map((a) => a.kode)), []);
 
@@ -120,6 +121,25 @@ export function AkunTab() {
   }
 
   function mulaiUbah(a: Coa): void {
+    const asli = editKode ? daftar.find((x) => x.kode === editKode) : null;
+    const kotor = asli
+      ? kode !== asli.kode ||
+        nama !== asli.nama ||
+        tipe !== (asli.tipe === 'PENDAPATAN' ? 'PENDAPATAN' : asli.tipe === 'AKTIVA' ? 'AKTIVA' : 'BEBAN') ||
+        kelompok !==
+          (asli.kelompok === 'KAS' || asli.kelompok === 'BANK' || asli.kelompok === 'LPD'
+            ? asli.kelompok
+            : 'BANK')
+      : Boolean(kode.trim() || nama.trim()) || tipe !== 'BEBAN' || kelompok !== 'BANK';
+    // Jangan timpa isian yang belum disimpan tanpa konfirmasi.
+    if (kotor && a.kode !== editKode) {
+      setUbahTunda(a);
+      return;
+    }
+    terapkanUbah(a);
+  }
+
+  function terapkanUbah(a: Coa): void {
     setErr(null);
     setInfo(null);
     setEditKode(a.kode);
@@ -206,7 +226,7 @@ export function AkunTab() {
             tipe === 'AKTIVA' ? kelompok : tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN',
         });
         setInfo(
-          `Akun ${baru.kode} — ${baru.nama} tersimpan. Akun langsung tersedia di form transaksi, Jurnal Umum, dan laporan.`,
+          `Akun ${baru.kode} — ${baru.nama} tersimpan. Akun langsung tersedia di form transaksi dan laporan.`,
         );
         setStatusFilter('aktif');
       }
@@ -271,13 +291,12 @@ export function AkunTab() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold">Daftar Akun (COA)</h1>
+            <h1 className="text-xl font-bold">Daftar Akun</h1>
             <p className="mt-1 max-w-3xl text-sm text-stone-600">
-              Akun bawaan mengikuti <b>KODE AKUN.csv</b>. Tambahkan akun{' '}
-              <b>Beban</b>, <b>Pendapatan</b>, atau <b>Kas/Bank/LPD</b> baru di sini;
-              akun langsung muncul di form transaksi, Jurnal Umum, dan laporan.
-              Akun bawaan yang tidak dipakai lagi boleh dinonaktifkan, kecuali akun
-              sistem <b>3000/1040/1050/2050/2060/5063/5050</b>.
+              Tambah akun <b>Beban</b>, <b>Pendapatan</b>, atau <b>Kas/Bank/LPD</b>{' '}
+              baru. Akun langsung muncul di form transaksi dan laporan. Akun bawaan
+              bisa dinonaktifkan, tetapi namanya tidak bisa diubah dan akunnya tidak
+              bisa dihapus.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -289,9 +308,9 @@ export function AkunTab() {
           </div>
         </div>
         <p className="mt-2 text-helper text-amber-800">
-          Akun kas/bank baru memakai kode kustom {KODE_KAS_TAMBAHAN_MIN}–{KODE_KAS_TAMBAHAN_MAX}
-          {' '}agar tidak bentrok dengan daftar akun bawaan. Setelah disimpan, akun langsung
-          muncul di Pindah Dana, Panjar, pembayaran, dan total kas.
+          Akun kas/bank baru memakai kode {KODE_KAS_TAMBAHAN_MIN}–{KODE_KAS_TAMBAHAN_MAX}.
+          Setelah disimpan, akun langsung muncul di Pindah Dana, Panjar,
+          pembayaran, dan total kas.
         </p>
       </Card>
 
@@ -303,7 +322,7 @@ export function AkunTab() {
           <p className="mb-3 text-sm text-stone-600">
             {editKode
               ? 'Kode dan jenis akun tetap agar histori jurnal tidak berubah. Hanya nama yang bisa diperbaiki.'
-              : 'Gunakan kode 4 digit yang belum dipakai. Beban 5xxx, pendapatan 4xxx, kas/bank/LPD baru 1100–1199.'}
+              : 'Kode harus 4 digit dan belum dipakai.'}
           </p>
           <ErrorBox msg={err} />
           {info && (
@@ -333,7 +352,7 @@ export function AkunTab() {
                 disabled={busy}
                 placeholder={
                   tipe === 'BEBAN'
-                    ? 'cth: BAGA SUAR (AIR, LISTRIK, TELEPON)'
+                    ? 'cth: BAGA SUAR'
                     : tipe === 'PENDAPATAN'
                       ? 'cth: PENDAPATAN WEWEDALAN'
                       : 'cth: BANK BPD REKENING BARU'
@@ -379,13 +398,7 @@ export function AkunTab() {
                   </span>
                 </Field>
               </>
-            ) : (
-              <Field label="Kelompok akun">
-                {/* UI-A26: tampil label Indonesia, bukan enum mentah BEBAN/
-                    PENDAPATAN. */}
-                <TextInput value={LABEL_TIPE[tipe]} disabled onChange={() => {}} />
-              </Field>
-            )}
+            ) : null}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
@@ -401,7 +414,8 @@ export function AkunTab() {
               </Button>
             )}
             <span className="text-helper text-stone-500">
-              Posisi normal mengikuti jenis: Beban/Kas = Debit, Pendapatan = Kredit.
+              Posisi normal: Aset/Kas dan Beban = Debit; Kewajiban, Ekuitas, dan
+              Pendapatan = Kredit.
             </span>
           </div>
         </Card>
@@ -410,12 +424,11 @@ export function AkunTab() {
       <Card>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold">Akun</h2>
+            <h2 className="text-lg font-bold">Semua Akun</h2>
             <p className="mt-1 text-sm text-stone-600">
               Akun tambahan bisa diubah namanya, dinonaktifkan, atau dihapus bila
-              belum pernah dipakai. Akun bawaan boleh dinonaktifkan untuk form input
-              baru, tetapi nama dan hapusnya tetap terkunci. Akun sistem{' '}
-              <b>3000/1040/1050/2050/2060/5063/5050</b> tidak bisa dinonaktifkan.
+              belum pernah dipakai. Akun bawaan hanya bisa dinonaktifkan; akun
+              sistem inti tidak bisa dinonaktifkan.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -424,7 +437,7 @@ export function AkunTab() {
                 value={cari}
                 onChange={(e) => setCari(e.target.value)}
                 placeholder="Kode atau nama akun"
-                className="!w-64"
+                className="w-full sm:w-64"
               />
             </Field>
             <Field label="Jenis">
@@ -454,13 +467,13 @@ export function AkunTab() {
           <table className="w-full text-left text-[15px]">
             <thead>
               <tr className="border-b text-stone-500">
-                <th className="py-2 pr-3">Kode</th>
-                <th className="py-2 pr-3">Nama</th>
-                <th className="py-2 pr-3">Jenis</th>
-                <th className="py-2 pr-3">Kelompok</th>
-                <th className="py-2 pr-3">Posisi normal</th>
-                <th className="py-2 pr-3">Status</th>
-                <th className="py-2 text-right">Aksi</th>
+                <th scope="col" className="py-2 pr-3">Kode</th>
+                <th scope="col" className="py-2 pr-3">Nama</th>
+                <th scope="col" className="py-2 pr-3">Jenis</th>
+                <th scope="col" className="py-2 pr-3">Kelompok</th>
+                <th scope="col" className="whitespace-nowrap py-2 pr-3">Posisi normal</th>
+                <th scope="col" className="py-2 pr-3">Status</th>
+                <th scope="col" className="py-2 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -491,7 +504,6 @@ export function AkunTab() {
                           {bawaan ? 'Bawaan' : 'Tambahan'}
                         </Badge>
                         {sistem && <Badge tone="amber">Sistem</Badge>}
-                        {a.is_kas && <Badge tone="amber">Kas/Bank</Badge>}
                       </div>
                     </td>
                     <td className="py-2 text-right">
@@ -511,7 +523,7 @@ export function AkunTab() {
                         ) : sistem ? (
                           <span
                             className="px-2 py-1 text-right text-helper text-stone-500"
-                            title="Akun sistem dibutuhkan wizard/alur dan tidak bisa dinonaktifkan."
+                            title="Akun ini dipakai otomatis oleh aplikasi, jadi tidak bisa dinonaktifkan."
                           >
                             Akun sistem
                             <span className="block">
@@ -557,6 +569,21 @@ export function AkunTab() {
           Menampilkan {tampil.length} dari {daftar.length} akun.
         </p>
       </Card>
+
+      {ubahTunda && (
+        <KonfirmasiModal
+          judul="Ganti akun yang diubah?"
+          deskripsi="Isian form akun yang belum disimpan akan hilang."
+          labelYa="Ya, ganti akun"
+          labelBatal="Tetap di form"
+          onBatal={() => setUbahTunda(null)}
+          onKonfirmasi={() => {
+            const tujuan = ubahTunda;
+            setUbahTunda(null);
+            terapkanUbah(tujuan);
+          }}
+        />
+      )}
 
       {aksiTarget && (
         <KonfirmasiModal

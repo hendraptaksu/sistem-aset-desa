@@ -91,6 +91,30 @@ dirilis sebagai versi baru.
 - **DevTools di build produksi** (T2.9): `devTools: false`, menu produksi tanpa
   Toggle Developer Tools, dan shortcut F12/Ctrl+Shift+I/Ctrl+Alt+I diblokir.
   Mode development tetap bisa membuka DevTools.
+- **Kebersihan bahasa UI (audit UI lanjutan)**: istilah internal tidak lagi
+  tampil ke operator — nama file backup (`pura.db`/`manifest.json`), "database",
+  "foreign key", UUID jurnal/panjar, enum mentah (`OPEN`, `LUNAS`,
+  `DIBATALKAN`), kode temuan audit, dan format `YYYY-MM-DD` diganti kalimat
+  Indonesia yang bisa ditindaklanjuti. Istilah diseragamkan: **terkunci**
+  (bukan "ditutup"), **kunci otomatis**, **awalan nomor bukti**, **Daftar
+  Akun**, **Ekspor Excel**, serta status **Dibayar sebagian/Lunas**.
+- **Perlindungan isian & alur (audit UI lanjutan)**: kunci periode memakai
+  tahun dari pratinjau (respons basi diabaikan) dan mewajibkan backup baru saat
+  kunci ulang; kode darurat tidak bisa tertutup tanpa konfirmasi; ganti jenis
+  transaksi, ganti target panjar, koreksi pertanggungjawaban, edit akun, dan
+  form bayar pinjaman meminta konfirmasi sebelum menimpa isian. Pengaturan
+  pembukuan: gagal simpan tidak lagi mengunci form, dan pengosongan tanggal
+  mulai memakai konfirmasi khusus. Pinjaman LPD ikut memakai guard saldo awal.
+- **Perbaikan data tampilan (audit UI lanjutan)**: sisa utang usaha dan saran
+  nomor bukti dimuat ulang setelah simpan; error daftar jurnal dibersihkan
+  saat muat sukses; kegagalan badge Neraca Saldo tidak mengosongkan Neraca;
+  spinner berhenti saat tanggal laporan dikosongkan; total kredit pada detail
+  jurnal dihitung dari baris, bukan menyalin total debit.
+- **Aksesibilitas (audit UI lanjutan)**: header modal tetap terlihat saat isi
+  digulir, fokus pindah ke ringkasan error saat simpan gagal, hitung mundur
+  blokir PIN tidak diumumkan tiap detik, badge "Memperbarui…" menjadi live
+  region di luar judul, filter status panjar berlabel, tombol aksi baris punya
+  nama aksesibel, dan header tabel memakai `scope="col"`.
 
 ### Verifikasi akhir (T4.1–T4.2)
 

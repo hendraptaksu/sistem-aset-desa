@@ -82,9 +82,9 @@ describe('AKT-15 — render statis tab Laba Rugi & Arus Kas', () => {
 
     expect(html).toContain('value="2026-01-01"');
     expect(html).toContain('value="2026-10-29"');
-    expect(html).toContain('Periode aktif: 1 Jan 2026 s/d 29 Okt 2026.');
+    expect(html).toContain('Klik baris akun untuk melihat jurnal pada periode ini.');
     expect(html).toContain('Semua tanggal');
-    expect(html).not.toContain('Periode aktif: seluruh riwayat');
+    expect(html).not.toContain('Periode aktif:');
     // UI-A10: preset tahun buku eksplisit di kontrol bersama.
     expect(html).toContain('Tahun berjalan (tahun buku)');
   });

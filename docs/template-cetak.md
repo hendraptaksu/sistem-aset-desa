@@ -79,7 +79,7 @@ dibutuhkan, tambahkan sebagai blok baru di model cetak.
 5. Tekan **Simpan PDF** untuk menyimpan PDF. PDF memakai HTML paginator yang
    **sama** dengan pratinjau (`renderPrintDocument`), tanpa script/auto-print
    dan dengan orientasi yang sama. Jadi hasil PDF identik dengan pratinjau.
-6. **Export Excel** tetap tersedia dan tidak berubah (XLSX numerik).
+6. **Ekspor Excel** tetap tersedia dan tidak berubah (XLSX numerik).
 
 ## 4. API untuk pengembang
 

@@ -374,7 +374,7 @@ export function aturIdle(db: Database.Database, menit: number): string | null {
     setPengaturan(db, KUNCI_IDLE_MENIT, String(menit));
     catatAudit(db, {
       aksi: 'PENGATURAN-IDLE',
-      alasan: `Auto-kunci diubah dari ${lama} ke ${menit} menit`,
+      alasan: `Kunci otomatis diubah dari ${lama} ke ${menit} menit`,
       lama: { idleMenit: lama },
       baru: { idleMenit: menit },
     });

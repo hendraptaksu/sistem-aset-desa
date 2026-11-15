@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Coa } from '../../db/coa.js';
 import { formatRp, formatTanggal } from '../../utils/format.js';
 import { api, type JurnalLengkap } from '../lib/api.js';
-import { Badge, Button, ErrorBox, Modal } from './ui.js';
+import { Button, ErrorBox, Modal } from './ui.js';
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -97,10 +97,6 @@ export function JurnalAkunModal({
         onTutup={onClose}
         lebar="3xl"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Badge tone="green">Dihitung dari jurnal</Badge>
-        </div>
-
         {err && (
           <div className="mt-3">
             {/* UI-A21: ErrorBox ber-role="alert" sehingga kegagalan muat

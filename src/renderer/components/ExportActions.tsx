@@ -165,7 +165,7 @@ export function ExportActions({
           title={nonaktif ? alasanNonaktif : undefined}
           onClick={() => void exportExcel()}
         >
-          {sibuk === 'excel' ? 'Menyiapkan Excel…' : 'Export Excel'}
+          {sibuk === 'excel' ? 'Menyiapkan Excel…' : 'Ekspor Excel'}
         </Button>
         <Button
           variant="ghost"

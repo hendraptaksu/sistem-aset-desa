@@ -15,12 +15,13 @@ import {
   formatAksiAudit,
   formatWaktuAudit,
 } from '../../utils/auditDetail.js';
-import { tahunLokal } from '../../utils/tanggal.js';
+import { tanggalLokal, tahunLokal } from '../../utils/tanggal.js';
 import { api, type JenisFolderLokasiApi, type LokasiData } from '../lib/api.js';
 import { AuditDetail } from './AuditDetail.js';
 import { KodeDaruratModal } from './KodeDaruratModal.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 import {
+  ALASAN_SIBUK,
   alasanTombolNonaktif,
   Badge,
   Button,
@@ -44,7 +45,7 @@ const OPSI_AKSI = [
   { value: 'SALDO-AWAL', label: 'Saldo awal' },
   { value: 'PANJAR', label: 'Panjar' },
   { value: 'BACKUP', label: 'Backup' },
-  { value: 'RESTORE', label: 'Pulihkan (restore)' },
+  { value: 'RESTORE', label: 'Pulihkan' },
   { value: 'PENGATURAN', label: 'Pengaturan' },
 ] as const;
 
@@ -57,7 +58,7 @@ const OPSI_REF = [
   { value: 'panjar', label: 'Panjar' },
   { value: 'pinjaman', label: 'Pinjaman LPD' },
   { value: 'tutup_buku', label: 'Kunci periode' },
-  { value: 'akun', label: 'Akun COA' },
+  { value: 'akun', label: 'Akun' },
 ] as const;
 
 function Baris({ label, value }: { label: string; value: string }) {
@@ -123,9 +124,8 @@ export function AuditIntegritasCard() {
       <Card>
         <h2 className="mb-1 text-lg font-bold">Audit Integritas</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Pemeriksaan menyeluruh konsistensi pembukuan: jurnal seimbang, panjar,
-          pinjaman, dan snapshot kunci periode. Audit hanya membaca data, tidak
-          mengubah apa pun.
+          Pemeriksaan konsistensi pembukuan: jurnal seimbang, panjar, pinjaman,
+          dan Ringkasan terkunci. Audit hanya membaca data, tidak mengubah apa pun.
         </p>
         <ErrorBox msg={err} />
         {!hasil && !err && (
@@ -133,8 +133,7 @@ export function AuditIntegritasCard() {
             Belum diperiksa pada sesi ini. Temuan saat aplikasi dibuka muncul di
             banner; jalankan audit di sini untuk melihat daftar lengkapnya.
           </p>
-        )}
-        {hasil && temuan.length === 0 && (
+        )}        {hasil && temuan.length === 0 && (
           <InfoBox className="text-sm">
             <p className="font-semibold">Lolos audit integritas.</p>
             <p>{hasil.ringkasan}</p>
@@ -154,11 +153,16 @@ export function AuditIntegritasCard() {
               {temuan.map((t, i) => (
                 <li key={`${t.kode}-${i}`} className="break-words">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono font-semibold">{t.kode}</span>
                     {temuanKritis(t) && <Badge tone="red">Kritis</Badge>}
                   </div>
                   <p>{t.pesan}</p>
-                  {t.detail != null && <TeksDetail detail={t.detail} />}
+                  <details className="mt-1 text-stone-600">
+                    <summary className="cursor-pointer text-helper">
+                      Detail teknis (untuk pendamping)
+                    </summary>
+                    <p className="mt-1 font-mono text-xs">{t.kode}</p>
+                    {t.detail != null && <TeksDetail detail={t.detail} />}
+                  </details>
                 </li>
               ))}
             </ul>
@@ -197,67 +201,37 @@ export function ModeLanjutanCard({
         <div className="max-w-2xl">
           <h2 className="mb-1 text-lg font-bold">Mode lanjutan</h2>
           <p className="text-sm text-stone-600">
-            Untuk akuntan pendamping/pemeriksa. Mode ini menampilkan menu{' '}
-            <b>Jurnal Umum</b> berisi jurnal debit/kredit untuk pemeriksaan.
-            Operator harian tidak perlu membuka ini.
+            Untuk akuntan pendamping atau pemeriksa. Menampilkan menu{' '}
+            <b>Jurnal Umum</b> berisi jurnal debit/kredit mentah.
           </p>
         </div>
-        <Badge tone={aktif ? 'green' : 'stone'}>
-          {aktif ? 'Aktif' : 'Nonaktif'}
-        </Badge>
-      </div>
-
-      {aktif ? (
-        <>
-          <p className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-            Menu <b>Jurnal Umum</b> tampil di grup <b>Data &amp; Sistem</b>.
-            Jurnal tersimpan tidak boleh diedit/dihapus; koreksi memakai jurnal
-            balik atau form terpandu, bukan mengubah jurnal lama.
-          </p>
-          <div className="mt-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Badge tone={aktif ? 'green' : 'stone'}>
+            {aktif ? 'Aktif' : 'Nonaktif'}
+          </Badge>
+          {aktif ? (
             <Button variant="ghost" onClick={() => onBerubah(false)}>
-              Nonaktifkan Mode lanjutan
+              Nonaktifkan mode lanjutan
             </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-            <b>Jurnal Umum = tampilan debit/kredit untuk pemeriksaan. Operator
-            harian tidak perlu membuka ini.</b>{' '}
-            Koreksi tidak dilakukan dengan mengedit jurnal: gunakan jurnal balik
-            atau form terpandu.
-          </p>
-          <div className="mt-3">
+          ) : (
             <Button onClick={() => setKonfirmasi(true)}>
-              Aktifkan Mode lanjutan
+              Aktifkan mode lanjutan
             </Button>
-          </div>
-        </>
-      )}
+          )}
+        </div>
+      </div>
 
       {konfirmasi && (
         <KonfirmasiModal
-          judul="Aktifkan Mode lanjutan?"
+          judul="Aktifkan mode lanjutan?"
           deskripsi={
-            <>
-              <p>
-                Mode lanjutan menampilkan menu <b>Jurnal Umum</b>, yaitu tampilan
-                jurnal debit/kredit mentah untuk pemeriksaan oleh akuntan
-                pendamping/pemeriksa.
-              </p>
-              <p>
-                Operator harian tidak perlu membuka menu ini. Jurnal yang sudah
-                tersimpan tidak boleh diedit/dihapus; koreksi tetap memakai
-                jurnal balik atau form terpandu.
-              </p>
-              <p>
-                Aktifkan hanya bila Anda memahami risiko salah input jurnal
-                manual.
-              </p>
-            </>
+            <p>
+              Menu <b>Jurnal Umum</b> menampilkan jurnal debit/kredit mentah
+              untuk pemeriksaan. Jurnal tersimpan tidak bisa diedit; koreksi
+              memakai jurnal balik atau form terpandu.
+            </p>
           }
-          labelYa="Ya, aktifkan Mode lanjutan"
+          labelYa="Ya, aktifkan mode lanjutan"
           variant="primary"
           onBatal={() => setKonfirmasi(false)}
           onKonfirmasi={() => {
@@ -276,12 +250,15 @@ export function PengaturanTab({
   onIdleBerubah,
   modeLanjutan,
   onModeLanjutanBerubah,
+  onPembukuanBerubah,
 }: {
   idleAwal: number;
   kodeDaruratDiatur: boolean;
   onIdleBerubah: (m: number) => void;
   modeLanjutan: boolean;
   onModeLanjutanBerubah: (aktif: boolean) => void;
+  /** Dipanggil setelah nama entitas/kop tersimpan agar shell ikut diperbarui. */
+  onPembukuanBerubah?: () => void;
 }) {
   const [lama, setLama] = useState('');
   const [baru, setBaru] = useState('');
@@ -311,9 +288,12 @@ export function PengaturanTab({
   const [entitas, setEntitas] = useState(DEFAULT_PENGATURAN.namaEntitas);
   const [kopTambahan, setKopTambahan] = useState('');
   const [tanggalMulai, setTanggalMulai] = useState('');
+  const [tanggalMulaiTersimpan, setTanggalMulaiTersimpan] = useState('');
+  const [konfirmasiKosongkanTanggal, setKonfirmasiKosongkanTanggal] = useState(false);
   const [prefix, setPrefix] = useState(DEFAULT_PENGATURAN.prefixNomorBukti);
   const [padding, setPadding] = useState(String(DEFAULT_PENGATURAN.paddingNomorBukti));
-  const [errPembukuan, setErrPembukuan] = useState<string | null>(null);
+  const [errMuatPembukuan, setErrMuatPembukuan] = useState<string | null>(null);
+  const [errSimpanPembukuan, setErrSimpanPembukuan] = useState<string | null>(null);
   const [okPembukuan, setOkPembukuan] = useState<string | null>(null);
   const [busyPembukuan, setBusyPembukuan] = useState(false);
   const [memuatPembukuan, setMemuatPembukuan] = useState(true);
@@ -385,6 +365,7 @@ export function PengaturanTab({
     setEntitas(p.namaEntitas);
     setKopTambahan(p.kopTambahan);
     setTanggalMulai(p.tanggalMulaiPembukuan);
+    setTanggalMulaiTersimpan(p.tanggalMulaiPembukuan);
     setPrefix(p.prefixNomorBukti);
     setPadding(String(p.paddingNomorBukti));
   }
@@ -397,7 +378,7 @@ export function PengaturanTab({
 
   async function muatPembukuan(): Promise<void> {
     batalMuatPembukuan.current = false;
-    setErrPembukuan(null);
+    setErrMuatPembukuan(null);
     setMemuatPembukuan(true);
     try {
       const p = await api.pengaturanGet();
@@ -405,7 +386,7 @@ export function PengaturanTab({
       terapkanPembukuan(p);
     } catch (e) {
       if (batalMuatPembukuan.current) return;
-      setErrPembukuan(pesanError(e, PESAN_MUAT_GAGAL));
+      setErrMuatPembukuan(pesanError(e, PESAN_MUAT_GAGAL));
     } finally {
       if (!batalMuatPembukuan.current) setMemuatPembukuan(false);
     }
@@ -462,7 +443,7 @@ export function PengaturanTab({
     setErrPin(null);
     setOkPin(null);
     if (baru !== ulang) {
-      setErrPin('Ulangi PIN tidak sama.');
+      setErrPin('PIN ulangan belum sama dengan PIN baru.');
       return;
     }
     busyPinRef.current = true;
@@ -511,7 +492,7 @@ export function PengaturanTab({
     setBusyIdle(true);
     try {
       const r = await api.lockIdleSet(Number(idle));
-      setOkIdle(`Auto-kunci disimpan: ${r.idleMenit} menit.`);
+      setOkIdle(`Kunci otomatis disimpan: ${r.idleMenit} menit.`);
       onIdleBerubah(r.idleMenit);
       void muatAudit();
     } catch (e) {
@@ -522,25 +503,34 @@ export function PengaturanTab({
     }
   }
 
-  async function simpanPembukuan() {
+  async function simpanPembukuan(konfirmasiKosongkan = false) {
     if (busyPembukuanRef.current) return;
-    setErrPembukuan(null);
+    if (!konfirmasiKosongkan && !tanggalMulai && tanggalMulaiTersimpan) {
+      setKonfirmasiKosongkanTanggal(true);
+      return;
+    }
+    setErrSimpanPembukuan(null);
     setOkPembukuan(null);
     busyPembukuanRef.current = true;
     setBusyPembukuan(true);
     try {
-      const hasil = await api.pengaturanSimpan({
-        namaEntitas: entitas,
-        kopTambahan,
-        tanggalMulaiPembukuan: tanggalMulai,
-        prefixNomorBukti: prefix,
-        paddingNomorBukti: Number(padding),
-      });
+      const hasil = await api.pengaturanSimpan(
+        {
+          namaEntitas: entitas,
+          kopTambahan,
+          tanggalMulaiPembukuan: tanggalMulai,
+          prefixNomorBukti: prefix,
+          paddingNomorBukti: Number(padding),
+        },
+        { konfirmasiKosongkanTanggalMulai: konfirmasiKosongkan },
+      );
       terapkanPembukuan(hasil);
       setOkPembukuan('Pengaturan pembukuan disimpan.');
+      setErrSimpanPembukuan(null);
+      onPembukuanBerubah?.();
       void muatAudit();
     } catch (e) {
-      setErrPembukuan(pesanError(e));
+      setErrSimpanPembukuan(pesanError(e));
     } finally {
       busyPembukuanRef.current = false;
       setBusyPembukuan(false);
@@ -548,11 +538,11 @@ export function PengaturanTab({
   }
 
   const tahunContoh = tahunLokal();
-  // UI-A26: prefix kosong membuat formatNomorBukti gagal; jelaskan bahwa nomor
-  // diisi otomatis tanpa prefix alih-alih tanda "—" tanpa penjelasan.
+  // UI-A26: awalan kosong ditolak backend; tampilkan alasan yang sama di
+  // pratinjau agar tidak tampak seperti mode "tanpa awalan" yang valid.
   let pratinjauNomor: string;
   if (!prefix.trim()) {
-    pratinjauNomor = 'Nomor otomatis (tanpa prefix)';
+    pratinjauNomor = 'Awalan belum diisi — isi 1–8 huruf/angka.';
   } else {
     try {
       pratinjauNomor = formatNomorBukti(tahunContoh, 1, prefix, Number(padding));
@@ -563,14 +553,25 @@ export function PengaturanTab({
 
   // UI-A05: bila pengaturan gagal dimuat, semua input pembukuan mati dan
   // Simpan nonaktif agar setting tersimpan tidak tertimpa nilai default form.
-  const pembukuanTerkunci = errPembukuan !== null;
+  // Kegagalan simpan tidak mengunci form — operator cukup memperbaiki isian.
+  const pembukuanTerkunci = errMuatPembukuan !== null;
+  const barisKop = kopTambahan.split('\n').length;
+  const alasanSimpanPembukuan = !entitas.trim()
+    ? 'Nama entitas belum diisi.'
+    : !prefix.trim()
+      ? 'Awalan nomor bukti belum diisi.'
+      : barisKop > 2
+        ? 'Kop tambahan maksimal 2 baris.'
+        : tanggalMulai > tanggalLokal()
+          ? 'Tanggal mulai pembukuan tidak boleh di masa depan.'
+          : null;
 
   const halaman = Math.floor(offset / limit) + 1;
   const totalHalaman = Math.max(1, Math.ceil(auditTotal / limit));
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">Pengaturan</h1>
+      <h1 className="sr-only">Pengaturan</h1>
       <ModeLanjutanCard
         aktif={modeLanjutan}
         onBerubah={onModeLanjutanBerubah}
@@ -578,7 +579,8 @@ export function PengaturanTab({
       <Card>
         <h2 className="mb-1 text-lg font-bold">Kunci Aplikasi (PIN)</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Aplikasi selalu minta PIN setiap dibuka. Ganti PIN bila perlu — PIN lama wajib benar.
+          Aplikasi meminta PIN setiap kali dibuka. Untuk mengganti PIN, isi PIN lama,
+          PIN baru, lalu ulangi PIN baru.
         </p>
         <ErrorBox msg={errPin} />
         {okPin && (
@@ -598,10 +600,24 @@ export function PengaturanTab({
           <div>
             <Button
               disabled={busyPin || lama.length !== 6 || baru.length !== 6 || ulang !== baru}
+              title={
+                busyPin
+                  ? ALASAN_SIBUK
+                  : 'Isi PIN lama, PIN baru, dan ulangi PIN baru (masing-masing 6 digit).'
+              }
               onClick={() => void gantiPin()}
             >
               {busyPin ? 'Menyimpan…' : 'Ganti PIN'}
             </Button>
+            {(lama.length !== 6 || baru.length !== 6 || ulang !== baru) && (
+              <p className="mt-1 text-helper text-stone-500" role="status">
+                {lama.length !== 6
+                  ? 'PIN lama harus 6 digit.'
+                  : baru.length !== 6
+                    ? 'PIN baru harus 6 digit.'
+                    : 'PIN ulangan belum sama dengan PIN baru.'}
+              </p>
+            )}
           </div>
         </div>
       </Card>
@@ -609,9 +625,9 @@ export function PengaturanTab({
       <Card>
         <h2 className="mb-1 text-lg font-bold">Kode Darurat</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Kode darurat dipakai bila PIN lupa. Kode hanya ditampilkan <b>sekali</b> saat
-          dibuat, lalu yang tersimpan hanya hash — tidak ada salinan di database.
-          Setelah diganti, kode lama langsung tidak berlaku.
+          Kode darurat dipakai bila PIN lupa. Kode hanya ditampilkan <b>sekali</b>
+          saat dibuat — catat dan simpan di tempat aman. Setelah diganti, kode lama
+          langsung tidak berlaku.
         </p>
         <ErrorBox msg={errKode} />
         {okKode && (
@@ -620,27 +636,25 @@ export function PengaturanTab({
         <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px]">
           Status:{' '}
           <b>
-            {kodeDiatur
-              ? 'kode darurat sudah diatur untuk instalasi ini'
-              : 'kode darurat belum diatur'}
+            {kodeDiatur ? 'Kode darurat sudah diatur' : 'Kode darurat belum diatur'}
           </b>
         </div>
-        {!kodeDiatur && (
-          <p className="mt-2 text-sm text-amber-800">
-            Perangkat ini belum punya kode darurat. Buat sekarang.
-          </p>
-        )}
         <div className="mt-3">
-          <Button disabled={busyKode} onClick={() => setKonfirmasiKode(true)}>
+          <Button
+            disabled={busyKode}
+            title={busyKode ? ALASAN_SIBUK : undefined}
+            onClick={() => setKonfirmasiKode(true)}
+          >
             {kodeDiatur ? 'Ganti kode darurat' : 'Atur kode darurat'}
           </Button>
         </div>
       </Card>
 
       <Card>
-        <h2 className="mb-1 text-lg font-bold">Auto-kunci saat idle</h2>
+        <h2 className="mb-1 text-lg font-bold">Kunci otomatis</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Aplikasi mengunci sendiri bila tidak dipakai. Atur {IDLE_MIN_MENIT}–{IDLE_MAKS_MENIT} menit.
+          Aplikasi mengunci sendiri setelah tidak ada aktivitas selama{' '}
+          {IDLE_MIN_MENIT}–{IDLE_MAKS_MENIT} menit.
         </p>
         <ErrorBox msg={errIdle} />
         {okIdle && (
@@ -652,7 +666,11 @@ export function PengaturanTab({
               <TextInput type="number" min={IDLE_MIN_MENIT} max={IDLE_MAKS_MENIT} value={idle} onChange={(e) => setIdle(e.target.value)} />
             </Field>
           </div>
-          <Button disabled={busyIdle} onClick={() => void simpanIdle()}>
+          <Button
+            disabled={busyIdle}
+            title={busyIdle ? ALASAN_SIBUK : undefined}
+            onClick={() => void simpanIdle()}
+          >
             {busyIdle ? 'Menyimpan…' : 'Simpan'}
           </Button>
         </div>
@@ -662,14 +680,14 @@ export function PengaturanTab({
         <h2 className="mb-1 text-lg font-bold">Pengaturan Pembukuan</h2>
         <p className="mb-3 text-sm text-stone-600">
           Nama entitas dan kop tambahan dipakai di semua laporan Excel &amp; PDF.
-          Nomor bukti baru mengikuti prefix dan jumlah digit di bawah; nomor lama
+          Nomor bukti baru mengikuti awalan dan jumlah digit di bawah; nomor lama
           tidak berubah.
         </p>
-        <ErrorBox msg={errPembukuan} />
+        <ErrorBox msg={errMuatPembukuan} />
         {okPembukuan && (
           <InfoBox className="mb-2">{okPembukuan}</InfoBox>
         )}
-        {errPembukuan !== null && (
+        {errMuatPembukuan !== null && (
           <div className="mb-2">
             <Button variant="ghost" disabled={memuatPembukuan} onClick={() => void muatPembukuan()}>
               Coba muat ulang
@@ -707,11 +725,12 @@ export function PengaturanTab({
               <TextInput
                 type="date"
                 value={tanggalMulai}
+                max={tanggalLokal()}
                 disabled={pembukuanTerkunci}
                 onChange={(e) => setTanggalMulai(e.target.value)}
               />
             </Field>
-            <Field label="Prefix nomor bukti (1–8 huruf/angka)">
+            <Field label="Awalan nomor bukti (1–8 huruf/angka)">
               <TextInput
                 value={prefix}
                 maxLength={8}
@@ -735,29 +754,48 @@ export function PengaturanTab({
               </p>
             </div>
             <div className="md:col-span-2">
+              <ErrorBox msg={errSimpanPembukuan} />
               <Button
-                disabled={busyPembukuan || pembukuanTerkunci}
+                disabled={busyPembukuan || pembukuanTerkunci || alasanSimpanPembukuan !== null}
                 title={alasanTombolNonaktif({
                   sibuk: busyPembukuan,
                   alasan: pembukuanTerkunci
                     ? 'Pengaturan gagal dimuat — coba muat ulang dulu.'
-                    : null,
+                    : alasanSimpanPembukuan,
                 })}
                 onClick={() => void simpanPembukuan()}
               >
                 {busyPembukuan ? 'Menyimpan…' : 'Simpan Pengaturan Pembukuan'}
               </Button>
+              {!busyPembukuan && alasanSimpanPembukuan && (
+                <p className="text-helper text-stone-500" role="status">
+                  {alasanSimpanPembukuan}
+                </p>
+              )}
             </div>
           </div>
+        )}
+        {konfirmasiKosongkanTanggal && (
+          <KonfirmasiModal
+            judul="Kosongkan tanggal mulai pembukuan?"
+            deskripsi="Tanggal mulai dipakai sebagai batas bawah transaksi. Bila dikosongkan, aplikasi tidak lagi menolak transaksi sebelum tanggal itu."
+            labelYa="Ya, kosongkan"
+            labelBatal="Batal"
+            onBatal={() => setKonfirmasiKosongkanTanggal(false)}
+            onKonfirmasi={() => {
+              setKonfirmasiKosongkanTanggal(false);
+              void simpanPembukuan(true);
+            }}
+          />
         )}
       </Card>
 
       <Card>
         <h2 className="mb-1 text-lg font-bold">Lokasi Data &amp; Backup</h2>
         <p className="mb-3 text-sm text-stone-600">
-          Lokasi di bawah adalah lokasi yang benar-benar dipakai aplikasi ini. Pada versi
-          <b> portable</b>, data ikut folder aplikasi (bukan AppData); pada versi
-          <b> installer</b>, data ada di folder aplikasi Windows.
+          Lokasi di bawah adalah lokasi yang benar-benar dipakai aplikasi ini.
+          Versi portable menyimpan data di folder aplikasi; versi installer
+          menyimpannya di folder data pengguna Windows.
         </p>
         <ErrorBox msg={errLokasi} />
         {!lokasi && !errLokasi && (
@@ -766,12 +804,13 @@ export function PengaturanTab({
         {lokasi && (
           <div className="space-y-3">
             <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px]">
-              Mode: <b>
+              Penyimpanan data:{' '}
+              <b>
                 {lokasi.mode === 'PORTABLE'
-                  ? 'Portable — data di folder aplikasi (exe)'
+                  ? 'Portable — di folder aplikasi'
                   : lokasi.mode === 'INSTALLED'
-                    ? 'Installer — data di folder aplikasi Windows'
-                    : 'Mode pengembangan — lokasi data ditentukan sistem'}
+                    ? 'Installer — di folder data pengguna'
+                    : 'Lokasi khusus — ditentukan saat aplikasi dijalankan'}
               </b>
             </div>
 
@@ -786,7 +825,7 @@ export function PengaturanTab({
                 </Button>
               </div>
               <div className="border-b pb-2">
-                <p className="text-sm text-stone-500">File database</p>
+                <p className="text-sm text-stone-500">File data</p>
                 <p className="break-all font-medium">{lokasi.dbPath}</p>
               </div>
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -804,29 +843,19 @@ export function PengaturanTab({
               <p className="font-semibold">Cara backup manual yang disarankan:</p>
               <ol className="mt-1 list-decimal space-y-1 pl-5">
                 <li>Di Dashboard, tekan <b>Backup Lengkap</b> lalu simpan foldernya ke flashdisk/Drive.</li>
-                <li>Simpan folder backup bertanggal, mis. <code>backup-2026-10-23</code>.</li>
+                <li>Beri nama folder bertanggal, mis. <code>backup-2026-10-23</code>.</li>
                 <li>Untuk memulihkan, gunakan <b>Pulihkan Lengkap</b> dan pilih folder tersebut.</li>
               </ol>
               <p className="mt-2">
-                <b>Backup Lengkap</b> berisi <code>pura.db</code> dan{' '}
-                <code>manifest.json</code>; manifest itulah yang diperiksa saat
-                Pulihkan Lengkap.
-              </p>
-              <p className="mt-2">
-                <b>Backup file .db (lanjutan)</b> hanya berisi database, tanpa
-                manifest. <b>Pulihkan file .db</b> juga hanya memulihkan database
-                dan tidak memvalidasi manifest, sehingga selalu meminta konfirmasi
-                tambahan. Pakai jalur ini hanya bila diminta pendamping.
-              </p>
-              <p className="mt-2">
-                Backup otomatis harian sengaja berupa satu file{' '}
-                <code>auto-YYYY-MM-DD.db</code> karena aplikasi tidak menyimpan
-                file bukti terpisah. Backup otomatis bukan pengganti Backup Lengkap.
+                <b>Backup file data (lanjutan)</b> berisi satu file data tanpa
+                keterangan versi; <b>Pulihkan file data (lanjutan)</b> juga tidak
+                memeriksa keterangan backup. Backup otomatis harian bukan
+                pengganti Backup Lengkap.
               </p>
               {lokasi.mode === 'PORTABLE' && (
                 <p className="mt-2">
-                  Jangan menjalankan dua salinan portable dari folder berbeda — keduanya
-                  akan memakai data yang terpisah. Pilih satu folder tetap.
+                  Jangan menjalankan dua salinan portable dari folder berbeda —
+                  keduanya memakai data terpisah. Pilih satu folder tetap.
                 </p>
               )}
             </div>
@@ -918,7 +947,7 @@ export function PengaturanTab({
             <Field label="ID referensi">
               <TextInput
                 value={fRefId}
-                placeholder="mis. j-... atau p-..."
+                placeholder="Tempel ID dari pendamping"
                 onChange={(e) => {
                   setFRefId(e.target.value);
                   setOffset(0);
@@ -933,10 +962,10 @@ export function PengaturanTab({
           <table className="w-full text-left text-[15px]">
             <thead>
               <tr className="border-b text-stone-500">
-                <th className="py-2 pr-3">Waktu</th>
-                <th className="py-2 pr-3">Aksi</th>
-                <th className="py-2 pr-3">Alasan</th>
-                <th className="py-2 pr-3">Detail</th>
+                <th scope="col" className="py-2 pr-3">Waktu</th>
+                <th scope="col" className="py-2 pr-3">Aksi</th>
+                <th scope="col" className="py-2 pr-3">Alasan</th>
+                <th scope="col" className="py-2 pr-3">Detail</th>
               </tr>
             </thead>
             <tbody>
@@ -978,7 +1007,7 @@ export function PengaturanTab({
             >
               Sebelumnya
             </Button>
-            <span className="text-sm text-stone-600">Halaman {halaman}/{totalHalaman}</span>
+            <span className="text-sm text-stone-600">Halaman {halaman} dari {totalHalaman}</span>
             <Button
               variant="ghost"
               disabled={offset + limit >= auditTotal || auditLoading}

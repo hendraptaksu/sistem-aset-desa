@@ -361,8 +361,8 @@ describe('skema v2 — kandidat backup versi lain ditolak', () => {
       const hasil = validasiKandidatRestore(kandidatPath);
       expect(hasil.valid).toBe(false);
       if (hasil.valid) throw new Error('backup v23 seharusnya ditolak');
-      expect(hasil.error).toContain('v23');
-      expect(hasil.error).toContain('v2');
+      expect(hasil.error).toMatch(/versi aplikasi lain/i);
+      expect(hasil.error).toContain('Pilih backup dari aplikasi versi ini.');
 
       // DB aktif tetap terbuka, versinya tidak berubah, dan datanya utuh.
       expect(versi(aktif)).toBe(SCHEMA_VERSION);

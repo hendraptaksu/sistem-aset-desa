@@ -336,7 +336,7 @@ describe('AKT-09 — audit integritas akuntansi', () => {
       expect(hasil.ok).toBe(false);
       expect(kode).toContain('BARIS_ORPHAN');
       expect(hasil.temuan.find((t) => t.kode === 'BARIS_ORPHAN')?.pesan).toMatch(
-        /jurnal-hilang.*tidak ada/i,
+        /jurnal yang tidak ada/i,
       );
       expect(kode).toContain('FOREIGN_KEY');
     });
@@ -360,10 +360,10 @@ describe('AKT-09 — audit integritas akuntansi', () => {
         detail: { table: 'jurnal', parent: 'jurnal' },
       });
       expect(hasil.temuan.find((t) => t.kode === 'FOREIGN_KEY')?.pesan).toMatch(
-        /foreign key/i,
+        /keterkaitan data/i,
       );
       expect(hasil.temuan.find((t) => t.kode === 'REVERSAL_TANPA_ASLI')?.pesan).toMatch(
-        /jurnal-asal-hilang.*tidak ada/i,
+        /jurnal asli yang tidak ada/i,
       );
     });
   });
@@ -441,7 +441,7 @@ describe('AKT-09 — audit integritas akuntansi', () => {
         kode: 'PANJAR_OPEN_PUNYA_CLOSE',
         detail: { id: 'p-open-punya-close', status: 'OPEN' },
       });
-      expect(temuan?.pesan).toMatch(/status OPEN.*jurnal close/i);
+      expect(temuan?.pesan).toMatch(/berstatus Terbuka.*jurnal penutup/i);
       // Jurnal close sudah mengkredit 1040, sedangkan panjar masih OPEN:
       // saldo GL tidak lagi sama dengan daftar panjar OPEN.
       expect(kodeTemuan(db)).toContain('REKONSILIASI_PANJAR_GL_SELISIH');
@@ -501,7 +501,7 @@ describe('DB-12 — perluasan audit integritas', () => {
         kode: 'REVERSAL_GANDA',
         detail: { reversal_of: 'j-asli', jumlah: 2 },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/satu jurnal hanya boleh punya satu reversal/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/satu jurnal hanya boleh punya satu jurnal balik/i);
     });
   });
 
@@ -535,7 +535,7 @@ describe('DB-12 — perluasan audit integritas', () => {
         kode: 'REVERSAL_ATAS_REVERSAL',
         detail: { reversal_id: 'j-balik-2', reversal_of: 'j-balik-1' },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/reversal atas reversal tidak diizinkan/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/jurnal balik atas jurnal balik tidak diizinkan/i);
     });
   });
 
@@ -560,7 +560,7 @@ describe('DB-12 — perluasan audit integritas', () => {
         kode: 'REVERSAL_GRUP_BERBEDA',
         detail: { reversal_id: 'j-balik', grup_reversal: 'g-lain', grup_asal: 'g-asli' },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/berbeda dari grup jurnal asli/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/grup berbeda dari jurnal aslinya/i);
     });
   });
 
@@ -629,7 +629,7 @@ describe('DB-12 — perluasan audit integritas', () => {
         kode: 'PANJAR_OPEN_PUNYA_CLOSE',
         detail: { id: 'p-open-tanggal-close' },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/tanggal close/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/tanggal penutupan/i);
     });
   });
 
@@ -760,7 +760,7 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
           ],
         },
       });
-      expect(temuan?.pesan).toMatch(/tidak cocok dengan jurnal close/i);
+      expect(temuan?.pesan).toMatch(/tidak cocok dengan jurnal penutup/i);
       expect(temuan?.pesan).toMatch(/5004/);
       // Close hanya mengkredit 1040 sebesar 60.000 dari panjar 100.000,
       // sehingga sisa 40.000 di GL tidak punya pasangan panjar OPEN.
@@ -867,7 +867,7 @@ describe('DB-19 — audit rekonsiliasi panjar item vs jurnal close', () => {
         kode: 'PANJAR_OPEN_PUNYA_ITEM',
         detail: { id: 'p-open-punya-item', status: 'OPEN', jumlah_item: 1 },
       });
-      expect(hasil.temuan[0]?.pesan).toMatch(/status OPEN.*item pertanggungjawaban/i);
+      expect(hasil.temuan[0]?.pesan).toMatch(/berstatus Terbuka.*rincian pertanggungjawaban/i);
     });
   });
 });
@@ -1107,7 +1107,7 @@ describe('DB-21 — audit integritas pembatalan panjar', () => {
         (t) => t.kode === 'PANJAR_BATAL_TIDAK_KONSISTEN' && t.detail,
       )?.detail as { id: string; alasan: string[] } | undefined;
       expect(detail?.id).toBeTruthy();
-      expect(detail?.alasan.join(' ')).toMatch(/status tersimpan|bukan REVERSAL/);
+      expect(detail?.alasan.join(' ')).toMatch(/status panjar tidak sesuai|bukan jurnal koreksi/);
     });
   });
 });
@@ -1664,7 +1664,7 @@ describe('AUD2-04 — rekonsiliasi saldo GL 1040 vs panjar OPEN', () => {
         },
       });
       expect(temuan?.pesan).toMatch(/1040 UANG PANJAR/);
-      expect(temuan?.pesan).toMatch(/panjar OPEN/i);
+      expect(temuan?.pesan).toMatch(/panjar yang masih terbuka/i);
       expect(temuan?.pesan).toMatch(/selisih/i);
       expect(auditIntegritasDb(db).some((p) => p.startsWith('REKONSILIASI_PANJAR_GL_SELISIH: '))).toBe(
         true,
@@ -1824,7 +1824,7 @@ describe('T-A11 — audit panjar opening saldo awal', () => {
           (t.detail as { id?: string })?.id === 'p-pointer-salah',
       );
       expect(temuan).toBeDefined();
-      expect(temuan?.pesan).toMatch(/bukan OPENING\/OPENING_REPLACEMENT/i);
+      expect(temuan?.pesan).toMatch(/bukan jurnal saldo awal yang aktif/i);
       expect((temuan?.detail as { peran?: string })?.peran).toBe('NORMAL');
     });
   });
@@ -1893,7 +1893,7 @@ describe('T-A11 — audit panjar opening saldo awal', () => {
           (t.detail as { id?: string })?.id === 'p-pointer-basi',
       );
       expect(temuan).toBeDefined();
-      expect(temuan?.pesan).toMatch(/bukan pembukaan aktif/i);
+      expect(temuan?.pesan).toMatch(/sudah tidak aktif/i);
       expect(
         (temuan?.detail as { jurnal_open_id?: string })?.jurnal_open_id,
       ).toBe('sa-panjar');
@@ -2218,7 +2218,7 @@ describe('T-A07 — audit konsistensi laporan dan penunjuk pembukaan', () => {
       });
       expect(temuan?.pesan).toContain('2026-08-01');
       expect(temuan?.pesan).toContain(CUTOVER);
-      expect(temuan?.pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+      expect(temuan?.pesan).toMatch(/Koreksi Saldo Awal/);
       // Penunjuk pembukaan masih sah, jadi bukan PEMBUKAAN_AKTIF_HILANG.
       expect(kodeTemuan(db)).not.toContain('PEMBUKAAN_AKTIF_HILANG');
     });
@@ -2244,7 +2244,7 @@ describe('T-A07 — audit konsistensi laporan dan penunjuk pembukaan', () => {
       expect((temuan?.detail as { alasan: string }).alasan).toMatch(
         /sudah tidak ada/i,
       );
-      expect(temuan?.pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+      expect(temuan?.pesan).toMatch(/Koreksi Saldo Awal/);
     });
   });
 
@@ -2281,7 +2281,7 @@ describe('T-A07 — audit konsistensi laporan dan penunjuk pembukaan', () => {
         idPembukaan,
       );
       expect(temuan[0]?.pesan).toMatch(/sebelum cut-over resmi/i);
-      expect(temuan[0]?.pesan).toMatch(/Wizard Koreksi Saldo Awal/);
+      expect(temuan[0]?.pesan).toMatch(/Koreksi Saldo Awal/);
     });
   });
 

@@ -186,7 +186,7 @@ describe('AUD2-08 — trigger jurnal_baris menolak nilai pecahan', () => {
         tipe_kredit: 'integer',
       });
       expect(debit?.pesan).toMatch(/pecahan|bukan bilangan bulat/i);
-      expect(debit?.pesan).toMatch(/integer/i);
+      expect(debit?.pesan).toMatch(/bilangan bulat/i);
     } finally {
       db.close();
     }

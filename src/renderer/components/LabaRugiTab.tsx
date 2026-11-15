@@ -13,7 +13,6 @@ import {
   ALASAN_EKSPOR_KOSONG,
   badgeLabaRugi,
   labelPeriodeHasil,
-  labelPeriodeLaporan,
   rentangTerbalik,
 } from '../lib/tampilanLaporan.js';
 import { Badge, BadgeMemperbarui, Card, ErrorBox } from './ui.js';
@@ -130,7 +129,6 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
   const badge = data ? badgeLabaRugi(data.defisit) : null;
   // UI-A10: teks bantu kontrol memakai input filter; header laporan di bawah
   // memakai DATA HASIL agar selalu cocok dengan angka yang tampil.
-  const periodeFilter = labelPeriodeLaporan(mulai, sampai);
   const periodeHasil = data ? labelPeriodeHasil(data) : '';
   // UI-A10: refresh indicator — data lama masih tampil saat fetch baru berjalan.
   const menyegarkan = memuat && data !== null;
@@ -141,18 +139,15 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
-              Laba Rugi {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Laba Rugi membandingkan pendapatan dan beban pada satu periode.
-              Angka dihitung ulang dari jurnal setiap kali layar dibuka — tidak ada
-              angka laba yang disimpan.
-            </p>
-          </div>
-          <Badge tone="green">Dihitung dari jurnal</Badge>
+        <div>
+          <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+            Ringkasan Laba Rugi{' '}
+            {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-stone-600">
+            Perbandingan pendapatan dan beban pada satu periode, dihitung langsung
+            dari jurnal.
+          </p>
         </div>
 
         {data?.catatanTahunPertama && (
@@ -176,10 +171,7 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
           />
         </div>
         <p className="mt-2 text-helper text-stone-500">
-          Periode aktif: {periodeFilter}. Klik “Semua tanggal” untuk melihat
-          seluruh riwayat, atau kosongkan salah satu tanggal untuk membuka batas
-          awal/akhir. Klik baris akun untuk melihat daftar jurnal pada periode
-          ini, lalu klik jurnal untuk detail debit/kredit.
+          Klik baris akun untuk melihat jurnal pada periode ini.
         </p>
 
         {data && (
@@ -206,8 +198,9 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             {/* UI-A10: header dari data hasil, bukan input filter. */}
             <h3 className="flex items-center gap-2 font-bold">
-              Periode {periodeHasil} <BadgeMemperbarui aktif={menyegarkan} />
+              Periode {periodeHasil}
             </h3>
+            <BadgeMemperbarui aktif={menyegarkan} />
             <span className="text-sm text-stone-600">
               {pendapatan.length + beban.length} akun bernominal
             </span>
@@ -353,8 +346,7 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
             </table>
           </div>
           <p className="mt-2 text-sm text-stone-600">
-            Defisit ditampilkan dalam kurung, mis. {formatRp(-10_000_000)}. Laba bersih
-            juga dapat diperiksa lewat jurnal setiap akun di atas.
+            Defisit ditampilkan dalam kurung, mis. {formatRp(-10_000_000)}.
           </p>
         </Card>
       )}

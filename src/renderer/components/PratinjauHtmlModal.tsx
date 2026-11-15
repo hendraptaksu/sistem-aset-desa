@@ -45,8 +45,7 @@ export function PratinjauHtmlModal({
       deskripsi={
         <>
           Periksa dulu isi dan halaman. Dialog printer baru terbuka setelah
-          tombol <b>Cetak</b> ditekan; halaman ini tidak menjalankan skrip
-          otomatis dari dokumen.
+          tombol <b>Cetak</b> ditekan.
         </>
       }
       onTutup={onClose}

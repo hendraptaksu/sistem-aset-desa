@@ -55,9 +55,6 @@ export function PratinjauCetakModal({
     >
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="green">{infoPratinjauCetak(jumlahHalaman, orientasi)}</Badge>
-        <Badge tone="stone">
-          {orientasi === 'landscape' ? 'A4 Landscape' : 'A4 Portrait'}
-        </Badge>
       </div>
 
       <div className="mt-3 min-h-0 flex-1 overflow-hidden rounded-lg border border-stone-300 bg-stone-100">

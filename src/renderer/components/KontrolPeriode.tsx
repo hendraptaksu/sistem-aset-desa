@@ -189,20 +189,29 @@ function KontrolRentang({
           />
         </Field>
         <div className="flex flex-wrap items-end gap-2">
-          {PRESET_RENTANG.map((p) => (
-            <Button
-              key={p.kunci}
-              variant="ghost"
-              title={p.title}
-              onClick={() => {
-                const nilai = nilaiPresetRentang(p.kunci, sekarang);
-                onMulai(nilai.mulai);
-                onSampai(nilai.sampai);
-              }}
-            >
-              {p.label}
-            </Button>
-          ))}
+          {PRESET_RENTANG.map((p) => {
+            const nilai = nilaiPresetRentang(p.kunci, sekarang);
+            const aktif = mulai === nilai.mulai && sampai === nilai.sampai;
+            return (
+              <Button
+                key={p.kunci}
+                variant="ghost"
+                className={
+                  aktif
+                    ? '!border-emerald-600 !bg-emerald-50 text-emerald-950'
+                    : undefined
+                }
+                aria-pressed={aktif}
+                title={p.title}
+                onClick={() => {
+                  onMulai(nilai.mulai);
+                  onSampai(nilai.sampai);
+                }}
+              >
+                {p.label}
+              </Button>
+            );
+          })}
           {tambahan}
           <TombolTerapkan
             onTerapkan={onTerapkan}
@@ -253,6 +262,12 @@ function KontrolCutoff({
         <div className="flex flex-wrap items-end gap-2">
           <Button
             variant="ghost"
+            className={
+              cutoff === tanggalLokal(sekarang)
+                ? '!border-emerald-600 !bg-emerald-50 text-emerald-950'
+                : undefined
+            }
+            aria-pressed={cutoff === tanggalLokal(sekarang)}
             title="Set tanggal laporan ke hari ini."
             onClick={() => onCutoff(tanggalLokal(sekarang))}
           >

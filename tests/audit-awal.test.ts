@@ -203,8 +203,9 @@ describe('T-A16 — banner audit awal', () => {
     );
     expect(html).toContain('masalah kritis');
     expect(html).toContain('bg-red-50');
-    expect(html).toContain('NERACA_TIDAK_SEIMBANG');
-    expect(html).toContain('Kode kritis: NERACA_TIDAK_SEIMBANG');
+    // Kode internal tidak ditampilkan di banner operator.
+    expect(html).not.toContain('NERACA_TIDAK_SEIMBANG');
+    expect(html).not.toContain('Kode kritis');
     expect(html).toContain('Buka Audit');
     expect(html).toContain('Abaikan');
   });
@@ -221,7 +222,7 @@ describe('T-A16 — banner audit awal', () => {
     expect(html).toContain('Audit integritas menemukan masalah');
     expect(html).not.toContain('masalah kritis');
     expect(html).toContain('bg-amber-50');
-    expect(html).toContain('JURNAL_TANPA_BARIS');
+    expect(html).not.toContain('JURNAL_TANPA_BARIS');
   });
 
   it('tanpa ringkasan tidak merender apa pun', () => {

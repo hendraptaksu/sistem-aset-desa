@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { Button, Card, ErrorBox, Field, PinInput, RING_FOKUS, TextInput } from './ui.js';
+import {
+  ALASAN_SIBUK,
+  Button,
+  Card,
+  ErrorBox,
+  Field,
+  PinInput,
+  RING_FOKUS,
+  TextInput,
+} from './ui.js';
 import { PESAN_PROSES_GAGAL, pesanError } from '../../utils/pesanError.js';
 
 type Mode = 'buka' | 'setup' | 'reset';
@@ -104,7 +113,7 @@ export function LockScreen({
   async function simpanPinBaru() {
     if (kirimRef.current) return;
     if (baru !== konfirmasi) {
-      setErr('Ulangi PIN tidak sama.');
+      setErr('PIN ulangan belum sama dengan PIN baru.');
       return;
     }
     kirimRef.current = true;
@@ -132,9 +141,27 @@ export function LockScreen({
     setKonfirmasi('');
   }
 
+  // UI-A13: alasan tombol nonaktif terlihat di dekat tombol.
+  const petunjukSimpan =
+    mode === 'setup'
+      ? baru.length !== 6
+        ? 'PIN harus 6 digit.'
+        : konfirmasi !== baru
+          ? 'PIN ulangan belum sama.'
+          : null
+      : mode === 'reset'
+        ? !kode.trim()
+          ? 'Isi kode darurat.'
+          : baru.length !== 6
+            ? 'PIN baru harus 6 digit.'
+            : konfirmasi !== baru
+              ? 'PIN ulangan belum sama.'
+              : null
+        : null;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-emerald-950 p-4">
-      <Card className="w-full max-w-sm text-center">
+    <div className="flex min-h-screen items-start justify-center overflow-y-auto bg-emerald-950 p-4 sm:items-center">
+      <Card className="my-auto w-full max-w-sm text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
           <Lock size={24} />
         </div>
@@ -143,7 +170,7 @@ export function LockScreen({
           {mode === 'setup'
             ? 'Buat PIN 6 digit agar hanya pengurus yang bisa membuka.'
             : mode === 'reset'
-              ? 'Reset PIN dengan kode darurat dari dokumen bendahara.'
+              ? 'Reset PIN dengan kode darurat yang Anda catat saat kode dibuat.'
               : 'Masukkan PIN 6 digit.'}
         </p>
         {pesan && (
@@ -174,7 +201,7 @@ export function LockScreen({
                 autoFocus
                 value={kode}
                 onChange={(e) => setKode(e.target.value)}
-                placeholder="cth: PURI-…"
+                placeholder="cth: 7K3M-P9QX-2WRS-4TUV"
                 autoComplete="off"
               />
             </Field>
@@ -190,13 +217,19 @@ export function LockScreen({
                 onComplete={(v) => void bukaDengan(v)}
               />
               {/* UI-A22: perubahan status (membuka/diblokir/siap) diumumkan
-                  pembaca layar; teks "terbuka otomatis" hanya di sini. */}
-              <p role="status" className="mt-2 text-center text-sm text-stone-500">
-                {diblokir
-                  ? `Terlalu banyak salah — coba lagi dalam ${blokirSisa} detik.`
-                  : sibuk
-                    ? 'Membuka…'
-                    : 'Terbuka otomatis saat 6 digit lengkap.'}
+                  pembaca layar; hitungan detik blokir tidak ikut diumumkan
+                  setiap detik. */}
+              <p className="mt-2 text-center text-sm text-stone-500">
+                {diblokir ? (
+                  <>
+                    Terlalu banyak salah — coba lagi dalam{' '}
+                    <span aria-live="off">{blokirSisa}</span> detik.
+                  </>
+                ) : sibuk ? (
+                  <span role="status">Membuka…</span>
+                ) : (
+                  'Terbuka otomatis saat 6 digit lengkap.'
+                )}
               </p>
             </div>
           )}
@@ -223,7 +256,7 @@ export function LockScreen({
                   placeholder="••••••"
                 />
               </Field>
-              <Field label="Ulangi PIN">
+              <Field label="Ulangi PIN baru">
                 <TextInput
                   type="password"
                   inputMode="numeric"
@@ -246,28 +279,44 @@ export function LockScreen({
             </Field>
           )}
           {mode === 'setup' && (
-            <Button
-              className="w-full"
-              disabled={sibuk || baru.length !== 6 || konfirmasi !== baru}
-              onClick={() => void simpanPinBaru()}
-            >
-              {sibuk ? 'Menyimpan…' : 'Simpan PIN'}
-            </Button>
+            <>
+              <Button
+                className="w-full"
+                disabled={sibuk || baru.length !== 6 || konfirmasi !== baru}
+                title={petunjukSimpan ?? (sibuk ? ALASAN_SIBUK : undefined)}
+                onClick={() => void simpanPinBaru()}
+              >
+                {sibuk ? 'Menyimpan…' : 'Simpan PIN'}
+              </Button>
+              {petunjukSimpan && (
+                <p className="text-center text-helper text-stone-500" role="status">
+                  {petunjukSimpan}
+                </p>
+              )}
+            </>
           )}
           {mode === 'reset' && (
-            <Button
-              className="w-full"
-              disabled={sibuk || !kode.trim() || baru.length !== 6 || konfirmasi !== baru}
-              onClick={() => {
-                if (baru !== konfirmasi) {
-                  setErr('Ulangi PIN tidak sama.');
-                  return;
-                }
-                void kirim(() => api.lockReset(kode.trim(), baru));
-              }}
-            >
-              {sibuk ? 'Mereset…' : 'Reset PIN'}
-            </Button>
+            <>
+              <Button
+                className="w-full"
+                disabled={sibuk || !kode.trim() || baru.length !== 6 || konfirmasi !== baru}
+                title={petunjukSimpan ?? (sibuk ? ALASAN_SIBUK : undefined)}
+                onClick={() => {
+                  if (baru !== konfirmasi) {
+                    setErr('PIN ulangan belum sama dengan PIN baru.');
+                    return;
+                  }
+                  void kirim(() => api.lockReset(kode.trim(), baru));
+                }}
+              >
+                {sibuk ? 'Mereset…' : 'Reset PIN'}
+              </Button>
+              {petunjukSimpan && (
+                <p className="text-center text-helper text-stone-500" role="status">
+                  {petunjukSimpan}
+                </p>
+              )}
+            </>
           )}
           <div className="flex justify-center gap-4 pt-1 text-sm">
             {mode === 'buka' && (

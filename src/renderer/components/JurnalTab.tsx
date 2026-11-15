@@ -229,15 +229,13 @@ export function JurnalTab({
     api
       .coa()
       .then((c) => {
-        if (aktif) setCoa(c);
+        if (aktif) {
+          setCoa(c);
+          setCoaTermuat(true);
+        }
       })
       .catch((e) => {
         if (aktif) setErr(pesanError(e, PESAN_MUAT_GAGAL));
-      })
-      .finally(() => {
-        // Termuat = percobaan selesai (berhasil maupun gagal). Saat gagal,
-        // tombol tetap nonaktif dengan alasan pada title.
-        if (aktif) setCoaTermuat(true);
       });
     return () => {
       aktif = false;
@@ -281,6 +279,7 @@ export function JurnalTab({
       })
       .then((r) => {
         if (!aktif) return;
+        setErr(null);
         setDaftar(r.rows);
         setTotal(r.total);
         const halamanMaks = Math.max(0, Math.ceil(r.total / PAGE) - 1);
@@ -342,31 +341,24 @@ export function JurnalTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold">Jurnal Umum</h1>
-            <p className="mt-1 max-w-2xl text-[15px] font-semibold text-stone-800">
-              Jurnal Umum = tampilan debit/kredit untuk pemeriksaan. Operator harian
-              tidak perlu membuka ini.
+            <h1 className="sr-only">Jurnal Umum</h1>
+            <p className="max-w-2xl text-[15px] font-semibold text-stone-800">
+              Semua jurnal tersimpan.
             </p>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Semua transaksi tercatat sebagai jurnal debit–kredit. Koreksi tidak
-              dilakukan dengan mengedit jurnal: gunakan tombol <b>Koreksi</b> (jurnal
-              balik + alasan) atau form terpandu di menu <b>Transaksi</b>. Jurnal asli
-              tetap disimpan untuk pemeriksaan, dan sistem membuat jurnal baliknya.
+              Jurnal tidak bisa diedit. Gunakan <b>Koreksi</b> untuk membuat
+              jurnal balik, atau catat transaksi baru lewat menu <b>Transaksi</b>.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="stone">Jurnal Umum</Badge>
-            <Badge tone="green">Neraca Saldo selalu dihitung dari jurnal</Badge>
             {modeAkuntan && (
               <>
-                <Badge tone="amber">Mode lanjutan</Badge>
                 <Button
                   type="button"
-                  className="px-5 py-3 text-base"
                   disabled={!coaTermuat}
                   title={
                     !coaTermuat
-                      ? 'Menunggu daftar akun (COA) termuat. Bila gagal, buka ulang tab ini.'
+                      ? 'Menunggu daftar akun termuat. Bila gagal, buka ulang tab ini.'
                       : undefined
                   }
                   onClick={() => bukaEditor()}
@@ -459,6 +451,9 @@ export function JurnalTab({
             namaDasar={namaDasarJurnal}
             judul="Jurnal Umum"
             disabled={total === 0 || memuat || rentangTidakValid}
+            alasanNonaktif={
+              total === 0 ? 'Tidak ada jurnal untuk diekspor.' : undefined
+            }
             buatWorkbook={async (kop) =>
               jurnalToWorkbook(await muatSemuaJurnal(), coa, {
                 ...opsiPeriodeJurnal,
@@ -480,13 +475,13 @@ export function JurnalTab({
           <table className="w-full text-left text-[15px]">
             <thead>
               <tr className="border-b text-stone-500">
-                <th className="py-2 pr-3">Tanggal</th>
-                <th className="py-2 pr-3">No. Bukti</th>
-                <th className="py-2 pr-3">Keterangan</th>
-                <th className="py-2 pr-3">Jenis</th>
-                <th className="py-2 pr-3 text-right">Total</th>
-                <th className="py-2 pr-3">Status</th>
-                <th className="py-2 text-right">Aksi</th>
+                <th scope="col" className="py-2 pr-3">Tanggal</th>
+                <th scope="col" className="py-2 pr-3">No. Bukti</th>
+                <th scope="col" className="py-2 pr-3">Keterangan</th>
+                <th scope="col" className="py-2 pr-3">Jenis</th>
+                <th scope="col" className="py-2 pr-3 text-right">Total</th>
+                <th scope="col" className="py-2 pr-3">Status</th>
+                <th scope="col" className="py-2 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -530,7 +525,11 @@ export function JurnalTab({
                         </Button>
                         <Button
                           variant="ghost"
-                          aria-label={`Koreksi jurnal ${nomorBuktiAksesibel}`}
+                          aria-label={`Koreksi jurnal ${nomorBuktiAksesibel}${
+                            !bisaDikoreksi && alasanKoreksi
+                              ? ` — ${alasanKoreksi}`
+                              : ''
+                          }`}
                           disabled={!bisaDikoreksi}
                           title={alasanKoreksi}
                           onClick={() => {
@@ -574,7 +573,7 @@ export function JurnalTab({
           </table>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button variant="ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
             ‹ Sebelumnya
           </Button>
@@ -616,7 +615,6 @@ export function JurnalTab({
           onSelesai={(pesan) => {
             setKoreksi(null);
             setInfo(pesan);
-            setPage(0);
             refresh();
           }}
         />
@@ -630,7 +628,6 @@ export function JurnalTab({
           onSelesai={(pesan) => {
             setEditor(null);
             setInfo(pesan);
-            setPage(0);
             refresh();
           }}
         />
@@ -806,7 +803,7 @@ function KoreksiModal({
         konfirmasiPeringatan: konfirmasi,
       });
       onSelesai(
-        `Jurnal balik untuk ${jurnal.no_bukti || jurnal.id} tersimpan. Jurnal asli tetap ada.`,
+        `Jurnal balik untuk ${jurnal.no_bukti || 'tanpa nomor bukti'} tersimpan. Jurnal asli tetap ada.`,
       );
     } catch (e) {
       if (isPerluKonfirmasi(e) && !konfirmasi) {
@@ -874,8 +871,8 @@ function KoreksiModal({
       deskripsi={
         <span className="text-[15px]">
           Jurnal asli <b>tidak dihapus</b>. Sistem membuat jurnal balik (debit dan
-          kredit ditukar), lalu Anda bisa mengisi ulang data yang benar. Semua
-          koreksi tercatat di riwayat audit.
+          kredit ditukar), lalu Anda bisa mengisi data yang benar. Semua koreksi
+          tercatat di riwayat audit.
         </span>
       }
       onTutup={mintaTutup}
@@ -886,14 +883,17 @@ function KoreksiModal({
           kalimat teknis (koreksi tanggal lebih awal) pindah ke blok bantuan. */}
       <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
         <p>
-          Default tanggal balik = tanggal jurnal asli. Boleh diubah, tidak boleh
-          sebelum tanggal asli.
+          Tanggal balik otomatis memakai tanggal jurnal asli. Boleh diubah, tetapi
+          tidak boleh sebelum tanggal asli.
         </p>
         <ul className="mt-1 list-disc space-y-1 pl-5">
-          <li>Periode terkunci? Alasan wajib minimal {ALASAN_REVERSAL_MIN} karakter.</li>
           <li>
-            Tahun sudah ditutup? Ringkasan terkunci (snapshot) tidak ikut berubah,
-            laporan bisa berbeda dari yang disahkan.
+            Bila periode terkunci, alasan wajib diisi (minimal{' '}
+            {ALASAN_REVERSAL_MIN} karakter).
+          </li>
+          <li>
+            Bila tahun sudah dikunci, Ringkasan terkunci tidak ikut berubah, jadi
+            laporan bisa berbeda dari angka yang disahkan.
           </li>
         </ul>
         <details className="mt-2 text-stone-600">
@@ -901,8 +901,7 @@ function KoreksiModal({
             Koreksi tanggal lebih awal?
           </summary>
           <p className="mt-1">
-            Koreksi yang perlu memindahkan tanggal lebih awal dari jurnal asli
-            hanya bisa lewat Wizard Koreksi Saldo Awal.
+            Tanggal jurnal balik tidak boleh lebih awal dari tanggal jurnal asli.
           </p>
         </details>
       </div>
@@ -963,9 +962,9 @@ function KoreksiModal({
               <table className="w-full text-left text-[15px]">
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-3">Akun</th>
-                    <th className="py-2 pr-3 text-right">Debit</th>
-                    <th className="py-2 text-right">Kredit</th>
+                    <th scope="col" className="py-2 pr-3">Akun</th>
+                    <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+                    <th scope="col" className="py-2 text-right">Kredit</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1064,11 +1063,11 @@ function KoreksiModal({
               <table className="w-full text-left text-[15px]">
                 <thead>
                   <tr className="border-b text-stone-500">
-                    <th className="py-2 pr-2">Akun</th>
-                    <th className="py-2 pr-2">Sisi</th>
-                    <th className="py-2 pr-2 text-right">Nominal (Rp)</th>
-                    <th className="py-2 pr-2">Catatan baris</th>
-                    <th className="py-2" />
+                    <th scope="col" className="py-2 pr-2">Akun</th>
+                    <th scope="col" className="py-2 pr-2">Sisi</th>
+                    <th scope="col" className="py-2 pr-2 text-right">Nominal (Rp)</th>
+                    <th scope="col" className="py-2 pr-2">Catatan baris</th>
+                    <th scope="col" className="py-2" />
                   </tr>
                 </thead>
                 <tbody>

@@ -652,7 +652,7 @@ describe('P1-16 — pratinjau & PDF memakai HTML yang sama', () => {
         buatDokumen: () => neracaSaldoPrintDoc(ns),
       }),
     );
-    expect(html).toContain('Export Excel');
+    expect(html).toContain('Ekspor Excel');
     expect(html).toContain('Simpan PDF');
     expect(html).toContain('Pratinjau Cetak');
     expect(html).not.toContain('>Print<');

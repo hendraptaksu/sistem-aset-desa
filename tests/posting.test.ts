@@ -165,7 +165,7 @@ describe('P0-4 — satu pintu posting jurnal', () => {
         baris: pasangan(),
       });
       expect(tanggalSalah.tersimpan).toBe(false);
-      expect(tanggalSalah.errors.join(' ')).toMatch(/Tanggal tidak valid/);
+      expect(tanggalSalah.errors.join(' ')).toMatch(/Tanggal belum diisi atau tidak valid/);
 
       expect(jumlahJurnal(db)).toBe(0);
       expect(db.prepare('SELECT COUNT(*) AS c FROM jurnal_baris').get()).toEqual({ c: 0 });

@@ -300,7 +300,7 @@ describe('P1-1 — layar Transaksi', () => {
 
     expect(html).toContain('Catat Transaksi Harian');
     expect(html).toContain('Terima Uang');
-    expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
+    expect(html).toContain('Pratinjau Jurnal');
     expect(html).not.toContain('Segera hadir');
     expect(html).not.toContain('Jenis lain menyusul');
     expect(html).toContain('Buka Buku Panjar');
@@ -535,7 +535,7 @@ describe('P1-2 — layar Transaksi: kartu Bayar & form Bayar', () => {
     expect(html).toContain('Untuk pembayaran');
     expect(html).toContain('Nominal');
     expect(html).toContain('Keterangan');
-    expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
+    expect(html).toContain('Pratinjau Jurnal');
     expect(html).toContain('5010 — BAGA SUAR (TELPON, LISTRIK, PDAM)');
     expect(html).not.toContain('Anggaran');
     expect(html).not.toContain('menyusul');
@@ -817,13 +817,12 @@ describe('P1-3 — layar Transaksi: kartu & form Pindah Dana', () => {
     expect(html).toContain('Pindah Dana');
     expect(html).toContain('antar dompet kas/bank');
     expect(html).toContain('Total kas tidak berubah');
-    expect(html).toContain('Total kas tetap');
     expect(html).toContain('>Dari<');
     expect(html).toContain('>Ke<');
     expect(html).toContain('Nominal');
     expect(html).toContain('Keterangan');
     expect(html).toContain('No. bukti (opsional)');
-    expect(html).toContain('Pratinjau Jurnal (untuk diperiksa)');
+    expect(html).toContain('Pratinjau Jurnal');
     expect(html).toContain('Simpan Pindah Dana');
     // Pilihan awal: dua dompet berbeda, bukan akun non-kas.
     expect(html).toContain('1001 — KAS');
@@ -1004,7 +1003,7 @@ describe('DB-15 — akun nonaktif tidak muncul di form input baru', () => {
       join(process.cwd(), 'src/renderer/components/AkunTab.tsx'),
       'utf8',
     );
-    expect(sumber).toContain('3000/1040/1050/2050/2060/5063/5050');
+    expect(sumber).toMatch(/akun\s+sistem inti tidak bisa dinonaktifkan/);
   });
 });
 
@@ -1076,7 +1075,8 @@ describe('T3.8 — poles UX aksi berisiko', () => {
     // UI-A18: peringatan tak-terenkripsi cukup sekali di kartu
     // (PeringatanBackupTidakTerenkripsi), modal tidak mengulangnya.
     expect(lengkap).not.toContain('tidak terenkripsi');
-    expect(lengkap).toContain('manifest.json');
+    expect(lengkap).toContain('seluruh data aplikasi');
+    expect(lengkap).not.toContain('manifest.json');
 
     const db = renderToStaticMarkup(
       createElement(KonfirmasiBackup, {
@@ -1085,7 +1085,7 @@ describe('T3.8 — poles UX aksi berisiko', () => {
         onKonfirmasi: () => {},
       }),
     );
-    expect(db).toContain('Buat backup file .db?');
+    expect(db).toContain('Buat backup file data?');
     expect(db).toContain('tanpa');
     expect(db).toContain('Yang berubah:');
     expect(db).toContain('Yang tetap:');
@@ -1099,11 +1099,12 @@ describe('T3.8 — poles UX aksi berisiko', () => {
       }),
     );
     expect(db).toContain('diganti');
-    expect(db).toContain('manifest.json');
+    expect(db).toContain('keterangan backup');
     expect(db).toContain('PIN aplikasi dipertahankan');
-    expect(db).toContain('pre-restore');
+    expect(db).toContain('dicadangkan otomatis');
     expect(db).toMatch(/Bila hasil pemulihan tidak sesuai/);
     expect(db).toContain('dikunci');
+    expect(db).not.toContain('manifest.json');
 
     const lengkap = renderToStaticMarkup(
       createElement(KonfirmasiRestoreLengkap, {
@@ -1113,9 +1114,10 @@ describe('T3.8 — poles UX aksi berisiko', () => {
     );
     expect(lengkap).toContain('disarankan');
     expect(lengkap).toContain('Yang tetap:');
-    expect(lengkap).toContain('pre-restore');
-    expect(lengkap).toContain('manifest.json');
+    expect(lengkap).toContain('dicadangkan otomatis');
+    expect(lengkap).toContain('keterangan backup');
     expect(lengkap).toContain('dikunci');
+    expect(lengkap).not.toContain('manifest.json');
   });
 
   it('konfirmasi simpan saldo awal menjelaskan kunci wizard dan jalur koreksi', () => {

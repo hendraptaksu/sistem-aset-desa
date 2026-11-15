@@ -7,7 +7,7 @@ import { api } from '../lib/api.js';
  * (P1-11). Saran hanya petunjuk: nomor final tetap diberikan atomik oleh
  * `postingJurnal` bila operator mengosongkan kolom.
  */
-export function useSaranNomorBukti(tanggal: string): string | null {
+export function useSaranNomorBukti(tanggal: string, versi = 0): string | null {
   const [nomor, setNomor] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function useSaranNomorBukti(tanggal: string): string | null {
       aktif = false;
       clearTimeout(timer);
     };
-  }, [tanggal]);
+  }, [tanggal, versi]);
 
   return nomor;
 }
@@ -42,17 +42,19 @@ export function useSaranNomorBukti(tanggal: string): string | null {
 /** Keterangan saran nomor yang dipakai semua form jurnal. */
 export function SaranNomorBukti({
   tanggal,
+  versi = 0,
   className = 'mt-1 text-helper text-stone-500',
 }: {
   tanggal: string;
+  /** Naikkan setelah simpan sukses agar nomor yang baru terpakai tidak disarankan lagi. */
+  versi?: number;
   className?: string;
 }) {
-  const nomor = useSaranNomorBukti(tanggal);
+  const nomor = useSaranNomorBukti(tanggal, versi);
   return (
     <p className={className}>
-      Pratinjau nomor bukti: <b>{nomor ?? 'otomatis saat disimpan'}</b>. Nomor
-      boleh diedit; bila dikosongkan sistem memakai nomor berikutnya dan nomor
-      wajib unik.
+      Saran nomor bukti: <b>{nomor ?? 'otomatis saat disimpan'}</b> (boleh
+      diubah).
     </p>
   );
 }

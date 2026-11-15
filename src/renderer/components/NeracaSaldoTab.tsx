@@ -49,6 +49,8 @@ export function NeracaSaldoTab({
   useEffect(() => {
     if (!cutoff) {
       setData(null);
+      setMemuat(false);
+      setErr(null);
       return;
     }
     let aktif = true;
@@ -109,15 +111,10 @@ export function NeracaSaldoTab({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold">Neraca Saldo</h1>
+            <h1 className="sr-only">Neraca Saldo</h1>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Neraca Saldo adalah daftar saldo semua akun pada satu tanggal. Total debit
-              harus sama dengan total kredit. Kalau berbeda, berarti ada jurnal yang tidak
-              seimbang dan perlu diperiksa di Jurnal Umum.
-            </p>
-            <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Pilih <b>Tahun berjalan</b> untuk trial balance tahun buku saja, atau{' '}
-              <b>Kumulatif sejak awal</b> untuk seluruh riwayat.
+              Daftar saldo semua akun pada satu tanggal. Total debit harus sama
+              dengan total kredit; bila berbeda, periksa Jurnal Umum.
             </p>
           </div>
           {data && (
@@ -165,11 +162,11 @@ export function NeracaSaldoTab({
         </div>
         <p className="mt-2 text-helper text-stone-500">
           {mode === 'tahun'
-            ? 'Pendapatan dan beban hanya dihitung dari 1 Januari pada tahun tanggal laporan. Laba tahun sebelumnya diringkas pada baris “Laba ditahan sebelum periode”.'
-            : 'Semua saldo sejak awal dihitung kumulatif; laba tahun lalu tetap tampil sebagai pendapatan/beban pada trial balance ini.'}
+            ? 'Pendapatan dan beban hanya dihitung sejak 1 Januari tahun laporan. Laba tahun sebelumnya diringkas pada baris “Laba ditahan sebelum periode”.'
+            : 'Semua saldo sejak awal dihitung kumulatif; laba tahun lalu tetap tampil sebagai pendapatan/beban di sini.'}
         </p>
         <p className="mt-2 text-helper text-stone-500">
-          Klik baris akun untuk membuka Buku Besar akun tersebut dan menelusuri jurnal asalnya.
+          Klik baris akun untuk membuka Buku Besar akun tersebut.
         </p>
         {data && (
           <div className="mt-3">
@@ -238,7 +235,7 @@ export function NeracaSaldoTab({
                       tabIndex={sintetis ? undefined : 0}
                       title={
                         sintetis
-                          ? 'Laba bersih sebelum periode; bukan akun COA'
+                          ? 'Laba bersih sebelum periode; bukan akun pada Daftar Akun'
                           : `Buka Buku Besar ${r.kode} — ${r.nama}`
                       }
                       // UI-A21: baris akun diumumkan sebagai tombol dengan
@@ -300,7 +297,7 @@ export function NeracaSaldoTab({
                 {data.rows.length === 0 && (
                   <tr>
                     <td colSpan={7} className="py-4 text-center text-stone-500">
-                      Belum ada akun pada daftar akun (COA).
+                      Belum ada akun pada Daftar Akun.
                     </td>
                   </tr>
                 )}
@@ -331,8 +328,8 @@ export function NeracaSaldoTab({
           {adaLabaDitahan && data.mode === 'tahun' && (
             <p className="mt-2 text-helper text-stone-500">
               “Laba ditahan sebelum periode” adalah laba bersih sebelum{' '}
-              {formatTanggal(data.mulai)}. Baris ini sintetis (bukan akun COA) dan
-              hanya muncul pada mode tahun berjalan.
+              {formatTanggal(data.mulai)}. Baris ini bukan akun pada Daftar Akun
+              dan hanya muncul pada mode tahun berjalan.
             </p>
           )}
         </Card>

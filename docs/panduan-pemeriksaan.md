@@ -37,7 +37,7 @@ transaksi aslinya.
 ## 2. Jurnal Umum
 
 > **Membuka Jurnal Umum.** Menu ini sengaja tersembunyi dari operator
-> harian. Buka **Pengaturan → Mode lanjutan**, tekan **Aktifkan Mode lanjutan**,
+> harian. Buka **Pengaturan → Mode lanjutan**, tekan **Aktifkan mode lanjutan**,
 > dan setujui konfirmasi yang menjelaskan tampilan debit/kredit mentah untuk
 > pemeriksaan. Menu Jurnal Umum lalu muncul di grup **Data & Sistem**. Matikan
 > kembali mode ini setelah pemeriksaan selesai; bila tab Jurnal Umum sedang
@@ -281,7 +281,7 @@ Riwayat Audit. Alasan koreksi jurnal juga wajib minimal 5 karakter.
 2. Buka **Kunci Periode**.
 3. Hanya tahun yang sudah selesai boleh dikunci (mis. pada 2026 maksimal 2025).
    Tahun berjalan ditolak.
-4. Tekan **Preview laba**, periksa laba dan laba ditahan.
+4. Tekan **Pratinjau laba**, periksa laba dan laba ditahan.
 5. **Backup otomatis & lanjut** akan membuat backup `.db` sebelum kunci.
 6. Isi catatan pemeriksaan (opsional), lalu konfirmasi.
 

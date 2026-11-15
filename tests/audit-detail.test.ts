@@ -243,7 +243,7 @@ describe('T12 formatAksiAudit', () => {
     expect(formatAksiAudit('BACKUP-AUTO')).toBe('Backup otomatis');
     expect(formatAksiAudit('BACKUP-EXPORT')).toBe('Backup manual');
     expect(formatAksiAudit('RESTORE')).toBe('Pulihkan database');
-    expect(formatAksiAudit('PENGATURAN-IDLE')).toBe('Ubah auto-kunci');
+    expect(formatAksiAudit('PENGATURAN-IDLE')).toBe('Ubah kunci otomatis');
   });
 
   it('DB-32 — label audit lama ASET-* tetap tampil walau modul dihapus', () => {
@@ -348,7 +348,7 @@ describe('T11b komponen AuditDetail human-readable', () => {
     });
     const html = renderToStaticMarkup(createElement(AuditDetail, { json }));
     expect(html).toContain('Panitia Piodalan');
-    expect(html).toContain('Ditutup');
+    expect(html).toContain('Selesai');
     expect(html).toContain('1001');
     expect(html).toContain('5004');
     expect(html).toContain('BAGA UPAKARA');

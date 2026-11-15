@@ -89,7 +89,7 @@ export function Badge({
     amber: 'bg-amber-100 text-amber-800',
     red: 'bg-red-100 text-red-800',
   };
-  return <span className={clsx('rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;
+  return <span className={clsx('whitespace-nowrap rounded-full px-2.5 py-0.5 text-sm font-semibold', tones[tone])}>{children}</span>;
 }
 
 /**
@@ -99,7 +99,11 @@ export function Badge({
  */
 export function BadgeMemperbarui({ aktif }: { aktif: boolean }) {
   if (!aktif) return null;
-  return <Badge tone="amber">Memperbarui…</Badge>;
+  return (
+    <span role="status" aria-live="polite">
+      <Badge tone="amber">Memperbarui…</Badge>
+    </span>
+  );
 }
 
 /**
@@ -230,7 +234,7 @@ export function PinInput({
   }
 
   return (
-    <div key={invalidKey} className={clsx('flex justify-center gap-2', invalid && 'animate-pin-shake')}>
+    <div role="group" aria-label="PIN" key={invalidKey} className={clsx('flex justify-center gap-2', invalid && 'animate-pin-shake')}>
       {digits.map((d, i) => (
         <input
           // eslint-disable-next-line no-return-assign
@@ -666,13 +670,13 @@ export function Modal({
         tabIndex={-1}
         data-modal="true"
         className={clsx(
-          'max-h-[92vh] w-full overflow-y-auto rounded-xl bg-white p-5 shadow-xl outline-none',
+          'flex max-h-[92vh] w-full flex-col overflow-hidden rounded-xl bg-white p-5 shadow-xl outline-none',
           maxWidth ? undefined : LEBAR_MODAL[lebar],
           className,
         )}
         style={maxWidth ? { maxWidth } : undefined}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex shrink-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id={idJudul} className="break-words text-lg font-bold">
               {judul}
@@ -694,7 +698,7 @@ export function Modal({
             <span aria-hidden="true">×</span>
           </button>
         </div>
-        <div className={clsx('mt-3', isiClassName)}>
+        <div className={clsx('mt-3 min-h-0 flex-1 overflow-y-auto', isiClassName)}>
           <KedalamanModal.Provider value={kedalaman + 1}>{children}</KedalamanModal.Provider>
         </div>
       </div>
@@ -725,13 +729,13 @@ export function LockModal({
 
   return (
     <Modal
-      judul="Periode sudah ditutup"
-      deskripsi="Tanggal ini masuk tahun yang sudah dikunci lewat Kunci Periode. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
+      judul="Periode sudah terkunci"
+      deskripsi="Tanggal ini masuk tahun yang sudah dikunci lewat Kunci Periode. Anda tetap boleh menyimpan, tetapi wajib mengisi alasan. Alasan ini tercatat otomatis."
       onTutup={onCancel}
       sibuk={sibuk}
       lebar="md"
     >
-      <Field label="Alasan (min. 5 karakter)">
+      <Field label="Alasan">
         <TextInput
           autoFocus
           value={alasan}
@@ -741,7 +745,7 @@ export function LockModal({
         />
       </Field>
       {!cukup && (
-        <p className="mt-1 text-helper text-stone-500">Alasan minimal 5 karakter.</p>
+        <p className="mt-1 text-helper text-stone-500">Minimal 5 karakter.</p>
       )}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
@@ -792,8 +796,8 @@ export function PeringatanModal({
         <div className="space-y-2 text-[15px] text-stone-700">
           <p>{pesan}</p>
           <p>
-            Anda boleh tetap menyimpan, tetapi wajib menuliskan alasan minimal{' '}
-            {MIN_ALASAN_PERINGATAN} karakter. Alasan ini tercatat di audit.
+            Anda boleh tetap menyimpan, tetapi wajib menuliskan alasan. Alasan
+            ini tercatat di audit.
           </p>
         </div>
       }
@@ -801,9 +805,7 @@ export function PeringatanModal({
       sibuk={sibuk}
       lebar="md"
     >
-      <Field
-        label={`Alasan tetap menyimpan (min. ${MIN_ALASAN_PERINGATAN} karakter)`}
-      >
+      <Field label="Alasan tetap menyimpan">
         <TextInput
           autoFocus
           value={alasan}
@@ -824,8 +826,8 @@ export function PeringatanModal({
       )}
       {!cukup && (
         <p className="mt-1 text-helper text-stone-500">
-          Alasan minimal {MIN_ALASAN_PERINGATAN} karakter setelah spasi di awal
-          dan akhir diabaikan.
+          Minimal {MIN_ALASAN_PERINGATAN} karakter (spasi di awal dan akhir tidak
+          dihitung).
         </p>
       )}
       <div className="mt-4 flex flex-wrap justify-end gap-2">

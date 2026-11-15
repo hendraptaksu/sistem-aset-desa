@@ -304,7 +304,7 @@ declare global {
 
 async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   if (!window.api?.invoke) {
-    throw new Error('IPC preload belum termuat (window.api kosong) — restart aplikasi via npm run dev.');
+    throw new Error('Aplikasi belum siap. Tutup lalu buka kembali aplikasi.');
   }
   const res = (await window.api.invoke(channel, ...args)) as Res<T>;
   if (!res.ok) {
@@ -346,8 +346,10 @@ export const api = {
    * DB-28: kontrak publik tanpa `awalTahunBuku` (selalu Januari di server).
    */
   pengaturanGet: () => call<PengaturanPembukuanPublik>('pengaturan:get'),
-  pengaturanSimpan: (input: PengaturanPembukuanPublik) =>
-    call<PengaturanPembukuanPublik>('pengaturan:simpan', input),
+  pengaturanSimpan: (
+    input: PengaturanPembukuanPublik,
+    opsi: { konfirmasiKosongkanTanggalMulai?: boolean } = {},
+  ) => call<PengaturanPembukuanPublik>('pengaturan:simpan', input, opsi),
   /** Lokasi data & backup aktual (P2-8); dipakai kartu Pengaturan. */
   infoLokasi: () => call<LokasiData>('app:info-lokasi'),
   /** Buka salah satu folder tetap di file manager; bukan path dari renderer. */

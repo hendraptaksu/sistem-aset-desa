@@ -296,14 +296,16 @@ describe('DB-37 — modul Lampiran dihapus dari UI/API/IPC', () => {
     expect(VALIDATION).not.toContain('validasiIdLampiran');
   });
 
-  it('backup/restore UI hanya menyebut database + manifest', () => {
+  it('backup/restore UI memakai istilah operator, bukan nama file internal', () => {
     for (const layar of [DASHBOARD, PENGATURAN]) {
       expect(layar).not.toMatch(/lampiran/i);
       expect(layar).not.toContain('attachments');
+      expect(layar).not.toContain('manifest.json');
+      expect(layar).not.toContain('pura.db');
     }
     expect(DASHBOARD).toContain('Backup Lengkap');
     expect(DASHBOARD).toContain('Pulihkan Lengkap');
-    expect(DASHBOARD).toContain('manifest.json');
+    expect(DASHBOARD).toContain('seluruh data');
   });
 
   it('modul, test, dan dokumen lampiran sudah dihapus', () => {

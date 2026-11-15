@@ -40,9 +40,9 @@ function TabelJurnal({ jurnal }: { jurnal: AuditJurnalView }) {
       <table className="w-full text-left text-helper">
         <thead className="sticky top-0 bg-stone-50 text-stone-600">
           <tr>
-            <th className="py-1.5 pr-3 pl-2">Akun</th>
-            <th className="py-1.5 pr-3 text-right">Debit</th>
-            <th className="py-1.5 pr-2 text-right">Kredit</th>
+            <th scope="col" className="py-1.5 pr-3 pl-2">Akun</th>
+            <th scope="col" className="py-1.5 pr-3 text-right">Debit</th>
+            <th scope="col" className="py-1.5 pr-2 text-right">Kredit</th>
           </tr>
         </thead>
         <tbody>
@@ -98,8 +98,8 @@ function TabelItemPanjar({ items }: { items: AuditItemPanjar[] }) {
       <table className="w-full text-left text-helper">
         <thead className="sticky top-0 bg-stone-50 text-stone-600">
           <tr>
-            <th className="py-1.5 pr-3 pl-2">Akun realisasi</th>
-            <th className="py-1.5 pr-2 text-right">Nominal</th>
+            <th scope="col" className="py-1.5 pr-3 pl-2">Akun realisasi</th>
+            <th scope="col" className="py-1.5 pr-2 text-right">Nominal</th>
           </tr>
         </thead>
         <tbody>
@@ -119,7 +119,7 @@ function TabelItemPanjar({ items }: { items: AuditItemPanjar[] }) {
 
 const STATUS_PANJAR: Record<string, string> = {
   OPEN: 'Terbuka',
-  CLOSED: 'Ditutup',
+  CLOSED: 'Selesai',
   DIBATALKAN: 'Dibatalkan',
 };
 
@@ -133,7 +133,7 @@ function DetailPanjar({
       <Baris label="Tanggal" value={formatTanggal(detail.tanggal) || '-'} />
       {detail.tanggal_close && (
         <Baris
-          label="Tanggal ditutup"
+          label="Tanggal selesai"
           value={formatTanggal(detail.tanggal_close)}
         />
       )}

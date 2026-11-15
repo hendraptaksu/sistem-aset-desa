@@ -192,7 +192,7 @@ describe('AUD2-14 — integrasi form Bayar Utang', () => {
     expect(html).toContain('data-testid="sisa-utang-usaha"');
     expect(html).toContain('Memuat sisa Utang Usaha (2060)…');
     expect(html.indexOf('data-testid="sisa-utang-usaha"')).toBeLessThan(
-      html.indexOf('Pratinjau Jurnal (untuk diperiksa)'),
+      html.indexOf('Pratinjau Jurnal'),
     );
   });
 

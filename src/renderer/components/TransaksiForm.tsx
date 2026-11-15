@@ -212,10 +212,10 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     mode: 'BEBAN_UTANG',
     judul: 'Catat Utang Usaha',
     deskripsi:
-      'Catat pembelian atau perbaikan yang dibayar belakangan. Beban langsung masuk Laba Rugi dan Utang Usaha (2060) bertambah; uang kas belum keluar.',
+      'Catat pembelian atau perbaikan yang dibayar belakangan. Beban masuk Laba Rugi dan Utang Usaha (2060) bertambah. Kas belum keluar.',
     placeholderKeterangan: 'cth: Perbaikan gedung — utang ke Toko Bangunan Jaya',
     keteranganPratinjau: 'Pembelian/perbaikan kredit',
-    labelTombol: 'Simpan Catat Utang Usaha',
+    labelTombol: 'Simpan Utang Usaha',
     labelBeban: 'Akun beban (untuk Laba Rugi)',
     hintBeban:
       'Pilih akun beban, mis. 5003 BAGA WEWANGUNAN. Tulis nama kreditur di Keterangan.',
@@ -224,10 +224,10 @@ const KONFIG: Record<JenisFormTransaksi, KonfigurasiForm> = {
     mode: 'BAYAR_UTANG',
     judul: 'Bayar Utang Usaha',
     deskripsi:
-      'Catat pembayaran utang usaha (2060). Kas/bank berkurang dan masuk kelompok Operasi di Arus Kas, bukan Pendanaan.',
+      'Catat pembayaran utang usaha (2060). Kas/bank berkurang; pembayaran masuk kelompok Operasi di Arus Kas.',
     placeholderKeterangan: 'cth: Bayar utang bahan ke Toko Bangunan Jaya',
     keteranganPratinjau: 'Pembayaran utang usaha',
-    labelTombol: 'Simpan Bayar Utang Usaha',
+    labelTombol: 'Simpan Pembayaran Utang',
     labelKas: 'Uang keluar dari',
     hintKas: 'Pilih kas/bank sumber. Tulis nama kreditur di Keterangan.',
   },
@@ -287,21 +287,20 @@ export function SisaUtangUsahaInfo({
   return (
     <div
       data-testid="sisa-utang-usaha"
-      role="status"
       className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[15px] text-amber-900"
     >
-      {status.status === 'memuat' ? (
-        <p>Memuat sisa Utang Usaha (2060)…</p>
-      ) : status.status === 'gagal' ? (
-        <p>
-          Sisa Utang Usaha (2060) gagal dimuat. {status.pesan} Form tetap bisa
-          diisi manual.
-        </p>
-      ) : status.status === 'idle' ? (
-        <p>Isi tanggal yang valid untuk melihat sisa Utang Usaha (2060).</p>
-      ) : (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {status.status === 'memuat' ? (
+          <p>Memuat sisa Utang Usaha (2060)…</p>
+        ) : status.status === 'gagal' ? (
+          <p>
+            Sisa Utang Usaha (2060) gagal dimuat. {status.pesan} Form tetap bisa
+            diisi manual.
+          </p>
+        ) : status.status === 'idle' ? (
+          <p>Isi tanggal yang valid untuk melihat sisa Utang Usaha (2060).</p>
+        ) : (
+          <>
             <p className="font-semibold">
               {`Sisa Utang Usaha (2060) saat ini: ${formatRp(status.saldoAkhir)}`}
             </p>
@@ -309,19 +308,21 @@ export function SisaUtangUsahaInfo({
               <p className="mt-1 text-sm">
                 {status.saldoAkhir === 0
                   ? 'Tidak ada sisa utang usaha (2060) per tanggal ini.'
-                  : 'Saldo (2060) tidak menunjukkan utang yang perlu dibayar.'}
+                  : 'Saldo tidak menunjukkan utang yang perlu dibayar.'}
               </p>
             )}
-          </div>
-          {status.saldoAkhir > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onIsi(status.saldoAkhir)}
-            >
-              Isi sesuai sisa utang
-            </Button>
-          )}
+          </>
+        )}
+      </div>
+      {status.status === 'sukses' && status.saldoAkhir > 0 && (
+        <div className="mt-2 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onIsi(status.saldoAkhir)}
+          >
+            Isi sesuai sisa utang
+          </Button>
         </div>
       )}
     </div>
@@ -365,6 +366,8 @@ export function FormTransaksiTerpandu({
   const [nominal, setNominal] = useState(0);
   const [keterangan, setKeterangan] = useState('');
   const [noBukti, setNoBukti] = useState('');
+  const [versiSaran, setVersiSaran] = useState(0);
+  const [versiSisaUtang, setVersiSisaUtang] = useState(0);
   const [sisaUtang, setSisaUtang] = useState<StatusSisaUtang>({
     status: 'memuat',
   });
@@ -446,7 +449,7 @@ export function FormTransaksiTerpandu({
       aktif = false;
       pemuat.batalkan();
     };
-  }, [bayarUtang, tanggal]);
+  }, [bayarUtang, tanggal, versiSisaUtang]);
 
   // COA dimuat async oleh TransaksiTab. Isi pilihan awal saat datanya tiba,
   // tanpa menimpa pilihan yang sudah dibuat operator.
@@ -609,21 +612,37 @@ export function FormTransaksiTerpandu({
         : Boolean(akunKas && akunLawan);
   const formSah =
     tanggalKalenderValid(tanggal) &&
+    tanggal <= tanggalLokal() &&
     akunLengkap &&
     Number.isInteger(nominal) &&
     nominal > 0 &&
     Boolean(keterangan.trim());
+  const tanggalMasaDepan =
+    tanggalKalenderValid(tanggal) && tanggal > tanggalLokal();
 
-  // UI-A13: tombol Simpan tidak boleh mati tanpa penjelasan. Susun alasan sesuai
-  // kondisi; Pindah Dana dengan kurang dari dua kas/bank aktif punya alasan
-  // sendiri karena operator tidak bisa memilih akun tujuan yang berbeda.
+  // UI-A13: tombol Simpan tidak boleh mati tanpa penjelasan. Sebut hanya isian
+  // yang benar-benar belum lengkap agar pesan tidak menyuruh mengisi ulang
+  // kolom yang sudah terisi. Pindah Dana dengan kurang dari dua kas/bank aktif
+  // punya alasan sendiri karena operator tidak bisa memilih akun tujuan lain.
+  const isianKurang = [
+    !tanggalKalenderValid(tanggal) ? 'tanggal' : null,
+    !akunLengkap ? 'akun' : null,
+    !(Number.isInteger(nominal) && nominal > 0) ? 'nominal' : null,
+    !keterangan.trim() ? 'keterangan' : null,
+  ].filter((v): v is string => v !== null);
   const alasanSimpanNonaktif = memuat
     ? 'Memuat daftar akun…'
-    : !formSah
-      ? pindah && kasList.length < 2
-        ? 'Pindah dana butuh dua akun kas/bank aktif yang berbeda; tambah akunnya dulu di Daftar Akun.'
-        : 'Isi dulu: tanggal, akun, nominal, dan keterangan.'
-      : null;
+    : tanggalMasaDepan
+      ? 'Tanggal transaksi tidak boleh melewati hari ini.'
+      : !formSah
+        ? pindah && kasList.length < 2
+          ? 'Pindah dana butuh dua akun kas/bank aktif yang berbeda; tambah akunnya dulu di Daftar Akun.'
+          : `Isi dulu: ${
+              isianKurang.length > 2
+                ? `${isianKurang.slice(0, -1).join(', ')}, dan ${isianKurang[isianKurang.length - 1]}`
+                : isianKurang.join(' dan ')
+            }.`
+        : null;
 
   const labelBaris = (i: number): string => {
     if (konfigurasi.mode === 'PINDAH') {
@@ -762,7 +781,7 @@ export function FormTransaksiTerpandu({
       saldoAwalPendingRef.current = {};
       const nomorTersimpan = hasil.jurnal.no_bukti;
       setInfo(
-        `${pindah ? 'Pindah Dana' : 'Transaksi'} ${formatTanggal(tanggal)} tersimpan${nomorTersimpan ? ` (${nomorTersimpan})` : ''} — ${formatRp(nominalTersimpan)}. Jurnal otomatis sudah dibuat.`,
+        `${pindah ? 'Pindah Dana' : 'Transaksi'} tersimpan — ${nomorTersimpan ?? 'tanpa nomor'}, ${formatTanggal(tanggal)}, ${formatRp(nominalTersimpan)}.`,
       );
       // UI-A11: toast menyebut nomor bukti agar operator bisa mencocokkan
       // dengan dokumen fisik tanpa membuka detail jurnal.
@@ -776,6 +795,8 @@ export function FormTransaksiTerpandu({
       setNominal(0);
       setKeterangan('');
       setNoBukti('');
+      setVersiSaran((v) => v + 1);
+      setVersiSisaUtang((v) => v + 1);
       // UI-07: simpan sukses = tidak ada isian yang perlu diperingatkan.
       setDirty(false);
       onTersimpan?.();
@@ -836,11 +857,6 @@ export function FormTransaksiTerpandu({
             {konfigurasi.deskripsi}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="green">Jurnal otomatis seimbang</Badge>
-          {pindah && <Badge tone="amber">Total kas tetap</Badge>}
-          {bebanUtang && <Badge tone="amber">Kas belum keluar</Badge>}
-        </div>
       </div>
 
       <div
@@ -873,6 +889,7 @@ export function FormTransaksiTerpandu({
           <TextInput
             type="date"
             value={tanggal}
+            max={tanggalLokal()}
             disabled={busy}
             onChange={(e) => {
               setTanggal(e.target.value);
@@ -1058,45 +1075,28 @@ export function FormTransaksiTerpandu({
             <TextInput
               value={noBukti}
               disabled={busy}
-              placeholder="cth: JU-2026-0001 — boleh dikosongkan"
+              placeholder="cth: JU-2026-0001"
               onChange={(e) => {
                 setNoBukti(e.target.value);
                 setDirty(true);
               }}
             />
           </Field>
-          <SaranNomorBukti tanggal={tanggal} />
+          <SaranNomorBukti tanggal={tanggal} versi={versiSaran} />
         </div>
       </div>
 
       <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-bold">Pratinjau Jurnal (untuk diperiksa)</h3>
+          <h3 className="font-bold">Pratinjau Jurnal</h3>
           {pratinjau.input && totalDebit === totalKredit && totalDebit > 0 && (
             <Badge tone="green">Seimbang</Badge>
           )}
         </div>
         <p className="mt-1 text-sm text-stone-600">
-          Baris di bawah ini yang akan disimpan. Operator tidak perlu mengubahnya;
-          akuntan pendamping bisa memeriksa debit dan kredit di sini.
+          Baris di bawah ini yang akan disimpan. Pastikan debit dan kredit
+          sudah benar.
         </p>
-        {pindah && (
-          <p className="mt-1 text-sm text-stone-600">
-            Debit = dompet tujuan, kredit = dompet asal. Total kas tidak berubah.
-          </p>
-        )}
-        {bebanUtang && (
-          <p className="mt-1 text-sm text-stone-600">
-            Debit = akun beban, kredit = Utang Usaha (2060). Kas belum keluar dan
-            modal (3000) tidak berubah.
-          </p>
-        )}
-        {bayarUtang && (
-          <p className="mt-1 text-sm text-stone-600">
-            Debit = Utang Usaha (2060), kredit = kas/bank. Pembayaran ini masuk
-            Arus Kas Operasi.
-          </p>
-        )}
 
         {pratinjau.error ? (
           <p className="mt-2 text-sm text-red-700">{pratinjau.error}</p>
@@ -1105,9 +1105,9 @@ export function FormTransaksiTerpandu({
             <table className="w-full text-left text-[15px]">
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-3">Akun (posisi)</th>
-                  <th className="py-2 pr-3 text-right">Debit</th>
-                  <th className="py-2 text-right">Kredit</th>
+                  <th scope="col" className="py-2 pr-3">Akun (posisi)</th>
+                  <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+                  <th scope="col" className="py-2 text-right">Kredit</th>
                 </tr>
               </thead>
               <tbody>
@@ -1134,7 +1134,7 @@ export function FormTransaksiTerpandu({
           </div>
         ) : (
           <p className="mt-2 text-sm text-stone-500">
-            Pratinjau muncul setelah tanggal, akun, dan nominal diisi.
+            Lengkapi isian di atas untuk melihat pratinjau.
           </p>
         )}
       </div>
@@ -1172,9 +1172,6 @@ export function FormTransaksiTerpandu({
             {alasanSimpanNonaktif}
           </span>
         )}
-        <span className="text-sm text-stone-500">
-          Setelah tersimpan, transaksi langsung masuk ke laporan dari jurnal.
-        </span>
       </div>
 
       {/* Toast visual ringkas agar terlihat dari dasar form. Live-region tetap

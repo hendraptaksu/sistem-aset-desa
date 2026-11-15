@@ -274,7 +274,7 @@ export function formatAksiAudit(aksi: string): string {
   if (a.startsWith('PENGATURAN-RESET-PIN')) return 'Reset PIN (kode darurat)';
   if (a.startsWith('PENGATURAN-KODE-DARURAT')) return 'Atur/ganti kode darurat';
   if (a.startsWith('PENGATURAN-PIN')) return 'Ganti PIN';
-  if (a.startsWith('PENGATURAN-IDLE')) return 'Ubah auto-kunci';
+  if (a.startsWith('PENGATURAN-IDLE')) return 'Ubah kunci otomatis';
   if (a.startsWith('PENGATURAN-PEMBUKUAN')) return 'Ubah pengaturan pembukuan';
   if (a.startsWith('PENGATURAN')) return 'Ubah pengaturan';
   if (a.startsWith('BACKUP-LENGKAP')) return 'Backup lengkap';

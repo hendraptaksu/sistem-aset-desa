@@ -27,6 +27,7 @@ import {
   tandaiMulaiTanpaSaldoAwal,
 } from '../lib/saldoAwal.js';
 import {
+  ALASAN_SIBUK,
   Badge,
   Button,
   CurrencyInput,
@@ -141,6 +142,16 @@ export function JurnalUmumEditor({
   const alasanPeriodeRef = useRef('');
   const alasanPeringatanRef = useRef('');
   const [err, setErr] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  // Saat simpan gagal, pindahkan fokus ke ringkasan error di atas modal agar
+  // pengguna yang berada di dekat tombol Simpan langsung membacanya.
+  useEffect(() => {
+    if (!err) return;
+    const ringkasan = errorRef.current;
+    if (!ringkasan) return;
+    ringkasan.focus({ preventScroll: true });
+    ringkasan.scrollIntoView({ block: 'center' });
+  }, [err]);
   const [pesanKonfirmasi, setPesanKonfirmasi] = useState<string | null>(null);
   const [errorKonfirmasi, setErrorKonfirmasi] = useState<string | null>(null);
   const [lockOpen, setLockOpen] = useState(false);
@@ -450,18 +461,16 @@ export function JurnalUmumEditor({
   return (
     <Modal
       judul={awal?.id ? 'Duplikat Jurnal' : 'Jurnal Baru'}
-      deskripsi="Mode lanjutan: isi beberapa baris debit dan kredit. Sistem hanya menyimpan bila minimal 2 baris sah dan total debit = total kredit."
+      deskripsi="Isi minimal dua baris debit dan kredit dengan total yang sama."
       onTutup={mintaTutup}
       sibuk={busy}
       maxWidth="64rem"
     >
-      <div className="-mt-1">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge tone="stone">Jurnal Umum</Badge>
-          <span className="text-sm text-stone-600">
-            Jalur manual ini hanya menyimpan jurnal UMUM.
-          </span>
-        </div>
+      <div
+        ref={errorRef}
+        tabIndex={-1}
+        className="-mt-1 scroll-mt-24 focus:outline-none"
+      >
         <ErrorBox msg={err} />
       </div>
 
@@ -555,11 +564,11 @@ export function JurnalUmumEditor({
             <table className="w-full text-left text-[15px]">
               <thead>
                 <tr className="border-b text-stone-500">
-                  <th className="py-2 pr-2">Akun</th>
-                  <th className="w-36 py-2 pr-2 text-right">Debit (Rp)</th>
-                  <th className="w-36 py-2 pr-2 text-right">Kredit (Rp)</th>
-                  <th className="py-2 pr-2">Keterangan baris</th>
-                  <th className="py-2" />
+                  <th scope="col" className="py-2 pr-2">Akun</th>
+                  <th scope="col" className="w-36 py-2 pr-2 text-right">Debit (Rp)</th>
+                  <th scope="col" className="w-36 py-2 pr-2 text-right">Kredit (Rp)</th>
+                  <th scope="col" className="py-2 pr-2">Keterangan baris</th>
+                  <th scope="col" className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -639,6 +648,13 @@ export function JurnalUmumEditor({
                           variant="ghost"
                           aria-label={`Hapus baris ${i + 1}`}
                           disabled={busy || rows.length <= 2}
+                          title={
+                            busy
+                              ? ALASAN_SIBUK
+                              : rows.length <= 2
+                                ? 'Minimal dua baris jurnal.'
+                                : undefined
+                          }
                           onClick={() => hapusBaris(i)}
                         >
                           <Trash2 size={16} />
@@ -678,7 +694,7 @@ export function JurnalUmumEditor({
             <span className="text-stone-500">
               {validasi.seimbang
                 ? 'Siap disimpan.'
-                : 'Tombol simpan aktif setelah minimal 2 baris sah dan debit = kredit.'}
+                : 'Lengkapi minimal 2 baris sah dengan debit = kredit.'}
             </span>
           </div>
 
@@ -722,10 +738,6 @@ export function JurnalUmumEditor({
           >
             Batal
           </Button>
-          <span className="text-sm text-stone-500">
-            Jurnal tersimpan lewat jalur posting yang sama dengan form terpandu;
-            audit tercatat otomatis.
-          </span>
         </div>
 
         {lockOpen && (

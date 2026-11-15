@@ -20,7 +20,7 @@ test('bendahara melanjutkan pembayaran sebagian, membatalkan catatan, dan arus k
       });
       const page = await app.firstWindow();
       await page.getByLabel('PIN baru 6 digit').fill('123456');
-      await page.getByLabel('Ulangi PIN').fill('123456');
+      await page.getByLabel('Ulangi PIN baru', { exact: true }).fill('123456');
       await page.getByRole('button', { name: 'Simpan PIN', exact: true }).click();
       await page.getByRole('button', { name: 'Saya sudah mencatat', exact: true }).click();
       // Data awal fixture melalui IPC yang sama dengan form; aksi pembayaran
@@ -84,7 +84,7 @@ test('bendahara melanjutkan pembayaran sebagian, membatalkan catatan, dan arus k
       async function batalkanPembayaran() {
         await page.getByRole('button', { name: 'Batalkan catatan pembayaran', exact: true }).last().click();
         const modal = page.getByRole('dialog', { name: 'Batalkan catatan pembayaran', exact: true });
-        await modal.getByLabel('Alasan pembetulan (wajib ≥ 5 karakter)').fill('Kesalahan catatan untuk uji regresi');
+        await modal.getByLabel('Alasan pembetulan', { exact: true }).fill('Kesalahan catatan untuk uji regresi');
         await modal.getByRole('button', { name: 'Batalkan catatan', exact: true }).click();
         await modal.waitFor({ state: 'detached' });
       }
@@ -101,7 +101,7 @@ test('bendahara melanjutkan pembayaran sebagian, membatalkan catatan, dan arus k
       assert.ok(pembayaran.every((p) => p.dibatalkan));
       await page.getByRole('button', { name: 'Batalkan catatan pencairan', exact: true }).click();
       const modal = page.getByRole('dialog', { name: 'Batalkan catatan pencairan', exact: true });
-      await modal.getByLabel('Alasan pembetulan (wajib ≥ 5 karakter)').fill('Pencairan salah dicatat pada uji');
+      await modal.getByLabel('Alasan pembetulan', { exact: true }).fill('Pencairan salah dicatat pada uji');
       await modal.getByRole('button', { name: 'Batalkan catatan', exact: true }).click();
       await modal.waitFor({ state: 'detached' });
       assert.equal((await loan()).status, 'DIBATALKAN');

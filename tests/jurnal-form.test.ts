@@ -438,9 +438,7 @@ describe('P1-7 — smoke UI Jurnal Umum', () => {
   it('menampilkan tombol besar + Jurnal Baru hanya pada mode akuntan', () => {
     const modeAkuntan = renderToStaticMarkup(createElement(JurnalTab));
     expect(modeAkuntan).toContain('+ Jurnal Baru');
-    expect(modeAkuntan).toContain('Mode lanjutan');
     expect(modeAkuntan).toContain('Jurnal Umum');
-    expect(modeAkuntan).toContain('>Jurnal Umum</span>');
 
     const modeOperator = renderToStaticMarkup(
       createElement(JurnalTab, { modeAkuntan: false }),
@@ -456,8 +454,8 @@ describe('P1-7 — smoke UI Jurnal Umum', () => {
         onSelesai: () => undefined,
       }),
     );
-    expect(html).toContain('>Jurnal Umum</span>');
-    expect(html).toContain('Jalur manual ini hanya menyimpan jurnal UMUM.');
+    expect(html).toContain('>Jurnal Baru</h2>');
+    expect(html).toContain('Isi minimal dua baris debit dan kredit dengan total yang sama.');
 
     const editorSrc = baca('src/renderer/components/JurnalUmumEditor.tsx');
     expect(editorSrc).not.toMatch(/jenis/i);
@@ -480,7 +478,7 @@ describe('P1-7 — smoke UI Jurnal Umum', () => {
 
     expect(html).toContain('Jurnal Baru');
     expect(html).toContain('JU-2026-0001');
-    expect(html).toContain('Pratinjau nomor bukti');
+    expect(html).toContain('Saran nomor bukti');
     expect(html).toContain('otomatis saat disimpan');
     expect(html).toContain('Template jurnal');
     expect(html).toContain('daftar-akun-jurnal-umum');

@@ -460,24 +460,24 @@ function alasanPembukaanTidakAktif(
   db: Database.Database,
   penunjuk: string,
 ): string | null {
-  if (!penunjuk) return 'penunjuk saldo_awal_aktif_id masih kosong';
+  if (!penunjuk) return 'penunjuk jurnal saldo awal masih kosong';
   const row = db
     .prepare('SELECT id, tanggal, peran FROM jurnal WHERE id = ?')
     .get(penunjuk) as
     | { id: string; tanggal: string; peran: string | null }
     | undefined;
-  if (!row) return `penunjuk menunjuk jurnal ${penunjuk} yang sudah tidak ada`;
+  if (!row) return 'jurnal saldo awal yang ditunjuk sudah tidak ada';
   if (!tanggalKalenderValid(String(row.tanggal ?? '')))
-    return `jurnal ${penunjuk} tidak punya tanggal yang valid`;
+    return 'jurnal saldo awal tidak punya tanggal yang valid';
 
   const peran = String(row.peran ?? 'NORMAL');
   if (peran !== 'OPENING' && peran !== 'OPENING_REPLACEMENT')
-    return `jurnal ${penunjuk} berperan ${peran}, bukan OPENING/OPENING_REPLACEMENT`;
+    return 'jurnal yang ditunjuk bukan jurnal saldo awal yang aktif';
 
   const balik = db
     .prepare('SELECT id FROM jurnal WHERE reversal_of = ? ORDER BY rowid LIMIT 1')
     .get(penunjuk) as { id: string } | undefined;
-  if (balik) return `jurnal ${penunjuk} sudah dibalik oleh ${String(balik.id)}`;
+  if (balik) return 'jurnal saldo awal yang ditunjuk sudah dibalik';
 
   const pengganti = db
     .prepare('SELECT id FROM jurnal WHERE replaces_id = ? ORDER BY rowid LIMIT 1')
@@ -581,7 +581,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'JURNAL_TANPA_BARIS',
       pesan:
-        `Jurnal ${r.id} tanggal ${r.tanggal} tidak punya baris sama sekali ` +
+        `Jurnal ${r.no_bukti || 'tanpa nomor bukti'} tanggal ${r.tanggal} tidak punya baris sama sekali ` +
         `(jurnal tanpa baris).`,
       detail: r,
     });
@@ -602,7 +602,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'JURNAL_TIDAK_SEIMBANG',
       pesan:
-        `Jurnal ${r.id} tanggal ${r.tanggal} tidak seimbang: ` +
+        `Jurnal ${r.no_bukti || 'tanpa nomor bukti'} tanggal ${r.tanggal} tidak seimbang: ` +
         `debit ${formatRp(r.debit)} tidak sama dengan kredit ${formatRp(r.kredit)}.`,
       detail: r,
     });
@@ -622,7 +622,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'JURNAL_KURANG_DUA_BARIS',
       pesan:
-        `Jurnal ${r.id} tanggal ${r.tanggal} hanya punya ${r.jumlah_baris} baris; ` +
+        `Jurnal ${r.no_bukti || 'tanpa nomor bukti'} tanggal ${r.tanggal} hanya punya ${r.jumlah_baris} baris; ` +
         `minimal 2 baris (debit dan kredit).`,
       detail: r,
     });
@@ -643,7 +643,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'JURNAL_JENIS_TIDAK_DIKENAL',
       pesan:
-        `Jurnal ${r.id} tanggal ${r.tanggal} memakai jenis "${String(r.jenis)}" ` +
+        `Jurnal ${r.no_bukti || 'tanpa nomor bukti'} tanggal ${r.tanggal} memakai jenis "${String(r.jenis)}" ` +
         `yang tidak dikenal; jenis harus salah satu ${JENIS_VALID_TEKS}.`,
       detail: r,
     });
@@ -662,8 +662,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'AKUN_TIDAK_DIKENAL',
       pesan:
-        `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} memakai akun ` +
-        `${r.akun_kode} yang tidak terdaftar di master akun.`,
+        `Ada baris jurnal dengan akun ${r.akun_kode} yang tidak terdaftar di ` +
+        `Daftar Akun.`,
       detail: r,
     });
   }
@@ -681,8 +681,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'BARIS_ORPHAN',
       pesan:
-        `Baris jurnal ${r.baris_id} merujuk jurnal ${r.jurnal_id} ` +
-        `yang tidak ada (baris yatim).`,
+        `Ada baris jurnal yang merujuk jurnal yang tidak ada (baris yatim).`,
       detail: r,
     });
   }
@@ -718,17 +717,16 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           ? 'BARIS_DUA_SISI'
           : 'BARIS_TANPA_SISI';
     const pesan = pecahan
-      ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} punya nilai pecahan/bukan ` +
-        `bilangan bulat (debit ${String(debit)} [${r.tipe_debit}], kredit ` +
-        `${String(kredit)} [${r.tipe_kredit}]); debit dan kredit wajib bilangan bulat ` +
-        `(integer) dalam satuan sen.`
+      ? `Baris jurnal pada akun ${r.akun_kode} punya nilai pecahan ` +
+        `(debit ${String(debit)}, kredit ${String(kredit)}); debit dan kredit ` +
+        `wajib bilangan bulat rupiah.`
       : negatif
-        ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} punya nilai negatif ` +
-          `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); debit dan kredit wajib >= 0.`
+        ? `Baris jurnal pada akun ${r.akun_kode} punya nilai negatif ` +
+          `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); nilai tidak boleh negatif.`
         : duaSisi
-          ? `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} mengisi debit dan kredit ` +
+          ? `Baris jurnal pada akun ${r.akun_kode} mengisi debit dan kredit ` +
             `sekaligus (${formatRp(debit)} dan ${formatRp(kredit)}); isi salah satu sisi saja.`
-          : `Baris jurnal ${r.baris_id} pada jurnal ${r.jurnal_id} tidak punya sisi positif ` +
+          : `Baris jurnal pada akun ${r.akun_kode} tidak punya sisi positif ` +
             `(debit ${formatRp(debit)}, kredit ${formatRp(kredit)}); isi tepat satu sisi.`;
     temuan.push({ kode, pesan, detail: r });
   }
@@ -738,8 +736,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'FOREIGN_KEY',
       pesan:
-        `Pelanggaran foreign key: tabel ${r.table} baris ${r.rowid ?? '-'} ` +
-        `merujuk tabel ${r.parent} yang tidak punya pasangan.`,
+        `Pelanggaran keterkaitan data: isi tabel ${r.table} merujuk tabel ` +
+        `${r.parent} yang tidak punya pasangan.`,
       detail: r,
     });
   }
@@ -782,8 +780,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'REVERSAL_GANDA',
       pesan:
-        `Jurnal ${r.reversal_of} punya ${r.jumlah} jurnal balik (${r.ids}); ` +
-        `satu jurnal hanya boleh punya satu reversal.`,
+        `Ada jurnal dengan ${r.jumlah} jurnal balik; satu jurnal hanya boleh ` +
+        `punya satu jurnal balik.`,
       detail: r,
     });
   }
@@ -803,8 +801,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'REVERSAL_ATAS_REVERSAL',
       pesan:
-        `Jurnal balik ${r.reversal_id} mengacu ke jurnal ${r.reversal_of} ` +
-        `yang juga jurnal balik; reversal atas reversal tidak diizinkan.`,
+        `Ada jurnal balik yang mengacu ke jurnal balik lain; jurnal balik atas ` +
+        `jurnal balik tidak diizinkan.`,
       detail: r,
     });
   }
@@ -822,7 +820,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   for (const r of reversalTanpaAsli) {
     temuan.push({
       kode: 'REVERSAL_TANPA_ASLI',
-      pesan: `Jurnal balik ${r.id} mengacu ke jurnal ${r.reversal_of} yang tidak ada.`,
+      pesan: `Ada jurnal balik yang mengacu ke jurnal asli yang tidak ada.`,
       detail: r,
     });
   }
@@ -842,8 +840,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'REVERSAL_GRUP_BERBEDA',
       pesan:
-        `Jurnal balik ${r.reversal_id} memakai grup "${r.grup_reversal}", ` +
-        `berbeda dari grup jurnal asli ${r.reversal_of} ("${r.grup_asal}").`,
+        `Ada jurnal balik yang memakai grup berbeda dari jurnal aslinya.`,
       detail: r,
     });
   }
@@ -987,7 +984,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   for (const r of panjarOpenTanpaJurnal) {
     temuan.push({
       kode: 'PANJAR_OPEN_TIDAK_LENGKAP',
-      pesan: `Panjar ${r.id} berstatus OPEN tetapi jurnal serah (jurnal_open_id) masih kosong.`,
+      pesan: `Ada panjar berstatus Terbuka tetapi jurnal serahnya masih kosong.`,
       detail: r,
     });
   }
@@ -1018,8 +1015,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         ? ''
         : `${kosong.join(' dan ')} masih kosong${tanpaItem ? ' serta belum punya item pertanggungjawaban' : ''}`;
     const pesan = kosongTeks
-      ? `Panjar ${r.id} berstatus CLOSED tetapi ${kosongTeks}.`
-      : `Panjar ${r.id} berstatus CLOSED tetapi belum punya item pertanggungjawaban.`;
+      ? `Ada panjar berstatus Selesai tetapi ${kosongTeks}.`
+      : `Ada panjar berstatus Selesai tetapi belum punya item pertanggungjawaban.`;
     temuan.push({
       kode: 'PANJAR_CLOSED_TIDAK_LENGKAP',
       pesan,
@@ -1043,11 +1040,11 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     : [];
   for (const r of panjarOpenDenganClose) {
     const bagian: string[] = [];
-    if (r.jurnal_close_id) bagian.push(`jurnal close ${r.jurnal_close_id}`);
-    if (r.tanggal_close) bagian.push(`tanggal close ${r.tanggal_close}`);
+    if (r.jurnal_close_id) bagian.push('jurnal penutup');
+    if (r.tanggal_close) bagian.push('tanggal penutupan');
     temuan.push({
       kode: 'PANJAR_OPEN_PUNYA_CLOSE',
-      pesan: `Panjar ${r.id} berstatus OPEN tetapi sudah punya ${bagian.join(' dan ')}.`,
+      pesan: `Ada panjar berstatus Terbuka tetapi sudah punya ${bagian.join(' dan ')}.`,
       detail: r,
     });
   }
@@ -1071,8 +1068,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'PANJAR_OPEN_PUNYA_ITEM',
       pesan:
-        `Panjar ${r.id} berstatus OPEN tetapi sudah punya ${r.jumlah_item} item ` +
-        `pertanggungjawaban; item hanya boleh ada setelah close.`,
+        `Ada panjar berstatus Terbuka tetapi sudah punya ${r.jumlah_item} rincian ` +
+        `pertanggungjawaban; rincian hanya boleh ada setelah panjar ditutup.`,
       detail: r,
     });
   }
@@ -1112,45 +1109,39 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
   for (const r of panjarBatal) {
     const alasan: string[] = [];
     if (!r.batal_jenis) {
-      alasan.push(`jurnal batal ${r.jurnal_batal_id} tidak ditemukan (tautan yatim)`);
+      alasan.push('jurnal balik tidak ditemukan');
     } else {
       if (r.batal_jenis !== 'REVERSAL')
-        alasan.push(`jurnal batal berjenis ${r.batal_jenis}, bukan REVERSAL`);
+        alasan.push('jurnal balik bukan jurnal koreksi');
       if (r.batal_reversal_of !== r.jurnal_open_id)
-        alasan.push(
-          `jurnal batal membalik ${r.batal_reversal_of ?? '-'}, ` +
-            `bukan jurnal serah ${r.jurnal_open_id ?? '-'}`,
-        );
+        alasan.push('jurnal balik tidak membalik jurnal serah');
     }
     if (!r.tanggal_batal)
-      alasan.push('tanggal_batal masih kosong');
+      alasan.push('tanggal pembatalan masih kosong');
     if (String(r.alasan_batal ?? '').trim().length < 5)
-      alasan.push('alasan_batal kurang dari 5 karakter');
+      alasan.push('alasan pembatalan kurang dari 5 karakter');
     if (r.status !== 'OPEN' && r.status !== 'DIBATALKAN')
-      alasan.push(
-        `status tersimpan ${r.status}, seharusnya OPEN/DIBATALKAN`,
-      );
+      alasan.push('status panjar tidak sesuai');
     if (r.jurnal_close_id)
-      alasan.push(`masih punya jurnal close ${r.jurnal_close_id}`);
+      alasan.push('masih punya jurnal penutup');
     if (r.tanggal_close)
-      alasan.push(`masih punya tanggal close ${r.tanggal_close}`);
+      alasan.push('masih punya tanggal penutupan');
     if (Number(r.jumlah_item) > 0)
-      alasan.push(`masih punya ${r.jumlah_item} item pertanggungjawaban`);
+      alasan.push(`masih punya ${r.jumlah_item} rincian pertanggungjawaban`);
     if (alasan.length === 0) continue;
 
     if (!r.batal_jenis) {
       temuan.push({
         kode: 'PANJAR_BATAL_TIDAK_LENGKAP',
         pesan:
-          `Panjar ${r.id} punya jurnal_batal_id ${r.jurnal_batal_id} tetapi ` +
-          `jurnal batalnya tidak ditemukan (tautan yatim).`,
+          `Ada panjar yang dibatalkan tetapi jurnal baliknya tidak ditemukan.`,
         detail: { ...r, alasan },
       });
       continue;
     }
     temuan.push({
       kode: 'PANJAR_BATAL_TIDAK_KONSISTEN',
-      pesan: `Panjar ${r.id} yang dibatalkan tidak konsisten: ${alasan.join('; ')}.`,
+      pesan: `Ada panjar yang dibatalkan tidak konsisten: ${alasan.join('; ')}.`,
       detail: { ...r, alasan },
     });
   }
@@ -1171,7 +1162,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'PANJAR_BATAL_GANDA',
       pesan:
-        `Jurnal batal ${r.jurnal_batal_id} dipakai ${r.jumlah} panjar (${r.ids}); ` +
+        `Satu jurnal batal dipakai ${r.jumlah} panjar; ` +
         `satu jurnal batal hanya boleh dipakai satu dokumen panjar.`,
       detail: r,
     });
@@ -1264,8 +1255,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'PANJAR_HEADER_TIDAK_COCOK',
       pesan:
-        `Panjar ${r.id}: header tidak cocok dengan jurnal serah ` +
-        `${r.jurnal_open_id}: ${alasan.join('; ')}.`,
+        `Ada panjar yang header-nya tidak cocok dengan jurnal serah: ${alasan.join('; ')}.`,
       detail,
     });
   }
@@ -1297,16 +1287,14 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     for (const r of openingRows) {
       const alasan: string[] = [];
       if (!String(r.jurnal_open_id ?? '').trim()) {
-        alasan.push('jurnal_open_id kosong');
+        alasan.push('jurnal serah panjar masih kosong');
       } else if (!r.peran) {
-        alasan.push(`jurnal ${r.jurnal_open_id} tidak ditemukan`);
+        alasan.push('jurnal serah panjar tidak ditemukan');
       } else if (
         r.peran !== 'OPENING' &&
         r.peran !== 'OPENING_REPLACEMENT'
       ) {
-        alasan.push(
-          `jurnal ${r.jurnal_open_id} berperan ${r.peran}, bukan OPENING/OPENING_REPLACEMENT`,
-        );
+        alasan.push('jurnal yang ditunjuk bukan jurnal saldo awal yang aktif');
       }
       if (alasan.length === 0) continue;
       const detail: PanjarOpeningTidakLengkap = {
@@ -1320,7 +1308,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       temuan.push({
         kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
         pesan:
-          `Panjar saldo awal ${r.id} menunjuk jurnal yang bukan pembukaan yang sah: ` +
+          `Panjar saldo awal menunjuk jurnal yang bukan jurnal saldo awal yang sah: ` +
           `${alasan.join('; ')}.`,
         detail,
       });
@@ -1354,8 +1342,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
       );
       if (totalOpen <= debitNeto) continue;
       const alasan = [
-        `total panjar opening OPEN ${formatRp(totalOpen)} melebihi debit neto ` +
-          `1040 jurnal pembukaan ${formatRp(debitNeto)}`,
+        `total panjar saldo awal yang masih terbuka ${formatRp(totalOpen)} melebihi debit neto ` +
+          `1040 jurnal saldo awal ${formatRp(debitNeto)}`,
       ];
       const detail: PanjarOpeningTidakLengkap = {
         jurnal_open_id: r.jurnal_open_id,
@@ -1424,11 +1412,9 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
           temuan.push({
             kode: 'PANJAR_OPENING_TIDAK_LENGKAP',
             pesan:
-              `Panjar saldo awal ${r.id} (OPEN) menunjuk jurnal ` +
-              `${r.jurnal_open_id} yang bukan pembukaan aktif ${aktif.id} — ` +
-              'pembukaan lama sudah dibalik/digantikan koreksi saldo awal. ' +
-              'Perbarui penunjuk panjar lewat Wizard Koreksi Saldo Awal/' +
-              'penunjuk pembukaan aktif sebelum panjar ini ditutup.',
+              `Panjar saldo awal menunjuk jurnal saldo awal yang sudah tidak aktif — ` +
+              'jurnal pembukaan lama sudah dibalik atau digantikan koreksi saldo awal. ' +
+              'Perbarui lewat Koreksi Saldo Awal sebelum panjar ini ditutup.',
             detail,
           });
         }
@@ -1476,8 +1462,8 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'PANJAR_ITEM_TIDAK_COCOK',
       pesan:
-        `Panjar ${r.id}: total item tidak cocok dengan jurnal close ` +
-        `${r.jurnal_close_id}: ${rincian || `selisih ${formatRp(hasil.selisih)}`}.`,
+        `Ada panjar yang total rinciannya tidak cocok dengan jurnal penutup: ` +
+        `${rincian || `selisih ${formatRp(hasil.selisih)}`}.`,
       detail,
     });
   }
@@ -1528,7 +1514,7 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
         kode: 'REKONSILIASI_PANJAR_GL_SELISIH',
         pesan:
           `Saldo normal debit akun ${AKUN_PANJAR} UANG PANJAR di Buku Besar ` +
-          `${formatRp(saldoGl)} tidak sama dengan total panjar OPEN aktif ` +
+          `${formatRp(saldoGl)} tidak sama dengan total panjar yang masih terbuka ` +
           `${formatRp(totalPanjarOpen)} (selisih ${formatRp(selisih)}). ` +
           'Periksa baris jurnal 1040 liar atau data panjar; jurnal 1040 hanya ' +
           'boleh berasal dari menu Buku Panjar.',
@@ -1600,9 +1586,9 @@ export function auditIntegritas(db: Database.Database): HasilAuditIntegritas {
     temuan.push({
       kode: 'PEMBUKAAN_AKTIF_HILANG',
       pesan:
-        `Ada jurnal SALDO_AWAL (${idsSaldoAwal.join(', ')}) tetapi ${alasanPenunjuk}. ` +
-        'Penunjuk pembukaan aktif wajib menunjuk jurnal berperan OPENING/OPENING_REPLACEMENT ' +
-        'yang belum dibalik/digantikan. Perbaiki lewat Wizard Koreksi Saldo Awal; ' +
+        `Ada jurnal SALDO_AWAL tetapi ${alasanPenunjuk}. ` +
+        'Penunjuk jurnal saldo awal aktif wajib menunjuk jurnal saldo awal ' +
+        'yang belum dibalik atau digantikan. Perbaiki lewat Koreksi Saldo Awal; ' +
         'jangan membuat jurnal pembukaan baru atau mengubah jurnal lama.',
       detail,
     });

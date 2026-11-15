@@ -44,7 +44,7 @@ import {
 } from './posting.js';
 
 export const PESAN_SALDO_AWAL_SUDAH_ADA =
-  'Saldo awal sudah pernah dibuat. Perbaikan saldo awal hanya bisa lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
+  'Saldo awal sudah pernah dibuat. Perbaikan hanya lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
 
 export const PESAN_KOREKSI_TANPA_SALDO_AWAL =
   'Belum ada saldo awal yang bisa dikoreksi. Isi Wizard Saldo Awal terlebih dahulu.';

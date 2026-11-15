@@ -137,7 +137,7 @@ async function siapkanSesi(page, t) {
   const tombolSimpan = page.getByRole('button', { name: 'Simpan PIN' });
   if ((await tombolSimpan.count()) > 0) {
     await page.getByLabel('PIN baru 6 digit').fill('123456');
-    await page.getByLabel('Ulangi PIN').fill('123456');
+    await page.getByLabel('Ulangi PIN baru', { exact: true }).fill('123456');
     await tombolSimpan.click();
     // Kode darurat tampil sekali; tutup setelah dipastikan ada.
     await page
@@ -545,7 +545,7 @@ async function cekSimpanTransaksi(page, folder, t) {
   const teksStatus = (await status.textContent()) ?? '';
   assert.match(
     teksStatus,
-    /tersimpan.*Jurnal otomatis sudah dibuat/s,
+    /tersimpan.*JU-\d{4}-\d{4}.*Rp/s,
     pesan('Pesan sukses transaksi tidak lengkap', teksStatus),
   );
 
@@ -611,13 +611,13 @@ async function cekKonfirmasiAksiBerisiko(page, t) {
   const restore = page.getByRole('button', { name: 'Pulihkan Lengkap (disarankan)' });
   await restore.click();
   const dialogRestore = page.getByRole('dialog', {
-    name: 'Pulihkan database dari backup lengkap?',
+    name: 'Pulihkan dari backup lengkap?',
   });
   await dialogRestore.waitFor({ timeout: 10_000 });
   const teksRestore = await dialogRestore.innerText();
   assert.match(teksRestore, /Yang tetap:/, 'Konfirmasi restore tidak menyebut yang tetap');
-  assert.match(teksRestore, /pre-restore/, 'Konfirmasi restore tidak menyebut cadangan');
-  assert.match(teksRestore, /manifest\.json/, 'Konfirmasi restore tidak menyebut manifest');
+  assert.match(teksRestore, /dicadangkan otomatis/, 'Konfirmasi restore tidak menyebut cadangan otomatis');
+  assert.doesNotMatch(teksRestore, /manifest.json|pura.db/, 'Konfirmasi restore membocorkan nama file internal');
   await page.keyboard.press('Escape');
   await dialogRestore.waitFor({ state: 'detached' });
 
@@ -710,7 +710,7 @@ async function cekFilterJurnal(page, folder, t) {
       .isVisible(),
     'Pesan kosong untuk rentang terbalik tidak tampil',
   );
-  for (const namaTombol of ['Export Excel', 'Simpan PDF', 'Pratinjau Cetak']) {
+  for (const namaTombol of ['Ekspor Excel', 'Simpan PDF', 'Pratinjau Cetak']) {
     assert.ok(
       await page.getByRole('button', { name: namaTombol }).isDisabled(),
       `${namaTombol} tetap aktif saat rentang terbalik`,
@@ -726,8 +726,8 @@ async function cekFilterJurnal(page, folder, t) {
     .first()
     .waitFor({ timeout: 20_000 });
   assert.ok(
-    await page.getByRole('button', { name: 'Export Excel' }).isEnabled(),
-    'Export Excel tidak aktif kembali setelah rentang diperbaiki',
+    await page.getByRole('button', { name: 'Ekspor Excel' }).isEnabled(),
+    'Ekspor Excel tidak aktif kembali setelah rentang diperbaiki',
   );
 
   await page.screenshot({
@@ -1046,7 +1046,7 @@ async function cekPanjarGantiTarget(page, folder, t) {
   await dialog.waitFor({ timeout: 10_000 });
   assert.match(
     await dialog.innerText(),
-    /Rincian yang sudah diisi akan kosong/,
+    /Rincian yang sudah diisi akan dikosongkan/,
     'Konfirmasi ganti panjar tidak menjelaskan dampak',
   );
   await page.screenshot({ path: join(folder, 'flow-panjar-ganti-target.png') });
@@ -1089,7 +1089,7 @@ async function kunciTahunLalu(page, t) {
     pesan('Tahun default Kunci Periode tidak terbaca', String(tahun)),
   );
 
-  await page.getByRole('button', { name: 'Preview laba' }).click();
+  await page.getByRole('button', { name: 'Pratinjau laba' }).click();
   const tombolBackup = page.getByRole('button', { name: 'Backup otomatis & lanjut' });
   await tombolBackup.waitFor({ timeout: 30_000 });
   await tombolBackup.click();
@@ -1125,9 +1125,12 @@ async function cekTransaksiAlasanDanLockModal(page, tahunTerkunci, folder, t) {
   const alasanKosong = page.getByRole('status').filter({ hasText: 'Isi dulu:' });
   // Teks bisa sempat "Memuat daftar akun…" sebelum COA selesai dimuat.
   await alasanKosong.waitFor({ timeout: 15_000 });
+  // Tanggal dan akun sudah terisi default, jadi alasan hanya menyebut isian
+  // yang benar-benar kosong (UI-A13). Regex tetap menerima keduanya agar
+  // tidak rapuh bila default berubah.
   assert.match(
     (await alasanKosong.textContent()) ?? '',
-    /Isi dulu: tanggal, akun, nominal, dan keterangan\./,
+    /Isi dulu: (tanggal, )?(akun, )?nominal dan keterangan\./,
     'Teks alasan tombol Simpan tidak sesuai',
   );
 
@@ -1139,14 +1142,14 @@ async function cekTransaksiAlasanDanLockModal(page, tahunTerkunci, folder, t) {
   await page.getByLabel('Keterangan').fill('Uji UI-A27 LockModal periode terkunci');
   await simpan.click();
 
-  const lock = page.getByRole('dialog', { name: 'Periode sudah ditutup' });
+  const lock = page.getByRole('dialog', { name: 'Periode sudah terkunci' });
   await lock.waitFor({ timeout: 20_000 });
-  const helper = lock.getByText('Alasan minimal 5 karakter.');
+  const helper = lock.getByText('Minimal 5 karakter.');
   const tetapSimpan = lock.getByRole('button', { name: 'Tetap simpan' });
 
   // Alasan 3 karakter: tombol mati + helper terlihat (kasus minimum tiket).
   await lock.getByLabel(/^Alasan/).fill('abc');
-  assert.ok(await helper.isVisible(), 'Helper "Alasan minimal 5 karakter." tidak tampil');
+  assert.ok(await helper.isVisible(), 'Helper "Minimal 5 karakter." tidak tampil');
   assert.ok(
     await tetapSimpan.isDisabled(),
     'Tombol Tetap simpan aktif dengan alasan 3 karakter',

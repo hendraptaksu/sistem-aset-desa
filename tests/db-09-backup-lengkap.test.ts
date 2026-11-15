@@ -164,7 +164,7 @@ describe('DB-09 — restore lengkap menolak folder tanpa manifest', () => {
       expect(hasil.ok).toBe(false);
       if (hasil.ok) throw new Error('folder tanpa manifest seharusnya ditolak');
       expect(hasil.db).toBe(aktif);
-      expect(hasil.error).toMatch(/manifest\.json/i);
+      expect(hasil.error).toMatch(/Backup Lengkap/i);
       expect(listJurnal(aktif).map((j) => j.id)).toEqual(['lama']);
       expect(existsSync(join(dataDir, 'backups', 'pre-restore-tanpa-manifest.db'))).toBe(
         false,
@@ -219,24 +219,28 @@ describe('DB-09 — UI dan dokumentasi menempatkan Pulihkan Lengkap sebagai jalu
     );
 
     const lengkap = bagianPulihkan.indexOf('Pulihkan Lengkap (disarankan)');
-    const db = bagianPulihkan.indexOf('Pulihkan file .db (lanjutan)');
+    const db = bagianPulihkan.indexOf('Pulihkan file data (lanjutan)');
     expect(lengkap).toBeGreaterThan(-1);
     expect(db).toBeGreaterThan(-1);
     expect(lengkap).toBeLessThan(db);
 
-    expect(bagianPulihkan).toMatch(/hanya memulihkan database/i);
-    expect(bagianPulihkan).toMatch(/tanpa validasi manifest/i);
+    const bagianNormal = bagianPulihkan.replace(/\s+/g, ' ');
+    expect(bagianNormal).toMatch(/memeriksa keterangan backup/i);
+    expect(bagianNormal).toMatch(/tanpa pemeriksaan itu/i);
     // Dua tahap konfirmasi + pengiriman konfirmasi eksplisit ke main.
     expect(dashboard).toContain('konfirmasiRestoreFinal');
     expect(dashboard).toContain('api.backupImport(true)');
   });
 
   it('Pengaturan dan panduan menandai Backup Lengkap sebagai disarankan dan .db sebagai lanjutan', () => {
-    const pengaturan = baca('src/renderer/components/PengaturanTab.tsx');
+    const pengaturan = baca('src/renderer/components/PengaturanTab.tsx').replace(
+      /\s+/g,
+      ' ',
+    );
     expect(pengaturan).toMatch(/Backup Lengkap/);
     expect(pengaturan).toMatch(/Pulihkan Lengkap/);
-    expect(pengaturan).toMatch(/Backup file \.db \(lanjutan\)/);
-    expect(pengaturan).toMatch(/tidak memvalidasi manifest/i);
+    expect(pengaturan).toMatch(/Backup file data \(lanjutan\)/);
+    expect(pengaturan).toMatch(/tidak memeriksa keterangan backup/i);
 
     for (const path of ['docs/panduan-pengguna.md', 'docs/panduan-portable.md']) {
       // Normalisasi line break agar kalimat yang dibungkus tetap bisa dicek.

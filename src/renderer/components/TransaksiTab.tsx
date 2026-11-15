@@ -28,6 +28,7 @@ import {
   ErrorBox,
   Field,
   InfoBox,
+  KonfirmasiModal,
   Modal,
   RING_FOKUS,
   TextInput,
@@ -35,6 +36,7 @@ import {
 import { DetailJurnalModal } from './DetailJurnalModal.js';
 import { LABEL_JENIS } from '../lib/tampilanLaporan.js';
 import { FormTransaksiTerpandu, type JenisFormTransaksi } from './TransaksiForm.js';
+import { useTabGuard } from '../lib/tabGuard.js';
 import { SaldoAwalWizard } from './SaldoAwalWizard.js';
 import { PESAN_MUAT_GAGAL, pesanError } from '../../utils/pesanError.js';
 
@@ -80,7 +82,7 @@ const KARTU_JENIS: KartuJenis[] = [
   {
     id: 'BAYAR_UTANG',
     label: 'Bayar Utang',
-    keterangan: 'Pelunasan utang usaha 2060',
+    keterangan: 'Pelunasan utang usaha',
     Icon: HandCoins,
   },
   {
@@ -108,7 +110,7 @@ const bisaDipilih = (id: KartuJenis['id']): id is JenisFormTransaksi =>
  * di sini agar renderer tidak mengimpor lapisan DB (better-sqlite3).
  */
 const PESAN_SALDO_AWAL_TERKUNCI =
-  'Saldo awal sudah pernah dibuat. Perbaikan saldo awal hanya bisa lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
+  'Saldo awal sudah pernah dibuat. Perbaikan hanya lewat alur koreksi saldo awal; jurnal biasa tidak menggantikannya.';
 
 /**
  * Jenis yang boleh dibatalkan cepat dari halaman Transaksi. Panjar dan
@@ -236,13 +238,12 @@ export function TransaksiTerakhirCard({
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-bold">Transaksi Terakhir yang Dicatat</h2>
+          <h2 className="text-lg font-bold">Transaksi Terakhir</h2>
           <p className="mt-1 max-w-2xl text-sm text-stone-600">
             Sepuluh transaksi terbaru. Periksa detailnya atau batalkan bila ada
             salah ketik nominal/keterangan tanpa berpindah menu.
           </p>
         </div>
-        <Badge tone="stone">10 terbaru</Badge>
       </div>
 
       {info && (
@@ -273,7 +274,7 @@ export function TransaksiTerakhirCard({
             {daftar.map((jurnal) => {
               const konteks =
                 jurnal.no_bukti?.trim() ||
-                `${formatTanggal(jurnal.tanggal)} ${jurnal.id.slice(0, 12)}`;
+                `${formatTanggal(jurnal.tanggal)} (tanpa nomor bukti)`;
               const bisaBatal = bisaDibatalkan(jurnal);
               const alasanBatal = alasanTidakBisaDibatalkan(jurnal);
               return (
@@ -297,7 +298,7 @@ export function TransaksiTerakhirCard({
                     ) : jurnal.reversal_id ? (
                       <Badge tone="amber">Sudah dikoreksi</Badge>
                     ) : (
-                      <Badge tone="stone">Aktif</Badge>
+                      <Badge tone="green">Aktif</Badge>
                     )}
                     {!bisaBatal && alasanBatal && (
                       <p className="mt-1 max-w-64 text-helper text-stone-500">
@@ -320,7 +321,7 @@ export function TransaksiTerakhirCard({
                           aria-label={`Batalkan transaksi ${konteks}`}
                           onClick={() => onBatalkan(jurnal)}
                         >
-                          Batalkan / Salah Input
+                          Batalkan
                         </Button>
                       )}
                     </div>
@@ -400,6 +401,8 @@ export function TransaksiTab({
   const formRef = useRef<HTMLDivElement | null>(null);
   const sorotTimerRef = useRef<number | null>(null);
   const [sorotForm, setSorotForm] = useState(false);
+  const { dirty } = useTabGuard();
+  const [jenisTunda, setJenisTunda] = useState<JenisFormTransaksi | null>(null);
 
   // Bersihkan timer sorotan bila tab ditutup sebelum waktunya.
   useEffect(
@@ -522,9 +525,8 @@ export function TransaksiTab({
       <Card>
         <h1 className="text-xl font-bold">Catat Transaksi Harian</h1>
         <p className="mt-1 max-w-2xl text-[15px] text-stone-600">
-          Pilih jenis transaksi, isi beberapa kolom, lalu periksa pratinjau sebelum
-          menyimpan. Sistem menyusun jurnal otomatis, jadi Anda tidak perlu menghitung
-          sendiri.
+          Pilih jenis transaksi, isi kolom yang perlu, lalu periksa pratinjau
+          sebelum menyimpan. Jurnal disusun otomatis.
         </p>
       </Card>
 
@@ -533,9 +535,8 @@ export function TransaksiTab({
           <div>
             <h2 className="text-lg font-bold">Saldo Awal Pembukuan</h2>
             <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, utang,
-              dan aset lain per tanggal mulai; selisih otomatis menjadi modal sehingga
-              terbentuk satu jurnal yang seimbang.
+              Dipakai sekali saat mulai pembukuan. Isi saldo kas/bank, utang, dan
+              aset lain per tanggal mulai; selisih otomatis menjadi modal.
             </p>
             {statusSaldoErr && (
               <p className="mt-2 text-sm text-red-700">{statusSaldoErr}</p>
@@ -549,9 +550,7 @@ export function TransaksiTab({
             )}
             {saldoStatus && !saldoStatus.boleh && (
               <p className="mt-2 text-sm text-stone-600">
-                {saldoStatus.alasan ?? PESAN_SALDO_AWAL_TERKUNCI} Gunakan tombol
-                Koreksi Saldo Awal untuk memperbaiki; jurnal lama tetap tersimpan
-                di audit.
+                {saldoStatus.alasan ?? PESAN_SALDO_AWAL_TERKUNCI}
               </p>
             )}
             {!saldoStatus && !statusSaldoErr && (
@@ -606,9 +605,6 @@ export function TransaksiTab({
 
       <Card>
         <h2 className="text-lg font-bold">Jenis transaksi</h2>
-        <p className="mt-1 text-sm text-stone-600">
-          Klik salah satu jenis untuk mulai mencatat.
-        </p>
         {err && (
           <div className="mt-3">
             <ErrorBox msg={err} />
@@ -627,7 +623,10 @@ export function TransaksiTab({
                   if (tujuan) {
                     onBukaTab(tujuan);
                   } else if (bisaDipilih(id)) {
-                    pilihJenis(id);
+                    // Ganti jenis me-remount form; jangan buang isian tanpa
+                    // konfirmasi bila form saat ini sudah diisi.
+                    if (dirty && id !== jenis) setJenisTunda(id);
+                    else pilihJenis(id);
                   }
                 }}
                 className={clsx(
@@ -698,6 +697,21 @@ export function TransaksiTab({
         onLihat={setDetailJurnal}
         onBatalkan={setBatalJurnal}
       />
+
+      {jenisTunda && (
+        <KonfirmasiModal
+          judul="Ganti jenis transaksi?"
+          deskripsi="Isian yang sudah diketik pada jenis transaksi ini akan hilang."
+          labelYa="Ya, ganti jenis"
+          variant="danger"
+          onBatal={() => setJenisTunda(null)}
+          onKonfirmasi={() => {
+            const tujuan = jenisTunda;
+            setJenisTunda(null);
+            if (tujuan) pilihJenis(tujuan);
+          }}
+        />
+      )}
 
       {detailJurnal && (
         <DetailJurnalModal
@@ -793,7 +807,7 @@ export function BatalkanJurnalModal({
     try {
       await batalkanJurnal(jurnal, alasan, konfirmasi);
       onSelesai(
-        `Transaksi ${jurnal.no_bukti || jurnal.id} dibatalkan. Jurnal balik sudah dibuat dan jurnal asli tetap tersimpan.`,
+        `Transaksi ${jurnal.no_bukti || 'tanpa nomor bukti'} dibatalkan. Jurnal balik sudah dibuat dan jurnal asli tetap tersimpan.`,
       );
     } catch (e) {
       if (isPerluKonfirmasi(e) && !konfirmasi) {
@@ -809,7 +823,7 @@ export function BatalkanJurnalModal({
 
   return (
     <Modal
-      judul="Batalkan / Salah Input"
+      judul="Batalkan transaksi?"
       deskripsi={
         <span className="text-[15px]">
           Jurnal asli <b>tidak dihapus</b>. Sistem membuat jurnal balik dan
@@ -898,7 +912,7 @@ export function BatalkanJurnalModal({
               }
               onClick={() => void kirim()}
             >
-              {busy ? 'Membatalkan…' : 'Batalkan Transaksi'}
+              {busy ? 'Membatalkan…' : 'Ya, batalkan transaksi'}
             </Button>
           </div>
         </>

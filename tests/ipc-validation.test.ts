@@ -103,7 +103,7 @@ describe('P0-4 — tanggal kalender', () => {
       '',
     ]) {
       expect(tanggalKalenderValid(tanggal), tanggal).toBe(false);
-      expect(pesan(jalankan({ header: { tanggal } })), tanggal).toMatch(/Tanggal tidak valid/);
+      expect(pesan(jalankan({ header: { tanggal } })), tanggal).toMatch(/Tanggal belum diisi atau tidak valid/);
     }
     expect(tanggalKalenderValid('2027-02-29')).toBe(false); // bukan kabisat
   });

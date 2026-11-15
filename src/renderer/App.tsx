@@ -182,6 +182,8 @@ function AppShell() {
   const tabSebelumnya = useRef<TabId>('dashboard');
   const perluGulirAktif = useRef(false);
   const [lock, setLock] = useState<LockStatus | null>(null);
+  const [lockGagal, setLockGagal] = useState(false);
+  const lockTerakhirRef = useRef<LockStatus | null>(null);
   // T2.7: pesan restore ditampilkan di layar kunci sampai PIN berhasil dibuka.
   const [pesanRestore, setPesanRestore] = useState<string | null>(null);
   // UI-A24: benar bila sesi dikunci otomatis saat ada isian yang belum
@@ -396,17 +398,21 @@ function AppShell() {
 
   const refreshLock = useCallback(async () => {
     try {
-      setLock(await api.lockStatus());
+      const status = await api.lockStatus();
+      lockTerakhirRef.current = status;
+      setLock(status);
+      setLockGagal(false);
     } catch {
-      // IPC belum siap (dev tanpa preload) → anggap terbuka agar UI tetap bisa dipakai.
-      setLock({
-        sudahSetup: false,
-        terbuka: true,
-        idleMenit: 30,
-        gagal: 0,
-        blokirDetik: 0,
-        kodeDaruratDiatur: false,
-      });
+      // Jangan pernah mengarang status "belum setup": itu menampilkan layar
+      // buat PIN pada instalasi yang sudah punya PIN. Pakai status terakhir
+      // (dalam keadaan terkunci), atau layar coba lagi bila belum ada.
+      setLockGagal(true);
+      const terakhir = lockTerakhirRef.current;
+      if (terakhir?.sudahSetup) {
+        setLock({ ...terakhir, terbuka: false });
+      } else {
+        setLock(null);
+      }
     }
   }, []);
 
@@ -496,13 +502,27 @@ function AppShell() {
         try {
           await api.lockLock();
         } finally {
+          // Samakan dengan auto-lock: jangan biarkan dialog guard menutupi
+          // layar PIN, dan beri tahu bila isian yang terbuka ikut ditutup.
+          if (dirtyRef.current) setIsianDitutup(true);
+          setDirty(false);
+          pindahTab('dashboard', { paksa: true });
           await refreshLock();
         }
       }),
-    [jalankanKunci, refreshLock],
+    [jalankanKunci, refreshLock, setDirty, pindahTab],
   );
 
   // Kop layar mengikuti nama entitas tersimpan (P1-13); gagal = pakai default.
+  const muatNamaEntitas = useCallback(() => {
+    void api
+      .pengaturanGet()
+      .then((p) => setNamaEntitas(p.namaEntitas || DEFAULT_PENGATURAN.namaEntitas))
+      .catch(() => {
+        /* biarkan nama terakhir bila IPC gagal */
+      });
+  }, []);
+
   useEffect(() => {
     if (!lock?.terbuka) return;
     let batal = false;
@@ -553,7 +573,22 @@ function AppShell() {
   }, [lock?.terbuka, lock?.sudahSetup, lock?.idleMenit, refreshLock, pindahTab, setDirty]);
 
   if (!lock) {
-    return <div className="flex min-h-screen items-center justify-center text-stone-500">Memuat…</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-stone-100 px-6 text-center">
+        {lockGagal ? (
+          <>
+            <p className="text-stone-700">
+              Status kunci aplikasi tidak bisa dimuat.
+            </p>
+            <Button variant="ghost" onClick={() => void refreshLock()}>
+              Coba lagi
+            </Button>
+          </>
+        ) : (
+          <p className="text-stone-500">Memuat…</p>
+        )}
+      </div>
+    );
   }
   if (lock.sudahSetup && !lock.terbuka) {
     return (
@@ -713,7 +748,7 @@ function AppShell() {
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-stone-700">{TAB_BY_ID[tab].label}</p>
             <p className="truncate text-helper text-stone-500">
-              {namaEntitas.trim() || 'Data lokal'}
+              {namaEntitas.trim() || 'Nama entitas belum diisi'}
             </p>
           </div>
           <Button
@@ -741,7 +776,7 @@ function AppShell() {
           <>
             <div className="bg-emerald-950 px-6 pb-6 pt-6 text-white">
               <h1 className="text-xl font-bold">{namaEntitas}</h1>
-              <p className="text-sm text-emerald-200">Pembukuan offline — Jurnal Umum, Panjar, Utang Usaha, Laba Rugi, Neraca, Arus Kas</p>
+              <p className="text-sm text-emerald-200">Pembukuan offline untuk kas, panjar, pinjaman, dan laporan keuangan</p>
             </div>
             <div className="px-6 py-4">
               <DashboardTab
@@ -791,6 +826,7 @@ function AppShell() {
                 onIdleBerubah={(m) => setLock((l) => (l ? { ...l, idleMenit: m } : l))}
                 modeLanjutan={modeLanjutan}
                 onModeLanjutanBerubah={ubahModeLanjutan}
+                onPembukuanBerubah={muatNamaEntitas}
               />
             )}
           </div>

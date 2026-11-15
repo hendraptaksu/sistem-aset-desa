@@ -100,7 +100,7 @@ export function alasanSimpanSaldoAwal(opsi: {
   if (opsi.modeKoreksi && !opsi.alasanKoreksiCukup) {
     return PESAN_ALASAN_KOREKSI_MIN;
   }
-  return 'Isi minimal satu saldo lebih dari 0 dan tanggal yang valid.';
+  return 'Isi minimal satu saldo dengan nominal lebih dari 0, dan pilih tanggal yang valid.';
 }
 
 /**
@@ -459,7 +459,7 @@ export function SaldoAwalWizard({
         setPesanKonfirmasi(null);
         setErrorKonfirmasi(null);
         onSukses(
-          `Saldo awal ${formatTanggal(tanggal)} dikoreksi — jurnal lama tetap tersimpan di audit; jurnal penyesuaian baru ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}) tercatat.`,
+          `Saldo awal ${formatTanggal(tanggal)} dikoreksi — jurnal lama tetap tersimpan di audit; jurnal penyesuaian baru ${formatRp(total)} (${res.jurnal.no_bukti || 'tanpa nomor bukti'}) tercatat.`,
         );
       } else {
         const res = await api.saldoAwalPosting(form, {
@@ -474,7 +474,7 @@ export function SaldoAwalWizard({
         setPesanKonfirmasi(null);
         setErrorKonfirmasi(null);
         onSukses(
-          `Saldo awal ${formatTanggal(tanggal)} tersimpan — satu jurnal seimbang ${formatRp(total)} (${res.jurnal.no_bukti || res.jurnal.id}).`,
+          `Saldo awal ${formatTanggal(tanggal)} tersimpan — satu jurnal seimbang ${formatRp(total)} (${res.jurnal.no_bukti || 'tanpa nomor bukti'}).`,
         );
       }
     } catch (e) {
@@ -502,8 +502,8 @@ export function SaldoAwalWizard({
       judul={modeKoreksi ? 'Koreksi Saldo Awal' : 'Wizard Saldo Awal'}
       deskripsi={
         modeKoreksi
-          ? 'Perbaiki saldo awal yang sudah tersimpan. Sistem membalik jurnal pembukaan lama lalu membuat jurnal penyesuaian baru; jurnal lama tidak dihapus dan tetap tersimpan di audit.'
-          : 'Dipakai sekali saat mulai pembukuan nyata. Isi saldo kas/bank, utang, dan aset lain per tanggal mulai. Selisih otomatis menjadi modal, jadi Anda tidak perlu menghitung debit/kredit.'
+          ? 'Perbaiki saldo awal yang sudah tersimpan.'
+          : 'Dipakai sekali saat mulai pembukuan. Isi saldo kas/bank, utang, dan aset lain per tanggal mulai; selisih otomatis menjadi modal.'
       }
       onTutup={mintaTutup}
       sibuk={busy}
@@ -564,7 +564,7 @@ export function SaldoAwalWizard({
               <TextInput
                 value={noBukti}
                 disabled={busy}
-                placeholder="cth: JU-2026-0001 — boleh dikosongkan"
+                placeholder="cth: JU-2026-0001"
                 onChange={(e) => setNoBukti(e.target.value)}
               />
             </Field>
@@ -649,6 +649,13 @@ export function SaldoAwalWizard({
                     variant="ghost"
                     aria-label={`Hapus akun saldo awal baris ${i + 1}`}
                     disabled={busy || rows.length <= 1}
+                    title={
+                      busy
+                        ? ALASAN_SIBUK
+                        : rows.length <= 1
+                          ? 'Minimal satu baris saldo.'
+                          : undefined
+                    }
                     onClick={() => hapusBaris(r.key)}
                   >
                     <Trash2 size={16} />
@@ -661,7 +668,7 @@ export function SaldoAwalWizard({
 
         <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-bold">Pratinjau Jurnal (untuk diperiksa)</h3>
+            <h3 className="font-bold">Pratinjau Jurnal</h3>
             {hasil.data && (
               <Badge tone="green">
                 Seimbang — debit = kredit
@@ -669,9 +676,8 @@ export function SaldoAwalWizard({
             )}
           </div>
           <p className="mt-1 text-sm text-stone-600">
-            Baris di bawah ini yang akan disimpan sebagai satu jurnal. Operator tidak
-            perlu mengubahnya; akuntan pendamping bisa memeriksa debit dan kredit di
-            sini.
+            Baris di bawah ini yang akan disimpan sebagai satu jurnal. Pastikan
+            debit dan kredit sudah benar.
           </p>
 
           {hasil.data && (
@@ -712,9 +718,9 @@ export function SaldoAwalWizard({
                 <table className="w-full text-left text-[15px]">
                   <thead>
                     <tr className="border-b text-stone-500">
-                      <th className="py-2 pr-3">Akun</th>
-                      <th className="py-2 pr-3 text-right">Debit</th>
-                      <th className="py-2 text-right">Kredit</th>
+                      <th scope="col" className="py-2 pr-3">Akun</th>
+                      <th scope="col" className="py-2 pr-3 text-right">Debit</th>
+                      <th scope="col" className="py-2 text-right">Kredit</th>
                     </tr>
                   </thead>
                   <tbody>

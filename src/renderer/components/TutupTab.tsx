@@ -48,6 +48,17 @@ export function TutupTab() {
   // 2↔3 tidak membuat ulang backup untuk tahun yang sama.
   const backupTahunRef = useRef<number | null>(null);
   const tahunDipilih = Number(tahunInput);
+  const tahunAktifRef = useRef(tahunDipilih);
+  useEffect(() => {
+    tahunAktifRef.current = tahunDipilih;
+  }, [tahunDipilih]);
+  // Tahun berubah = preview/backup/catatan tahun lama tidak boleh terbawa.
+  useEffect(() => {
+    setPreview(null);
+    setStep(1);
+    setCatatan('');
+    backupTahunRef.current = null;
+  }, [tahunInput]);
   const temuanKritis = (preview?.temuanIntegritas ?? []).filter(
     (t) => t.kode !== 'SNAPSHOT_TUTUP_BERUBAH',
   );
@@ -93,7 +104,10 @@ export function TutupTab() {
       setErr(null);
       setInfo(null);
       try {
-        const r = await api.tutupPreview(tahunDipilih);
+        const tahun = tahunDipilih;
+        const r = await api.tutupPreview(tahun);
+        // Abaikan respons basi bila operator sudah mengganti tahun.
+        if (tahunAktifRef.current !== tahun) return;
         setPreview(r);
         const temuan = r.temuanIntegritas ?? [];
         const kritis = temuan.filter(
@@ -102,7 +116,7 @@ export function TutupTab() {
         if (kritis.length > 0) {
           setErr(
             pesanValidasi(r.errors) ||
-              `Audit integritas gagal: ${kritis.map((t) => t.kode).join(', ')}`,
+              'Pemeriksaan data menemukan masalah yang harus diperbaiki sebelum periode dikunci. Buka Pengaturan → Audit Integritas untuk rinciannya.',
           );
           setStep(1);
           return;
@@ -124,15 +138,18 @@ export function TutupTab() {
   async function autoBackup(): Promise<void> {
     await jalankan(async () => {
       setErr(null);
+      // Backup mengikuti tahun yang benar-benar dipratinjau, bukan isian yang
+      // mungkin sudah berubah.
+      const tahun = preview?.tahun ?? tahunDipilih;
       // Guard tahun sama: backup untuk tahun ini sudah pernah dibuat, jadi
       // kembali dari langkah 3 lalu lanjut lagi tidak membuat backup baru.
-      if (backupTahunRef.current === tahunDipilih) {
+      if (backupTahunRef.current === tahun) {
         setStep(3);
         return;
       }
       try {
-        await api.backupAuto(tahunDipilih);
-        backupTahunRef.current = tahunDipilih;
+        await api.backupAuto(tahun);
+        backupTahunRef.current = tahun;
         setStep(3);
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -146,7 +163,7 @@ export function TutupTab() {
       setInfo(null);
       try {
         const r = await api.tutupCreate({
-          tahun: tahunDipilih,
+          tahun: preview?.tahun ?? tahunDipilih,
           catatan,
           konfirmasiTimpak: preview?.sudahDitutup === true,
         });
@@ -158,6 +175,8 @@ export function TutupTab() {
         setStep(1);
         setPreview(null);
         setCatatan('');
+        // Kunci ulang setelah koreksi wajib memakai backup baru.
+        backupTahunRef.current = null;
         await refresh();
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -170,7 +189,7 @@ export function TutupTab() {
   return (
     <div className="space-y-4">
       <Card>
-        <h1 className="mb-3 text-lg font-bold">Kunci Periode</h1>
+        <h1 className="text-xl font-bold">Kunci Periode</h1>
         <ErrorBox msg={err} />
         {preview && temuanKritis.length > 0 && (
           <div className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-800">
@@ -192,12 +211,12 @@ export function TutupTab() {
             data-testid="peringatan-snapshot-tutup"
           >
             <p className="font-semibold">
-              Angka live sudah berbeda dari Ringkasan terkunci versi {snapshot.versi}.
+              Angka saat ini sudah berbeda dari Ringkasan terkunci.
             </p>
             <p className="text-sm">
               Ringkasan terkunci tidak diubah. Periksa apakah perbedaan berasal dari
-              koreksi setelah tutup atau data rusak. TUTUP-ULANG yang dikonfirmasi
-              tetap boleh mencatat versi baru.
+              koreksi setelah dikunci atau data rusak. Kunci ulang tetap boleh
+              dilakukan dengan konfirmasi.
             </p>
             {preview.perbedaanSnapshot.length > 0 && (
               <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
@@ -209,22 +228,30 @@ export function TutupTab() {
           </div>
         )}
         {info && <InfoBox className="mb-2">{info}</InfoBox>}
-        {/* UI-A18: paragraf 4 konsep diringkas jadi 2 kalimat + indikator
-            langkah visual; istilah "snapshot" dijelaskan sekali di sini. */}
-        <p className="mb-3 text-sm text-stone-600">
-          Saat periode dikunci, laba, Neraca, dan hash jurnal disahkan permanen
-          sebagai <b>Ringkasan terkunci (snapshot)</b>; angka live tetap dihitung
-          dari jurnal, jadi koreksi setelah tutup bisa membuat angka berbeda —
-          perbedaannya diperingatkan di riwayat. Ini bukan jurnal penutup: tidak
-          ada jurnal yang dibuat atau dipindahkan ke ekuitas; koreksi tahun yang
-          sudah ditutup tetap boleh dengan alasan dan tercatat di audit.
+        {/* UI-A18: paragraf 4 konsep diringkas; detail "bukan jurnal penutup"
+            dipindah ke blok bantuan agar tidak menjadi dinding teks. */}
+        <p className="mb-3 mt-2 text-sm text-stone-600">
+          Saat periode dikunci, laba dan Neraca disahkan sebagai{' '}
+          <b>Ringkasan terkunci</b>. Angka saat ini tetap dihitung dari jurnal, jadi
+          koreksi setelah dikunci bisa membuat angka berbeda; perbedaannya
+          diperingatkan di riwayat.
         </p>
+        <details className="mb-3 text-sm text-stone-600">
+          <summary className="cursor-pointer font-semibold">
+            Apakah kunci periode membuat jurnal penutup?
+          </summary>
+          <p className="mt-1">
+            Tidak. Tidak ada jurnal yang dibuat atau dipindahkan ke ekuitas.
+            Koreksi untuk tahun yang sudah dikunci tetap boleh dengan alasan dan
+            tercatat di riwayat audit.
+          </p>
+        </details>
         <ol className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label="Langkah kunci periode">
           {(
             [
-              [1, 'Preview laba'],
-              [2, 'Backup otomatis (tersimpan di folder Backup — lihat Pengaturan)'],
-              [3, 'Konfirmasi (backup tersimpan di folder Backup — lihat Pengaturan)'],
+              [1, 'Pratinjau laba'],
+              [2, 'Backup otomatis'],
+              [3, 'Konfirmasi'],
             ] as [Step, string][]
           ).map(([n, label]) => (
             <li
@@ -237,8 +264,8 @@ export function TutupTab() {
           ))}
         </ol>
         <p className="mb-3 text-sm text-stone-600">
-          Tahun yang boleh dikunci: <b>≤ {tahunTerakhirBolehDitutup}</b>. Tahun berjalan
-          ({tahunBerjalan}) dan tahun berikutnya belum boleh dikunci.
+          Tahun terakhir yang boleh dikunci: <b>{tahunTerakhirBolehDitutup}</b>.
+          Tahun berjalan ({tahunBerjalan}) dan sesudahnya belum boleh dikunci.
         </p>
 
         {step === 1 && (
@@ -249,6 +276,7 @@ export function TutupTab() {
                 min={1900}
                 max={tahunTerakhirBolehDitutup}
                 value={tahunInput}
+                disabled={sibuk}
                 onChange={(e) => {
                   setTahunInput(e.target.value);
                   setPreview(null);
@@ -259,7 +287,7 @@ export function TutupTab() {
             </Field>
             <div className="flex items-end">
               <Button disabled={sibuk} onClick={() => void mulaiPreview()}>
-                {sibuk ? 'Memuat…' : 'Preview laba'}
+                {sibuk ? 'Memuat…' : 'Pratinjau laba'}
               </Button>
             </div>
           </div>
@@ -332,18 +360,18 @@ export function TutupTab() {
       </Card>
 
       <Card>
-        <h3 className="mb-2 font-bold">Riwayat kunci periode</h3>
+        <h2 className="mb-2 font-bold">Riwayat kunci periode</h2>
         <p className="mb-2 text-sm text-stone-600">
-          Laba dan Neraca di bawah adalah Ringkasan terkunci yang disahkan saat
-          tahun ditutup. Angka itu tidak berubah walau ada koreksi sesudahnya,
-          sehingga angka live bisa berbeda dari angka yang disahkan.
+          Ringkasan terkunci saat tahun dikunci. Angkanya tidak berubah walau ada
+          koreksi setelahnya, sehingga angka saat ini bisa berbeda.
         </p>
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-[15px]">
           <thead>
             <tr className="border-b text-stone-500">
-              <th className="py-2 pr-3">Tahun</th>
-              <th className="py-2 pr-3 text-right">Laba</th>
-              <th className="py-2 pr-3">Catatan</th>
+              <th scope="col" className="py-2 pr-3">Tahun</th>
+              <th scope="col" className="py-2 pr-3 text-right">Laba</th>
+              <th scope="col" className="py-2 pr-3">Catatan</th>
             </tr>
           </thead>
           <tbody>
@@ -369,12 +397,12 @@ export function TutupTab() {
                   <Badge>{t.tahun}</Badge>
                   {t.snapshotTerbaru && (
                     <p className="mt-1 text-helper text-stone-500">
-                      Ringkasan terkunci v{t.snapshotTerbaru.versi}
+                      Ringkasan terkunci
                     </p>
                   )}
                   {t.catatanTahunPertama && (
                     <p className="mt-1 text-helper text-amber-700">
-                      tahun pertama (parsial)
+                      Tahun pertama (parsial)
                     </p>
                   )}
                 </td>
@@ -389,7 +417,7 @@ export function TutupTab() {
                   )}
                   {t.snapshotBerubah && (
                     <p className="mt-1 text-helper text-amber-700">
-                      Angka live sudah berbeda (laba live {formatRp(t.labaLive)}).
+                      Angka saat ini sudah berbeda (laba saat ini {formatRp(t.labaLive)}).
                     </p>
                   )}
                 </td>
@@ -397,17 +425,19 @@ export function TutupTab() {
                   {t.catatan || '-'}
                   {t.snapshotBerubah && (
                     <p className="mt-1 text-helper text-amber-700">
-                      Tinjau koreksi setelah tutup atau data rusak.
+                      Periksa koreksi setelah dikunci atau data yang perlu
+                      diperbaiki.
                     </p>
                   )}
                 </td>
               </tr>
             ))}
             {riwayatSiap && list.length === 0 && (
-              <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum pernah ada periode dikunci.</td></tr>
+              <tr><td colSpan={3} className="py-4 text-center text-stone-500">Belum ada periode yang dikunci.</td></tr>
             )}
           </tbody>
         </table>
+        </div>
       </Card>
 
       {konfirmasiOpen && preview && (

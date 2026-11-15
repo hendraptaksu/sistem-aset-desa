@@ -374,7 +374,7 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
   try {
     if (!existsSync(backupPath)) return { valid: false, error: 'File backup tidak ditemukan.' };
     const info = statSync(backupPath);
-    if (!info.isFile()) return { valid: false, error: 'Backup harus berupa satu file .db.' };
+    if (!info.isFile()) return { valid: false, error: 'Backup harus berupa satu file data.' };
     if (info.size === 0) return { valid: false, error: 'File backup kosong.' };
 
     kandidat = new Database(backupPath, { readonly: true, fileMustExist: true });
@@ -382,7 +382,7 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
     if (versi !== SCHEMA_VERSION)
       return {
         valid: false,
-        error: `File backup memakai skema v${versi}; aplikasi hanya mendukung skema v${SCHEMA_VERSION}. Pilih backup dari aplikasi versi ini.`,
+        error: `File backup dibuat oleh versi aplikasi lain. Pilih backup dari aplikasi versi ini.`,
       };
 
     const hasilIntegritas = kandidat.pragma('integrity_check') as { integrity_check: string }[];
@@ -402,23 +402,18 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
     if (kurang.length > 0)
       return {
         valid: false,
-        error: `File ini bukan backup aplikasi ini (tabel ${kurang.join(', ')} tidak ditemukan).`,
+        error: 'File ini bukan backup aplikasi ini. Pilih file hasil Backup Lengkap dari aplikasi ini.',
       };
 
     // DB-08: `integrity_check` tidak memeriksa foreign key. Tolak kandidat yang
     // punya baris yatim.
     const pelanggaranFk = kandidat.pragma('foreign_key_check') as PelanggaranFk[];
     if (pelanggaranFk.length > 0) {
-      const rincian = pelanggaranFk
-        .slice(0, 5)
-        .map((r) => `tabel ${r.table} baris ${r.rowid ?? '-'} -> ${r.parent}`)
-        .join(', ');
-      const sisa = pelanggaranFk.length > 5 ? ` (+${pelanggaranFk.length - 5} lainnya)` : '';
       return {
         valid: false,
         error:
-          `File backup rusak: ada ${pelanggaranFk.length} pelanggaran foreign key ` +
-          `(${rincian}${sisa}). Pilih file backup lain.`,
+          `File backup rusak: ada data yang saling merujuk secara tidak konsisten. ` +
+          `Pilih file backup lain.`,
       };
     }
 
@@ -427,7 +422,7 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
     if (!audit.ok) {
       const rincian = audit.temuan
         .slice(0, 10)
-        .map((t) => `[${t.kode}] ${t.pesan}`)
+        .map((t) => t.pesan)
         .join(' ');
       const sisa =
         audit.temuan.length > 10 ? ` (+${audit.temuan.length - 10} temuan lain)` : '';
@@ -443,7 +438,7 @@ export function validasiKandidatRestore(backupPath: string): ValidasiRestore {
   } catch {
     return {
       valid: false,
-      error: 'File backup tidak bisa dibaca. Pastikan file .db berasal dari aplikasi ini.',
+      error: 'File backup tidak bisa dibaca. Pastikan file berasal dari aplikasi ini.',
     };
   } finally {
     try {

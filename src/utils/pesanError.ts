@@ -16,7 +16,7 @@ export const PESAN_MUAT_GAGAL =
 
 /** Satu-satunya pesan tanggal yang dipakai form, filter, dan IPC. */
 export const PESAN_TANGGAL_TIDAK_VALID =
-  'Tanggal tidak valid. Gunakan format YYYY-MM-DD dan tanggal yang benar.';
+  'Tanggal belum diisi atau tidak valid. Pilih tanggal dari kalender.';
 
 const MAKS_PESAN = 400;
 

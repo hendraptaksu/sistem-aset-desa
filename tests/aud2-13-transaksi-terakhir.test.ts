@@ -124,7 +124,7 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
       }),
     ]);
 
-    expect(html).toContain('Transaksi Terakhir yang Dicatat');
+    expect(html).toContain('Transaksi Terakhir');
     expect(html).toContain('Tanggal');
     expect(html).toContain('No. Bukti');
     expect(html).toContain('Jenis');
@@ -136,7 +136,7 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
     expect(html).toContain('Aktif');
     expect(html).toContain('>Lihat</button>');
     // Hanya jurnal aktif non-panjar yang boleh dibatalkan cepat.
-    expect(html.match(/Batalkan \/ Salah Input/g)).toHaveLength(1);
+    expect(html.match(/>Batalkan<\/button>/g)).toHaveLength(1);
   });
 
   it('menandai jurnal balik / sudah dikoreksi tanpa tombol pembatalan', () => {
@@ -158,7 +158,7 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
 
     expect(html).toContain('Jurnal balik');
     expect(html).toContain('Sudah dikoreksi');
-    expect(html).not.toContain('Batalkan / Salah Input');
+    expect(html).not.toContain('aria-label="Batalkan transaksi');
   });
 
   it('menampilkan alasan tidak bisa dibatalkan tanpa tombol yang selalu gagal', () => {
@@ -175,7 +175,7 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
     expect(html).toContain(
       'Jurnal ini terhubung ke pinjaman. Gunakan menu Pinjaman LPD.',
     );
-    expect(html).not.toContain('Batalkan / Salah Input');
+    expect(html).not.toContain('aria-label="Batalkan transaksi');
   });
 
   it('menampilkan status memuat, kosong, dan gagal memuat', () => {
@@ -192,7 +192,7 @@ describe('AUD2-13 — kartu transaksi terakhir', () => {
     const html = renderToStaticMarkup(
       createElement(TransaksiTab, { onBukaTab: () => undefined }),
     );
-    expect(html).toContain('Transaksi Terakhir yang Dicatat');
+    expect(html).toContain('Transaksi Terakhir');
     expect(html).not.toContain('Mode Lanjutan');
   });
 });
@@ -332,10 +332,10 @@ describe('AUD2-13 — pemuatan & pengiriman pembatalan', () => {
       }),
     );
 
-    expect(html).toContain('Batalkan / Salah Input');
+    expect(html).toContain('Batalkan transaksi?');
     expect(html).toContain('Alasan pembatalan (min. 5 karakter)');
     expect(html).toContain('tidak dihapus');
-    expect(html).toContain('Batalkan Transaksi');
+    expect(html).toContain('Ya, batalkan transaksi');
     expect(html).toContain('Transaksi j1');
   });
 });

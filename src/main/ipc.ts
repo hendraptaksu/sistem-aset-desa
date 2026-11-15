@@ -321,14 +321,14 @@ export function registerIpc(deps: IpcDeps): void {
   const GAGAL_TUTUP =
     'Terjadi kesalahan saat memproses kunci periode. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_FILE = 'Gagal menyimpan file. Coba lagi; bila tetap gagal, hubungi pendamping.';
-  const GAGAL_BACKUP = 'Gagal membuat cadangan. Coba lagi; bila tetap gagal, hubungi pendamping.';
+  const GAGAL_BACKUP = 'Gagal membuat backup. Coba lagi; bila tetap gagal, hubungi pendamping.';
   const GAGAL_RESTORE =
     'Gagal memulihkan data. Data lama tetap dipakai; coba lagi atau hubungi pendamping.';
   // T1.2: pesan simpan sengaja tidak memuat kata teknis (mis. "database")
   // agar tidak diganti pesan generik oleh `pesanError`. Guard berlaku untuk
   // semua kanal simpan, bukan hanya backup.
   const PESAN_SIMPAN_KE_DB_AKTIF =
-    'File DB yang sedang aktif tidak boleh menjadi tujuan simpan. Pilih nama file lain.';
+    'File yang dipilih adalah file data aplikasi yang sedang dipakai. Pilih nama atau folder lain agar data tidak tertimpa.';
 
   /** Tolak tujuan simpan yang menunjuk DB aktif atau sidecar `-wal`/`-shm`. */
   const pastikanTujuanBukanDbAktif = (filePath: string): void => {
@@ -504,14 +504,23 @@ export function registerIpc(deps: IpcDeps): void {
     }
   });
 
-  daftarkan('pengaturan:simpan', (_e, input: unknown) => {
+  daftarkan('pengaturan:simpan', (_e, input: unknown, opsi: unknown) => {
     try {
       const k = perluBuka();
       if (k) return fail(k);
       const bentuk = validasiBentukPengaturanPembukuan(input);
       if (!bentuk.ok) return fail(bentuk.error);
+      const konfirmasiKosongkanTanggalMulai =
+        opsi !== null &&
+        typeof opsi === 'object' &&
+        (opsi as { konfirmasiKosongkanTanggalMulai?: unknown })
+          .konfirmasiKosongkanTanggalMulai === true;
       return ok(
-        pengaturanPublik(simpanPengaturanPembukuan(deps.db(), bentuk.input)),
+        pengaturanPublik(
+          simpanPengaturanPembukuan(deps.db(), bentuk.input, {
+            konfirmasiKosongkanTanggalMulai,
+          }),
+        ),
       );
     } catch (e) {
       return fail(pesanError(e, PESAN_SIMPAN_GAGAL));
@@ -1785,7 +1794,7 @@ export function registerIpc(deps: IpcDeps): void {
       const Stamp = tanggalSekarang();
       const { canceled, filePath } = await deps.dialog.showSaveDialog({
         defaultPath: `pura-backup-${Stamp}.db`,
-        filters: [{ name: 'SQLite DB', extensions: ['db'] }],
+        filters: [{ name: 'File data aplikasi', extensions: ['db'] }],
       });
       if (canceled || !filePath) return ok({ saved: false, path: '' });
       pastikanTujuanBukanDbAktif(filePath);
@@ -1901,13 +1910,13 @@ export function registerIpc(deps: IpcDeps): void {
       if (k) return fail(k);
       if (!bacaKonfirmasiRestoreDb(opsi)) {
         return fail(
-          'Restore .db adalah jalur lanjutan dan berisiko: hanya memulihkan database, tanpa validasi manifest.json. Gunakan Restore Lengkap bila tersedia. Konfirmasi peringatan terlebih dahulu.',
+          'Pulihkan file .db adalah cara lanjutan dan berisiko: data diganti tanpa memeriksa keterangan backup. Gunakan Pulihkan Lengkap bila tersedia. Konfirmasi peringatan terlebih dahulu.',
           false,
           true,
         );
       }
       const { canceled, filePaths } = await deps.dialog.showOpenDialog({
-        filters: [{ name: 'SQLite DB', extensions: ['db'] }],
+        filters: [{ name: 'File data aplikasi', extensions: ['db'] }],
         properties: ['openFile'],
       });
       if (canceled || filePaths.length === 0) return ok({ restored: false, path: '' });

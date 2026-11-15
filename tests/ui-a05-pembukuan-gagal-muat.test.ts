@@ -1,10 +1,14 @@
 // UI-A27 kasus 7 (UI-A05): Simpan Pengaturan Pembukuan harus nonaktif saat
-// pengaturan gagal dimuat (errPembukuan), agar setting tersimpan tidak
+// pengaturan gagal dimuat (errMuatPembukuan), agar setting tersimpan tidak
 // tertimpa nilai default form — form ikut mati dan tombol "Coba muat ulang"
 // jadi satu-satunya jalan keluar.
 //
+// UI-A28: kegagalan *simpan* tidak boleh ikut mengunci form. Kesalahan simpan
+// memakai state terpisah (errSimpanPembukuan) supaya operator bisa memperbaiki
+// isian dan mencoba lagi tanpa memuat ulang (yang akan membuang editannya).
+//
 // Strategi: kegagalan IPC `pengaturanGet` tidak bisa dipicu lewat e2e (build
-// uji selalu punya IPC asli yang berfungsi) dan `errPembukuan` adalah state
+// uji selalu punya IPC asli yang berfungsi) dan `errMuatPembukuan` adalah state
 // internal PengaturanTab yang tidak bisa diset dari luar. Starness jalur
 // gagal maka dikunci lewat uji sumber berikut; jalur bahagia (muat sukses →
 // Simpan aktif) dikunci lewat e2e/ui-audit.test.mjs (cekPengaturanPembukuanSiap).
@@ -23,15 +27,18 @@ const sumber = readFileSync(
 );
 
 describe('UI-A05 — form Pembukuan terkunci saat pengaturan gagal dimuat', () => {
-  it('menurunkan pembukuanTerkunci langsung dari errPembukuan', () => {
-    expect(sumber).toContain('const pembukuanTerkunci = errPembukuan !== null;');
+  it('menurunkan pembukuanTerkunci dari kegagalan muat, bukan kegagalan simpan', () => {
+    expect(sumber).toContain('const pembukuanTerkunci = errMuatPembukuan !== null;');
+    expect(sumber).toContain('setErrSimpanPembukuan');
   });
 
   it('menonaktifkan Simpan Pengaturan Pembukuan dengan alasan terlihat', () => {
     // Tombol Simpan wajib memasukkan pembukuanTerkunci ke disabled.
-    expect(sumber).toContain('disabled={busyPembukuan || pembukuanTerkunci}');
+    expect(sumber).toContain(
+      'disabled={busyPembukuan || pembukuanTerkunci || alasanSimpanPembukuan !== null}',
+    );
     // Alasan mati tidak boleh senyap: title memakai alasanTombolNonaktif.
-    expect(sumber).toContain("alasan: pembukuanTerkunci");
+    expect(sumber).toContain('alasan: pembukuanTerkunci');
     expect(sumber).toContain("'Pengaturan gagal dimuat — coba muat ulang dulu.'");
   });
 
@@ -43,12 +50,12 @@ describe('UI-A05 — form Pembukuan terkunci saat pengaturan gagal dimuat', () =
   });
 
   it('menyediakan tombol "Coba muat ulang" hanya saat gagal muat', () => {
-    expect(sumber).toContain('{errPembukuan !== null && (');
+    expect(sumber).toContain('{errMuatPembukuan !== null && (');
     expect(sumber).toContain('Coba muat ulang');
   });
 
-  it('gagal muat mengisi errPembukuan, bukan menimpa form dengan default', () => {
-    expect(sumber).toContain('setErrPembukuan(pesanError(e, PESAN_MUAT_GAGAL));');
+  it('gagal muat mengisi errMuatPembukuan, bukan menimpa form dengan default', () => {
+    expect(sumber).toContain('setErrMuatPembukuan(pesanError(e, PESAN_MUAT_GAGAL));');
     // muatPembukuan sukses baru menerapkan nilai; catch hanya mengisi error.
     const mulai = sumber.indexOf('async function muatPembukuan');
     const akhir = sumber.indexOf('// Tampilkan nilai tersimpan saat mount');

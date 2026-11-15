@@ -213,7 +213,7 @@ describe('P1-9 — adapter Neraca memakai daftar tutup buku', () => {
     expect(ns.seimbang).toBe(true);
     expect(badgeNeracaSaldo(ns)).toEqual({
       tone: 'green',
-      label: 'Neraca Saldo: seimbang',
+      label: 'Pembukuan seimbang',
     });
   });
 });
@@ -355,12 +355,12 @@ describe('P1-9 — helper tampilan laporan', () => {
   it('badge Neraca Saldo menampilkan seimbang atau selisih nominal', () => {
     expect(badgeNeracaSaldo({ seimbang: true, selisih: 0 })).toEqual({
       tone: 'green',
-      label: 'Neraca Saldo: seimbang',
+      label: 'Pembukuan seimbang',
     });
 
     const selisih = badgeNeracaSaldo({ seimbang: false, selisih: RP(1_500_000) });
     expect(selisih.tone).toBe('red');
-    expect(selisih.label).toContain('Neraca Saldo: selisih');
+    expect(selisih.label).toContain('Ada selisih');
     expect(selisih.label).toContain(formatRp(RP(1_500_000)));
   });
 

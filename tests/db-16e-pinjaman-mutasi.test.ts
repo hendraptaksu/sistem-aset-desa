@@ -591,7 +591,9 @@ describe('DB-16e — validasi, IPC, API, UI, dan dokumentasi', () => {
     expect(UI).toContain('Saldo awal periode');
     expect(UI).toContain('Total kas keluar');
     expect(UI).toContain('Tanggal jurnal');
-    expect(UI).toContain('Jurnal ID');
+    expect(UI).toContain('No. bukti');
+    expect(UI).toContain('Tanggal catat');
+    expect(UI).not.toContain('Jurnal ID');
     expect(UI).toContain('mutasiBulan');
     expect(UI).toContain('tahunLokal');
   });

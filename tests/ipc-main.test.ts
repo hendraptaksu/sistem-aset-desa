@@ -2132,9 +2132,9 @@ describe('DB-09 — restore .db wajib konfirmasi lanjutan eksplisit', () => {
     const tanpaKonfirmasi = await env.panggil('backup:import');
     expect(tanpaKonfirmasi.ok).toBe(false);
     expect(tanpaKonfirmasi.perluKonfirmasi).toBe(true);
-    expect(tanpaKonfirmasi.error).toMatch(/hanya memulihkan database/i);
-    expect(tanpaKonfirmasi.error).toMatch(/manifest\.json/i);
-    expect(tanpaKonfirmasi.error).toMatch(/Restore Lengkap/i);
+    expect(tanpaKonfirmasi.error).toMatch(/tanpa memeriksa keterangan backup/i);
+    expect(tanpaKonfirmasi.error).toMatch(/Gunakan Pulihkan Lengkap/i);
+    expect(tanpaKonfirmasi.error).toMatch(/Pulihkan Lengkap/i);
     // Gate terjadi sebelum dialog: antrean dialog masih utuh dan DB belum diganti.
     expect(env.openQueue).toHaveLength(1);
     expect(env.setDbCalls).toHaveLength(0);
@@ -2532,7 +2532,7 @@ describe('AUD2-01 — IPC laporan, kunci periode, dan saldo awal memakai akun DB
 });
 
 describe('T1.2 — guard path DB aktif di semua kanal simpan', () => {
-  const POLA_PESAN = /File DB yang sedang aktif tidak boleh menjadi tujuan simpan/i;
+  const POLA_PESAN = /file data aplikasi yang sedang dipakai/i;
 
   it('file:save-buffer menolak DB aktif/sidecar tanpa memanggil writeFile', async () => {
     const env = buatEnv();

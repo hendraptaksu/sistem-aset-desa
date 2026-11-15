@@ -128,10 +128,10 @@ export function badgeNeracaSaldo(hasil: {
   seimbang: boolean;
   selisih: number;
 }): BadgeLaporan {
-  if (hasil.seimbang) return { tone: 'green', label: 'Neraca Saldo: seimbang' };
+  if (hasil.seimbang) return { tone: 'green', label: 'Pembukuan seimbang' };
   return {
     tone: 'red',
-    label: `Neraca Saldo: selisih ${formatRp(hasil.selisih)}`,
+    label: `Ada selisih ${formatRp(hasil.selisih)}`,
   };
 }
 

@@ -37,26 +37,28 @@ export function NeracaTab({
     if (!cutoff) {
       setData(null);
       setNeracaSaldo(null);
+      setMemuat(false);
+      setErr(null);
       return;
     }
     let aktif = true;
     setMemuat(true);
     setErr(null);
-    Promise.all([
+    Promise.allSettled([
       api.laporanNeraca(cutoff),
       // Badge Neraca memakai saldo kumulatif s/d cut-off, bukan P&L tahun saja.
       api.laporanNeracaSaldo({ cutoff, mode: 'kumulatif' }),
     ])
-      .then(([n, ns]) => {
+      .then(([utama, badge]) => {
         if (!aktif) return;
-        setData(n);
-        setNeracaSaldo(ns);
-      })
-      .catch((e) => {
-        if (!aktif) return;
-        setData(null);
-        setNeracaSaldo(null);
-        setErr(pesanError(e, PESAN_MUAT_GAGAL));
+        if (utama.status === 'fulfilled') {
+          setData(utama.value);
+        } else {
+          setData(null);
+          setErr(pesanError(utama.reason, PESAN_MUAT_GAGAL));
+        }
+        // Badge hanya pelengkap; kegagalannya tidak boleh mengosongkan Neraca.
+        setNeracaSaldo(badge.status === 'fulfilled' ? badge.value : null);
       })
       .finally(() => {
         if (aktif) setMemuat(false);
@@ -121,20 +123,16 @@ export function NeracaTab({
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
-              {/* UI-A10: cut-off header dari data hasil, bukan input. */}
-              Neraca per {data ? formatTanggal(data.cutoff) : '—'}{' '}
-              {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Neraca menunjukkan aset, kewajiban, dan ekuitas pada satu tanggal.
-              Laba ditahan dan laba berjalan dihitung ulang dari jurnal — tidak ada
-              angka laba yang disimpan. Klik akun untuk membuka Buku Besar.
-            </p>
-          </div>
-          <Badge tone="green">Dihitung dari jurnal</Badge>
+        <div>
+          <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+            {/* UI-A10: cut-off header dari data hasil, bukan input. */}
+            Neraca per {data ? formatTanggal(data.cutoff) : '—'}{' '}
+            {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-stone-600">
+            Aset, kewajiban, dan ekuitas pada satu tanggal. Klik akun untuk membuka
+            Buku Besar.
+          </p>
         </div>
 
         {data?.catatanTahunPertama && (
@@ -153,14 +151,6 @@ export function NeracaTab({
             cutoff={cutoff}
             onCutoff={setCutoff}
             sekarang={sekarang}
-            tambahan={
-              neracaSaldo ? (
-                <div className="flex flex-wrap gap-2 text-sm">
-                  <Badge tone="stone">Debit {formatRp(neracaSaldo.totalDebit)}</Badge>
-                  <Badge tone="stone">Kredit {formatRp(neracaSaldo.totalKredit)}</Badge>
-                </div>
-              ) : undefined
-            }
           />
         </div>
         {data && (
@@ -329,15 +319,16 @@ export function NeracaTab({
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="font-bold">Total Pasiva</h3>
+                <h3 className="font-bold">Total Kewajiban + Ekuitas</h3>
                 <p className="text-sm text-stone-600">
-                  Kewajiban + ekuitas, termasuk laba yang dihitung dari jurnal.
+                  Jumlah kewajiban dan ekuitas, termasuk laba berjalan.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Badge tone="stone">Aset {formatRp(data.totalAset)}</Badge>
-                <Badge tone="stone">Pasiva {formatRp(data.totalPasiva)}</Badge>
-                {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+                <Badge tone="stone">
+                  Kewajiban + Ekuitas {formatRp(data.totalPasiva)}
+                </Badge>
               </div>
             </div>
             {!data.balance && (

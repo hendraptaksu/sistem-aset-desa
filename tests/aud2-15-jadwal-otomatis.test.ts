@@ -326,7 +326,7 @@ describe('UI-A25 — batas dan konfirmasi generator jadwal', () => {
       'utf8',
     );
     expect(ui).toContain(
-      'Akan membuat ${Number(tenor)} baris jadwal — lanjutkan?',
+      'Jadwal angsuran akan dibuat sebanyak ${Number(tenor)} baris. Periksa kembali sebelum melanjutkan.',
     );
     expect(ui).toContain('lanjutSetelahKonfirmasiJadwalBesar');
     expect(ui).toContain(
