@@ -548,11 +548,17 @@ export function PengaturanTab({
   }
 
   const tahunContoh = tahunLokal();
-  let pratinjauNomor = '—';
-  try {
-    pratinjauNomor = formatNomorBukti(tahunContoh, 1, prefix, Number(padding));
-  } catch {
-    pratinjauNomor = '—';
+  // UI-A26: prefix kosong membuat formatNomorBukti gagal; jelaskan bahwa nomor
+  // diisi otomatis tanpa prefix alih-alih tanda "—" tanpa penjelasan.
+  let pratinjauNomor: string;
+  if (!prefix.trim()) {
+    pratinjauNomor = 'Nomor otomatis (tanpa prefix)';
+  } else {
+    try {
+      pratinjauNomor = formatNomorBukti(tahunContoh, 1, prefix, Number(padding));
+    } catch {
+      pratinjauNomor = '—';
+    }
   }
 
   // UI-A05: bila pengaturan gagal dimuat, semua input pembukuan mati dan

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatRp } from '../../utils/format.js';
 import { tahunLokal } from '../../utils/tanggal.js';
 import {
@@ -26,10 +26,11 @@ import {
 
 type Step = 1 | 2 | 3;
 
-const TAHUN_BERJALAN = tahunLokal();
-const TAHUN_TERAKHIR_BOLEH_DITUTUP = TAHUN_BERJALAN - 1;
-
 export function TutupTab() {
+  // UI-A26: tahun berjalan dihitung saat render, bukan konstanta modul yang
+  // bisa basi bila aplikasi tetap terbuka melewati pergantian tahun.
+  const tahunBerjalan = tahunLokal();
+  const tahunTerakhirBolehDitutup = tahunBerjalan - 1;
   const [list, setList] = useState<TutupBukuTampil[]>([]);
   // UI-A14: status memuat + gagal muat riwayat tampil di kartu riwayat sendiri,
   // bukan di kartu Kunci Periode; empty state hanya setelah muat sukses.
@@ -37,12 +38,16 @@ export function TutupTab() {
   const [errRiwayat, setErrRiwayat] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [tahun, setTahun] = useState(TAHUN_TERAKHIR_BOLEH_DITUTUP);
+  const [tahunInput, setTahunInput] = useState(() => String(tahunLokal() - 1));
   const [step, setStep] = useState<Step>(1);
   const [preview, setPreview] = useState<TutupPreviewData | null>(null);
   const [catatan, setCatatan] = useState('');
   const [konfirmasiOpen, setKonfirmasiOpen] = useState(false);
   const { sibuk, jalankan } = useAksiSibuk();
+  // UI-A26: backup otomatis per tahun hanya dibuat sekali; bolak-balik langkah
+  // 2↔3 tidak membuat ulang backup untuk tahun yang sama.
+  const backupTahunRef = useRef<number | null>(null);
+  const tahunDipilih = Number(tahunInput);
   const temuanKritis = (preview?.temuanIntegritas ?? []).filter(
     (t) => t.kode !== 'SNAPSHOT_TUTUP_BERUBAH',
   );
@@ -88,7 +93,7 @@ export function TutupTab() {
       setErr(null);
       setInfo(null);
       try {
-        const r = await api.tutupPreview(tahun);
+        const r = await api.tutupPreview(tahunDipilih);
         setPreview(r);
         const temuan = r.temuanIntegritas ?? [];
         const kritis = temuan.filter(
@@ -119,8 +124,15 @@ export function TutupTab() {
   async function autoBackup(): Promise<void> {
     await jalankan(async () => {
       setErr(null);
+      // Guard tahun sama: backup untuk tahun ini sudah pernah dibuat, jadi
+      // kembali dari langkah 3 lalu lanjut lagi tidak membuat backup baru.
+      if (backupTahunRef.current === tahunDipilih) {
+        setStep(3);
+        return;
+      }
       try {
-        await api.backupAuto(tahun);
+        await api.backupAuto(tahunDipilih);
+        backupTahunRef.current = tahunDipilih;
         setStep(3);
       } catch (e) {
         setErr(pesanError(e, PESAN_PROSES_GAGAL));
@@ -134,7 +146,7 @@ export function TutupTab() {
       setInfo(null);
       try {
         const r = await api.tutupCreate({
-          tahun,
+          tahun: tahunDipilih,
           catatan,
           konfirmasiTimpak: preview?.sudahDitutup === true,
         });
@@ -225,8 +237,8 @@ export function TutupTab() {
           ))}
         </ol>
         <p className="mb-3 text-sm text-stone-600">
-          Tahun yang boleh dikunci: <b>≤ {TAHUN_TERAKHIR_BOLEH_DITUTUP}</b>. Tahun berjalan
-          ({TAHUN_BERJALAN}) dan tahun berikutnya belum boleh dikunci.
+          Tahun yang boleh dikunci: <b>≤ {tahunTerakhirBolehDitutup}</b>. Tahun berjalan
+          ({tahunBerjalan}) dan tahun berikutnya belum boleh dikunci.
         </p>
 
         {step === 1 && (
@@ -235,11 +247,13 @@ export function TutupTab() {
               <TextInput
                 type="number"
                 min={1900}
-                max={TAHUN_TERAKHIR_BOLEH_DITUTUP}
-                value={String(tahun)}
+                max={tahunTerakhirBolehDitutup}
+                value={tahunInput}
                 onChange={(e) => {
-                  setTahun(Number(e.target.value));
+                  setTahunInput(e.target.value);
                   setPreview(null);
+                  // Tahun ganti = konteks ganti; backup langkah 2 lama tidak berlaku.
+                  backupTahunRef.current = null;
                 }}
               />
             </Field>

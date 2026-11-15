@@ -1198,6 +1198,7 @@ export function FormTransaksiTerpandu({
 
       {lockOpen && (
         <LockModal
+          sibuk={busy}
           onCancel={() => setLockOpen(false)}
           onSubmit={(alasan) => {
             setLockOpen(false);

@@ -709,9 +709,12 @@ export function Modal({
 
 /** Modal alasan untuk periode terkunci (kunci longgar). */
 export function LockModal({
+  sibuk = false,
   onCancel,
   onSubmit,
 }: {
+  /** Saat proses simpan berjalan, tombol nonaktif agar tidak dikirim ganda. */
+  sibuk?: boolean;
   onCancel: () => void;
   onSubmit: (alasan: string) => void;
 }) {
@@ -725,12 +728,14 @@ export function LockModal({
       judul="Periode sudah ditutup"
       deskripsi="Tanggal ini masuk tahun yang sudah dikunci lewat Kunci Periode. Boleh tetap simpan, tapi wajib isi alasan — tercatat otomatis."
       onTutup={onCancel}
+      sibuk={sibuk}
       lebar="md"
     >
       <Field label="Alasan (min. 5 karakter)">
         <TextInput
           autoFocus
           value={alasan}
+          disabled={sibuk}
           onChange={(e) => setAlasan(e.target.value)}
           placeholder="cth: koreksi struk susulan Desember"
         />
@@ -739,15 +744,18 @@ export function LockModal({
         <p className="mt-1 text-helper text-stone-500">Alasan minimal 5 karakter.</p>
       )}
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel}>Batal</Button>
+        <Button variant="ghost" disabled={sibuk} onClick={onCancel}>
+          Batal
+        </Button>
         <Button
-          disabled={!cukup}
+          disabled={sibuk || !cukup}
+          title={sibuk ? ALASAN_SIBUK : undefined}
           onClick={() => {
             if (!cukup) return;
             onSubmit(alasan.trim());
           }}
         >
-          Tetap simpan
+          {sibuk ? 'Memproses…' : 'Tetap simpan'}
         </Button>
       </div>
     </Modal>

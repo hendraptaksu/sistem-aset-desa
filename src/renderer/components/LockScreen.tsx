@@ -125,6 +125,11 @@ export function LockScreen({
     setMode(m);
     setErr(null);
     setPin('');
+    // UI-A26: sisa isian mode reset dibersihkan saat pindah mode agar PIN dan
+    // kode darurat yang setengah terisi tidak terbawa ke percobaan berikutnya.
+    setKode('');
+    setBaru('');
+    setKonfirmasi('');
   }
 
   return (
