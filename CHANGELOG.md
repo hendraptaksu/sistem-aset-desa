@@ -81,6 +81,12 @@ dirilis sebagai versi baru.
 
 ### Diperbaiki
 
+- **Pratinjau cetak — footer menumpuk baris terakhir**: paginator kini
+  memperkirakan tinggi tiap baris (membungkus teks per kolom) dan memakai
+  bobot baris, bukan sekadar jumlah baris. Kapasitas aman turun menjadi 27
+  baris portrait / 17 landscape (satuan baris satu-lapis), sehingga garis
+  footer tidak lagi menimpa baris tabel dan tidak ada baris yang hilang.
+
 - **P0 data safety — backup ke DB aktif** (T1.1): backup ke path DB aktif
   (termasuk symlink/hardlink dan sidecar `-wal`/`-shm`) ditolak sebelum
   `VACUUM INTO`; data jurnal baru tidak lagi hilang setelah DB dibuka ulang.

@@ -22,6 +22,7 @@ import {
 import type { Panjar } from '../src/core/types.js';
 import type { JurnalTampil, PanjarTampil } from '../src/features/export/workbooks.js';
 import {
+  barisPerHalamanDefault,
   cariBarisCetak,
   infoPratinjauCetak,
   jumlahHalamanCetak,
@@ -408,6 +409,55 @@ describe('P1-16 — paginator dokumen cetak', () => {
     }
     expect((html.match(/TOTAL/g) ?? []).length).toBe(1);
     expect(html).toContain('305 baris');
+  });
+
+  it('baris yang teksnya membungkus memakai porsi halaman lebih besar tanpa menghilangkan baris', () => {
+    expect(barisPerHalamanDefault('portrait')).toBe(27);
+    expect(barisPerHalamanDefault('landscape')).toBe(17);
+
+    const buatDoc = (nama: (i: number) => string): PrintDoc => ({
+      judul: 'UJI BUNGKUS',
+      tanggalCetak: '2026-10-23',
+      orientasi: 'portrait',
+      blok: [
+        {
+          jenis: 'tabel',
+          tabel: {
+            kolom: [
+              { label: 'Kode', width: 10 },
+              { label: 'Nama', width: 36 },
+              { label: 'Tipe', width: 14, align: 'center' },
+              { label: 'Debit', width: 13, align: 'right' },
+              { label: 'Kredit', width: 13, align: 'right' },
+              { label: 'Saldo', width: 14, align: 'right' },
+            ],
+            baris: Array.from({ length: 60 }, (_, i) => ({
+              sel: [`AKUN-${String(i + 1).padStart(3, '0')}`, nama(i), 'Aktiva', 'Rp 0', 'Rp 0', 'Rp 0'],
+            })),
+            footer: [{ sel: ['TOTAL', '', '', 'Rp 0', 'Rp 0', 'Rp 0'], jenis: 'total', tebal: true }],
+          },
+        },
+      ],
+    });
+
+    const pendek = buatDoc((i) => `Akun ${i + 1}`);
+    const panjang = buatDoc(
+      () => 'PENGELUARAN AIR, LISTRIK, TELEPON DAN OPERASIONAL KANTOR DESA ADAT',
+    );
+
+    const halamanPendek = jumlahHalamanCetak(pendek);
+    const halamanPanjang = jumlahHalamanCetak(panjang);
+    expect(halamanPendek).toBe(3); // 60 baris satu-lapis: 27 + 27 + 6
+    expect(halamanPanjang).toBeGreaterThan(halamanPendek);
+
+    // Semua baris tetap tepat sekali dan footer tabel tidak hilang/dobel.
+    const html = renderPrintHtml(panjang);
+    for (let i = 1; i <= 60; i++) {
+      const teks = `AKUN-${String(i).padStart(3, '0')}`;
+      expect(html.split(teks).length - 1, `baris ${teks}`).toBe(1);
+    }
+    expect((html.match(/<tfoot>/g) ?? []).length).toBe(1);
+    expect((html.match(/class="halaman"/g) ?? []).length).toBe(halamanPanjang);
   });
 
   it('kop, periode, tanggal cetak, dan kop ringkas ada di halaman lanjutan', () => {

@@ -80,7 +80,10 @@ export type PrintPage = {
 };
 
 export type PrintRenderOptions = {
-  /** Maksimum baris isi per halaman (termasuk footer tabel). Default 30/22. */
+  /**
+   * Maksimum baris isi per halaman dalam satuan baris satu-lapis. Baris yang
+   * teksnya membungkus dihitung beberapa slot. Default 27/17.
+   */
   barisPerHalaman?: number;
   /** Override tanggal cetak (ISO). */
   tanggalCetak?: string;
@@ -92,78 +95,194 @@ export type HasilRenderPrint = {
   orientasi: PrintOrientation;
 };
 
-/** Default baris per halaman: portrait 30, landscape 22 (Buku Besar). */
+/** Default baris per halaman: portrait 27, landscape 17 (baris satu-lapis). */
 export function barisPerHalamanDefault(orientasi: PrintOrientation): number {
-  return orientasi === 'landscape' ? 22 : 30;
+  return orientasi === 'landscape' ? 17 : 27;
+}
+
+/** Lebar area isi halaman (mm) setelah padding 10–12mm kiri/kanan. */
+const LEBAR_ISI_MM: Record<PrintOrientation, number> = {
+  portrait: 190,
+  landscape: 273,
+};
+/** Padding kiri+kanan sel tabel (2 × 1.4mm pada CSS cetak). */
+const PADDING_SEL_MM = 2.8;
+/**
+ * Tambahan bobot per baris teks lanjutan relatif terhadap satu baris tabel
+ * (line-height 3.7mm dibagi tinggi baris satu-lapis 8.1mm).
+ */
+const BOBOT_BARIS_TAMBAHAN = 0.46;
+
+/**
+ * Perkiraan lebar karakter Times New Roman 8.5pt (mm). Dipisah per kategori
+ * agar nominal Rupiah yang panjang tidak dianggap membungkus, sementara nama
+ * akun kapital tetap dihitung lebar (konservatif).
+ */
+function lebarKarakterMm(ch: string): number {
+  if (ch === ' ') return 0.9;
+  if (/[0-9]/.test(ch)) return 1.4;
+  if (/[.,:%()/+\-]/.test(ch)) return 1.2;
+  if (ch === ch.toUpperCase()) return 1.75;
+  return 1.35;
+}
+
+function lebarTeksMm(teks: string): number {
+  let lebar = 0;
+  for (const ch of teks) lebar += lebarKarakterMm(ch);
+  return lebar;
+}
+
+/**
+ * Perkiraan jumlah baris teks setelah pembungkusan kata pada lebar kolom.
+ * `overflow-wrap:anywhere` membuat kata panjang ikut dipecah per karakter.
+ */
+function perkiraanJumlahBaris(teks: string, lebarKolomMm: number): number {
+  const isi = String(teks ?? '').trim();
+  if (!isi) return 1;
+  const muat = Math.max(1, lebarKolomMm - PADDING_SEL_MM);
+  if (lebarTeksMm(isi) <= muat) return 1;
+
+  let baris = 1;
+  let kolom = 0;
+  for (const kata of isi.split(/\s+/)) {
+    const lebarKata = lebarTeksMm(kata);
+    // Kata lebih panjang dari satu baris: pecah per karakter.
+    if (lebarKata > muat) {
+      if (kolom > 0) baris += 1;
+      let sisa = lebarKata;
+      while (sisa > muat) {
+        baris += 1;
+        sisa -= muat;
+      }
+      kolom = sisa;
+      continue;
+    }
+    const perlu = kolom === 0 ? lebarKata : kolom + 0.9 + lebarKata;
+    if (perlu > muat) {
+      baris += 1;
+      kolom = lebarKata;
+    } else {
+      kolom = perlu;
+    }
+  }
+  return baris;
+}
+
+/**
+ * Bobot tinggi satu baris tabel dalam satuan baris satu-lapis. Baris yang
+ * teksnya membungkus memakai lebih dari satu slot sehingga tidak menabrak
+ * footer halaman.
+ */
+function bobotBaris(
+  row: PrintRow,
+  kolom: readonly PrintColumn[],
+  orientasi: PrintOrientation,
+): number {
+  const total = kolom.reduce((s, k) => s + (Number.isFinite(k.width) ? Math.max(0, k.width) : 0), 0);
+  const dasar = total > 0 ? total : kolom.length;
+  const lebarIsi = LEBAR_ISI_MM[orientasi];
+  let maks = 1;
+  kolom.forEach((k, i) => {
+    const bobot = Number.isFinite(k.width) ? Math.max(0, k.width) : 0;
+    const lebarKolom = dasar > 0 ? (bobot / dasar) * lebarIsi : lebarIsi / kolom.length;
+    const garis = perkiraanJumlahBaris(row.sel[i] ?? '', lebarKolom);
+    maks = Math.max(maks, 1 + (garis - 1) * BOBOT_BARIS_TAMBAHAN);
+  });
+  return maks;
 }
 
 type HalamanKerja = { blok: PrintBlock[]; terpakai: number };
 
-type PotonganTabel = { baris: PrintRow[]; footer?: PrintRow[] };
+type PotonganTabel = {
+  baris: PrintRow[];
+  footer?: PrintRow[];
+  bobot: number;
+  kapasitas: number;
+};
 
 /**
- * Bagi satu tabel menjadi potongan halaman. `sisaKapasitas` = ruang yang
- * masih tersedia di halaman aktif. Footer hanya ditaruh di potongan terakhir
- * dan ikut dihitung dalam kapasitas, sehingga total tidak pernah terpisah
- * dari baris data terakhir bila masih muat.
+ * Bagi satu tabel menjadi potongan halaman berdasarkan bobot tinggi baris.
+ * `sisaKapasitas` = ruang yang masih tersedia di halaman aktif (satuan baris
+ * satu-lapis). Footer hanya ditaruh di potongan terakhir dan ikut dihitung,
+ * sehingga total tidak pernah terpisah dari baris data terakhir bila muat.
  */
 function potongTabel(
   tabel: PrintTable,
   sisaKapasitas: number,
   kapasitas: number,
+  orientasi: PrintOrientation,
 ): PotonganTabel[] {
-  const data = [...tabel.baris];
-  const footer = [...(tabel.footer ?? [])];
-  const totalUnit = data.length + footer.length;
-  if (totalUnit === 0) return [{ baris: [] }];
-
-  const kapasitasAwal = sisaKapasitas > 0 ? sisaKapasitas : kapasitas;
-  const kapasitasHalaman: number[] = [kapasitasAwal];
-  let sisa = totalUnit - kapasitasAwal;
-  while (sisa > 0) {
-    kapasitasHalaman.push(kapasitas);
-    sisa -= kapasitas;
+  const data = tabel.baris.map((row) => ({
+    row,
+    bobot: bobotBaris(row, tabel.kolom, orientasi),
+  }));
+  const footer = (tabel.footer ?? []).map((row) => ({
+    row,
+    bobot: bobotBaris(row, tabel.kolom, orientasi),
+  }));
+  const bobotFooter = footer.reduce((s, b) => s + b.bobot, 0);
+  if (data.length === 0 && footer.length === 0) {
+    return [{ baris: [], bobot: 0, kapasitas }];
   }
 
+  // 1) Bagi baris data menjadi halaman. Halaman pertama memakai sisa ruang
+  //    halaman aktif; halaman berikutnya memakai kapasitas penuh. Setiap
+  //    halaman minimal memuat satu baris agar tidak ada baris yang hilang.
   const potongan: PotonganTabel[] = [];
+  let batas = Math.max(1, sisaKapasitas > 0 ? sisaKapasitas : kapasitas);
   let indeks = 0;
-  for (let i = 0; i < kapasitasHalaman.length; i++) {
-    const kapasitasIni = kapasitasHalaman[i]!;
-    const halamanTerakhir = i === kapasitasHalaman.length - 1;
-    const sisaData = data.length - indeks;
-    // Di halaman terakhir sisakan ruang untuk footer.
-    const maksData = halamanTerakhir
-      ? Math.max(0, kapasitasIni - footer.length)
-      : kapasitasIni;
-    const ambil = Math.min(sisaData, maksData);
-    const baris = data.slice(indeks, indeks + ambil);
-    indeks += ambil;
-    if (indeks >= data.length) {
-      // Data habis. Footer ikut di halaman ini bila muat; kalau tidak,
-      // taruh footer di halaman baru (tidak pernah memotong baris/footer).
-      if (halamanTerakhir || baris.length + footer.length <= kapasitasIni) {
-        potongan.push({ baris, footer });
-      } else {
-        potongan.push({ baris });
-        potongan.push({ baris: [], footer });
-      }
-      break;
+  while (indeks < data.length) {
+    const baris: PrintRow[] = [];
+    let bobot = 0;
+    while (indeks < data.length) {
+      const item = data[indeks]!;
+      if (baris.length > 0 && bobot + item.bobot > batas) break;
+      baris.push(item.row);
+      bobot += item.bobot;
+      indeks += 1;
+      if (bobot >= batas) break;
     }
-    potongan.push({ baris });
+    potongan.push({ baris, bobot, kapasitas: batas });
+    batas = kapasitas;
   }
 
-  // Hindari halaman terakhir yang hanya berisi footer bila memungkinkan:
-  // pindahkan satu baris data dari potongan sebelumnya.
-  const akhir = potongan[potongan.length - 1];
-  if (akhir && akhir.baris.length === 0 && footer.length > 0 && potongan.length > 1) {
+  if (footer.length === 0) return potongan;
+  if (potongan.length === 0) {
+    potongan.push({ baris: [], bobot: 0, kapasitas: batas });
+  }
+
+  // 2) Footer hanya sekali, di halaman terakhir bila masih muat. Bila tidak,
+  //    footer mendapat halaman sendiri (tidak memotong footer).
+  const akhir = potongan[potongan.length - 1]!;
+  if (akhir.bobot + bobotFooter <= akhir.kapasitas) {
+    akhir.footer = footer.map((f) => f.row);
+    akhir.bobot += bobotFooter;
+  } else {
+    potongan.push({
+      baris: [],
+      footer: footer.map((f) => f.row),
+      bobot: bobotFooter,
+      kapasitas,
+    });
+  }
+
+  // 3) Hindari halaman terakhir yang hanya berisi footer bila memungkinkan:
+  //    pindahkan satu baris data dari halaman sebelumnya.
+  const terakhir = potongan[potongan.length - 1]!;
+  if (terakhir.baris.length === 0 && footer.length > 0 && potongan.length > 1) {
     const sebelumnya = potongan[potongan.length - 2]!;
-    const kapasitasAkhir = kapasitasHalaman[potongan.length - 1] ?? kapasitas;
+    const kandidat = sebelumnya.baris[sebelumnya.baris.length - 1];
+    const bobotKandidat = kandidat
+      ? bobotBaris(kandidat, tabel.kolom, orientasi)
+      : 0;
     if (
       sebelumnya.baris.length > 1 &&
-      akhir.baris.length + 1 + footer.length <= kapasitasAkhir
+      bobotKandidat + bobotFooter <= terakhir.kapasitas
     ) {
       const pindah = sebelumnya.baris.pop()!;
-      akhir.baris.push(pindah);
+      sebelumnya.bobot -= bobotKandidat;
+      terakhir.baris.push(pindah);
+      terakhir.bobot += bobotKandidat;
     }
   }
   return potongan;
@@ -197,18 +316,17 @@ export function paginatePrintDoc(
     if (aktif.terpakai >= kapasitas && aktif.blok.length > 0) aktif = halamanBaru();
     // Tabel tanpa baris data (mis. daftar kosong) tetap harus memuat footer
     // utuh; pindahkan ke halaman baru bila sisa ruang tidak cukup.
-    if (
-      tabel.baris.length === 0 &&
-      aktif.blok.length > 0 &&
-      aktif.terpakai + (tabel.footer?.length ?? 0) > kapasitas
-    ) {
-      aktif = halamanBaru();
+    if (tabel.baris.length === 0 && aktif.blok.length > 0) {
+      const bobotFooter = (tabel.footer ?? []).reduce(
+        (s, row) => s + bobotBaris(row, tabel.kolom, orientasi),
+        0,
+      );
+      if (aktif.terpakai + bobotFooter > kapasitas) aktif = halamanBaru();
     }
     const sisa = kapasitas - aktif.terpakai;
-    const potongan = potongTabel(tabel, sisa, kapasitas);
+    const potongan = potongTabel(tabel, sisa, kapasitas, orientasi);
     potongan.forEach((p, i) => {
       if (i > 0) aktif = halamanBaru();
-      const unit = p.baris.length + (p.footer?.length ?? 0);
       aktif.blok.push({
         jenis: 'tabel',
         tabel: {
@@ -218,15 +336,19 @@ export function paginatePrintDoc(
           footer: p.footer,
         },
       });
-      aktif.terpakai += unit;
+      aktif.terpakai += p.bobot;
     });
   };
 
   for (const blok of doc.blok) {
     if (blok.jenis === 'heading' || blok.jenis === 'paragraf') {
-      butuhHalamanBaru(1);
+      const unit =
+        blok.jenis === 'paragraf'
+          ? perkiraanJumlahBaris(blok.teks, LEBAR_ISI_MM[orientasi])
+          : 1;
+      butuhHalamanBaru(unit);
       aktif.blok.push(blok);
-      aktif.terpakai += 1;
+      aktif.terpakai += unit;
       continue;
     }
 
