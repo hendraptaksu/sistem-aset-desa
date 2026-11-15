@@ -10,6 +10,9 @@ import {
   type KelompokAkun,
 } from '../../db/coa.js';
 import { api } from '../lib/api.js';
+// UI-A26: label posisi normal dari konstanta bersama agar tidak menampilkan
+// enum mentah DEBIT/KREDIT di tabel daftar akun.
+import { LABEL_POSISI_NORMAL } from '../lib/tampilanLaporan.js';
 import {
   ALASAN_SIBUK,
   Badge,
@@ -378,11 +381,9 @@ export function AkunTab() {
               </>
             ) : (
               <Field label="Kelompok akun">
-                <TextInput
-                  value={tipe === 'BEBAN' ? 'BEBAN' : 'PENDAPATAN'}
-                  disabled
-                  onChange={() => {}}
-                />
+                {/* UI-A26: tampil label Indonesia, bukan enum mentah BEBAN/
+                    PENDAPATAN. */}
+                <TextInput value={LABEL_TIPE[tipe]} disabled onChange={() => {}} />
               </Field>
             )}
           </div>
@@ -478,7 +479,9 @@ export function AkunTab() {
                     <td className="whitespace-nowrap py-2 pr-3">
                       {a.kelompok ? LABEL_KELOMPOK[a.kelompok] : '—'}
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3">{a.posisi_normal}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">
+                      {LABEL_POSISI_NORMAL[a.posisi_normal]}
+                    </td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-1">
                         <Badge tone={nonaktif ? 'stone' : 'green'}>

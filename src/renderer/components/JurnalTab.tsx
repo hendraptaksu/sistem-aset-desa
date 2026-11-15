@@ -474,7 +474,9 @@ export function JurnalTab({
           />
         </div>
 
-        <div className="overflow-x-auto">
+        {/* UI-A26: aria-busy memberi tahu pembaca layar saat daftar dimuat
+            ulang (filter berubah / halaman pindah / refresh). */}
+        <div className="overflow-x-auto" aria-busy={memuat || undefined}>
           <table className="w-full text-left text-[15px]">
             <thead>
               <tr className="border-b text-stone-500">
@@ -500,8 +502,9 @@ export function JurnalTab({
                     <td className="whitespace-nowrap py-2 pr-3">{formatTanggal(j.tanggal)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">{j.no_bukti || '—'}</td>
                     <td className="py-2 pr-3">
+                      {/* UI-A26: UUID tidak lagi ditampilkan di daftar — ID
+                          lengkap tetap bisa dilihat lewat tombol Lihat. */}
                       <div>{j.keterangan}</div>
-                      <div className="text-xs text-stone-500">{j.id}</div>
                     </td>
                     <td className="whitespace-nowrap py-2 pr-3">{LABEL_JENIS[j.jenis] ?? j.jenis}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{formatRp(j.total_debit)}</td>
@@ -511,7 +514,9 @@ export function JurnalTab({
                       ) : j.reversal_id ? (
                         <Badge tone="amber">Sudah dikoreksi</Badge>
                       ) : (
-                        <Badge tone="stone">Aktif</Badge>
+                        // UI-A26: tone "Aktif" disamakan dengan DetailJurnalModal
+                        // (hijau) agar status aktif konsisten antar layar.
+                        <Badge tone="green">Aktif</Badge>
                       )}
                     </td>
                     <td className="py-2 text-right">
@@ -557,8 +562,10 @@ export function JurnalTab({
             </tbody>
             <tfoot>
               <tr className="font-bold">
+                {/* UI-A26: subtotal hanya mencakup jurnal yang tampil di
+                    halaman ini, bukan seluruh hasil filter. */}
                 <td colSpan={4} className="py-2 pr-3 text-right">
-                  Total halaman ({pageRows.length} jurnal):
+                  Subtotal halaman ini ({pageRows.length} jurnal):
                 </td>
                 <td className="py-2 pr-3 text-right">{formatRp(totalHalaman)}</td>
                 <td colSpan={2} />

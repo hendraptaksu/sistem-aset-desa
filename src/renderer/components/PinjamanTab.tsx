@@ -458,6 +458,9 @@ export function PinjamanTab() {
     if (!mutasiPinjamanId || !batasMutasi) {
       setMutasi(null);
       setMutasiBusy(false);
+      // UI-A26: error mutasi lama tidak boleh menempel saat pinjaman/periode
+      // berubah atau periode tidak valid — direset bersama hasilnya.
+      setMutasiErr(null);
       return;
     }
     let aktif = true;
@@ -642,6 +645,11 @@ export function PinjamanTab() {
           `${r.pinjaman.kreditur} tersimpan` +
           `${r.jurnal?.no_bukti ? ` (${r.jurnal.no_bukti})` : ''} — ` +
           `${formatRp(r.pinjaman.sisa_pokok_awal)}. ` +
+          // UI-A26: sebut keterangan yang disimpan agar operator bisa
+          // mencocokkan catatan yang baru diketik tanpa membuka detail.
+          (r.pinjaman.catatan.trim()
+            ? `Keterangan tercatat: “${r.pinjaman.catatan.trim()}”. `
+            : '') +
           (r.jurnal
             ? 'Jurnal D kas / K 2050 dibuat seimbang.'
             : 'Tidak ada jurnal pencairan baru; sisa pokok memakai Saldo Awal 2050.'),
@@ -1264,11 +1272,14 @@ export function PinjamanTab() {
                 className="grid grid-cols-1 items-end gap-2 rounded-lg border border-stone-200 bg-white p-2 md:grid-cols-[70px_150px_1fr_1fr_1fr_auto]"
               >
                 <Field label="Ke">
+                  {/* UI-A26: label "Ke" berulang tiap baris; aria-label memberi
+                      konteks baris untuk pembaca layar. */}
                   <TextInput
                     type="number"
                     min={1}
                     value={String(row.ke)}
                     disabled={busy}
+                    aria-label={`Angsuran ke-${row.ke || i + 1}`}
                     onChange={(e) => ubahJadwal(i, { ke: Number(e.target.value) })}
                   />
                 </Field>
@@ -2002,7 +2013,17 @@ export function PinjamanTab() {
               dan jurnal yang belum ditautkan tidak ikut dibandingkan.
             </p>
           </div>
-          <Badge tone={jumlahSelisihRekonsiliasi > 0 ? 'amber' : 'green'}>
+          {/* UI-A26: saat masih memeriksa/memuat, tone netral — bukan hijau/
+              amber dari hasil lama yang belum final. */}
+          <Badge
+            tone={
+              rekonsiliasiBusy || memuatDaftar
+                ? 'stone'
+                : jumlahSelisihRekonsiliasi > 0
+                  ? 'amber'
+                  : 'green'
+            }
+          >
             {/* UI-A14: selama daftar pinjaman masih dimuat, belum bisa
                 diklaim "Semua cocok". */}
             {rekonsiliasiBusy
@@ -2147,7 +2168,8 @@ export function PinjamanTab() {
                 onChange={(e) => setMutasiTahun(e.target.value.replace(/[^0-9]/g, ''))}
               />
             </Field>
-            <Field label="Bulan (kosong = satu tahun)">
+            {/* UI-A26: label menyebut pilihan default secara eksplisit. */}
+            <Field label="Bulan (Semua bulan = satu tahun penuh)">
               <Select
                 value={mutasiBulan}
                 disabled={mutasiBusy}
@@ -2170,6 +2192,18 @@ export function PinjamanTab() {
           )}
           {mutasiBusy && <p className="mt-2 text-sm text-stone-500">Menghitung mutasi…</p>}
           <ErrorBox msg={mutasiErr} />
+          {/* UI-A26: empty state kartu utang — saat tidak ada pinjaman atau
+              tidak ada mutasi pada periode terpilih, kartu tidak lagi kosong
+              tanpa penjelasan. */}
+          {!batasMutasi || mutasiBusy || mutasiErr ? null : !mutasiPinjamanId ? (
+            <p className="mt-2 text-sm text-stone-500">
+              Belum ada pinjaman. Kartu utang muncul setelah pinjaman dicatat.
+            </p>
+          ) : mutasi && mutasi.bulanan.every((b) => b.pembayaran.length === 0) ? (
+            <p className="mt-2 text-sm text-stone-500">
+              Belum ada mutasi pada periode ini.
+            </p>
+          ) : null}
   
           {mutasi && (
             <>

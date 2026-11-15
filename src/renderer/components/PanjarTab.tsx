@@ -72,7 +72,10 @@ type ItemRow = {
 
 function barisItemBaru(notaTanggal = ''): ItemRow {
   return {
-    kategori_baga: '5004',
+    // UI-A26: kategori tidak lagi hardcoded '5004'; efek defaultAkunBeban
+    // mengisinya dari opsi COA yang benar-benar ada. Kosong berarti operator
+    // wajib memilih akun beban terlebih dahulu.
+    kategori_baga: '',
     nominal: 0,
     nota_nomor: '',
     nota_tanggal: notaTanggal,
@@ -596,6 +599,30 @@ export function PanjarTab() {
   );
   const namaAkun = useMemo(() => new Map(coa.map((c) => [c.kode, c.nama])), [coa]);
   const labelAkun = (kode: string): string => namaAkun.get(kode) ?? kode;
+
+  // UI-A26: default akun beban diambil dari opsi COA yang ada, bukan kode
+  // hardcoded '5004'. Prioritas: '5004' bila tersedia, kalau tidak kode beban
+  // aktif pertama. Bila tidak ada akun beban aktif sama sekali, hasilnya
+  // kosong dan form memaksa operator memilih (pratinjau bererror sehingga
+  // tombol simpan mati sampai akun beban dipilih).
+  const defaultAkunBeban = useMemo(() => {
+    if (bagaList.length === 0) return '';
+    return bagaList.some((b) => b.kode === '5004') ? '5004' : bagaList[0]!.kode;
+  }, [bagaList]);
+
+  useEffect(() => {
+    if (!defaultAkunBeban) return;
+    // Hanya baris kosong atau berkode yang tidak ada di opsi (mis. akun
+    // dinonaktifkan) yang diisi ulang; pilihan operator yang masih valid
+    // dibiarkan.
+    setItems((xs) =>
+      xs.map((x) =>
+        bagaList.some((b) => b.kode === x.kategori_baga)
+          ? x
+          : { ...x, kategori_baga: defaultAkunBeban },
+      ),
+    );
+  }, [bagaList, defaultAkunBeban]);
 
   async function refresh() {
     setMemuatDaftar(true);
@@ -1283,7 +1310,12 @@ export function PanjarTab() {
     debit: number,
     kredit: number,
   ): string => {
-    if (akun === '1040') return 'Uang Panjar (1040) — dihabiskan';
+    // UI-A26: label jujur — "dihabiskan" hanya saat tidak ada sisa; bila ada
+    // sisa, baris 1040 menyebut sisa yang kembali ke kas.
+    if (akun === '1040')
+      return sisa > 0
+        ? 'Uang Panjar (1040) — ada sisa kembali ke kas'
+        : 'Uang Panjar (1040) — dihabiskan';
     if (closeTarget && akun === closeTarget.akun_kas_sumber && debit > 0)
       return `Sisa kembali ke kas — ${labelAkun(akun)}`;
     if (closeTarget && akun === closeTarget.akun_kas_sumber && kredit > 0)
@@ -1321,7 +1353,8 @@ export function PanjarTab() {
               bukan langsung sebagai beban.
             </p>
           </div>
-          <Badge tone="green">Jurnal otomatis seimbang</Badge>
+          {/* UI-A26: badge statis "Jurnal otomatis seimbang" dihapus — redundan
+              dengan badge "Seimbang" yang tampil di tiap pratinjau jurnal. */}
         </div>
       </Card>
 
@@ -1470,7 +1503,8 @@ export function PanjarTab() {
         </div>
         <ErrorBox msg={errSaldoAwal} />
         {infoSaldoAwal && (
-          <InfoBox className="mb-2 mt-2">{infoSaldoAwal}</InfoBox>
+          // UI-A26: margin disamakan dengan kotak info kartu lain (mb-2).
+          <InfoBox className="mb-2">{infoSaldoAwal}</InfoBox>
         )}
         {!pembukaan ? (
           <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[15px] text-stone-600">
@@ -1681,6 +1715,12 @@ export function PanjarTab() {
                       disabled={busyClose}
                       onChange={(e) => ubahItem(i, { kategori_baga: e.target.value })}
                     >
+                      {/* UI-A26: bila default kosong (tidak ada akun beban
+                          aktif), tampilkan pilihan kosong agar operator tahu
+                          wajib memilih. */}
+                      {!it.kategori_baga && (
+                        <option value="">— pilih akun beban —</option>
+                      )}
                       {bagaList.map((b) => (
                         <option key={b.kode} value={b.kode}>
                           {b.kode} — {b.nama}
@@ -1845,7 +1885,8 @@ export function PanjarTab() {
         {infoBatal && (
           <InfoBox className="mb-2">{infoBatal}</InfoBox>
         )}
-        <ErrorBox msg={errKoreksi} />
+        {/* UI-A26: error koreksi cukup tampil di modal koreksi (dekat aksi);
+            ErrorBox kedua di kartu ini dihapus agar pesan tidak tampil dobel. */}
         {/* UI-A18: paragraf ±10 baris diringkas jadi 3 bullet pendek. */}
         <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-stone-600">
           <li>

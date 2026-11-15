@@ -211,7 +211,8 @@ export function NeracaTab({
                     <td colSpan={2} className="py-2 pr-3 text-right">
                       Total Aset
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                    {/* UI-A26: angka utama laporan satu skala text-2xl. */}
+                    <td className="whitespace-nowrap py-2 pr-3 text-right text-2xl">
                       {formatRp(data.totalAset)}
                     </td>
                     <td />
@@ -253,7 +254,8 @@ export function NeracaTab({
                     <td colSpan={2} className="py-2 pr-3 text-right">
                       Total Kewajiban
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                    {/* UI-A26: angka utama laporan satu skala text-2xl. */}
+                    <td className="whitespace-nowrap py-2 pr-3 text-right text-2xl">
                       {formatRp(data.totalKewajiban)}
                     </td>
                     <td />
@@ -313,7 +315,8 @@ export function NeracaTab({
                     <td colSpan={2} className="py-2 pr-3 text-right">
                       Total Ekuitas
                     </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right">
+                    {/* UI-A26: angka utama laporan satu skala text-2xl. */}
+                    <td className="whitespace-nowrap py-2 pr-3 text-right text-2xl">
                       {formatRp(data.totalEkuitas)}
                     </td>
                     <td />

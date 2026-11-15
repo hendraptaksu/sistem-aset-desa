@@ -317,7 +317,7 @@ export function BukuBesarTab({
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo awal</div>
-                <div className="text-lg font-bold">{formatRp(data.saldoAwal)}</div>
+                <div className="text-2xl font-bold">{formatRp(data.saldoAwal)}</div>
                 <div className="mt-1">
                   <SisiSaldoBadge saldo={data.saldoAwal} posisiNormal={data.posisi_normal} />
                 </div>
@@ -327,17 +327,17 @@ export function BukuBesarTab({
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total debit</div>
-                <div className="text-lg font-bold">{formatRp(data.totalDebit)}</div>
+                <div className="text-2xl font-bold">{formatRp(data.totalDebit)}</div>
                 <div className="mt-1 text-helper text-stone-500">mutasi dalam periode</div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total kredit</div>
-                <div className="text-lg font-bold">{formatRp(data.totalKredit)}</div>
+                <div className="text-2xl font-bold">{formatRp(data.totalKredit)}</div>
                 <div className="mt-1 text-helper text-stone-500">mutasi dalam periode</div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo akhir</div>
-                <div className="text-lg font-bold">{formatRp(data.saldoAkhir)}</div>
+                <div className="text-2xl font-bold">{formatRp(data.saldoAkhir)}</div>
                 <div className="mt-1">
                   <SisiSaldoBadge saldo={data.saldoAkhir} posisiNormal={data.posisi_normal} />
                 </div>

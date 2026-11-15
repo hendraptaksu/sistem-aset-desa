@@ -34,7 +34,7 @@ mis. `fix(panjar): sembunyikan grid rincian nota sampai target dipilih (UI-A01)`
 | UI-A23 | P3 | State sibuk gabungan per tab | M | ✅ |
 | UI-A24 | P3 | Perbaiki flag dirty (direset aksi lain / palsu saat kosong) | M | ✅ |
 | UI-A25 | P3 | Batasi generator jadwal otomatis dari tenor | S | ✅ |
-| UI-A26 | P3 | Batch perbaikan kecil lintas layar | S | ⬜ |
+| UI-A26 | P3 | Batch perbaikan kecil lintas layar | S | ✅ |
 | UI-A27 | P3 | Perluas `e2e/ui-audit.test.mjs` untuk regresi perbaikan di atas | M | ⬜ |
 
 Status: ⬜ belum · 🔶 berjalan · ✅ selesai · ⛔ batal

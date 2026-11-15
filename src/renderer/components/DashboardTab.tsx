@@ -497,7 +497,10 @@ export function DashboardTab({
                 <h3 className="text-base font-bold">Saldo Kas &amp; Bank</h3>
                 <p className="text-sm text-stone-600">Semua dompet kas/bank per tanggal laporan</p>
               </div>
-              <p className="mt-3 text-3xl font-bold text-emerald-900">
+              {/* UI-A26: angka utama laporan memakai satu skala text-2xl di
+                  seluruh layar (Dashboard, Buku Besar, Arus Kas, Laba Rugi,
+                  Neraca, Neraca Saldo). */}
+              <p className="mt-3 text-2xl font-bold text-emerald-900">
                 {formatRp(data.kasBank.total)}
               </p>
               <details className="mt-3">
@@ -556,8 +559,8 @@ export function DashboardTab({
               <p
                 className={
                   data.labaRugiBerjalan.defisit
-                    ? 'mt-3 text-3xl font-bold text-red-800'
-                    : 'mt-3 text-3xl font-bold text-emerald-900'
+                    ? 'mt-3 text-2xl font-bold text-red-800'
+                    : 'mt-3 text-2xl font-bold text-emerald-900'
                 }
               >
                 {formatRp(data.labaRugiBerjalan.laba)}

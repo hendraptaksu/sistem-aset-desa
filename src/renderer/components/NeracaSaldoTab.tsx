@@ -310,10 +310,11 @@ export function NeracaSaldoTab({
                   <td colSpan={3} className="py-2 pr-3 text-right">
                     Total:
                   </td>
-                  <td className="whitespace-nowrap py-2 pr-3 text-right">
+                  {/* UI-A26: angka utama laporan satu skala text-2xl. */}
+                  <td className="whitespace-nowrap py-2 pr-3 text-right text-2xl">
                     {formatRp(data.totalDebit)}
                   </td>
-                  <td className="whitespace-nowrap py-2 pr-3 text-right">
+                  <td className="whitespace-nowrap py-2 pr-3 text-right text-2xl">
                     {formatRp(data.totalKredit)}
                   </td>
                   <td colSpan={2} className="py-2 pr-3">

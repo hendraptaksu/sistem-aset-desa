@@ -202,35 +202,35 @@ export function ArusKasTab({ sekarang }: { sekarang?: Date | number }) {
             <div className={`grid grid-cols-2 gap-3 ${data.penyesuaianSaldoAwal !== 0 ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-5'}`}>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Saldo awal</div>
-                <div className="text-lg font-bold">{formatRp(data.saldoAwal)}</div>
+                <div className="text-2xl font-bold">{formatRp(data.saldoAwal)}</div>
               </div>
               {data.penyesuaianSaldoAwal !== 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="text-sm text-amber-800">Saldo pembukaan / penyesuaian</div>
-                  <div className="text-lg font-bold text-amber-900">
+                  <div className="text-2xl font-bold text-amber-900">
                     {formatRp(data.penyesuaianSaldoAwal)}
                   </div>
                 </div>
               )}
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total masuk</div>
-                <div className="text-lg font-bold text-emerald-700">
+                <div className="text-2xl font-bold text-emerald-700">
                   {formatRp(data.totalMasuk)}
                 </div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Total keluar</div>
-                <div className="text-lg font-bold text-red-700">
+                <div className="text-2xl font-bold text-red-700">
                   {formatRp(data.totalKeluar)}
                 </div>
               </div>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm text-stone-600">Kenaikan / (penurunan)</div>
-                <div className="text-lg font-bold">{formatRp(data.kenaikan)}</div>
+                <div className="text-2xl font-bold">{formatRp(data.kenaikan)}</div>
               </div>
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                 <div className="text-sm text-emerald-800">Saldo akhir</div>
-                <div className="text-lg font-bold text-emerald-900">
+                <div className="text-2xl font-bold text-emerald-900">
                   {formatRp(data.saldoAkhir)}
                 </div>
                 <div className="mt-1 text-helper text-emerald-800">

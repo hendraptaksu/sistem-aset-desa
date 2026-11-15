@@ -341,7 +341,8 @@ export function LabaRugiTab({ sekarang }: { sekarang?: Date | number }) {
                   <td colSpan={2} className="py-3 pr-3 text-right">
                     LABA / (DEFISIT)
                   </td>
-                  <td className="whitespace-nowrap py-3 pr-3 text-right text-base">
+                  {/* UI-A26: angka utama laporan satu skala text-2xl. */}
+                  <td className="whitespace-nowrap py-3 pr-3 text-right text-2xl">
                     {formatRp(data.laba)}
                   </td>
                   <td className="py-3">

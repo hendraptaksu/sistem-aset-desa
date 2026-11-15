@@ -43,6 +43,8 @@ export function DetailJurnalModal({
         {jurnal.reversal_of && <Badge tone="red">Jurnal balik</Badge>}
         {jurnal.reversal_id && <Badge tone="amber">Sudah dikoreksi</Badge>}
         {!jurnal.reversal_of && !jurnal.reversal_id && (
+          // UI-A26: tone "Aktif" satu-satunya di seluruh layar (sama dengan
+          // JurnalTab) agar status aktif tidak berubah warna antar tampilan.
           <Badge tone="green">Aktif</Badge>
         )}
       </div>
