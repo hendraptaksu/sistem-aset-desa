@@ -1,11 +1,10 @@
 # Changelog
 
 Semua perubahan penting pada proyek ini dicatat di file ini. Format mengikuti
-[Keep a Changelog](https://keepachangelog.com/id/1.1.0/). Versi aplikasi saat ini
-**2.0.0**; entri di bawah berstatus **Unreleased** karena audit P0–P2 belum
-dirilis sebagai versi baru.
+[Keep a Changelog](https://keepachangelog.com/id/1.1.0/). Versi aplikasi saat
+ini **2.0.0**, dirilis 2026-11-19.
 
-## [Unreleased] — Audit P0–P2 (2026-11)
+## [2.0.0] — 2026-11-19
 
 ### Ditambahkan
 
